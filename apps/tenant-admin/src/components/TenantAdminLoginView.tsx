@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api, setStoredToken } from '../api';
 import { UserContext } from '../types';
+import toowixLogo from '../assets/toowix-logo.svg';
 
 interface TenantAdminLoginViewProps {
   onSuccess: (user: UserContext) => void;
@@ -184,18 +185,14 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
       {/* Main Header */}
       <header className="relative z-10 w-full px-8 py-6 lg:px-14 flex items-center justify-between" data-purpose="top-navigation">
         <a className="flex items-center gap-2.5 group outline-none cursor-pointer" href="/" title="Toowix Enterprise Cloud">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-sky-400 flex items-center justify-center text-white shadow-md shadow-blue-500/25 group-hover:scale-105 transition-transform duration-200">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2L14.2 9.8L22 12L14.2 14.2L12 22L9.8 14.2L2 12L9.8 9.8L12 2Z"></path>
-            </svg>
-          </div>
+          <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain group-hover:scale-105 transition-transform duration-200" />
           <span className="text-2xl font-bold tracking-tight text-slate-900 flex items-center">toowix</span>
         </a>
 
         {/* Security Pill */}
         <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-white/60 shadow-sm text-xs font-medium text-slate-600">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Tenant Console</span>
+          <span>Admin Console</span>
           <span className="text-slate-300">|</span>
           <span className="text-slate-500">Secure</span>
         </div>
@@ -225,7 +222,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
               <div className="absolute -left-12 top-6 w-2.5 h-2.5 rounded-full bg-sky-400/30"></div>
               <div className="absolute -left-4 bottom-0 w-3 h-3 rounded-full bg-indigo-400/30"></div>
 
-              <span className="text-[11px] font-bold text-slate-400 tracking-[0.4em] uppercase mb-0.5">TENANT</span>
+              <span className="text-[11px] font-bold text-slate-400 tracking-[0.4em] uppercase mb-0.5">ADMIN</span>
               <h1 className="text-6xl sm:text-7xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-950 via-slate-900 to-blue-700 leading-none">
                 toowix
               </h1>
@@ -237,7 +234,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
 
           {/* Right Auth Card */}
           <section aria-label="Sign In Panel" className="lg:col-span-6 flex justify-center lg:justify-end">
-            <div className="frosted-panel rounded-3xl p-8 sm:p-10 w-full max-w-[460px] border border-white/80 transition-all duration-300" data-purpose="login-modal-card">
+            <div className="frosted-panel rounded-3xl p-8 sm:p-10 w-full max-w-[460px] bg-white/45 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/5 transition-all duration-300" data-purpose="login-modal-card">
               {/* Error Alert */}
               {error && (
                 <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
@@ -340,7 +337,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                     {/* Submit Button */}
                     <div className="pt-2">
                       <button
-                        className="w-full h-11 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 hover:shadow-blue-600/40 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="btn btn-primary btn-lg w-full"
                         id="submitLoginBtn"
                         type="submit"
                         disabled={loading}
@@ -352,7 +349,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                     {/* Register Organization Link */}
                     <div className="text-center pt-3">
                       <p className="text-xs text-slate-500">
-                        Need a tenant account?{' '}
+                        Need an admin account?{' '}
                         <button
                           type="button"
                           onClick={onGoToRegister}
@@ -383,18 +380,17 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                   <div className="space-y-3 mb-5" data-purpose="method-selector">
                     {/* Method 1: TOTP */}
                     <div
-                      className={`cursor-pointer p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 relative ${
-                        twoFactorMethod === 'totp'
+                      className={`cursor-pointer p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 relative ${twoFactorMethod === 'totp'
                           ? 'border-2 border-blue-600 bg-blue-50/80 shadow-sm'
                           : 'border border-slate-200/80 bg-white/70 hover:bg-white hover:border-slate-300'
-                      }`}
+                        }`}
                       onClick={() => {
                         setTwoFactorMethod('totp');
                         setDigits(['', '', '', '', '', '']);
                         setError(null);
                       }}
                     >
-                      <div className="w-8 h-8 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-600 flex-shrink-0 mt-0.5">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-600 flex-shrink-0 mt-0.5">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                           <path d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" strokeLinecap="round" strokeLinejoin="round"></path>
                         </svg>
@@ -407,18 +403,17 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                         <p className="text-xs text-slate-500 leading-relaxed">Enter the 6-digit code from your authenticator app.</p>
                       </div>
                       <div className={`w-4 h-4 rounded-full border flex items-center justify-center absolute right-3.5 top-4 bg-white ${twoFactorMethod === 'totp' ? 'border-2 border-blue-600' : 'border-slate-300'}`}>
-                        {twoFactorMethod === 'totp' && <span className="w-2 h-2 rounded-full bg-blue-600"></span>}
+                        {twoFactorMethod === 'totp' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
                       </div>
                     </div>
 
                     {/* Method 2: Email OTP */}
                     {hasRecoveryEmail && (
                       <div
-                        className={`cursor-pointer p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 relative ${
-                          twoFactorMethod === 'email'
+                        className={`cursor-pointer p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 relative ${twoFactorMethod === 'email'
                             ? 'border-2 border-blue-600 bg-blue-50/80 shadow-sm'
                             : 'border border-slate-200/80 bg-white/70 hover:bg-white hover:border-slate-300'
-                        }`}
+                          }`}
                         onClick={() => {
                           setTwoFactorMethod('email');
                           setDigits(['', '', '', '', '', '']);
@@ -442,7 +437,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                           </p>
                         </div>
                         <div className={`w-4 h-4 rounded-full border flex items-center justify-center absolute right-3.5 top-4 bg-white ${twoFactorMethod === 'email' ? 'border-2 border-blue-600' : 'border-slate-300'}`}>
-                          {twoFactorMethod === 'email' && <span className="w-2 h-2 rounded-full bg-blue-600"></span>}
+                          {twoFactorMethod === 'email' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
                         </div>
                       </div>
                     )}
@@ -514,7 +509,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                     {/* Primary CTA Button */}
                     <div className="pt-2">
                       <button
-                        className="w-full h-11 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 hover:shadow-blue-600/40 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="btn btn-primary btn-lg w-full"
                         id="submit2FABtn"
                         type="submit"
                         disabled={loading}

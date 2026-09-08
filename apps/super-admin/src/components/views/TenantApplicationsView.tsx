@@ -10,6 +10,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { RegistrationApplication } from '../../types';
+import { Button } from '../ui/Button';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface TenantApplicationsViewProps {
   applications: RegistrationApplication[];
@@ -36,11 +38,9 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
   // Filtered applications
   const filteredApps = useMemo(() => {
     return applications.filter((app) => {
-      // Filter by status tab
       if (filterStatus !== 'ALL' && app.status !== filterStatus) {
         return false;
       }
-      // Filter by search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchesName = app.companyName?.toLowerCase().includes(query);
@@ -54,214 +54,162 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
   }, [applications, filterStatus, searchQuery]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Header controls: Search & Status Filters */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '16px',
-      }}>
-        {/* Status Filter Pills */}
-        <div style={{
-          display: 'flex',
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md, 8px)',
-          padding: '4px',
-          gap: '4px',
-        }}>
+    <div className="space-y-4">
+      {/* Top Filter Bar & Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Status Filter Segmented Control */}
+        <div className="inline-flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('PENDING_REVIEW')}
-            style={{
-              background: filterStatus === 'PENDING_REVIEW' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'PENDING_REVIEW' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'PENDING_REVIEW'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <Clock size={13} />
             <span>Pending Review</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'PENDING_REVIEW' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-semibold">
               {pendingCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('APPROVED')}
-            style={{
-              background: filterStatus === 'APPROVED' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'APPROVED' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'APPROVED'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <CheckCircle2 size={13} />
             <span>Approved</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'APPROVED' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
               {approvedCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('REJECTED')}
-            style={{
-              background: filterStatus === 'REJECTED' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'REJECTED' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'REJECTED'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <XCircle size={13} />
             <span>Rejected</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'REJECTED' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-semibold">
               {rejectedCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('ALL')}
-            style={{
-              background: filterStatus === 'ALL' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'ALL' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'ALL'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <span>All Submissions</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'ALL' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-semibold">
               {allCount}
             </span>
           </button>
         </div>
 
-        {/* Search input and refresh action */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ position: 'relative', width: '280px' }}>
-            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+        {/* Right Controls: Search & Refresh */}
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              className="form-input"
               placeholder="Search company, domain, email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '36px', height: '36px', fontSize: '0.82rem' }}
+              className="form-input pl-9 h-9 text-xs"
             />
           </div>
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={onRefresh}
             disabled={loading}
             title="Refresh application queue"
-            style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* Applications Table Card */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Data Table Container */}
+      <div className="data-table-container">
         {loading && applications.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-dim)' }}>
-            Loading applications queue...
+          <div className="p-12 text-center text-slate-500 text-xs">
+            Loading tenant applications...
           </div>
         ) : filteredApps.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <ClipboardList size={36} color="var(--text-dim)" style={{ margin: '0 auto 12px auto', opacity: 0.6 }} />
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>
+          <div className="p-12 text-center">
+            <ClipboardList size={36} className="mx-auto mb-3 text-slate-300" />
+            <div className="text-sm font-semibold text-slate-800 mb-1">
               {filterStatus === 'PENDING_REVIEW'
                 ? 'No Applications Pending Review'
-                : 'No Applications Match the Current Criteria'}
+                : 'No Applications Match Criteria'}
             </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', maxWidth: '400px', margin: '0 auto' }}>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
               {filterStatus === 'PENDING_REVIEW'
                 ? 'All tenant registration requests have been reviewed and processed.'
                 : 'Try adjusting your search query or selecting a different status filter above.'}
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="custom-table" style={{ margin: 0 }}>
+          <div className="overflow-x-auto">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ minWidth: '220px' }}>Organization & Domain</th>
-                  <th style={{ minWidth: '200px' }}>Applicant</th>
-                  <th style={{ minWidth: '130px' }}>Submitted</th>
-                  <th style={{ minWidth: '130px' }}>Status</th>
-                  <th style={{ minWidth: '140px', textAlign: 'right' }}>Actions</th>
+                  <th>Organization & Domain</th>
+                  <th>Applicant</th>
+                  <th>Submitted</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredApps.map((app) => {
                   const isPending = app.status === 'PENDING_REVIEW';
-                  const isApproved = app.status === 'APPROVED';
-                  const isRejected = app.status === 'REJECTED';
-
                   return (
-                    <tr key={app._id}>
+                    <tr key={app._id || app.id}>
                       {/* Organization & Domain */}
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.92rem' }}>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-900 text-xs">
                             {app.companyName}
                           </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Globe size={13} color="var(--primary-light)" />
-                            <code style={{ fontSize: '0.8rem', color: 'var(--primary-light)' }}>
-                              {app.requestedDomain}
-                            </code>
+                          <div className="flex items-center gap-1 text-[11px] text-indigo-600 font-mono mt-0.5">
+                            <Globe size={11} className="text-slate-400" />
+                            <span>{app.requestedDomain}</span>
                           </div>
                         </div>
                       </td>
 
                       {/* Applicant Contact */}
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span style={{ fontSize: '0.86rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                        <div className="flex flex-col text-xs">
+                          <span className="font-medium text-slate-900">
                             {app.applicantName}
                           </span>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                          <span className="text-[11px] text-slate-500">
                             {app.contactEmail}
                           </span>
                           {app.phone && (
-                            <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                            <span className="text-[10px] text-slate-400">
                               Tel: {app.phone}
                             </span>
                           )}
@@ -270,44 +218,37 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
 
                       {/* Submitted Date */}
                       <td>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-main)' }}>
+                        <div className="text-xs text-slate-800">
                           {new Date(app.createdAt).toLocaleDateString()}
                         </div>
-                        <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                        <div className="text-[11px] text-slate-400">
                           {new Date(app.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </td>
 
                       {/* Status */}
                       <td>
-                        {isPending && (
-                          <span className="badge badge-amber" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                            <Clock size={11} /> Pending Review
-                          </span>
+                        {app.status === 'PENDING_REVIEW' && (
+                          <StatusBadge status="warning">Pending Review</StatusBadge>
                         )}
-                        {isApproved && (
-                          <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                            <CheckCircle2 size={11} /> Approved
-                          </span>
+                        {app.status === 'APPROVED' && (
+                          <StatusBadge status="success">Approved</StatusBadge>
                         )}
-                        {isRejected && (
-                          <span className="badge badge-red" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                            <XCircle size={11} /> Rejected
-                          </span>
+                        {app.status === 'REJECTED' && (
+                          <StatusBadge status="danger">Rejected</StatusBadge>
                         )}
                       </td>
 
                       {/* Actions */}
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          className={isPending ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                        <Button
+                          size="sm"
+                          variant={isPending ? 'primary' : 'secondary'}
                           onClick={() => onReviewApplication(app)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                         >
                           <span>{isPending ? 'Review Application' : 'View Details'}</span>
-                          <ChevronRight size={14} />
-                        </button>
+                          <ChevronRight size={13} />
+                        </Button>
                       </td>
                     </tr>
                   );

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Mail, AlertTriangle } from 'lucide-react';
+import { X, Sliders } from 'lucide-react';
 import { api } from '../../api';
 import { TenantSummary } from '../../types';
+import { Button } from '../ui/Button';
+import { Alert } from '../ui/Alert';
 
 interface UpdateQuotaModalProps {
   isOpen: boolean;
@@ -54,110 +56,83 @@ export const UpdateQuotaModal: React.FC<UpdateQuotaModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 1050 }}>
-      <div className="modal-content" style={{ maxWidth: '480px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              background: 'rgba(56, 189, 248, 0.12)',
-              color: 'var(--primary-light)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Mail size={20} />
+    <div className="modal-backdrop-mock">
+      <div className="modal-card max-w-md">
+        {/* Header */}
+        <div className="modal-header">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+              <Sliders size={16} />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 600, margin: 0, color: 'var(--text-main)' }}>
-                Adjust Mailbox Quota
-              </h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
-                {tenant.name} &bull; <code style={{ color: 'var(--primary-light)' }}>{tenant.domain?.domainName || 'No Domain'}</code>
+              <h3 className="modal-title">Adjust Mailbox Quota</h3>
+              <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                {tenant.name} · {tenant.domain?.domainName || 'No Domain'}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '4px' }}
-          >
-            <X size={20} />
+          <button onClick={onClose} className="modal-close-btn">
+            <X size={18} />
           </button>
         </div>
 
-        {error && (
-          <div style={{
-            background: 'var(--danger-bg)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            padding: '10px 14px',
-            borderRadius: 'var(--radius-md)',
-            color: '#fca5a5',
-            marginBottom: '16px',
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            <AlertTriangle size={16} />
-            <span>{error}</span>
-          </div>
-        )}
-
+        {/* Body */}
         <form onSubmit={handleSubmit}>
-          <div style={{
-            background: 'var(--bg-input)',
-            borderRadius: 'var(--radius-md)',
-            padding: '14px',
-            marginBottom: '20px',
-            border: '1px solid var(--border)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.85rem' }}>
-              <span style={{ color: 'var(--text-dim)' }}>Currently In Use:</span>
-              <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{currentUsage} mailboxes</span>
+          <div className="modal-body space-y-4">
+            {error && (
+              <Alert type="error" message={error} onClose={() => setError(null)} />
+            )}
+
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Currently Provisioned:</span>
+                <span className="font-semibold text-slate-800 font-mono">{currentUsage} mailboxes</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Current Upper Limit:</span>
+                <span className="font-mono text-slate-600">{tenant.mailboxLimit}</span>
+              </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-              <span style={{ color: 'var(--text-dim)' }}>Current Maximum:</span>
-              <span style={{ fontWeight: 600, color: 'var(--primary-light)' }}>{tenant.mailboxLimit} mailboxes</span>
+
+            <div>
+              <label className="field-label" htmlFor="newMailboxLimit">
+                New Mailbox Pool Quota
+              </label>
+              <input
+                id="newMailboxLimit"
+                type="number"
+                min={minAllowed}
+                max={10000}
+                className="form-input font-mono"
+                value={limit}
+                onChange={(e) => setLimit(parseInt(e.target.value, 10) || minAllowed)}
+                required
+              />
+              <span className="input-helper-text">
+                Must be at least {minAllowed} (current active mailboxes).
+              </span>
             </div>
           </div>
 
-          <div className="form-group" style={{ marginBottom: '24px' }}>
-            <label className="form-label" style={{ fontWeight: 600 }}>
-              New Mailbox Limit
-            </label>
-            <input
-              type="number"
-              className="form-input"
-              min={minAllowed}
-              max={10000}
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              required
-              autoFocus
-            />
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'block', marginTop: '6px' }}>
-              Minimum allowed is {minAllowed} (cannot be set lower than active mailboxes).
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-            <button
+          {/* Footer */}
+          <div className="modal-footer">
+            <Button
               type="button"
-              className="btn btn-secondary"
+              variant="secondary"
+              size="md"
               onClick={onClose}
               disabled={loading}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="btn btn-primary"
-              disabled={loading || limit < minAllowed}
+              variant="primary"
+              size="md"
+              loading={loading}
             >
-              {loading ? 'Saving Changes...' : 'Update Quota'}
-            </button>
+              Save Quota
+            </Button>
           </div>
         </form>
       </div>

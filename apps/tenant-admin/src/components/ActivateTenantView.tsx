@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   AlertCircle,
 } from 'lucide-react';
+import toowixLogo from '../assets/toowix-logo.svg';
 
 interface ActivateTenantViewProps {
   onSuccess: (user: UserContext) => void;
@@ -232,11 +233,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
             }}
             className="flex items-center gap-2.5 group cursor-pointer"
           >
-            <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-sm transition-transform group-hover:scale-105">
-              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                <path d="M12 1.5C12 7.29844 7.29844 12 1.5 12C7.29844 12 12 16.7016 12 22.5C12 16.7016 16.7016 12 22.5 12C16.7016 12 12 7.29844 12 1.5Z"></path>
-              </svg>
-            </div>
+            <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain transition-transform group-hover:scale-105" />
             <span className="text-xl font-bold tracking-tight text-slate-900">toowix</span>
           </a>
 
@@ -260,9 +257,8 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
             <div className="mb-6 flex items-center justify-center gap-3">
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    stage > 2 ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white'
-                  }`}
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${stage > 2 ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white'
+                    }`}
                 >
                   {stage > 2 ? <Check size={11} strokeWidth={3} /> : '1'}
                 </span>
@@ -275,9 +271,8 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
 
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    stage === 3 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'
-                  }`}
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${stage === 3 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'
+                    }`}
                 >
                   2
                 </span>
@@ -479,7 +474,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                    className="btn btn-primary w-full"
                   >
                     {loading ? (
                       <>
@@ -524,7 +519,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
 
                 <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/70 text-left text-xs space-y-2">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
-                    <span className="text-slate-500 font-medium">Tenant ID</span>
+                    <span className="text-slate-500 font-medium">Admin ID</span>
                     <span className="font-mono font-semibold text-slate-800">{tenantInfo?.tenantId || 'Active'}</span>
                   </div>
                   <div className="flex justify-between items-center">

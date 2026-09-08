@@ -14,6 +14,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { TenantSummary } from '../../types';
+import { Button } from '../ui/Button';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface TenantsManagementViewProps {
   tenants: TenantSummary[];
@@ -65,187 +67,139 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
   }, [tenants, filterStatus, searchQuery]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Controls: Filter Pills, Search Bar, Provision Action */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '16px',
-      }}>
-        {/* Status Filters */}
-        <div style={{
-          display: 'flex',
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md, 8px)',
-          padding: '4px',
-          gap: '4px',
-        }}>
+    <div className="space-y-4">
+      {/* Top Filter Bar & Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Status Filters Segmented Control */}
+        <div className="inline-flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('all')}
-            style={{
-              background: filterStatus === 'all' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'all' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'all'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <span>All Tenants</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'all' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-semibold">
               {allCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('active')}
-            style={{
-              background: filterStatus === 'active' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'active' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'active'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <CheckCircle2 size={13} />
             <span>Active</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'active' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
               {activeCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('approved_pending_setup')}
-            style={{
-              background: filterStatus === 'approved_pending_setup' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'approved_pending_setup' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'approved_pending_setup'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <AlertTriangle size={13} />
             <span>Pending Setup</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'approved_pending_setup' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-semibold">
               {pendingCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setFilterStatus('suspended')}
-            style={{
-              background: filterStatus === 'suspended' ? 'var(--primary)' : 'transparent',
-              color: filterStatus === 'suspended' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              filterStatus === 'suspended'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <PauseCircle size={13} />
             <span>Suspended</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: filterStatus === 'suspended' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-red-100 text-red-800 font-semibold">
               {suspendedCount}
             </span>
           </button>
         </div>
 
-        {/* Right side: Search, Refresh, New Tenant CTA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ position: 'relative', width: '260px' }}>
-            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+        {/* Right side: Search, Refresh, Provision */}
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              className="form-input"
               placeholder="Search organization or domain..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '36px', height: '36px', fontSize: '0.82rem' }}
+              className="form-input pl-9 h-9 text-xs"
             />
           </div>
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={onRefresh}
             disabled={loading}
             title="Refresh tenant directory"
-            style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
-          </button>
+          </Button>
 
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
+          <Button
+            size="sm"
+            variant="primary"
             onClick={onCreateTenant}
-            style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <Plus size={15} />
+            <Plus size={14} />
             <span>Provision Tenant</span>
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Tenants Directory Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="data-table-container">
         {loading && tenants.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-dim)' }}>
+          <div className="p-12 text-center text-slate-500 text-xs">
             Loading tenant directory...
           </div>
         ) : filteredTenants.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <Building2 size={36} color="var(--text-dim)" style={{ margin: '0 auto 12px auto', opacity: 0.6 }} />
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>
-              {filterStatus === 'all' ? 'No Tenants Registered' : 'No Tenants Match the Current Criteria'}
+          <div className="p-12 text-center">
+            <Building2 size={36} className="mx-auto mb-3 text-slate-300" />
+            <div className="text-sm font-semibold text-slate-800 mb-1">
+              {filterStatus === 'all' ? 'No Tenants Registered' : 'No Tenants Match Criteria'}
             </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', maxWidth: '400px', margin: '0 auto' }}>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
               {filterStatus === 'all'
                 ? 'No organization tenants exist on the platform. Click "Provision Tenant" to create one.'
                 : 'Try clearing the search query or selecting a different status filter above.'}
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="custom-table" style={{ margin: 0 }}>
+          <div className="overflow-x-auto">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ minWidth: '220px' }}>Organization</th>
-                  <th style={{ minWidth: '180px' }}>Domain</th>
-                  <th style={{ minWidth: '140px' }}>Status</th>
-                  <th style={{ minWidth: '180px' }}>Mailbox Allocation</th>
-                  <th style={{ minWidth: '110px' }}>Created</th>
-                  <th style={{ minWidth: '280px', textAlign: 'right' }}>Actions</th>
+                  <th>Organization</th>
+                  <th>Domain</th>
+                  <th>Status</th>
+                  <th>Mailbox Allocation</th>
+                  <th>Created</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -262,26 +216,16 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                     <tr key={tenant.id}>
                       {/* Organization Name */}
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '6px',
-                            background: 'rgba(56, 189, 248, 0.1)',
-                            color: 'var(--primary-light)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
-                            <Building2 size={16} />
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                            <Building2 size={15} />
                           </div>
                           <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.92rem' }}>
+                            <div className="font-semibold text-slate-900 text-xs">
                               {tenant.name}
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                              ID: {tenant.id.slice(-8)} &bull; {tenant.adminCount || 0} admin{(tenant.adminCount || 0) !== 1 ? 's' : ''}
+                            <div className="text-[11px] text-slate-400 font-mono">
+                              ID: {tenant.id.slice(-8)} · {tenant.adminCount || 0} admin{(tenant.adminCount || 0) !== 1 ? 's' : ''}
                             </div>
                           </div>
                         </div>
@@ -290,151 +234,126 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                       {/* Domain */}
                       <td>
                         {tenant.domain ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Globe size={13} color="var(--primary-light)" />
-                              <code style={{ fontSize: '0.82rem', color: 'var(--primary-light)' }}>
-                                {tenant.domain.domainName}
-                              </code>
+                          <div className="flex flex-col text-xs">
+                            <div className="flex items-center gap-1 font-mono text-indigo-600 font-medium">
+                              <Globe size={12} className="text-slate-400" />
+                              <span>{tenant.domain.domainName}</span>
                             </div>
-                            <span style={{ fontSize: '0.72rem', color: tenant.domain.stalwartDomainId ? 'var(--success)' : 'var(--warning)' }}>
-                              {tenant.domain.stalwartDomainId ? 'Stalwart Synced' : 'Pending Stalwart Sync'}
+                            <span className={`text-[10px] ${tenant.domain.stalwartDomainId ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {tenant.domain.stalwartDomainId ? 'Stalwart Synced' : 'Pending Sync'}
                             </span>
                           </div>
                         ) : (
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>No domain configured</span>
+                          <span className="text-xs text-slate-400">No domain</span>
                         )}
                       </td>
 
                       {/* Status */}
                       <td>
-                        {isActive && (
-                          <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                            <CheckCircle2 size={11} /> Active
-                          </span>
-                        )}
-                        {isPending && (
-                          <span className="badge badge-amber" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                            <AlertTriangle size={11} /> Pending Setup
-                          </span>
-                        )}
-                        {isSuspended && (
-                          <span className="badge badge-red" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                            <PauseCircle size={11} /> Suspended
-                          </span>
-                        )}
+                        {isActive && <StatusBadge status="success">Active</StatusBadge>}
+                        {isPending && <StatusBadge status="warning">Pending Setup</StatusBadge>}
+                        {isSuspended && <StatusBadge status="danger">Suspended</StatusBadge>}
                       </td>
 
                       {/* Mailbox Allocation Meter */}
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                            <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>
+                        <div className="w-36 space-y-1 text-xs">
+                          <div className="flex justify-between text-[11px]">
+                            <span className="font-semibold text-slate-800 font-mono">
                               {tenant.mailboxCount || 0} / {tenant.mailboxLimit}
                             </span>
-                            <span style={{ color: 'var(--text-dim)' }}>{usagePct}%</span>
+                            <span className="text-slate-400 font-mono">{usagePct}%</span>
                           </div>
-                          <div style={{ background: 'var(--bg-input)', height: '5px', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div style={{
-                              width: `${Math.min(usagePct, 100)}%`,
-                              height: '100%',
-                              background: usagePct > 85 ? 'var(--danger)' : 'var(--primary)',
-                            }} />
+                          <div className="progress-bar-bg">
+                            <div
+                              className={`h-full rounded-full ${usagePct > 85 ? 'bg-red-500' : 'bg-indigo-600'}`}
+                              style={{ width: `${Math.min(usagePct, 100)}%` }}
+                            />
                           </div>
                         </div>
                       </td>
 
                       {/* Created Date */}
                       <td>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
+                        <div className="text-xs text-slate-700">
                           {new Date(tenant.createdAt).toLocaleDateString()}
                         </div>
                       </td>
 
-                      {/* Contextual Actions */}
+                      {/* Actions */}
                       <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          {/* View Details CTA */}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
+                        <div className="inline-flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
                             onClick={() => onViewDetails(tenant)}
                             title="Inspect Tenant Details"
-                            style={{ padding: '5px 10px' }}
                           >
                             Details
-                          </button>
+                          </Button>
 
-                          {/* Activate Button (if pending setup) */}
                           {isPending && (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
+                            <Button
+                              size="sm"
+                              variant="primary"
                               onClick={() => onActivateTenant(tenant)}
                               title="Complete Tenant Activation"
-                              style={{ padding: '5px 10px', background: 'linear-gradient(135deg, #10b981, #059669)' }}
                             >
                               Activate
-                            </button>
+                            </Button>
                           )}
 
-                          {/* Suspend / Reactivate */}
                           {isActive && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               onClick={() => onToggleSuspend(tenant)}
                               title="Suspend Tenant Access"
-                              style={{ padding: '5px 8px', color: '#fca5a5' }}
+                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                             >
                               <PauseCircle size={14} />
-                            </button>
+                            </Button>
                           )}
 
                           {isSuspended && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               onClick={() => onToggleSuspend(tenant)}
                               title="Reactivate Tenant Access"
-                              style={{ padding: '5px 8px', color: '#86efac' }}
+                              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                             >
                               <PlayCircle size={14} />
-                            </button>
+                            </Button>
                           )}
 
-                          {/* Quota limit */}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             onClick={() => onUpdateQuota(tenant)}
                             title="Adjust Mailbox Quota Limit"
-                            style={{ padding: '5px 8px' }}
                           >
                             <Sliders size={14} />
-                          </button>
+                          </Button>
 
-                          {/* Manage Admins */}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             onClick={() => onManageAdmins(tenant)}
-                            title="Manage Tenant Administrators"
-                            style={{ padding: '5px 8px' }}
+                            title="Manage Administrators"
                           >
                             <Users size={14} />
-                          </button>
+                          </Button>
 
-                          {/* Delete Tenant */}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             onClick={() => onDeleteTenant(tenant)}
-                            title="Permanently Delete Tenant"
-                            style={{ padding: '5px 8px', color: '#f87171' }}
+                            title="Delete Tenant"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 size={14} />
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>

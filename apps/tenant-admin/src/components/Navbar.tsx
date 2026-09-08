@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserContext } from '../types';
 import { Mail, LogOut, ShieldCheck, Building2, ExternalLink } from 'lucide-react';
+import toowixLogo from '../assets/toowix-logo.svg';
 
 interface NavbarProps {
   user: UserContext;
@@ -11,9 +12,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
   return (
     <header className="navbar">
       <div className="brand">
-        <div className="brand-icon">
-          <Mail size={20} color="#ffffff" />
-        </div>
+        <img src={toowixLogo} alt="Toowix" className="brand-icon object-contain" />
         <span>TOOWIX <span style={{ color: 'var(--primary-light)', fontWeight: 400 }}>MAIL</span></span>
       </div>
 
@@ -24,7 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
           </span>
         ) : (
           <span className="badge badge-tenant">
-            <Building2 size={14} /> Tenant Admin
+            <Building2 size={14} /> Admin
           </span>
         )}
 

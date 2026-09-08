@@ -2,16 +2,15 @@ import React, { useState, useMemo } from 'react';
 import {
   History,
   Search,
-  CheckCircle2,
-  XCircle,
   RefreshCw,
-  User,
   ChevronDown,
   ChevronRight,
   Shield,
   Code,
 } from 'lucide-react';
 import { AuditItem } from '../../types';
+import { Button } from '../ui/Button';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface AuditLogViewProps {
   logs: AuditItem[];
@@ -36,7 +35,6 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
   // Filtered logs
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
-      // Role filter
       if (roleFilter !== 'ALL') {
         if (roleFilter === 'ANONYMOUS' && log.actor_role && log.actor_role !== 'ANONYMOUS') {
           return false;
@@ -46,7 +44,6 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
         }
       }
 
-      // Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchesAction = log.action?.toLowerCase().includes(query);
@@ -62,174 +59,126 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
   }, [logs, roleFilter, searchQuery]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className="space-y-4">
       {/* Top Filter Controls */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '16px',
-      }}>
-        {/* Role Pills */}
-        <div style={{
-          display: 'flex',
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md, 8px)',
-          padding: '4px',
-          gap: '4px',
-        }}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Role Filter Segmented Control */}
+        <div className="inline-flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setRoleFilter('ALL')}
-            style={{
-              background: roleFilter === 'ALL' ? 'var(--primary)' : 'transparent',
-              color: roleFilter === 'ALL' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              roleFilter === 'ALL'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <span>All Roles</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: roleFilter === 'ALL' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-semibold">
               {logs.length}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setRoleFilter('SUPER_ADMIN')}
-            style={{
-              background: roleFilter === 'SUPER_ADMIN' ? 'var(--primary)' : 'transparent',
-              color: roleFilter === 'SUPER_ADMIN' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              roleFilter === 'SUPER_ADMIN'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <Shield size={13} />
             <span>Super Admin</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: roleFilter === 'SUPER_ADMIN' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-800 font-semibold">
               {superAdminCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setRoleFilter('TENANT_ADMIN')}
-            style={{
-              background: roleFilter === 'TENANT_ADMIN' ? 'var(--primary)' : 'transparent',
-              color: roleFilter === 'TENANT_ADMIN' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              roleFilter === 'TENANT_ADMIN'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <User size={13} />
             <span>Tenant Admin</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: roleFilter === 'TENANT_ADMIN' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 font-semibold">
               {tenantAdminCount}
             </span>
           </button>
 
           <button
             type="button"
-            className="btn btn-sm"
             onClick={() => setRoleFilter('ANONYMOUS')}
-            style={{
-              background: roleFilter === 'ANONYMOUS' ? 'var(--primary)' : 'transparent',
-              color: roleFilter === 'ANONYMOUS' ? '#fff' : 'var(--text-dim)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              roleFilter === 'ANONYMOUS'
+                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <span>Public / System</span>
-            <span style={{
-              fontSize: '0.72rem',
-              padding: '1px 6px',
-              borderRadius: '999px',
-              background: roleFilter === 'ANONYMOUS' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.06)',
-            }}>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-semibold">
               {anonymousCount}
             </span>
           </button>
         </div>
 
         {/* Search & Refresh */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ position: 'relative', width: '280px' }}>
-            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              className="form-input"
               placeholder="Search action, actor, resource..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '36px', height: '36px', fontSize: '0.82rem' }}
+              className="form-input pl-9 h-9 text-xs"
             />
           </div>
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={onRefresh}
             disabled={loading}
             title="Refresh audit logs"
-            style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Audit Log Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="data-table-container">
         {loading && logs.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-dim)' }}>
+          <div className="p-12 text-center text-slate-500 text-xs">
             Loading platform audit logs...
           </div>
         ) : filteredLogs.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <History size={36} color="var(--text-dim)" style={{ margin: '0 auto 12px auto', opacity: 0.6 }} />
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>
+          <div className="p-12 text-center">
+            <History size={36} className="mx-auto mb-3 text-slate-300" />
+            <div className="text-sm font-semibold text-slate-800 mb-1">
               No Audit Records Found
             </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', maxWidth: '400px', margin: '0 auto' }}>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
               No administrative events match the selected filters or search terms.
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="custom-table" style={{ margin: 0 }}>
+          <div className="overflow-x-auto">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: '40px' }}></th>
-                  <th style={{ minWidth: '150px' }}>Timestamp</th>
-                  <th style={{ minWidth: '180px' }}>Action</th>
-                  <th style={{ minWidth: '180px' }}>Actor & Role</th>
-                  <th style={{ minWidth: '160px' }}>Resource</th>
-                  <th style={{ minWidth: '100px' }}>Result</th>
+                  <th style={{ width: '32px' }}></th>
+                  <th>Timestamp</th>
+                  <th>Action</th>
+                  <th>Actor & Role</th>
+                  <th>Resource</th>
+                  <th>Result</th>
                 </tr>
               </thead>
               <tbody>
@@ -241,110 +190,81 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
                     <React.Fragment key={log.id}>
                       <tr
                         onClick={() => hasMeta && setExpandedLogId(isExpanded ? null : log.id)}
-                        style={{ cursor: hasMeta ? 'pointer' : 'default' }}
+                        className={hasMeta ? 'cursor-pointer hover:bg-slate-50/80' : ''}
                       >
                         {/* Expand toggle */}
-                        <td style={{ textAlign: 'center', padding: '12px 8px' }}>
-                          {hasMeta ? (
+                        <td className="text-center">
+                          {hasMeta && (
                             isExpanded ? (
-                              <ChevronDown size={15} color="var(--primary-light)" />
+                              <ChevronDown size={14} className="text-indigo-600 inline-block" />
                             ) : (
-                              <ChevronRight size={15} color="var(--text-dim)" />
+                              <ChevronRight size={14} className="text-slate-400 inline-block" />
                             )
-                          ) : null}
+                          )}
                         </td>
 
                         {/* Timestamp */}
                         <td>
-                          <div style={{ fontSize: '0.82rem', color: 'var(--text-main)' }}>
+                          <div className="text-xs text-slate-800">
                             {new Date(log.timestamp).toLocaleDateString()}
                           </div>
-                          <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                            {new Date(log.timestamp).toLocaleTimeString()}
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </div>
                         </td>
 
                         {/* Action */}
                         <td>
-                          <span style={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.82rem',
-                            fontWeight: 600,
-                            color: 'var(--text-main)',
-                            padding: '3px 8px',
-                            background: 'var(--bg-input)',
-                            borderRadius: '4px',
-                            border: '1px solid var(--border)',
-                          }}>
+                          <span className="font-semibold text-xs font-mono text-slate-900">
                             {log.action}
                           </span>
                         </td>
 
                         {/* Actor & Role */}
                         <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '0.84rem', color: 'var(--text-main)' }}>
-                              {log.actor_id || 'System / Anonymous'}
+                          <div className="flex flex-col text-xs">
+                            <span className="text-slate-800 font-mono text-[11px]">
+                              {log.actor_id || 'system'}
                             </span>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                              {log.actor_role || 'SYSTEM'}
-                              {log.tenant_id ? ` &bull; Tenant: ${log.tenant_id.slice(-6)}` : ''}
+                            <span className="text-[10px] text-slate-400 uppercase font-medium">
+                              {log.actor_role || 'ANONYMOUS'}
                             </span>
                           </div>
                         </td>
 
                         {/* Resource */}
                         <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: 500 }}>
-                              {log.resource}
+                          <div className="flex flex-col text-xs font-mono">
+                            <span className="text-indigo-600 font-medium text-[11px]">
+                              {log.resource || '—'}
                             </span>
                             {log.resource_id && (
-                              <code style={{ fontSize: '0.72rem', color: 'var(--primary-light)' }}>
-                                ID: {log.resource_id}
-                              </code>
+                              <span className="text-[10px] text-slate-400">
+                                ID: {log.resource_id.slice(-8)}
+                              </span>
                             )}
                           </div>
                         </td>
 
                         {/* Result */}
                         <td>
-                          {log.success ? (
-                            <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <CheckCircle2 size={11} /> Success
-                            </span>
-                          ) : (
-                            <span className="badge badge-red" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <XCircle size={11} /> Failed
-                            </span>
-                          )}
+                          <StatusBadge status="success">SUCCESS</StatusBadge>
                         </td>
                       </tr>
 
-                      {/* Expandable JSON Metadata Row */}
-                      {isExpanded && (
+                      {/* Expanded Metadata Row */}
+                      {isExpanded && hasMeta && (
                         <tr>
-                          <td colSpan={6} style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px 20px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                              <Code size={14} color="var(--primary-light)" />
-                              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                                Event Payload & Context Metadata:
-                              </span>
+                          <td colSpan={6} className="bg-slate-50 p-4 border-b border-slate-200">
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                                <Code size={13} className="text-indigo-600" />
+                                <span>Event Payload & Metadata (ID: {log.id})</span>
+                              </div>
+                              <pre className="p-3 bg-white border border-slate-200 rounded-md text-[11px] font-mono text-slate-800 overflow-x-auto">
+                                {JSON.stringify(log.metadata, null, 2)}
+                              </pre>
                             </div>
-                            <pre style={{
-                              margin: 0,
-                              padding: '12px 14px',
-                              borderRadius: '6px',
-                              background: '#090d16',
-                              border: '1px solid var(--border)',
-                              fontSize: '0.76rem',
-                              fontFamily: 'monospace',
-                              color: '#93c5fd',
-                              overflowX: 'auto',
-                              maxHeight: '240px',
-                            }}>
-                              {JSON.stringify(log.metadata, null, 2)}
-                            </pre>
                           </td>
                         </tr>
                       )}

@@ -4,12 +4,11 @@ import {
   Database,
   HardDrive,
   RefreshCw,
-  CheckCircle2,
   Trash2,
   FileCheck,
   Cpu,
   Layers,
-  XCircle,
+  X,
 } from 'lucide-react';
 import {
   SystemHealthDetails,
@@ -20,6 +19,8 @@ import {
   SystemMetrics,
 } from '../../types';
 import { api } from '../../api';
+import { Button } from '../ui/Button';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface SystemOperationsViewProps {
   healthDetails: SystemHealthDetails | null;
@@ -41,7 +42,6 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
   onRefreshAll,
   onShowAlert,
 }) => {
-
   // Backup State
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [verifyingBackupId, setVerifyingBackupId] = useState<string | null>(null);
@@ -69,8 +69,6 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
     return `${d > 0 ? `${d}d ` : ''}${h}h ${m}m`;
   };
 
-  // Handlers
-
   const handleCreateBackup = async () => {
     setCreatingBackup(true);
     try {
@@ -90,7 +88,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
       const res = await api.verifyBackup(id);
       setVerificationModalResult(res);
       if (res.valid) {
-        onShowAlert('success', `Verification passed for ${res.filename}. SHA-256 checksum and JSON payload valid.`);
+        onShowAlert('success', `Verification passed for ${res.filename}. Checksum and documents valid.`);
       } else {
         onShowAlert('error', `Backup verification failed: ${res.error || 'Invalid archive checksum'}`);
       }
@@ -121,10 +119,10 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
     setRepairingQuota(true);
     try {
       const res = await api.repairQuotaDrift();
-      onShowAlert('success', res.message || 'Quota counts reconciled with Stalwart mailboxes.');
+      onShowAlert('success', `Quota reconciliation complete: ${res.message || 'Synced'}`);
       await onRefreshAll();
     } catch (err: any) {
-      onShowAlert('error', err.message || 'Failed to repair quota drift.');
+      onShowAlert('error', err.message || 'Failed to repair tenant quota drift.');
     } finally {
       setRepairingQuota(false);
     }
@@ -132,9 +130,8 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
 
   const mongo = healthDetails?.services?.mongodb;
   const stalwart = healthDetails?.services?.stalwart;
-  const runtime = healthDetails?.system;
+  const system = healthDetails?.system;
 
-  // Drift calculations (supports backend reconciliation schema and fallbacks)
   const missingDomains = driftReport?.drift?.missingInStalwartDomains || driftReport?.domainDrift?.missingInStalwartDomains || [];
   const orphanedDomains = driftReport?.drift?.orphanedInStalwartDomains || driftReport?.domainDrift?.orphanedInStalwartDomains || [];
   const missingDomainCount = missingDomains.length || driftReport?.domainDrift?.missingInStalwartCount || 0;
@@ -153,74 +150,60 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
   const hasQuotaDrift = quotaDiscrepancyCount > 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+    <div className="space-y-6">
       {/* 1. Core Services Telemetry Grid */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Server size={18} color="var(--primary-light)" />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Server size={17} className="text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900">
               Core Infrastructure Health
             </h3>
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={onRefreshAll}
             disabled={loading}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh Diagnostics</span>
-          </button>
+          </Button>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '16px',
-        }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* MongoDB Health Card */}
-          <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '8px',
-                  background: 'rgba(16, 185, 129, 0.1)',
-                  color: 'var(--success)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Database size={20} />
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-md bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
+                  <Database size={16} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>MongoDB Database</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Primary Data Store</div>
+                  <div className="font-semibold text-xs text-slate-900">MongoDB Database</div>
+                  <div className="text-[11px] text-slate-400">Primary Data Store</div>
                 </div>
               </div>
-              <span className={`badge ${mongo?.status === 'healthy' ? 'badge-green' : 'badge-red'}`} style={{ textTransform: 'capitalize' }}>
+              <StatusBadge status={mongo?.status === 'healthy' ? 'success' : 'danger'}>
                 {mongo?.status || 'Unknown'}
-              </span>
+              </StatusBadge>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.82rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Ping Latency:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Ping Latency:</span>
+                <span className="font-semibold text-slate-800 font-mono">
                   {mongo?.pingMs !== undefined ? `${mongo.pingMs} ms` : 'N/A'}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Last Checked:</span>
-                <span style={{ color: 'var(--text-main)' }}>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Last Checked:</span>
+                <span className="text-slate-700">
                   {healthDetails?.timestamp ? new Date(healthDetails.timestamp).toLocaleTimeString() : 'N/A'}
                 </span>
               </div>
               {mongo?.error && (
-                <div style={{ marginTop: '6px', padding: '8px', background: 'var(--danger-bg)', borderRadius: '6px', color: '#fca5a5', fontSize: '0.76rem' }}>
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-[11px]">
                   {mongo.error}
                 </div>
               )}
@@ -228,99 +211,81 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
           </div>
 
           {/* Stalwart Mail Card */}
-          <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '8px',
-                  background: 'rgba(56, 189, 248, 0.1)',
-                  color: 'var(--primary-light)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Server size={20} />
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-100">
+                  <Server size={16} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>Stalwart Mail Engine</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                  <div className="font-semibold text-xs text-slate-900">Stalwart Mail Engine</div>
+                  <div className="text-[11px] text-slate-400 font-mono">
                     {stalwart?.edition || metrics?.stalwart?.edition || 'v0.8.0'}
                   </div>
                 </div>
               </div>
-              <span className={`badge ${stalwart?.status === 'connected' ? 'badge-green' : 'badge-red'}`} style={{ textTransform: 'capitalize' }}>
+              <StatusBadge status={stalwart?.status === 'connected' ? 'success' : 'danger'}>
                 {stalwart?.status || 'Unknown'}
-              </span>
+              </StatusBadge>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.82rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Engine Latency:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Engine Latency:</span>
+                <span className="font-semibold text-slate-800 font-mono">
                   {stalwart?.latencyMs !== undefined ? `${stalwart.latencyMs} ms` : 'N/A'}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Mail Queue Depth:</span>
-                <span style={{ fontWeight: 600, color: (stalwart?.queueDepth || 0) > 50 ? 'var(--warning)' : 'var(--text-main)' }}>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Mail Queue Depth:</span>
+                <span className="font-semibold text-slate-800 font-mono">
                   {stalwart?.queueDepth ?? 0} messages
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Server Locale:</span>
-                <span style={{ color: 'var(--text-main)' }}>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Server Locale:</span>
+                <span className="text-slate-700 font-mono">
                   {stalwart?.locale || metrics?.stalwart?.locale || 'en_US'}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Node.js Platform Runtime Card */}
-          <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '8px',
-                  background: 'rgba(168, 85, 247, 0.1)',
-                  color: '#c084fc',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Cpu size={20} />
+          {/* Runtime Card */}
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-md bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100">
+                  <Cpu size={16} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>Host Runtime</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                    Node {runtime?.nodeVersion || 'v20.x'} &bull; {runtime?.platform || 'win32'}
+                  <div className="font-semibold text-xs text-slate-900">Host Runtime</div>
+                  <div className="text-[11px] text-slate-400 font-mono">
+                    Node {system?.nodeVersion || 'v20.x'} · {system?.platform || 'win32'}
                   </div>
                 </div>
               </div>
-              <span className="badge badge-cyan">
-                {formatUptime(runtime?.uptimeSeconds)}
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                {formatUptime(system?.uptimeSeconds)}
               </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.82rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Memory (Heap Used):</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                  {runtime?.memoryUsage?.heapUsedMb ? `${runtime.memoryUsage.heapUsedMb} MB` : 'N/A'}
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Memory (Heap):</span>
+                <span className="font-semibold text-slate-800 font-mono">
+                  {system?.memoryUsage?.heapUsedMb ? `${system.memoryUsage.heapUsedMb} MB` : 'N/A'}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Memory (RSS):</span>
-                <span style={{ color: 'var(--text-main)' }}>
-                  {runtime?.memoryUsage?.rssMb ? `${runtime.memoryUsage.rssMb} MB` : 'N/A'}
+              <div className="flex justify-between">
+                <span className="text-slate-400">Memory (RSS):</span>
+                <span className="text-slate-700 font-mono">
+                  {system?.memoryUsage?.rssMb ? `${system.memoryUsage.rssMb} MB` : 'N/A'}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Diagnostics Speed:</span>
-                <span style={{ color: 'var(--text-main)' }}>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Eval Speed:</span>
+                <span className="text-slate-700 font-mono">
                   {healthDetails?.evaluationTimeMs !== undefined ? `${healthDetails.evaluationTimeMs} ms` : 'N/A'}
                 </span>
               </div>
@@ -331,143 +296,80 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
 
       {/* 2. State Drift & Reconciliation Engine */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Layers size={18} color="var(--primary-light)" />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Layers size={17} className="text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900">
               State Drift & Reconciliation Engine
             </h3>
           </div>
           {hasQuotaDrift && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
+            <Button
+              size="sm"
+              variant="primary"
               onClick={handleRepairQuotaDrift}
               disabled={repairingQuota}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             >
               <RefreshCw size={13} className={repairingQuota ? 'animate-spin' : ''} />
               <span>{repairingQuota ? 'Repairing Quota...' : 'Repair Quota Drift'}</span>
-            </button>
+            </Button>
           )}
         </div>
 
-        <div className="card" style={{ padding: '20px' }}>
+        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs">
           {!driftReport ? (
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+            <div className="text-slate-400 text-xs text-center py-4">
               Reconciliation diagnostics not loaded.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '14px',
-              }}>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* Domain Drift */}
-                <div style={{
-                  padding: '14px',
-                  background: 'var(--bg-input)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border)',
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Domain Drift</div>
-                  <div style={{
-                    fontSize: '1.2rem',
-                    fontWeight: 700,
-                    color: hasDomainDrift ? 'var(--warning)' : 'var(--success)',
-                  }}>
+                <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-[11px] text-slate-500 mb-1">Domain Drift</div>
+                  <div className={`text-lg font-bold font-mono ${hasDomainDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {!hasDomainDrift ? 'Synchronized' : 'Discrepancy'}
                   </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                    Missing in Stalwart: {missingDomainCount} &bull; Orphaned: {orphanedDomainCount}
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Missing in Stalwart: {missingDomainCount} · Orphaned: {orphanedDomainCount}
                   </div>
                 </div>
 
                 {/* Mailbox Drift */}
-                <div style={{
-                  padding: '14px',
-                  background: 'var(--bg-input)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border)',
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Mailbox Account Drift</div>
-                  <div style={{
-                    fontSize: '1.2rem',
-                    fontWeight: 700,
-                    color: hasMailboxDrift ? 'var(--warning)' : 'var(--success)',
-                  }}>
+                <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-[11px] text-slate-500 mb-1">Mailbox Account Drift</div>
+                  <div className={`text-lg font-bold font-mono ${hasMailboxDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {!hasMailboxDrift ? 'Synchronized' : 'Discrepancy'}
                   </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                    Missing in Stalwart: {missingMailboxCount} &bull; Orphaned: {orphanedMailboxCount}
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Missing in Stalwart: {missingMailboxCount} · Orphaned: {orphanedMailboxCount}
                   </div>
                 </div>
 
                 {/* Quota Drift */}
-                <div style={{
-                  padding: '14px',
-                  background: 'var(--bg-input)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border)',
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Tenant Quota Drift</div>
-                  <div style={{
-                    fontSize: '1.2rem',
-                    fontWeight: 700,
-                    color: hasQuotaDrift ? 'var(--warning)' : 'var(--success)',
-                  }}>
+                <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-[11px] text-slate-500 mb-1">Tenant Quota Drift</div>
+                  <div className={`text-lg font-bold font-mono ${hasQuotaDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {!hasQuotaDrift ? 'Synchronized' : `${quotaDiscrepancyCount} Inconsistent`}
                   </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+                  <div className="text-[11px] text-slate-400 mt-1">
                     Tenants with cached mailbox count mismatch
                   </div>
                 </div>
               </div>
 
-              {/* Quota Discrepancies List (Backend schema) */}
+              {/* Quota Discrepancies Alert */}
               {quotaDiscrepancies.length > 0 && (
-                <div style={{
-                  padding: '12px 16px',
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.82rem',
-                }}>
-                  <div style={{ fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-2">
+                  <div className="font-semibold text-amber-900">
                     Quota Inconsistencies Detected:
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div className="space-y-1">
                     {quotaDiscrepancies.map((qd) => (
-                      <div key={qd.tenantId} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-main)' }}>
+                      <div key={qd.tenantId} className="flex justify-between text-slate-700">
                         <span><strong>{qd.tenantName}</strong> (ID: {qd.tenantId.slice(-6)})</span>
-                        <span style={{ color: 'var(--text-dim)' }}>
-                          Cached: {qd.recordedMailboxCount} &rarr; Actual in DB: {qd.actualActiveMailboxes} (Delta: {qd.recordedMailboxCount - qd.actualActiveMailboxes})
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Legacy Inconsistent Tenants List if passed */}
-              {quotaDiscrepancies.length === 0 && legacyInconsistentTenants.length > 0 && (
-                <div style={{
-                  padding: '12px 16px',
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.82rem',
-                }}>
-                  <div style={{ fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
-                    Quota Inconsistencies Detected:
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {legacyInconsistentTenants.map((t) => (
-                      <div key={t.tenantId} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-main)' }}>
-                        <span><strong>{t.tenantName}</strong> (ID: {t.tenantId.slice(-6)})</span>
-                        <span style={{ color: 'var(--text-dim)' }}>
-                          Cached: {t.cachedCount} &rarr; Actual in DB: {t.actualActiveMailboxCount} (Delta: {t.driftDelta})
+                        <span className="text-slate-500 font-mono">
+                          Cached: {qd.recordedMailboxCount} → Actual in DB: {qd.actualActiveMailboxes} (Delta: {qd.recordedMailboxCount - qd.actualActiveMailboxes})
                         </span>
                       </div>
                     ))}
@@ -479,107 +381,105 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
         </div>
       </div>
 
-      {/* 3. Backup Engine */}
+      {/* 3. Database Backup Engine */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <HardDrive size={18} color="var(--primary-light)" />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <HardDrive size={17} className="text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900">
               Database Backup Engine
             </h3>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
+          <Button
+            size="sm"
+            variant="primary"
             onClick={handleCreateBackup}
             disabled={creatingBackup}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <HardDrive size={14} />
+            <HardDrive size={13} />
             <span>{creatingBackup ? 'Creating Snapshot...' : 'Create Backup Now'}</span>
-          </button>
+          </Button>
         </div>
 
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="data-table-container">
           {backups.length === 0 ? (
-            <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-              <HardDrive size={32} color="var(--text-dim)" style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
-              <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-main)' }}>No Backups Created Yet</div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', margin: '4px 0 0 0' }}>
+            <div className="p-12 text-center">
+              <HardDrive size={36} className="mx-auto mb-3 text-slate-300" />
+              <div className="text-sm font-semibold text-slate-800 mb-1">No Backups Created Yet</div>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 Click "Create Backup Now" to capture an immutable snapshot of tenants, domains, mailboxes, and audit logs.
               </p>
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="custom-table" style={{ margin: 0 }}>
+            <div className="overflow-x-auto">
+              <table className="data-table">
                 <thead>
                   <tr>
-                    <th style={{ minWidth: '220px' }}>Filename & Archive</th>
-                    <th style={{ minWidth: '100px' }}>Size</th>
-                    <th style={{ minWidth: '130px' }}>Created</th>
-                    <th style={{ minWidth: '180px' }}>Payload Breakdown</th>
-                    <th style={{ minWidth: '180px', textAlign: 'right' }}>Actions</th>
+                    <th>Filename & Archive</th>
+                    <th>Size</th>
+                    <th>Created</th>
+                    <th>Payload Breakdown</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {backups.map((b) => (
                     <tr key={b.id}>
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span style={{ fontWeight: 600, fontSize: '0.86rem', color: 'var(--text-main)' }}>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-900 text-xs">
                             {b.filename}
                           </span>
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                          <span className="text-[10px] text-slate-400 font-mono">
                             SHA-256: {b.checksumSha256.slice(0, 16)}...
                           </span>
                         </div>
                       </td>
 
                       <td>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--text-main)' }}>
+                        <span className="text-xs font-mono text-slate-800">
                           {formatBytes(b.sizeBytes)}
                         </span>
                       </td>
 
                       <td>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-main)' }}>
+                        <div className="text-xs text-slate-800">
                           {new Date(b.createdAt).toLocaleDateString()}
                         </div>
-                        <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                        <div className="text-[11px] text-slate-400">
                           {new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </td>
 
                       <td>
-                        <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)' }}>
-                          {b.documentCounts?.tenants || 0} tenants &bull; {b.documentCounts?.mailboxes || 0} mailboxes &bull; {b.documentCounts?.auditLogs || 0} logs
+                        <div className="text-xs text-slate-600 font-mono">
+                          {b.documentCounts?.tenants || 0} tenants · {b.documentCounts?.mailboxes || 0} mailboxes · {b.documentCounts?.auditLogs || 0} logs
                         </div>
                       </td>
 
                       <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
+                        <div className="inline-flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="secondary"
                             onClick={() => handleVerifyBackup(b.id)}
                             disabled={verifyingBackupId === b.id}
-                            title="Verify archive checksum and documents"
-                            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                            title="Verify archive checksum"
                           >
                             <FileCheck size={13} />
                             <span>{verifyingBackupId === b.id ? 'Checking...' : 'Verify'}</span>
-                          </button>
+                          </Button>
 
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             onClick={() => handleDeleteBackup(b.id, b.filename)}
                             disabled={deletingBackupId === b.id}
                             title="Delete backup archive"
-                            style={{ color: '#f87171' }}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 size={13} />
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -591,102 +491,56 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
         </div>
       </div>
 
-
-
-      {/* Verification Result Modal / Inspector */}
+      {/* Verification Result Modal */}
       {verificationModalResult && (
-        <div className="modal-overlay" style={{ zIndex: 1050 }}>
-          <div className="modal-content" style={{ maxWidth: '520px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  background: verificationModalResult.valid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                  color: verificationModalResult.valid ? 'var(--success)' : 'var(--danger)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  {verificationModalResult.valid ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: 0, color: 'var(--text-main)' }}>
-                    Backup Verification Result
-                  </h3>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
-                    {verificationModalResult.filename}
-                  </p>
-                </div>
+        <div className="modal-backdrop-mock">
+          <div className="modal-card max-w-md">
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">Archive Verification</h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-mono">{verificationModalResult.filename}</p>
               </div>
               <button
-                type="button"
                 onClick={() => setVerificationModalResult(null)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '4px' }}
+                className="modal-close-btn"
               >
-                &times;
+                <X size={18} />
               </button>
             </div>
 
-            <div style={{
-              background: verificationModalResult.valid ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
-              border: `1px solid ${verificationModalResult.valid ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-              borderRadius: 'var(--radius-md)',
-              padding: '14px',
-              marginBottom: '18px',
-              fontSize: '0.85rem',
-            }}>
-              <div style={{ fontWeight: 600, color: verificationModalResult.valid ? '#34d399' : '#f87171', marginBottom: '4px' }}>
-                {verificationModalResult.valid ? 'Integrity Verified' : 'Integrity Check Failed'}
+            <div className="modal-body space-y-4">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+                <span className="text-xs text-slate-600">Integrity Status:</span>
+                <StatusBadge status={verificationModalResult.valid ? 'success' : 'danger'}>
+                  {verificationModalResult.valid ? 'Valid & Verified' : 'Checksum Corrupted'}
+                </StatusBadge>
               </div>
-              <p style={{ margin: 0, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                {verificationModalResult.valid
-                  ? 'SHA-256 hash match confirmed. JSON document schema unpacked successfully.'
-                  : (verificationModalResult.error || 'The archive failed checksum verification or contains invalid JSON structure.')}
-              </p>
-            </div>
 
-            <div style={{
-              background: 'var(--bg-input)',
-              borderRadius: 'var(--radius-md)',
-              padding: '14px',
-              fontSize: '0.82rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              marginBottom: '20px',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Tenants:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{verificationModalResult.documentCounts?.tenants || 0}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Domains:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{verificationModalResult.documentCounts?.domains || 0}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Mailboxes:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{verificationModalResult.documentCounts?.mailboxes || 0}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Administrators:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{verificationModalResult.documentCounts?.admins || 0}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-dim)' }}>Audit Trail Records:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{verificationModalResult.documentCounts?.auditLogs || 0}</span>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Checksum Check:</span>
+                  <span className="font-mono text-slate-800 text-[11px]">
+                    {verificationModalResult.checksumVerified ? 'SHA-256 Passed' : 'Failed'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Document Counts:</span>
+                  <span className="font-mono text-slate-800 text-[11px]">
+                    {verificationModalResult.documentCounts?.tenants ?? 0} tenants, {verificationModalResult.documentCounts?.mailboxes ?? 0} mailboxes
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
+            <div className="modal-footer">
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="secondary"
+                size="md"
                 onClick={() => setVerificationModalResult(null)}
               >
                 Close
-              </button>
+              </Button>
             </div>
           </div>
         </div>

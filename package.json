@@ -3,16 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "backend"
   ],
   "scripts": {
-    "dev:mongo": "npm run dev:mongo --prefix backend",
-    "dev:backend": "npm run dev --prefix backend",
+    "dev:mongo": "npm run dev:mongo --workspace=toowix-mail-backend",
+    "dev:backend": "npm run dev --workspace=toowix-mail-backend",
     "dev:admin": "npm run dev --workspace=@toowix/super-admin",
     "dev:tenant": "npm run dev --workspace=@toowix/tenant-admin",
     "build:admin": "npm run build --workspace=@toowix/super-admin",
     "build:tenant": "npm run build --workspace=@toowix/tenant-admin",
-    "build": "npm run build --workspace=@toowix/super-admin && npm run build --workspace=@toowix/tenant-admin"
+    "build": "npm run build --workspace=@toowix/super-admin && npm run build --workspace=@toowix/tenant-admin",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "lucide-react": "^0.439.0",
@@ -20,10 +25,16 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.5.2",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/coverage-v8": "^2.1.9",
+    "jsdom": "^25.0.1",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^2.1.9"
   }
 }

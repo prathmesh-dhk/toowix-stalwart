@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, KeyRound, Plus, AlertTriangle, ShieldCheck, Mail } from 'lucide-react';
+import { X, Users, KeyRound, Plus } from 'lucide-react';
 import { api } from '../../api';
 import { TenantSummary } from '../../types';
+import { Button } from '../ui/Button';
+import { Alert } from '../ui/Alert';
 
 interface ManageAdminsModalProps {
   isOpen: boolean;
@@ -79,19 +81,19 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
       });
       setNewEmail('');
       setNewPassword('');
-      setSuccessMsg(`Administrator account created successfully.`);
+      setSuccessMsg('Tenant administrator created successfully.');
       await loadAdmins();
       if (onUpdated) onUpdated();
     } catch (err: any) {
-      setError(err.message || 'Failed to create tenant administrator.');
+      setError(err.message || 'Failed to create administrator.');
     } finally {
       setFormLoading(false);
     }
   };
 
-  const handleExecuteResetPassword = async (adminId: string) => {
+  const handleResetPassword = async (adminId: string) => {
     if (!resetPasswordInput || resetPasswordInput.length < 8) {
-      setError('New password must be at least 8 characters long.');
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
@@ -101,224 +103,171 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
 
     try {
       await api.resetTenantAdminPassword(tenant.id, adminId, resetPasswordInput);
-      setSuccessMsg(`Password successfully reset for administrator.`);
+      setSuccessMsg('Administrator password reset successfully.');
       setResettingAdminId(null);
       setResetPasswordInput('');
+      await loadAdmins();
     } catch (err: any) {
-      setError(err.message || 'Failed to reset administrator password.');
+      setError(err.message || 'Failed to reset password.');
     } finally {
       setFormLoading(false);
     }
   };
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 1050 }}>
-      <div className="modal-content" style={{ maxWidth: '580px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              background: 'rgba(99, 102, 241, 0.15)',
-              color: '#818cf8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Users size={20} />
+    <div className="modal-backdrop-mock">
+      <div className="modal-card max-w-xl">
+        {/* Header */}
+        <div className="modal-header">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+              <Users size={16} />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 600, margin: 0, color: 'var(--text-main)' }}>
-                Tenant Administrators
-              </h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
-                {tenant.name} &bull; <code style={{ color: 'var(--primary-light)' }}>{tenant.domain?.domainName || 'No Domain'}</code>
-              </p>
+              <h3 className="modal-title">Manage Administrators</h3>
+              <p className="text-xs text-slate-500 mt-0.5 font-mono">{tenant.name} ({tenant.domain?.domainName})</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '4px' }}
-          >
-            <X size={20} />
+          <button onClick={onClose} className="modal-close-btn">
+            <X size={18} />
           </button>
         </div>
 
-        {error && (
-          <div style={{
-            background: 'var(--danger-bg)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            padding: '10px 14px',
-            borderRadius: 'var(--radius-md)',
-            color: '#fca5a5',
-            marginBottom: '16px',
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            <AlertTriangle size={16} />
-            <span>{error}</span>
-          </div>
-        )}
+        {/* Body */}
+        <div className="modal-body space-y-4">
+          {error && <Alert type="error" message={error} onClose={() => setError(null)} />}
+          {successMsg && <Alert type="success" message={successMsg} onClose={() => setSuccessMsg(null)} />}
 
-        {successMsg && (
-          <div style={{
-            background: 'rgba(16, 185, 129, 0.12)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            padding: '10px 14px',
-            borderRadius: 'var(--radius-md)',
-            color: '#34d399',
-            marginBottom: '16px',
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            <ShieldCheck size={16} />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {/* Existing Admins Section */}
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-              Assigned Administrators ({admins.length})
-            </span>
-          </div>
-
-          {loading ? (
-            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-              Loading administrator accounts...
+          {/* Current Admins List */}
+          <div>
+            <div className="text-xs font-semibold text-slate-800 mb-2">Active Administrators</div>
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              {loading ? (
+                <div className="p-6 text-center text-xs text-slate-400">Loading administrators...</div>
+              ) : admins.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400">No administrators assigned yet.</div>
+              ) : (
+                <div className="divide-y divide-slate-100 text-xs">
+                  {admins.map((adm) => (
+                    <div key={adm._id || adm.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
+                      <div>
+                        <div className="font-semibold text-slate-900">{adm.email}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          ID: {(adm._id || adm.id).slice(-8)} · Role: {adm.role || 'TENANT_ADMIN'}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setResettingAdminId(resettingAdminId === (adm._id || adm.id) ? null : (adm._id || adm.id));
+                          setResetPasswordInput('');
+                        }}
+                      >
+                        <KeyRound size={12} />
+                        <span>Reset Password</span>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ) : admins.length === 0 ? (
-            <div style={{
-              padding: '16px',
-              textAlign: 'center',
-              background: 'var(--bg-input)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-dim)',
-              fontSize: '0.85rem',
-            }}>
-              No tenant administrators registered for this organization yet.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-              {admins.map((adm) => (
-                <div
-                  key={adm.id}
-                  style={{
-                    padding: '12px 14px',
-                    background: 'var(--bg-input)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border)',
+          </div>
+
+          {/* Inline Reset Password Form */}
+          {resettingAdminId && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              <label className="field-label mb-1">Set New Password for Selected Admin</label>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder="Min. 8 characters"
+                  value={resetPasswordInput}
+                  onChange={(e) => setResetPasswordInput(e.target.value)}
+                  className="form-input flex-1 h-8 text-xs font-mono"
+                />
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => handleResetPassword(resettingAdminId)}
+                  loading={formLoading}
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setResettingAdminId(null);
+                    setResetPasswordInput('');
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Mail size={14} color="var(--primary-light)" />
-                        {adm.email}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '2px' }}>
-                        Role: {adm.role || 'TENANT_ADMIN'} &bull; Status: <span style={{ color: adm.status === 'active' ? 'var(--success)' : 'var(--text-dim)' }}>{adm.status || 'Active'}</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => {
-                        setResettingAdminId(resettingAdminId === adm.id ? null : adm.id);
-                        setResetPasswordInput('');
-                      }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-                    >
-                      <KeyRound size={13} />
-                      {resettingAdminId === adm.id ? 'Cancel' : 'Reset Password'}
-                    </button>
-                  </div>
-
-                  {resettingAdminId === adm.id && (
-                    <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <label style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px', display: 'block' }}>
-                        Set new password for {adm.email}:
-                      </label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input
-                          type="password"
-                          className="form-input"
-                          placeholder="Min 8 characters"
-                          value={resetPasswordInput}
-                          onChange={(e) => setResetPasswordInput(e.target.value)}
-                          style={{ fontSize: '0.82rem' }}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={formLoading || resetPasswordInput.length < 8}
-                          onClick={() => handleExecuteResetPassword(adm.id)}
-                        >
-                          Confirm
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                  Cancel
+                </Button>
+              </div>
             </div>
           )}
+
+          {/* Add New Admin Form */}
+          <form onSubmit={handleCreateAdmin} className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+              <Plus size={14} className="text-indigo-600" />
+              <span>Add Tenant Administrator</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="field-label" htmlFor="newAdminEmail">Admin Email</label>
+                <input
+                  id="newAdminEmail"
+                  type="email"
+                  required
+                  placeholder={`admin@${tenant.domain?.domainName || 'domain.com'}`}
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="form-input text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="field-label" htmlFor="newAdminPass">Initial Password</label>
+                <input
+                  id="newAdminPass"
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Min. 8 characters"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="form-input text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                loading={formLoading}
+              >
+                Create Administrator
+              </Button>
+            </div>
+          </form>
         </div>
 
-        {/* Add Administrator Form */}
-        <form onSubmit={handleCreateAdmin} style={{ borderTop: '1px solid var(--border)', paddingTop: '18px' }}>
-          <h4 style={{ fontSize: '0.92rem', fontWeight: 600, marginBottom: '12px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Plus size={16} /> Add Administrator
-          </h4>
-
-          <div className="form-group" style={{ marginBottom: '12px' }}>
-            <label className="form-label" style={{ fontSize: '0.82rem' }}>Administrator Email</label>
-            <input
-              type="email"
-              className="form-input"
-              placeholder={`admin@${tenant.domain?.domainName || 'company.com'}`}
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group" style={{ marginBottom: '20px' }}>
-            <label className="form-label" style={{ fontSize: '0.82rem' }}>Temporary Password (min 8 characters)</label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="••••••••••••"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onClose}
-            >
-              Close
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={formLoading || !newEmail.trim() || newPassword.length < 8}
-            >
-              {formLoading ? 'Adding...' : 'Add Administrator'}
-            </button>
-          </div>
-        </form>
+        {/* Footer */}
+        <div className="modal-footer">
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            onClick={onClose}
+          >
+            Close
+          </Button>
+        </div>
       </div>
     </div>
   );

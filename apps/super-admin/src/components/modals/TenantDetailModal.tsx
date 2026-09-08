@@ -3,15 +3,17 @@ import { TenantSummary } from '../../types';
 import { api } from '../../api';
 import {
   X,
-  Globe,
   Users,
-  CheckCircle2,
   PauseCircle,
   PlayCircle,
   KeyRound,
   Sliders,
   Trash2,
+  Building2,
 } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { Alert } from '../ui/Alert';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface TenantDetailModalProps {
   tenant: TenantSummary | null;
@@ -28,7 +30,6 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
   tenant,
   isOpen,
   onClose,
-  onActivateTenant,
   onToggleSuspend,
   onManageAdmins,
   onUpdateQuota,
@@ -76,267 +77,207 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
     }
   };
 
-  const usagePercent = Math.min(100, Math.round((tenant.mailboxCount / tenant.mailboxLimit) * 100));
+  const usagePercent = Math.min(100, Math.round(((tenant.mailboxCount || 0) / Math.max(1, tenant.mailboxLimit)) * 100));
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '680px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Organization Details</h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', margin: '4px 0 0 0' }}>
-              Tenant ID: <span style={{ fontFamily: 'monospace' }}>{tenant.id}</span>
-            </p>
+    <div className="modal-backdrop-mock">
+      <div className="modal-card max-w-2xl">
+        {/* Header */}
+        <div className="modal-header">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+              <Building2 size={16} />
+            </div>
+            <div>
+              <h3 className="modal-title">{tenant.name}</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Tenant ID: <span className="font-mono text-slate-700">{tenant.id}</span>
+              </p>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 4 }}
-          >
-            <X size={20} />
+          <button onClick={onClose} className="modal-close-btn">
+            <X size={18} />
           </button>
         </div>
 
-        {passwordResetSuccess && (
-          <div style={{ background: 'var(--success-bg)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '10px 14px', borderRadius: 'var(--radius-md)', color: '#6ee7b7', marginBottom: '16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CheckCircle2 size={16} />
-            <span>{passwordResetSuccess}</span>
-          </div>
-        )}
+        {/* Body */}
+        <div className="modal-body space-y-4">
+          {passwordResetSuccess && (
+            <Alert type="success" message={passwordResetSuccess} />
+          )}
+          {adminError && (
+            <Alert type="error" message={adminError} onClose={() => setAdminError(null)} />
+          )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Header Card: Status & Quota */}
-          <div style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Organization</span>
-                <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-main)', margin: '2px 0 0 0' }}>{tenant.name}</h2>
-              </div>
-              <div>
-                {tenant.status === 'active' && (
-                  <span className="badge badge-success">
-                    <CheckCircle2 size={12} /> Active
-                  </span>
-                )}
-                {tenant.status === 'suspended' && (
-                  <span className="badge badge-danger">
-                    <PauseCircle size={12} /> Suspended
-                  </span>
-                )}
-                {tenant.status === 'approved_pending_setup' && (
-                  <span className="badge badge-warning">
-                    Pending Activation
-                  </span>
-                )}
-              </div>
+          {/* Quick Metrics Grid */}
+          <div className="grid grid-cols-3 gap-3">
+            {/* Status */}
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[11px] text-slate-500 mb-1">Tenant Status</div>
+              {tenant.status === 'active' && <StatusBadge status="success">Active</StatusBadge>}
+              {tenant.status === 'approved_pending_setup' && <StatusBadge status="warning">Pending Setup</StatusBadge>}
+              {tenant.status === 'suspended' && <StatusBadge status="danger">Suspended</StatusBadge>}
             </div>
 
-            {/* Quota Progress */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '6px' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Mailbox Allocation</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                  {tenant.mailboxCount} / {tenant.mailboxLimit} mailboxes in use ({usagePercent}%)
-                </span>
+            {/* Quota */}
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[11px] text-slate-500 mb-1">Mailbox Quota</div>
+              <div className="font-semibold text-slate-900 text-xs font-mono">
+                {tenant.mailboxCount || 0} / {tenant.mailboxLimit} ({usagePercent}%)
               </div>
-              <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.06)', borderRadius: '9999px', overflow: 'hidden' }}>
+              <div className="progress-bar-bg mt-2">
                 <div
-                  style={{
-                    height: '100%',
-                    width: `${usagePercent}%`,
-                    background: usagePercent >= 90 ? 'var(--danger)' : usagePercent >= 75 ? 'var(--warning)' : 'var(--primary)',
-                    borderRadius: '9999px',
-                    transition: 'width 0.3s ease',
-                  }}
+                  className={`h-full rounded-full ${usagePercent > 85 ? 'bg-red-500' : 'bg-indigo-600'}`}
+                  style={{ width: `${usagePercent}%` }}
                 />
               </div>
             </div>
-          </div>
 
-          {/* Domain Details */}
-          <div style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-            <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Globe size={15} color="var(--primary-light)" /> Dedicated Domain
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
-              <div>
-                <span style={{ color: 'var(--text-dim)', display: 'block', fontSize: '0.75rem' }}>Domain Name:</span>
-                <span style={{ fontWeight: 600, color: 'var(--primary-light)', fontFamily: 'monospace' }}>
-                  {tenant.domain?.domainName || 'No domain linked'}
-                </span>
+            {/* Domain */}
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[11px] text-slate-500 mb-1">Primary Domain</div>
+              <div className="font-semibold text-indigo-600 text-xs font-mono truncate">
+                {tenant.domain?.domainName || 'No domain'}
               </div>
-              <div>
-                <span style={{ color: 'var(--text-dim)', display: 'block', fontSize: '0.75rem' }}>Stalwart ID:</span>
-                <span style={{ fontFamily: 'monospace', color: 'var(--text-main)' }}>
-                  {tenant.domain?.stalwartDomainId || '—'}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-dim)', display: 'block', fontSize: '0.75rem' }}>Created:</span>
-                <span style={{ color: 'var(--text-main)' }}>
-                  {new Date(tenant.createdAt).toLocaleDateString()}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-dim)', display: 'block', fontSize: '0.75rem' }}>Status:</span>
-                <span style={{ color: tenant.domain?.status === 'active' ? 'var(--success)' : 'var(--warning)', fontWeight: 500 }}>
-                  {tenant.domain?.status || '—'}
-                </span>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {tenant.domain?.stalwartDomainId ? 'Stalwart Synced' : 'Pending Sync'}
               </div>
             </div>
           </div>
 
-          {/* Administrators List */}
-          <div style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-            <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Users size={15} color="var(--accent-light)" /> Tenant Administrators ({admins.length})
-            </h4>
-
-            {adminError && (
-              <div style={{ background: 'var(--danger-bg)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', color: '#fca5a5', marginBottom: '12px', fontSize: '0.8rem' }}>
-                {adminError}
-              </div>
-            )}
+          {/* Administrators Section */}
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-900">Assigned Administrators</span>
+              <span className="text-[11px] text-slate-400 font-mono">{admins.length} total</span>
+            </div>
 
             {loadingAdmins ? (
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', padding: '10px 0' }}>Loading administrators...</div>
+              <div className="p-6 text-center text-xs text-slate-400">Loading administrators...</div>
             ) : admins.length === 0 ? (
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', padding: '10px 0' }}>No administrators registered for this tenant yet.</div>
+              <div className="p-6 text-center text-xs text-slate-400">No administrators assigned yet.</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div className="divide-y divide-slate-100">
                 {admins.map((adm) => (
-                  <div
-                    key={adm._id || adm.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 12px',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border)',
-                    }}
-                  >
+                  <div key={adm._id || adm.id} className="p-3 flex items-center justify-between text-xs hover:bg-slate-50">
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{adm.email}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                        Role: {adm.role} {adm.twoFactorEnabled ? '• 2FA Active' : ''}
-                      </div>
+                      <div className="font-medium text-slate-900">{adm.email}</div>
+                      <div className="text-[10px] text-slate-400">Role: {adm.role || 'TENANT_ADMIN'}</div>
                     </div>
-
-                    {resettingAdminId === (adm._id || adm.id) ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="New password (8+ chars)"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          style={{ padding: '4px 8px', fontSize: '0.75rem', width: '160px' }}
-                        />
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleResetPassword(adm._id || adm.id)}
-                          style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-                        >
-                          Save
-                        </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => { setResettingAdminId(null); setNewPassword(''); }}
-                          style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => { setResettingAdminId(adm._id || adm.id); setNewPassword(''); }}
-                        style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    <div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setResettingAdminId(resettingAdminId === (adm._id || adm.id) ? null : (adm._id || adm.id))}
                       >
-                        <KeyRound size={12} /> Reset password
-                      </button>
-                    )}
+                        <KeyRound size={12} />
+                        <span>Reset Password</span>
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Inline Reset Password Form */}
+          {resettingAdminId && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              <label className="field-label mb-1">New Password for Administrator</label>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder="Min. 8 characters"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="form-input flex-1 h-8 text-xs font-mono"
+                />
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => handleResetPassword(resettingAdminId)}
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setResettingAdminId(null);
+                    setNewPassword('');
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Modal Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Close
-          </button>
-
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {onManageAdmins && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => { onClose(); onManageAdmins(tenant); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        {/* Footer with Actions */}
+        <div className="modal-footer flex justify-between items-center">
+          <div className="flex gap-1.5">
+            {onToggleSuspend && tenant.status === 'active' && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onToggleSuspend(tenant)}
+                className="text-amber-600 hover:text-amber-700"
               >
-                <Users size={14} /> Admins
-              </button>
+                <PauseCircle size={13} />
+                <span>Suspend</span>
+              </Button>
             )}
-
+            {onToggleSuspend && tenant.status === 'suspended' && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onToggleSuspend(tenant)}
+                className="text-emerald-600 hover:text-emerald-700"
+              >
+                <PlayCircle size={13} />
+                <span>Reactivate</span>
+              </Button>
+            )}
             {onUpdateQuota && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => { onClose(); onUpdateQuota(tenant); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onUpdateQuota(tenant)}
               >
-                <Sliders size={14} /> Adjust Quota
-              </button>
+                <Sliders size={13} />
+                <span>Quota</span>
+              </Button>
             )}
-
-            {tenant.status === 'approved_pending_setup' && onActivateTenant && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => { onClose(); onActivateTenant(tenant); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #10b981, #059669)' }}
+            {onManageAdmins && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onManageAdmins(tenant)}
               >
-                <PlayCircle size={14} /> Activate Tenant
-              </button>
+                <Users size={13} />
+                <span>Admins</span>
+              </Button>
             )}
-
-            {tenant.status === 'active' && onToggleSuspend && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => { onClose(); onToggleSuspend(tenant); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fca5a5' }}
-              >
-                <PauseCircle size={14} /> Suspend Access
-              </button>
-            )}
-
-            {tenant.status === 'suspended' && onToggleSuspend && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => { onClose(); onToggleSuspend(tenant); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#86efac' }}
-              >
-                <PlayCircle size={14} /> Reactivate Access
-              </button>
-            )}
-
             {onDeleteTenant && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => { onClose(); onDeleteTenant(tenant); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#f87171' }}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onDeleteTenant(tenant)}
+                className="text-red-500 hover:text-red-700 hover:bg-red-50"
               >
-                <Trash2 size={14} /> Delete
-              </button>
+                <Trash2 size={13} />
+              </Button>
             )}
           </div>
+
+          <Button
+            size="md"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Close
+          </Button>
         </div>
       </div>
     </div>

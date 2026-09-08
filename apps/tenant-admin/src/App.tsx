@@ -127,7 +127,7 @@ export const App: React.FC = () => {
       return (
         <ForgotPasswordView
           onBackToLogin={navigateToLogin}
-          portalName="Tenant Admin"
+          portalName="Admin"
           themeColor="#10b981"
           initialEmail={forgotPasswordEmail}
         />

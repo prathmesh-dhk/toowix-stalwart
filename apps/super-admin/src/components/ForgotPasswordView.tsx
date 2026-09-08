@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
+import { Button } from './ui/Button';
+import { Alert } from './ui/Alert';
 import {
   Mail,
-  ShieldAlert,
-  Smartphone,
-  HelpCircle,
-  ArrowRight,
-  ArrowLeft,
+  ShieldCheck,
   CheckCircle2,
   Eye,
   EyeOff,
-  Loader2,
-  ShieldCheck,
-  AlertCircle,
+  HelpCircle,
+  Smartphone,
 } from 'lucide-react';
+import toowixLogo from '../assets/toowix-logo.svg';
 
 interface ForgotPasswordViewProps {
   onBackToLogin: () => void;
@@ -38,26 +36,24 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   onBackToLogin,
   initialEmail,
 }) => {
-  // Wizard Stages: 1 = Identify Account, 2 = Verify Identity (4 modes), 3 = New Password, 4 = Success
+  // Wizard Stages: 1 = Identify, 2 = Verify, 3 = New Password, 4 = Success
   const [stage, setStage] = useState<1 | 2 | 3 | 4>(1);
 
-  // Stage 1: Email & Identification
-  const storedEmail = localStorage.getItem('toowix_admin_remember_email') || '';
+  // Stage 1: Email
+  const storedEmail = localStorage.getItem('toowix_superadmin_remember_email') || '';
   const [email, setEmail] = useState(initialEmail || storedEmail);
 
-  // Auto-fetch a default account hint on mount if no email is known
   useEffect(() => {
     if (!email) {
       api.getDefaultForgotPasswordAccount('admin')
         .then((res) => {
           if (res.email) setEmail(res.email);
         })
-        .catch(() => { /* ignore, user can type manually */ });
+        .catch(() => { });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Stage 2: Account Recovery Metadata
+  // Stage 2: Recovery details
   const [maskedCurrentEmail, setMaskedCurrentEmail] = useState('');
   const [hasRecoveryEmail, setHasRecoveryEmail] = useState(false);
   const [maskedRecoveryEmail, setMaskedRecoveryEmail] = useState('');
@@ -65,19 +61,12 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
   const [questions, setQuestions] = useState<string[]>([]);
 
-  // Selected recovery mode: 1. current_otp, 2. recovery_otp, 3. totp, 4. questions
   const [recoveryMode, setRecoveryMode] = useState<RecoveryMode>('current_otp');
-
-  // OTP State (shared for current email, recovery email, and totp)
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [otpCooldown, setOtpCooldown] = useState(0);
-  const [otpSentTarget, setOtpSentTarget] = useState<'current' | 'recovery' | null>(null);
   const [sendingOtp, setSendingOtp] = useState(false);
 
-  // Security Questions State
   const [answers, setAnswers] = useState<Record<string, string>>({});
-
-  // Reset Token from Stage 2
   const [resetToken, setResetToken] = useState('');
 
   // Stage 3: Passwords
@@ -92,7 +81,6 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // OTP cooldown countdown
   useEffect(() => {
     if (otpCooldown > 0) {
       const timer = setTimeout(() => setOtpCooldown(otpCooldown - 1), 1000);
@@ -100,13 +88,11 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
     }
   }, [otpCooldown]);
 
-  // Handle 6-digit code inputs
   const handleDigitChange = (index: number, val: string) => {
-    const char = val.slice(-1).replace(/[^0-9]/g, '');
+    const char = val.slice(-1);
     const newDigits = [...digits];
     newDigits[index] = char;
     setDigits(newDigits);
-
     if (char && index < 5) {
       digitRefs.current[index + 1]?.focus();
     }
@@ -131,19 +117,11 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
     digitRefs.current[nextIndex]?.focus();
   };
 
-  // Reset digit inputs when switching modes
-  const handleSwitchMode = (mode: RecoveryMode) => {
-    setRecoveryMode(mode);
-    setError(null);
-    setDigits(['', '', '', '', '', '']);
-  };
-
-  // =========================================================================
-  // STAGE 1: Check Account & Fetch Available Modes
-  // =========================================================================
+  // Stage 1 submit
   const handleStage1Submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
       setError('Please enter your administrator account email address.');
       return;
     }
@@ -152,38 +130,38 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
     setError(null);
 
     try {
-      const res = await api.initiateForgotPassword(email.trim());
-      const currentMasked = res.maskedCurrentEmail || maskEmailPreview(res.email || email);
-      setMaskedCurrentEmail(currentMasked);
+      const res = await api.initiateForgotPassword(cleanEmail);
+      setMaskedCurrentEmail(res.maskedCurrentEmail || maskEmailPreview(res.email || cleanEmail));
       setHasRecoveryEmail(!!res.hasRecoveryEmail);
       setMaskedRecoveryEmail(res.maskedRecoveryEmail || '');
       setHasTotp(!!res.hasTotp);
       setHasSecurityQuestions(!!(res.securityQuestions && res.securityQuestions.length === 3));
       setQuestions(res.securityQuestions || []);
 
-      // Default to 1. OTP on current email
-      setRecoveryMode('current_otp');
-      setDigits(['', '', '', '', '', '']);
+      if (res.hasTotp) {
+        setRecoveryMode('totp');
+      } else if (res.hasRecoveryEmail) {
+        setRecoveryMode('recovery_otp');
+      } else {
+        setRecoveryMode('current_otp');
+      }
+
       setStage(2);
     } catch (err: any) {
-      setError(err.message || 'No active administrator account was found for this email address.');
+      setError(err.message || 'Unable to find an account with that email address.');
     } finally {
       setLoading(false);
     }
   };
 
-  // =========================================================================
-  // STAGE 2: Send OTP (Current or Recovery Email)
-  // =========================================================================
+  // Send OTP
   const handleSendOtp = async (target: 'current' | 'recovery') => {
     if (otpCooldown > 0 || sendingOtp) return;
-    setError(null);
     setSendingOtp(true);
+    setError(null);
     try {
       await api.sendForgotPasswordOtp(email.trim(), target);
       setOtpCooldown(60);
-      setOtpSentTarget(target);
-      setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to dispatch verification code.');
     } finally {
@@ -191,105 +169,55 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
     }
   };
 
-  // =========================================================================
-  // STAGE 2: Verify OTP (Current or Recovery Email)
-  // =========================================================================
-  const handleVerifyEmailOtp = async (e: React.FormEvent) => {
+  // Stage 2 submit
+  const handleStage2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = digits.join('').trim();
-    if (!code || code.length !== 6) {
-      setError('Please enter the 6-digit verification code.');
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const res = await api.verifyForgotPasswordOtp(email.trim(), code);
-      setResetToken(res.resetToken);
-      setStage(3);
+      let res;
+      if (recoveryMode === 'current_otp' || recoveryMode === 'recovery_otp') {
+        const code = digits.join('').trim();
+        if (code.length !== 6) {
+          throw new Error('Please enter the full 6-digit verification code.');
+        }
+        res = await api.verifyForgotPasswordOtp(email.trim(), code);
+      } else if (recoveryMode === 'totp') {
+        const code = digits.join('').trim();
+        if (code.length !== 6) {
+          throw new Error('Please enter the full 6-digit authenticator code.');
+        }
+        res = await api.verifyForgotPasswordTotp(email.trim(), code);
+      } else if (recoveryMode === 'questions') {
+        const answersList = questions.map((q) => ({
+          question: q,
+          answer: answers[q]?.trim() || '',
+        }));
+        if (answersList.some((a) => !a.answer)) {
+          throw new Error('Please answer all security questions.');
+        }
+        res = await api.verifyForgotPasswordQuestions(email.trim(), answersList);
+      }
+
+      if (res?.resetToken) {
+        setResetToken(res.resetToken);
+        setStage(3);
+      } else {
+        throw new Error('Verification completed but no reset token was returned.');
+      }
     } catch (err: any) {
-      setError(err.message || 'Invalid or expired verification code.');
+      setError(err.message || 'Identity verification failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
-  // =========================================================================
-  // STAGE 2: Verify Authenticator App TOTP
-  // =========================================================================
-  const handleVerifyTotp = async (e: React.FormEvent) => {
+  // Stage 3 submit
+  const handleStage3Submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = digits.join('').trim();
-    if (!code || code.length !== 6) {
-      setError('Please enter the 6-digit code from your authenticator app.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await api.verifyForgotPasswordTotp(email.trim(), code);
-      setResetToken(res.resetToken);
-      setStage(3);
-    } catch (err: any) {
-      setError(err.message || 'Invalid authenticator code. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // =========================================================================
-  // STAGE 2: Verify Security Questions
-  // =========================================================================
-  const handleVerifyQuestions = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const answersList = questions.map((q) => ({
-      question: q,
-      answer: answers[q]?.trim() || '',
-    }));
-
-    if (answersList.some((a) => !a.answer)) {
-      setError('Please answer all 3 security questions.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await api.verifyForgotPasswordQuestions(email.trim(), answersList);
-      setResetToken(res.resetToken);
-      setStage(3);
-    } catch (err: any) {
-      setError(err.message || 'One or more security answers are incorrect.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Password Policy Checks
-  const hasMinLength = newPassword.length >= 8;
-  const hasComplexity =
-    /[A-Z]/.test(newPassword) &&
-    /[a-z]/.test(newPassword) &&
-    /[0-9]/.test(newPassword) &&
-    /[^A-Za-z0-9]/.test(newPassword);
-  const passwordsMatch = newPassword && confirmPassword && newPassword === confirmPassword;
-
-  // =========================================================================
-  // STAGE 3: Submit New Password
-  // =========================================================================
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!hasMinLength) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-    if (!hasComplexity) {
-      setError('Password must include uppercase, lowercase, numbers, and symbols.');
+    if (!newPassword || newPassword.length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -311,713 +239,373 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   };
 
   return (
-    <div className="text-slate-800 antialiased flex flex-col justify-between min-h-screen relative selection:bg-blue-600 selection:text-white font-sans bg-slate-50 overflow-x-hidden">
-      {/* Background fluid meshes */}
-      <div aria-hidden="true" className="fixed inset-0 pointer-events-none ambient-bg z-0">
-        <div className="absolute bottom-[22%] left-[-15%] w-[130%] h-[320px] fluid-ribbon opacity-80 pointer-events-none"></div>
-        <div className="absolute bottom-[18%] -left-10 w-[110%] h-[180px] bg-gradient-to-r from-cyan-200/40 via-blue-400/35 to-indigo-300/30 blur-3xl opacity-75 pointer-events-none"></div>
-        <div className="subtle-dot absolute top-[36%] left-[13%] opacity-70 pointer-events-none"></div>
-        <div className="subtle-dot absolute top-[32%] left-[6.5%] w-3 h-3 opacity-60 pointer-events-none"></div>
-        <div className="subtle-dot absolute top-[80%] left-[10.5%] w-4 h-4 opacity-50 pointer-events-none"></div>
-        <div className="subtle-dot absolute top-[18%] left-[45%] w-2.5 h-2.5 opacity-40 pointer-events-none"></div>
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-between py-10 px-4 sm:px-6 lg:px-8 font-sans antialiased text-slate-800">
+      {/* Brand Header */}
+      <div className="w-full max-w-md mx-auto flex items-center justify-between mb-8">
+        <div className="flex items-center gap-2.5">
+          <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
+          <span className="text-lg font-bold tracking-tight text-slate-900">toowix</span>
+        </div>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white border border-slate-200 text-slate-600 shadow-xs">
+          <ShieldCheck size={13} className="text-indigo-600" />
+          Password Reset
+        </span>
       </div>
 
-      {/* Top Header */}
-      <header className="relative z-10 w-full px-8 py-6 md:px-14 flex items-center justify-between" data-purpose="main-header">
-        <a
-          aria-label="Toowix Homepage"
-          className="flex items-center gap-2.5 group transition-transform active:scale-95 cursor-pointer"
-          href="/"
-          onClick={(e) => {
-            e.preventDefault();
-            onBackToLogin();
-          }}
-        >
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30 text-white">
-            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-              <path d="M12 0C12 6.627 6.627 12 0 12c6.627 0 12 5.373 12 12 0-6.627 5.373-12 12-12-6.627 0-12-5.373-12-12z"></path>
-            </svg>
+      {/* Main Wizard Card */}
+      <div className="w-full max-w-[480px] mx-auto bg-white rounded-xl border border-slate-200 shadow-xs p-8">
+        {error && (
+          <div className="mb-5">
+            <Alert type="error" message={error} onClose={() => setError(null)} />
           </div>
-          <span className="text-xl font-bold tracking-tight text-slate-900 futuristic-title">toowix</span>
-        </a>
+        )}
 
-        {/* Security Pill */}
-        <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-white/60 shadow-sm text-xs font-medium text-slate-600">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Password Reset</span>
-          <span className="text-slate-300">|</span>
-          <span className="text-slate-500">Identity Recovery</span>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-6 md:px-12 flex flex-col lg:flex-row items-center justify-between gap-12 py-4">
-        {/* Left Hero: Brand Narrative & Conversational Pills */}
-        <div className="w-full lg:w-1/2 flex flex-col justify-center items-start space-y-9">
-          <div className="space-y-3.5 max-w-md">
-            <div className="glow-pill inline-flex items-center gap-2 bg-white/80 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/90 text-sm font-medium text-slate-600 shadow-sm">
-              <span className="text-blue-600 text-xs font-bold">●</span>
-              <span>Multi-Channel Account Recovery</span>
+        {/* STAGE 1: Identify Account */}
+        {stage === 1 && (
+          <div>
+            <div className="mb-6">
+              <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">Step 1 of 3</div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reset your password</h1>
+              <p className="text-xs text-slate-500 mt-1">Enter your administrator email to verify your identity.</p>
             </div>
 
-            <div className="block">
-              <div className="glow-pill inline-flex items-center gap-2 bg-white/85 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/90 text-sm font-medium text-slate-600 shadow-sm">
-                <ShieldCheck size={16} className="text-blue-600 shrink-0" />
-                <span>End-to-end encrypted identity verification</span>
+            <form onSubmit={handleStage1Submit} className="space-y-4">
+              <div>
+                <label className="field-label" htmlFor="resetEmail">
+                  Administrator email
+                </label>
+                <input
+                  id="resetEmail"
+                  type="email"
+                  required
+                  placeholder="admin@toowix.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="form-input"
+                />
               </div>
-            </div>
 
-            <div className="block">
-              <div className="glow-pill inline-flex items-center gap-2.5 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-blue-200/60 text-sm font-medium text-slate-800 shadow-md">
-                <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                <span className="font-semibold text-slate-800">4 recovery modes: Current OTP, Recovery OTP, Authenticator & Questions</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-6 select-none">
-            <span className="block text-xs font-extrabold uppercase tracking-[0.3em] text-slate-400 pl-1 mb-1">ACCOUNT ACCESS</span>
-            <h1 className="text-6xl md:text-7xl font-black tracking-tighter text-slate-900 flex items-baseline">
-              toowix<span className="text-blue-600 text-6xl md:text-7xl font-sans">.</span>
-            </h1>
-            <p className="text-slate-500 text-sm mt-3 max-w-sm leading-relaxed pl-1">
-              Enterprise mail hosting and identity management console.
-            </p>
-          </div>
-        </div>
-
-        {/* Right Area: Password Reset Wizard Card */}
-        <div className="w-full lg:w-1/2 flex justify-center lg:justify-end">
-          <div className="w-full max-w-[500px] bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/80 p-7 sm:p-9 relative overflow-hidden" data-purpose="recovery-wizard-card">
-            {/* Error Alert Container */}
-            {error && (
-              <div className="mb-6 p-3.5 bg-rose-50/90 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2.5" id="alert-banner">
-                <AlertCircle size={16} className="text-rose-500 mt-0.5 shrink-0" />
-                <div className="flex-1">
-                  <span className="font-semibold">Error: </span>
-                  {error}
-                </div>
-                <button className="text-rose-400 hover:text-rose-700 text-sm leading-none cursor-pointer border-none bg-transparent" onClick={() => setError(null)} type="button">×</button>
-              </div>
-            )}
-
-            {/* ==================================================== */}
-            {/* STAGE 1: Account Identification with Sensored Email  */}
-            {/* ==================================================== */}
-            {stage === 1 && (
-              <section className="step-content" id="stage-1">
-                <div className="mb-6">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 block">Step 1 of 3</span>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-1">Reset your password</h2>
-                  <p className="text-slate-500 text-xs mt-1.5 leading-relaxed">
-                    Verify your account email to proceed with identity recovery.
-                  </p>
-                </div>
-
-                <form className="space-y-5" onSubmit={handleStage1Submit}>
-                  {/* If email is known, show censored preview card. Otherwise show input. */}
-                  {email ? (
-                    <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100/70 text-blue-600 flex items-center justify-center font-mono font-bold text-sm shrink-0">
-                        @
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">Account</span>
-                        <span className="font-mono text-sm font-bold text-slate-900">
-                          {maskEmailPreview(email)}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1.5" htmlFor="primary-email">
-                        Administrator email address
-                      </label>
-                      <div className="relative">
-                        <input
-                          className="w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-slate-800 transition outline-none"
-                          id="primary-email"
-                          name="email"
-                          placeholder="admin@example.com"
-                          required
-                          type="email"
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value);
-                            setError(null);
-                          }}
-                        />
-                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                          <Mail size={16} />
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 hover:shadow-blue-600/40 transition-all flex items-center justify-center gap-2 group disabled:opacity-50 cursor-pointer border-none"
-                    type="submit"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <>
-                        <span>Continue</span>
-                        <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <button
-                    className="text-slate-500 hover:text-slate-800 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent"
-                    onClick={onBackToLogin}
-                    type="button"
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Back to sign in</span>
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {/* ==================================================== */}
-            {/* STAGE 2: 4 Modes of Recovery                         */}
-            {/* ==================================================== */}
-            {stage === 2 && (
-              <section className="step-content" id="stage-2">
-                {/* Account identifier badge */}
-                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl mb-4 text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-slate-400">Account:</span>
-                    <span className="font-mono font-semibold text-slate-900 truncate">
-                      {maskedCurrentEmail || maskEmailPreview(email)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStage(1);
-                      setError(null);
-                    }}
-                    className="text-blue-600 hover:underline font-medium text-[11px] shrink-0 cursor-pointer border-none bg-transparent"
-                  >
-                    Change
-                  </button>
-                </div>
-
-                <div className="mb-4">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 block">Step 2 of 3</span>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Modes of recovery</h2>
-                  <p className="text-slate-500 text-xs mt-1">Select how you would like to verify your identity:</p>
-                </div>
-
-                {/* 4 Interactive Modes Selection Grid */}
-                <div className="grid grid-cols-2 gap-2 mb-5">
-                  {/* Mode 1: OTP on current email */}
-                  <button
-                    type="button"
-                    onClick={() => handleSwitchMode('current_otp')}
-                    className={`p-3 text-left rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                      recoveryMode === 'current_otp'
-                        ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'current_otp' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <Mail size={14} />
-                      </div>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Ready</span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">1. Current Email</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">{maskedCurrentEmail || maskEmailPreview(email)}</div>
-                    </div>
-                  </button>
-
-                  {/* Mode 2: OTP on recovery email */}
-                  <button
-                    type="button"
-                    disabled={!hasRecoveryEmail}
-                    onClick={() => handleSwitchMode('recovery_otp')}
-                    className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
-                      !hasRecoveryEmail
-                        ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                        : recoveryMode === 'recovery_otp'
-                        ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm cursor-pointer'
-                        : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'recovery_otp' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <ShieldAlert size={14} />
-                      </div>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hasRecoveryEmail ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
-                        {hasRecoveryEmail ? 'Ready' : 'None'}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">2. Recovery Email</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {hasRecoveryEmail ? maskedRecoveryEmail : 'Not configured'}
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Mode 3: Authenticator app OTP */}
-                  <button
-                    type="button"
-                    disabled={!hasTotp}
-                    onClick={() => handleSwitchMode('totp')}
-                    className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
-                      !hasTotp
-                        ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                        : recoveryMode === 'totp'
-                        ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm cursor-pointer'
-                        : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'totp' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <Smartphone size={14} />
-                      </div>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hasTotp ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
-                        {hasTotp ? '2FA' : 'Disabled'}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">3. Authenticator OTP</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {hasTotp ? 'Google / Authy' : 'Not enabled'}
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Mode 4: Recovery questions */}
-                  <button
-                    type="button"
-                    disabled={!hasSecurityQuestions}
-                    onClick={() => handleSwitchMode('questions')}
-                    className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
-                      !hasSecurityQuestions
-                        ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                        : recoveryMode === 'questions'
-                        ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm cursor-pointer'
-                        : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'questions' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <HelpCircle size={14} />
-                      </div>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hasSecurityQuestions ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
-                        {hasSecurityQuestions ? '3 Setup' : 'None'}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">4. Questions</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {hasSecurityQuestions ? '3 Questions' : 'Not configured'}
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                {/* ==================================================== */}
-                {/* ACTIVE VERIFICATION PANEL FOR SELECTED MODE          */}
-                {/* ==================================================== */}
-
-                {/* MODE 1: OTP on Current Email */}
-                {recoveryMode === 'current_otp' && (
-                  <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
-                    <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
-                      <div className="flex items-center gap-2 truncate">
-                        <Mail size={15} className="text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          Destination: <strong className="font-mono text-slate-900 font-semibold">{maskedCurrentEmail || maskEmailPreview(email)}</strong>
-                        </span>
-                      </div>
-                      <button
-                        className="text-blue-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
-                        onClick={() => handleSendOtp('current')}
-                        disabled={otpCooldown > 0 || sendingOtp}
-                        type="button"
-                      >
-                        {sendingOtp ? 'Sending...' : otpCooldown > 0 && otpSentTarget === 'current' ? `Resend (${otpCooldown}s)` : 'Send Code'}
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
-                        Enter 6-digit verification code
-                      </label>
-                      <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
-                        {digits.map((d, i) => (
-                          <input
-                            key={i}
-                            ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-mono font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 outline-none"
-                            maxLength={1}
-                            type="text"
-                            value={d}
-                            onChange={(e) => handleDigitChange(i, e.target.value)}
-                            onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {otpCooldown > 0 && otpSentTarget === 'current' && (
-                      <div className="text-center text-xs text-slate-400">
-                        Code sent. Resend in <span className="font-mono font-semibold text-slate-700">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
-                      </div>
-                    )}
-
-                    <button
-                      className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                      type="submit"
-                      disabled={loading || digits.join('').length !== 6}
-                    >
-                      {loading ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <span>Verify Current Email Code</span>
-                          <ArrowRight size={16} />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                )}
-
-                {/* MODE 2: OTP on Recovery Email */}
-                {recoveryMode === 'recovery_otp' && (
-                  <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
-                    <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
-                      <div className="flex items-center gap-2 truncate">
-                        <ShieldAlert size={15} className="text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          Destination: <strong className="font-mono text-slate-900 font-semibold">{maskedRecoveryEmail}</strong>
-                        </span>
-                      </div>
-                      <button
-                        className="text-blue-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
-                        onClick={() => handleSendOtp('recovery')}
-                        disabled={otpCooldown > 0 || sendingOtp}
-                        type="button"
-                      >
-                        {sendingOtp ? 'Sending...' : otpCooldown > 0 && otpSentTarget === 'recovery' ? `Resend (${otpCooldown}s)` : 'Send Code'}
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
-                        Enter 6-digit verification code
-                      </label>
-                      <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
-                        {digits.map((d, i) => (
-                          <input
-                            key={i}
-                            ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-mono font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 outline-none"
-                            maxLength={1}
-                            type="text"
-                            value={d}
-                            onChange={(e) => handleDigitChange(i, e.target.value)}
-                            onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {otpCooldown > 0 && otpSentTarget === 'recovery' && (
-                      <div className="text-center text-xs text-slate-400">
-                        Code sent. Resend in <span className="font-mono font-semibold text-slate-700">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
-                      </div>
-                    )}
-
-                    <button
-                      className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                      type="submit"
-                      disabled={loading || digits.join('').length !== 6}
-                    >
-                      {loading ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <span>Verify Recovery Email Code</span>
-                          <ArrowRight size={16} />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                )}
-
-                {/* MODE 3: Authenticator App OTP */}
-                {recoveryMode === 'totp' && (
-                  <form className="space-y-4" onSubmit={handleVerifyTotp}>
-                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center gap-2.5 text-xs text-slate-700">
-                      <Smartphone size={16} className="text-indigo-600 shrink-0" />
-                      <span>Open your authenticator app (Google Authenticator, Authy, etc.) and enter the current 6-digit code.</span>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
-                        6-digit authenticator code
-                      </label>
-                      <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
-                        {digits.map((d, i) => (
-                          <input
-                            key={i}
-                            ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-mono font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 outline-none"
-                            maxLength={1}
-                            type="text"
-                            value={d}
-                            onChange={(e) => handleDigitChange(i, e.target.value)}
-                            onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                      type="submit"
-                      disabled={loading || digits.join('').length !== 6}
-                    >
-                      {loading ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <span>Verify Authenticator Code</span>
-                          <ArrowRight size={16} />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                )}
-
-                {/* MODE 4: Recovery Questions */}
-                {recoveryMode === 'questions' && (
-                  <form className="space-y-3.5" onSubmit={handleVerifyQuestions}>
-                    {questions.length === 0 ? (
-                      <div className="text-xs text-slate-500 py-3 text-center">
-                        No security questions are configured for this account. Please select an alternate recovery mode above.
-                      </div>
-                    ) : (
-                      questions.map((q, idx) => (
-                        <div key={idx}>
-                          <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                            {idx + 1}. {q}
-                          </label>
-                          <input
-                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none"
-                            placeholder="Your answer"
-                            type="text"
-                            value={answers[q] || ''}
-                            onChange={(e) => setAnswers({ ...answers, [q]: e.target.value })}
-                            required
-                          />
-                        </div>
-                      ))
-                    )}
-
-                    {questions.length > 0 && (
-                      <button
-                        className="w-full py-3.5 px-5 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                        type="submit"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <>
-                            <span>Verify Security Answers</span>
-                            <ArrowRight size={16} />
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </form>
-                )}
-
-                <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <button
-                    className="text-slate-500 hover:text-slate-800 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent"
-                    onClick={() => {
-                      setStage(1);
-                      setError(null);
-                    }}
-                    type="button"
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Use a different email</span>
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {/* ==================================================== */}
-            {/* STAGE 3: Set New Password                            */}
-            {/* ==================================================== */}
-            {stage === 3 && (
-              <section className="step-content" id="stage-3">
-                <div className="mb-5">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 block">Identity Confirmed ✓</span>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Create new password</h2>
-                  <p className="text-slate-500 text-xs mt-1">Set a strong new password for your administrator account.</p>
-                </div>
-
-                <form className="space-y-4" onSubmit={handleResetPassword}>
-                  {/* New Password */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5" htmlFor="new-pass">
-                      New password
-                    </label>
-                    <div className="relative">
-                      <input
-                        className="w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-slate-800 transition outline-none font-mono"
-                        id="new-pass"
-                        required
-                        type={showNewPass ? 'text' : 'password'}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                      />
-                      <button
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer border-none bg-transparent"
-                        onClick={() => setShowNewPass(!showNewPass)}
-                        type="button"
-                      >
-                        {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Confirm Password */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5" htmlFor="confirm-pass">
-                      Confirm password
-                    </label>
-                    <div className="relative">
-                      <input
-                        className={`w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border rounded-xl focus:bg-white focus:ring-2 text-slate-800 transition outline-none font-mono ${
-                          passwordsMatch
-                            ? 'border-emerald-500 focus:ring-emerald-500/20'
-                            : 'border-slate-200 focus:border-blue-600 focus:ring-blue-600/20'
-                        }`}
-                        id="confirm-pass"
-                        required
-                        type={showConfirmPass ? 'text' : 'password'}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                      />
-                      <button
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer border-none bg-transparent"
-                        onClick={() => setShowConfirmPass(!showConfirmPass)}
-                        type="button"
-                      >
-                        {showConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                    {passwordsMatch && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 mt-1 font-medium">
-                        <CheckCircle2 size={13} />
-                        <span>Passwords match</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Password Policy Checklist */}
-                  <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 text-[11px] text-slate-600 space-y-1">
-                    <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-600 font-medium' : 'text-slate-400'}`}>
-                      <span>✓</span> Minimum 8 characters ({newPassword.length} used)
-                    </div>
-                    <div className={`flex items-center gap-1.5 ${hasComplexity ? 'text-emerald-600 font-medium' : 'text-slate-400'}`}>
-                      <span>✓</span> Includes uppercase, lowercase, numbers & symbols
-                    </div>
-                  </div>
-
-                  <button
-                    className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                    type="submit"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <>
-                        <span>Save new password</span>
-                        <ArrowRight size={16} />
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <button
-                    className="text-slate-500 hover:text-slate-800 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent"
-                    onClick={() => {
-                      setStage(2);
-                      setError(null);
-                    }}
-                    type="button"
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Back to verification</span>
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {/* ==================================================== */}
-            {/* STAGE 4: Confirmation / Success                      */}
-            {/* ==================================================== */}
-            {stage === 4 && (
-              <section className="step-content text-center" id="stage-4">
-                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 size={32} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Password reset complete</h2>
-                <p className="text-slate-500 text-xs mt-2 leading-relaxed">
-                  Your password has been successfully updated. You can now sign in with your new credentials.
-                </p>
-
-                <div className="my-6 p-3.5 bg-slate-50 border border-slate-100 rounded-xl text-left text-xs space-y-1.5 text-slate-600">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Account:</span>
-                    <span className="font-mono font-medium text-slate-800">{maskedCurrentEmail || maskEmailPreview(email)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Status:</span>
-                    <span className="text-emerald-600 font-medium">Password Updated</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Security:</span>
-                    <span className="text-emerald-600 font-medium">Existing sessions invalidated</span>
-                  </div>
-                </div>
-
-                <button
-                  className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 group cursor-pointer border-none"
-                  onClick={onBackToLogin}
-                  type="button"
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  loading={loading}
                 >
-                  <span>Sign in</span>
-                  <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
-                </button>
-              </section>
-            )}
-          </div>
-        </div>
-      </main>
+                  Continue
+                </Button>
+              </div>
 
-      {/* Footer */}
-      <footer className="relative z-10 w-full px-8 py-5 text-center text-xs text-slate-400" data-purpose="copyright">
-        Toowix Mail Platform. All rights reserved.
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={onBackToLogin}
+                  className="text-xs text-slate-500 hover:text-indigo-600 font-medium"
+                >
+                  ← Back to sign in
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* STAGE 2: Verification Mode */}
+        {stage === 2 && (
+          <div>
+            <div className="mb-6">
+              <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">Step 2 of 3</div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">Verify your identity</h1>
+              <p className="text-xs text-slate-500 mt-1">Choose an authentication method to prove account ownership.</p>
+            </div>
+
+            {/* Method Selectors */}
+            <div className="space-y-2 mb-5">
+              {hasTotp && (
+                <div
+                  onClick={() => {
+                    setRecoveryMode('totp');
+                    setDigits(['', '', '', '', '', '']);
+                    setError(null);
+                  }}
+                  className={`p-3 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-all ${recoveryMode === 'totp' ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Smartphone size={16} className="text-indigo-600" />
+                    <div>
+                      <div className="font-semibold text-slate-900">Authenticator App (TOTP)</div>
+                      <div className="text-slate-500 text-[11px]">Use 6-digit code from your app</div>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center bg-white ${recoveryMode === 'totp' ? 'border-indigo-600' : 'border-slate-300'
+                    }`}>
+                    {recoveryMode === 'totp' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
+                  </div>
+                </div>
+              )}
+
+              {hasRecoveryEmail && (
+                <div
+                  onClick={() => {
+                    setRecoveryMode('recovery_otp');
+                    setDigits(['', '', '', '', '', '']);
+                    setError(null);
+                  }}
+                  className={`p-3 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-all ${recoveryMode === 'recovery_otp' ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Mail size={16} className="text-indigo-600" />
+                    <div>
+                      <div className="font-semibold text-slate-900">Secondary Recovery Email</div>
+                      <div className="text-slate-500 text-[11px]">{maskedRecoveryEmail || 'Configured recovery address'}</div>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center bg-white ${recoveryMode === 'recovery_otp' ? 'border-indigo-600' : 'border-slate-300'
+                    }`}>
+                    {recoveryMode === 'recovery_otp' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
+                  </div>
+                </div>
+              )}
+
+              <div
+                onClick={() => {
+                  setRecoveryMode('current_otp');
+                  setDigits(['', '', '', '', '', '']);
+                  setError(null);
+                }}
+                className={`p-3 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-all ${recoveryMode === 'current_otp' ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Mail size={16} className="text-indigo-600" />
+                  <div>
+                    <div className="font-semibold text-slate-900">Primary Account Email</div>
+                    <div className="text-slate-500 text-[11px]">{maskedCurrentEmail || maskEmailPreview(email)}</div>
+                  </div>
+                </div>
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center bg-white ${recoveryMode === 'current_otp' ? 'border-indigo-600' : 'border-slate-300'
+                  }`}>
+                  {recoveryMode === 'current_otp' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
+                </div>
+              </div>
+
+              {hasSecurityQuestions && questions.length > 0 && (
+                <div
+                  onClick={() => {
+                    setRecoveryMode('questions');
+                    setError(null);
+                  }}
+                  className={`p-3 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-all ${recoveryMode === 'questions' ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <HelpCircle size={16} className="text-indigo-600" />
+                    <div>
+                      <div className="font-semibold text-slate-900">Security Questions</div>
+                      <div className="text-slate-500 text-[11px]">Answer security challenge questions</div>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center bg-white ${recoveryMode === 'questions' ? 'border-indigo-600' : 'border-slate-300'
+                    }`}>
+                    {recoveryMode === 'questions' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input Form based on mode */}
+            <form onSubmit={handleStage2Submit} className="space-y-4">
+              {(recoveryMode === 'current_otp' || recoveryMode === 'recovery_otp') && (
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="field-label mb-0">6-digit email code</label>
+                    <button
+                      type="button"
+                      onClick={() => handleSendOtp(recoveryMode === 'current_otp' ? 'current' : 'recovery')}
+                      disabled={sendingOtp || otpCooldown > 0}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50"
+                    >
+                      {sendingOtp ? 'Sending...' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : 'Send code'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
+                    {digits.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (digitRefs.current[idx] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleDigitChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleDigitKeyDown(idx, e)}
+                        className="w-full h-11 text-center text-lg font-bold font-mono text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recoveryMode === 'totp' && (
+                <div>
+                  <label className="field-label">6-digit authenticator code</label>
+                  <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
+                    {digits.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (digitRefs.current[idx] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleDigitChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleDigitKeyDown(idx, e)}
+                        className="w-full h-11 text-center text-lg font-bold font-mono text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recoveryMode === 'questions' && (
+                <div className="space-y-3">
+                  {questions.map((q, idx) => (
+                    <div key={idx}>
+                      <label className="field-label">{q}</label>
+                      <input
+                        type="text"
+                        required
+                        className="form-input"
+                        placeholder="Your answer"
+                        value={answers[q] || ''}
+                        onChange={(e) => setAnswers({ ...answers, [q]: e.target.value })}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-2 flex gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setStage(1)}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  loading={loading}
+                >
+                  Verify identity
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* STAGE 3: New Password */}
+        {stage === 3 && (
+          <div>
+            <div className="mb-6">
+              <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">Step 3 of 3</div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">Create new password</h1>
+              <p className="text-xs text-slate-500 mt-1">Set a secure password for your administrator account.</p>
+            </div>
+
+            <form onSubmit={handleStage3Submit} className="space-y-4">
+              <div>
+                <label className="field-label" htmlFor="newPassword">New password</label>
+                <div className="relative">
+                  <input
+                    id="newPassword"
+                    type={showNewPass ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="••••••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="form-input pr-10 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="field-label" htmlFor="confirmPassword">Confirm new password</label>
+                <div className="relative">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPass ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="••••••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="form-input pr-10 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPass(!showConfirmPass)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  loading={loading}
+                >
+                  Update password
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* STAGE 4: Success */}
+        {stage === 4 && (
+          <div className="text-center py-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 border border-emerald-200">
+              <CheckCircle2 size={24} />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-2">Password reset complete</h2>
+            <p className="text-xs text-slate-500 mb-6">
+              Your password has been successfully updated. You can now sign in with your new credentials.
+            </p>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              fullWidth
+              onClick={onBackToLogin}
+            >
+              Sign in to console
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <footer className="w-full max-w-md mx-auto text-center mt-8 text-xs text-slate-400">
+        <p>© 2026 Toowix Platform. All rights reserved.</p>
       </footer>
     </div>
   );

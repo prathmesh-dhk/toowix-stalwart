@@ -13,6 +13,8 @@ import {
   DriftReport,
   BackupRecordItem,
 } from '../../types';
+import { Button } from '../ui/Button';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface DashboardOverviewViewProps {
   tenants: TenantSummary[];
@@ -54,7 +56,6 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
   onReviewApplication,
   onActivateTenant,
 }) => {
-  // Operational calculations
   const pendingApps = applications.filter((a) => a.status === 'PENDING_REVIEW');
   const pendingActivationTenants = tenants.filter((t) => t.status === 'approved_pending_setup');
   const suspendedTenants = tenants.filter((t) => t.status === 'suspended');
@@ -93,368 +94,347 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
     ? `Up to date (${formatRelativeTime(latestBackup.createdAt)})`
     : 'Up to date';
 
-  // Applications to display in widget
   const displayApps = pendingApps.length > 0
     ? pendingApps.slice(0, 4)
     : applications.slice(0, 4);
 
   return (
-    <div className="space-y-7" id="view-dashboard">
-      {/* SECTION 1: PLATFORM STATUS (TOP OPERATIONAL BAR) */}
-      <section className="bg-white border border-quartz-200 rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-6">
-        <div className="flex flex-wrap items-center gap-8 text-xs">
-          {/* Overall Indicator */}
-          <div className="flex items-center gap-3 pr-6 border-r border-quartz-200">
+    <div className="space-y-6" id="view-dashboard">
+      {/* 1. Infrastructure Status Bar */}
+      <section className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-6 text-xs">
+          {/* Platform Health Status */}
+          <div className="flex items-center gap-2.5 pr-6 border-r border-slate-200">
             <span
               className={`h-2.5 w-2.5 rounded-full ${
-                hasSystemIssue ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'
+                hasSystemIssue ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'
               }`}
             />
             <div>
-              <span className="font-bold text-quartz-900 text-sm block">
+              <span className="font-bold text-slate-900 text-xs block">
                 {hasSystemIssue ? 'Degraded Service' : '100% Operational'}
               </span>
-              <span className="text-[11px] text-quartz-500 font-medium">Platform Health</span>
+              <span className="text-[10px] text-slate-400">Platform Health</span>
             </div>
           </div>
 
-          {/* Telemetry Items */}
+          {/* MongoDB */}
           <div>
-            <span className="text-quartz-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
+            <span className="text-slate-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
               MongoDB
             </span>
             <span
               className={`font-medium text-xs flex items-center gap-1 ${
-                mongoStatus === 'healthy' ? 'text-emerald-700' : 'text-rose-700'
+                mongoStatus === 'healthy' ? 'text-emerald-700' : 'text-red-700'
               }`}
             >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  mongoStatus === 'healthy' ? 'bg-emerald-500' : 'bg-rose-500'
-                }`}
-              />
+              <span className={`h-1.5 w-1.5 rounded-full ${mongoStatus === 'healthy' ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {mongoStatus === 'healthy'
                 ? mongoPing !== undefined ? `Healthy (${mongoPing}ms)` : 'Healthy'
                 : 'Degraded'}
             </span>
           </div>
 
+          {/* Stalwart Engine */}
           <div>
-            <span className="text-quartz-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
+            <span className="text-slate-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
               Stalwart Engine
             </span>
             <span
               className={`font-medium text-xs flex items-center gap-1 ${
-                stalwartStatus === 'connected' ? 'text-emerald-700' : 'text-rose-700'
+                stalwartStatus === 'connected' ? 'text-emerald-700' : 'text-red-700'
               }`}
             >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  stalwartStatus === 'connected' ? 'bg-emerald-500' : 'bg-rose-500'
-                }`}
-              />
+              <span className={`h-1.5 w-1.5 rounded-full ${stalwartStatus === 'connected' ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {stalwartStatus === 'connected'
                 ? stalwartLatency !== undefined ? `Connected (${stalwartLatency}ms)` : 'Connected'
                 : 'Unreachable'}
             </span>
           </div>
 
+          {/* Mail Queue */}
           <div>
-            <span className="text-quartz-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
-              Stalwart API
-            </span>
-            <span className="text-quartz-800 font-medium text-xs">
-              {stalwartStatus === 'connected' ? 'Ready' : 'Offline'}
-            </span>
-          </div>
-
-          <div>
-            <span className="text-quartz-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
+            <span className="text-slate-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
               Mail Queue
             </span>
-            <span className="text-quartz-800 font-medium text-xs">
+            <span className="text-slate-800 font-medium text-xs font-mono">
               {queueDepth} queued
             </span>
           </div>
 
+          {/* Backup */}
           <div>
-            <span className="text-quartz-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
-              Backup
+            <span className="text-slate-400 text-[10px] font-semibold block uppercase tracking-wider mb-0.5">
+              Backup Archive
             </span>
-            <span className="text-quartz-700 font-medium text-xs">
+            <span className="text-slate-700 font-medium text-xs">
               {backupStatusText}
             </span>
           </div>
         </div>
 
-        {/* Action Link */}
         <button
-          className="text-xs font-semibold text-quartz-700 hover:text-quartz-900 flex items-center gap-1 transition px-3 py-1.5 rounded-lg hover:bg-quartz-50"
+          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition"
           onClick={() => onNavigateTab('operations')}
         >
           <span>View system health</span>
-          <ArrowRight size={15} />
+          <ArrowRight size={14} />
         </button>
       </section>
 
-      {/* SECTION 2: ACTION REQUIRED (NEEDS ATTENTION) */}
-      <section className="bg-amber-50/50 border border-amber-200/80 rounded-xl p-5 shadow-xs">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-7 w-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-            <AlertTriangle size={17} />
-          </div>
-          <div>
-            <h2 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
-              Action Required
-            </h2>
-            <p className="text-[11px] text-amber-800 font-medium">
-              {totalActionsCount > 0
-                ? `${totalActionsCount} operational item${totalActionsCount > 1 ? 's' : ''} requiring Super Admin evaluation or review.`
-                : 'All operational queues cleared. Core platform services healthy.'}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Item 1: Applications */}
-          <div className="bg-white border border-amber-200/90 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-amber-300 transition">
-            <div className="mb-3">
-              <div className="font-bold text-quartz-900 text-xs">
-                {pendingApps.length} application{pendingApps.length !== 1 ? 's' : ''} awaiting review
-              </div>
-              <div className="text-[11px] text-quartz-500 mt-0.5">
-                {pendingApps.length > 0 ? 'Submitted in the last 24h' : 'No new applications pending'}
-              </div>
+      {/* 2. Action Required Card */}
+      {totalActionsCount > 0 && (
+        <section className="bg-amber-50/70 border border-amber-200 rounded-lg p-5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="h-6 w-6 rounded-md bg-amber-500 text-white flex items-center justify-center shrink-0">
+              <AlertTriangle size={15} />
             </div>
-            <button
-              className="w-full py-2 bg-quartz-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition shadow-xs"
-              onClick={() => onNavigateTab('applications')}
-            >
-              Review applications
-            </button>
-          </div>
-
-          {/* Item 2: Activations */}
-          <div className="bg-white border border-amber-200/90 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-amber-300 transition">
-            <div className="mb-3">
-              <div className="font-bold text-quartz-900 text-xs">
-                {pendingActivationTenants.length > 0
-                  ? `${pendingActivationTenants.length} tenant${pendingActivationTenants.length !== 1 ? 's' : ''} ready for activation`
-                  : 'All tenants active'}
-              </div>
-              <div className="text-[11px] text-quartz-500 mt-0.5 font-mono truncate">
-                {pendingActivationTenants.length > 0
-                  ? `${pendingActivationTenants[0].domain?.domainName || pendingActivationTenants[0].name} domain setup passed`
-                  : 'Domain setup passed'}
-              </div>
+            <div>
+              <h2 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+                Action Required
+              </h2>
+              <p className="text-[11px] text-amber-800">
+                {totalActionsCount} operational item{totalActionsCount > 1 ? 's' : ''} requiring Super Admin review.
+              </p>
             </div>
-            <button
-              className="w-full py-2 bg-quartz-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition shadow-xs"
-              onClick={() => {
-                if (pendingActivationTenants.length > 0) {
-                  onActivateTenant(pendingActivationTenants[0]);
-                } else {
-                  onNavigateTab('tenants');
-                }
-              }}
-            >
-              Activate tenant
-            </button>
           </div>
 
-          {/* Item 3: Suspended / Drift */}
-          <div className="bg-white border border-amber-200/90 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-amber-300 transition">
-            <div className="mb-3">
-              <div className="font-bold text-quartz-900 text-xs">
-                {suspendedTenants.length > 0
-                  ? `${suspendedTenants.length} tenant${suspendedTenants.length !== 1 ? 's' : ''} suspended`
-                  : hasDrift
-                  ? 'State drift detected'
-                  : '0 tenants suspended'}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Item 1: Applications */}
+            <div className="bg-white border border-amber-200 rounded-lg p-3.5 flex flex-col justify-between">
+              <div className="mb-3">
+                <div className="font-semibold text-slate-900 text-xs">
+                  {pendingApps.length} application{pendingApps.length !== 1 ? 's' : ''} awaiting review
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  {pendingApps.length > 0 ? 'Pending operator approval' : 'Queue cleared'}
+                </div>
               </div>
-              <div className="text-[11px] text-quartz-500 mt-0.5">
-                {suspendedTenants.length > 0
-                  ? 'Frozen due to policy or billing review'
-                  : hasDrift
-                  ? 'Discrepancies found between Mongo and Stalwart'
-                  : 'Policy & relay holds normal'}
-              </div>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => onNavigateTab('applications')}
+              >
+                Review applications
+              </Button>
             </div>
-            <button
-              className="w-full py-2 bg-quartz-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition shadow-xs"
-              onClick={() => {
-                if (hasDrift) {
-                  onNavigateTab('operations');
-                } else {
-                  onNavigateTab('tenants');
-                }
-              }}
-            >
-              {hasDrift ? 'Reconcile drift' : 'View tenants'}
-            </button>
-          </div>
-        </div>
-      </section>
 
-      {/* SECTION 3: PLATFORM OVERVIEW (5 FOCUSED METRICS) */}
+            {/* Item 2: Activations */}
+            <div className="bg-white border border-amber-200 rounded-lg p-3.5 flex flex-col justify-between">
+              <div className="mb-3">
+                <div className="font-semibold text-slate-900 text-xs">
+                  {pendingActivationTenants.length > 0
+                    ? `${pendingActivationTenants.length} tenant${pendingActivationTenants.length !== 1 ? 's' : ''} ready for activation`
+                    : 'All tenants active'}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5 font-mono truncate">
+                  {pendingActivationTenants.length > 0
+                    ? `${pendingActivationTenants[0].domain?.domainName || pendingActivationTenants[0].name} setup ready`
+                    : 'Domain setup passed'}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  if (pendingActivationTenants.length > 0) {
+                    onActivateTenant(pendingActivationTenants[0]);
+                  } else {
+                    onNavigateTab('tenants');
+                  }
+                }}
+              >
+                Activate tenant
+              </Button>
+            </div>
+
+            {/* Item 3: Suspended / Drift */}
+            <div className="bg-white border border-amber-200 rounded-lg p-3.5 flex flex-col justify-between">
+              <div className="mb-3">
+                <div className="font-semibold text-slate-900 text-xs">
+                  {suspendedTenants.length > 0
+                    ? `${suspendedTenants.length} tenant${suspendedTenants.length !== 1 ? 's' : ''} suspended`
+                    : hasDrift
+                    ? 'State drift detected'
+                    : '0 tenants suspended'}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  {suspendedTenants.length > 0
+                    ? 'Account holds active'
+                    : hasDrift
+                    ? 'Discrepancies found in Stalwart sync'
+                    : 'Policy & relay holds normal'}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  if (hasDrift) {
+                    onNavigateTab('operations');
+                  } else {
+                    onNavigateTab('tenants');
+                  }
+                }}
+              >
+                {hasDrift ? 'Reconcile drift' : 'View tenants'}
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 3. Platform Metric Cards */}
       <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        {/* Metric 1 */}
-        <div className="bg-white border border-quartz-200 rounded-xl p-5 shadow-xs">
-          <span className="text-[11px] font-semibold text-quartz-500 uppercase tracking-wider block mb-1">
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
             Active Tenants
           </span>
-          <div className="text-3xl font-bold text-quartz-900 font-mono tabular-nums tracking-tight">
+          <div className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
             {activeTenants.length}
           </div>
-          <div className="text-[11px] text-emerald-700 font-medium mt-1.5 flex items-center gap-1">
-            <CheckCircle2 size={13} />
+          <div className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
+            <CheckCircle2 size={12} />
             <span>100% DNS verified</span>
           </div>
         </div>
 
-        {/* Metric 2 */}
-        <div className="bg-white border border-quartz-200 rounded-xl p-5 shadow-xs">
-          <span className="text-[11px] font-semibold text-quartz-500 uppercase tracking-wider block mb-1">
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
             Pending Applications
           </span>
-          <div className="text-3xl font-bold text-amber-600 font-mono tabular-nums tracking-tight">
+          <div className="text-2xl font-bold text-amber-600 font-mono tabular-nums">
             {pendingApps.length}
           </div>
-          <div className="text-[11px] text-quartz-500 mt-1.5">Awaiting review</div>
+          <div className="text-[11px] text-slate-500 mt-1">Awaiting review</div>
         </div>
 
-        {/* Metric 3 */}
-        <div className="bg-white border border-quartz-200 rounded-xl p-5 shadow-xs">
-          <span className="text-[11px] font-semibold text-quartz-500 uppercase tracking-wider block mb-1">
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
             Suspended Tenants
           </span>
-          <div className="text-3xl font-bold text-rose-600 font-mono tabular-nums tracking-tight">
+          <div className="text-2xl font-bold text-red-600 font-mono tabular-nums">
             {suspendedTenants.length}
           </div>
-          <div className="text-[11px] text-quartz-500 mt-1.5">Policy &amp; relay holds</div>
+          <div className="text-[11px] text-slate-500 mt-1">Policy &amp; relay holds</div>
         </div>
 
-        {/* Metric 4 */}
-        <div className="bg-white border border-quartz-200 rounded-xl p-5 shadow-xs">
-          <span className="text-[11px] font-semibold text-quartz-500 uppercase tracking-wider block mb-1">
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
             Total Mailboxes
           </span>
-          <div className="text-3xl font-bold text-quartz-900 font-mono tabular-nums tracking-tight">
+          <div className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
             {totalMailboxesUsed.toLocaleString()}
           </div>
-          <div className="text-[11px] text-quartz-500 mt-1.5">
-            of {totalMailboxQuota > 0 ? totalMailboxQuota.toLocaleString() : '5,000'} quota pool
+          <div className="text-[11px] text-slate-500 mt-1">
+            of {totalMailboxQuota > 0 ? totalMailboxQuota.toLocaleString() : '5,000'} pool
           </div>
         </div>
 
-        {/* Metric 5 */}
-        <div className="bg-white border border-quartz-200 rounded-xl p-5 shadow-xs col-span-2 md:col-span-1">
-          <span className="text-[11px] font-semibold text-quartz-500 uppercase tracking-wider block mb-1">
-            Mail Queue Depth
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs col-span-2 md:col-span-1">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+            Queue Depth
           </span>
-          <div className="text-3xl font-bold text-quartz-900 font-mono tabular-nums tracking-tight">
+          <div className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
             {queueDepth}
           </div>
-          <div className="text-[11px] text-emerald-700 mt-1.5">Normal delivery rate</div>
+          <div className="text-[11px] text-emerald-700 mt-1">Normal delivery rate</div>
         </div>
       </section>
 
-      {/* SECTION 4: SPLIT OPERATIONAL WIDGETS */}
+      {/* 4. Split Operational Tables */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Widget: Recent Applications */}
-        <div className="lg:col-span-7 bg-white border border-quartz-200 rounded-xl shadow-xs flex flex-col">
-          <div className="p-5 border-b border-quartz-200 flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-bold text-quartz-900 uppercase tracking-wider">
-                Recent Applications
-              </h3>
-            </div>
+        {/* Left: Recent Applications */}
+        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg shadow-xs flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              Recent Applications
+            </h3>
             <button
-              className="text-xs font-medium text-quartz-600 hover:text-quartz-900 flex items-center gap-1 transition"
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition"
               onClick={() => onNavigateTab('applications')}
             >
-              <span>View all applications</span>
-              <ArrowRight size={15} />
+              <span>View all</span>
+              <ArrowRight size={13} />
             </button>
           </div>
 
-          <div className="divide-y divide-quartz-100 text-xs flex-1">
+          <div className="divide-y divide-slate-100 text-xs flex-1">
             {displayApps.length === 0 ? (
-              <div className="p-8 text-center text-quartz-400 text-xs">
+              <div className="p-8 text-center text-slate-400 text-xs">
                 No recent applications to display.
               </div>
             ) : (
               displayApps.map((app) => (
                 <div
-                  key={app._id}
-                  className="p-4 hover:bg-quartz-50/70 transition flex items-center justify-between gap-4"
+                  key={app._id || app.id}
+                  className="p-3.5 hover:bg-slate-50 transition flex items-center justify-between gap-4"
                 >
-                  <div className="min-w-0 space-y-1">
+                  <div className="min-w-0 space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-quartz-900 truncate">
+                      <span className="font-semibold text-slate-900 truncate">
                         {app.companyName}
                       </span>
-                      <span className="text-quartz-400">·</span>
-                      <span className="font-mono text-quartz-700 text-[11px]">
+                      <span className="text-slate-400">·</span>
+                      <span className="font-mono text-indigo-600 text-[11px]">
                         {app.requestedDomain}
                       </span>
                     </div>
-                    <div className="text-[11px] text-quartz-500 flex items-center gap-2">
+                    <div className="text-[11px] text-slate-500 flex items-center gap-2">
                       <span>{app.applicantName}</span>
                       <span>·</span>
                       <span>{formatRelativeTime(app.createdAt)}</span>
                       <span>·</span>
-                      <span className="text-amber-700 font-medium">
+                      <StatusBadge status={app.status === 'PENDING_REVIEW' ? 'warning' : app.status === 'APPROVED' ? 'success' : 'danger'}>
                         {app.status === 'PENDING_REVIEW' ? 'Pending Review' : app.status}
-                      </span>
+                      </StatusBadge>
                     </div>
                   </div>
-                  <button
-                    className="px-3.5 py-1.5 bg-quartz-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition shrink-0 shadow-xs"
+                  <Button
+                    size="sm"
+                    variant={app.status === 'PENDING_REVIEW' ? 'primary' : 'secondary'}
                     onClick={() => onReviewApplication(app)}
                   >
-                    Review
-                  </button>
+                    {app.status === 'PENDING_REVIEW' ? 'Review' : 'Details'}
+                  </Button>
                 </div>
               ))
             )}
           </div>
         </div>
 
-        {/* Right Widget: Recent Activity */}
-        <div className="lg:col-span-5 bg-white border border-quartz-200 rounded-xl shadow-xs flex flex-col">
-          <div className="p-5 border-b border-quartz-200 flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-bold text-quartz-900 uppercase tracking-wider">
-                Recent Activity
-              </h3>
-            </div>
+        {/* Right: Recent Audit Log */}
+        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-xs flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              Recent Activity
+            </h3>
             <button
-              className="text-xs font-medium text-quartz-600 hover:text-quartz-900 flex items-center gap-1 transition"
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition"
               onClick={() => onNavigateTab('audit')}
             >
               <span>View audit log</span>
-              <ArrowRight size={15} />
+              <ArrowRight size={13} />
             </button>
           </div>
 
-          <div className="divide-y divide-quartz-100 text-xs flex-1">
+          <div className="divide-y divide-slate-100 text-xs flex-1">
             {recentAuditLogs.length === 0 ? (
-              <div className="p-8 text-center text-quartz-400 text-xs">
+              <div className="p-8 text-center text-slate-400 text-xs">
                 No recent audit events logged.
               </div>
             ) : (
               recentAuditLogs.slice(0, 5).map((log) => (
-                <div key={log.id} className="p-4 hover:bg-quartz-50/70 transition space-y-1">
+                <div key={log.id} className="p-3.5 hover:bg-slate-50 transition space-y-0.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-quartz-900">
+                    <span className="font-semibold text-slate-900">
                       {log.action}
                     </span>
-                    <span className="text-quartz-400 text-[11px]">
+                    <span className="text-slate-400 text-[11px]">
                       {formatRelativeTime(log.timestamp)}
                     </span>
                   </div>
-                  <div className="text-[11px] text-quartz-500 truncate">
+                  <div className="text-[11px] text-slate-500 truncate font-mono">
                     {log.resource ? `${log.resource} · ` : ''}{log.actor_role}
                   </div>
                 </div>

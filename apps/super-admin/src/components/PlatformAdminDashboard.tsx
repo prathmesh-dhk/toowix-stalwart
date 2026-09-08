@@ -17,7 +17,6 @@ import {
   Building2,
   Server,
   History,
-  AlertTriangle,
   CheckCircle2,
   X,
   Search,
@@ -29,6 +28,9 @@ import {
   ShieldAlert,
   QrCode,
 } from 'lucide-react';
+import toowixLogo from '../assets/toowix-logo.svg';
+import { Button } from './ui/Button';
+import { Alert } from './ui/Alert';
 
 // Views
 import { DashboardOverviewView } from './views/DashboardOverviewView';
@@ -121,7 +123,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     return namePart.slice(0, 2).toUpperCase();
   }, [user]);
 
-  // 1. Data Fetchers
+  // Data Fetchers
   const loadTenantsAndMetrics = useCallback(async () => {
     setTenantsLoading(true);
     try {
@@ -234,7 +236,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   };
 
-  // Action Alert Handler
   const showAlert = (type: 'success' | 'error', message: string) => {
     setActionAlert({ type, message });
   };
@@ -389,13 +390,13 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
   if (initialLoading) {
     return (
-      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center space-y-3">
-          <div className="h-10 w-10 rounded-lg bg-quartz-900 flex items-center justify-center text-white mx-auto shadow-sm animate-pulse">
+          <div className="h-10 w-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white mx-auto shadow-sm animate-pulse">
             <Mail size={20} />
           </div>
-          <div className="text-xs font-semibold text-quartz-700">
-            Initializing Super Admin Operational Control Center...
+          <div className="text-xs font-semibold text-slate-700">
+            Loading Super Admin platform console...
           </div>
         </div>
       </div>
@@ -403,123 +404,126 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-quartz-900 font-sans antialiased flex flex-row selection:bg-slate-800 selection:text-white">
-      {/* ================= GLOBAL SIDEBAR (CALM, CLEAN & FOCUSED) ================= */}
-      <aside className="w-64 bg-white border-r border-quartz-200 flex flex-col justify-between shrink-0 min-h-screen z-30 sticky top-0 h-screen">
-        <div className="p-6">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased flex flex-row selection:bg-indigo-100 selection:text-indigo-900">
+      {/* ================= SIDEBAR (240px) ================= */}
+      <aside className="w-60 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 min-h-screen z-30 sticky top-0 h-screen">
+        <div className="p-5">
           {/* Brand Header */}
-          <div className="flex items-center justify-between pb-6 mb-6 border-b border-quartz-100">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-lg bg-quartz-900 flex items-center justify-center text-white shadow-sm">
-                <Mail size={19} className="text-white" />
-              </div>
+          <div className="flex items-center justify-between pb-5 mb-5 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <img src={toowixLogo} alt="Toowix" className="h-8 w-8 object-contain" />
               <div>
-                <span className="font-bold text-sm tracking-wider text-quartz-900 uppercase font-mono block">
-                  TOOWIX MAIL
+                <span className="font-bold text-sm tracking-tight text-slate-900 block leading-tight">
+                  toowix
                 </span>
-                <span className="text-[11px] text-quartz-500 font-medium">Platform Console</span>
+                <span className="text-[11px] text-slate-400 font-medium">Platform Console</span>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-quartz-700 tracking-wider uppercase border border-quartz-200">
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
               Super Admin
             </span>
           </div>
 
-          {/* 5 Primary Navigation Items */}
-          <nav className="space-y-1.5">
+          {/* Navigation Section Title */}
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-3 mb-2">
+            Navigation
+          </div>
+
+          {/* Nav Items */}
+          <nav className="space-y-1">
             <button
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs transition ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-xs transition-colors text-left ${
                 activeTab === 'dashboard'
-                  ? 'font-semibold bg-quartz-100 text-quartz-900'
-                  : 'font-medium text-quartz-600 hover:text-quartz-900 hover:bg-quartz-50'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
               }`}
               id="nav-dashboard"
               onClick={() => setActiveTab('dashboard')}
             >
               <LayoutDashboard
-                size={18}
-                className={activeTab === 'dashboard' ? 'text-quartz-900' : 'text-quartz-400'}
+                size={16}
+                className={activeTab === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'}
               />
               <span>Dashboard</span>
             </button>
 
             <button
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs transition ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors text-left ${
                 activeTab === 'applications'
-                  ? 'font-semibold bg-quartz-100 text-quartz-900'
-                  : 'font-medium text-quartz-600 hover:text-quartz-900 hover:bg-quartz-50'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
               }`}
               id="nav-applications"
               onClick={() => setActiveTab('applications')}
             >
               <div className="flex items-center gap-3">
                 <ClipboardList
-                  size={18}
-                  className={activeTab === 'applications' ? 'text-quartz-900' : 'text-quartz-400'}
+                  size={16}
+                  className={activeTab === 'applications' ? 'text-indigo-600' : 'text-slate-400'}
                 />
                 <span>Tenant Applications</span>
               </div>
               {pendingAppsCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 tabular-nums">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 tabular-nums">
                   {pendingAppsCount}
                 </span>
               )}
             </button>
 
             <button
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs transition ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors text-left ${
                 activeTab === 'tenants'
-                  ? 'font-semibold bg-quartz-100 text-quartz-900'
-                  : 'font-medium text-quartz-600 hover:text-quartz-900 hover:bg-quartz-50'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
               }`}
               id="nav-tenants"
               onClick={() => setActiveTab('tenants')}
             >
               <div className="flex items-center gap-3">
                 <Building2
-                  size={18}
-                  className={activeTab === 'tenants' ? 'text-quartz-900' : 'text-quartz-400'}
+                  size={16}
+                  className={activeTab === 'tenants' ? 'text-indigo-600' : 'text-slate-400'}
                 />
                 <span>Tenants</span>
               </div>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-quartz-100 text-quartz-600 tabular-nums">
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 tabular-nums">
                 {activeTenantsCount}
               </span>
             </button>
 
             <button
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs transition ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors text-left ${
                 activeTab === 'operations'
-                  ? 'font-semibold bg-quartz-100 text-quartz-900'
-                  : 'font-medium text-quartz-600 hover:text-quartz-900 hover:bg-quartz-50'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
               }`}
               id="nav-system-health"
               onClick={() => setActiveTab('operations')}
             >
               <div className="flex items-center gap-3">
                 <Server
-                  size={18}
-                  className={activeTab === 'operations' ? 'text-quartz-900' : 'text-quartz-400'}
+                  size={16}
+                  className={activeTab === 'operations' ? 'text-indigo-600' : 'text-slate-400'}
                 />
                 <span>System Health</span>
               </div>
               <span
-                className={`h-2 w-2 rounded-full ${hasSystemIssue ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                className={`h-2 w-2 rounded-full ${hasSystemIssue ? 'bg-red-500' : 'bg-emerald-500'}`}
               />
             </button>
 
             <button
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs transition ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-xs transition-colors text-left ${
                 activeTab === 'audit'
-                  ? 'font-semibold bg-quartz-100 text-quartz-900'
-                  : 'font-medium text-quartz-600 hover:text-quartz-900 hover:bg-quartz-50'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
               }`}
               id="nav-audit-log"
               onClick={() => setActiveTab('audit')}
             >
               <History
-                size={18}
-                className={activeTab === 'audit' ? 'text-quartz-900' : 'text-quartz-400'}
+                size={16}
+                className={activeTab === 'audit' ? 'text-indigo-600' : 'text-slate-400'}
               />
               <span>Audit Log</span>
             </button>
@@ -527,21 +531,21 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         </div>
 
         {/* Bottom Workspace Footer */}
-        <div className="p-6 border-t border-quartz-100 flex items-center justify-between text-[11px] text-quartz-400 font-mono">
-          <span>Toowix Core</span>
-          <span>v2.4.0</span>
+        <div className="p-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+          <span>Toowix Platform</span>
+          <span className="font-mono">v2.4.0</span>
         </div>
       </aside>
 
-      {/* ================= MAIN WORKSPACE ================= */}
-      <main className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-y-auto">
-        {/* Top Header Bar */}
-        <header className="h-16 bg-white border-b border-quartz-200 px-8 flex items-center justify-between sticky top-0 z-20 gap-6">
+      {/* ================= MAIN CONTENT ================= */}
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-y-auto">
+        {/* Top Header Bar (64px) */}
+        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-20 gap-4">
           {/* Search Bar */}
-          <div className="relative flex-1 max-w-xl">
-            <Search size={16} className="absolute left-3.5 top-3 text-quartz-400" />
+          <div className="relative flex-1 max-w-md">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
-              className="w-full bg-quartz-50 hover:bg-white focus:bg-white border border-transparent focus:border-quartz-300 rounded-lg pl-10 pr-4 py-2 text-xs text-quartz-800 placeholder-quartz-400 focus:outline-none transition"
+              className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15 rounded-md pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 outline-none transition"
               placeholder="Search tenants, domains, applications..."
               type="text"
               value={globalSearch}
@@ -549,19 +553,19 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             />
           </div>
 
-          {/* Right Controls: Status & User Profile */}
-          <div className="flex items-center gap-4">
+          {/* Right Controls: Telemetry, Webmail & Profile */}
+          <div className="flex items-center gap-3">
             {/* Last Updated Indicator with Refresh */}
-            <div className="flex items-center gap-2 text-[11px] text-quartz-500">
-              <span id="lastUpdatedText">Last updated {formatLastUpdated(lastRefreshed)}</span>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span id="lastUpdatedText">{formatLastUpdated(lastRefreshed)}</span>
               <button
-                className={`p-1 hover:bg-quartz-100 rounded text-quartz-400 hover:text-quartz-700 transition ${
+                className={`p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition ${
                   isRefreshing ? 'animate-spin' : ''
                 }`}
                 onClick={handleRefreshTelemetry}
                 title="Refresh telemetry"
               >
-                <RefreshCw size={14} />
+                <RefreshCw size={13} />
               </button>
             </div>
 
@@ -570,12 +574,12 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               href="http://localhost:8888"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-quartz-200 text-xs font-medium text-quartz-700 hover:bg-quartz-50 transition"
+              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition"
               title="Open Webmail"
             >
-              <Mail size={13} className="text-quartz-600" />
+              <Mail size={13} className="text-slate-500" />
               <span>Webmail</span>
-              <ExternalLink size={11} className="text-quartz-400" />
+              <ExternalLink size={11} className="text-slate-400" />
             </a>
 
             {/* 2FA Security Pill / Setup */}
@@ -597,23 +601,23 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             )}
 
             {/* Super Admin Profile */}
-            <div className="flex items-center gap-3 pl-4 border-l border-quartz-200">
-              <div className="h-8 w-8 rounded-full bg-slate-100 border border-quartz-200 text-quartz-800 flex items-center justify-center font-bold text-xs font-mono">
+            <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
+              <div className="h-7 w-7 rounded-full bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center font-bold text-xs font-mono">
                 {userInitials}
               </div>
               <div className="leading-tight hidden sm:block">
-                <div className="text-xs font-semibold text-quartz-900">
-                  {user?.email || 'sysadmin@toowix.net'}
+                <div className="text-xs font-semibold text-slate-900">
+                  {user?.email || 'admin@toowix.com'}
                 </div>
-                <div className="text-[11px] text-quartz-500 font-medium">Super Admin</div>
+                <div className="text-[10px] text-slate-400 font-medium">Super Admin</div>
               </div>
               {onLogout && (
                 <button
-                  className="p-1.5 text-quartz-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition ml-1"
+                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition ml-1"
                   onClick={onLogout}
                   title="Sign out"
                 >
-                  <LogOut size={16} />
+                  <LogOut size={15} />
                 </button>
               )}
             </div>
@@ -621,34 +625,17 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         </header>
 
         {/* Workspace Container */}
-        <div className="p-8 max-w-[1440px] w-full mx-auto space-y-7">
-          {/* Global Action Alert Notification Banner */}
+        <div className="p-6 max-w-7xl w-full mx-auto space-y-6">
+          {/* Global Action Alert */}
           {actionAlert && (
-            <div
-              className={`p-4 rounded-xl border flex items-center justify-between gap-3 ${
-                actionAlert.type === 'success'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-rose-50 border-rose-200 text-rose-800'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 text-xs font-medium">
-                {actionAlert.type === 'success' ? (
-                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                ) : (
-                  <AlertTriangle size={16} className="text-rose-600 shrink-0" />
-                )}
-                <span>{actionAlert.message}</span>
-              </div>
-              <button
-                onClick={() => setActionAlert(null)}
-                className="text-quartz-400 hover:text-quartz-700"
-              >
-                <X size={16} />
-              </button>
-            </div>
+            <Alert
+              type={actionAlert.type}
+              message={actionAlert.message}
+              onClose={() => setActionAlert(null)}
+            />
           )}
 
-          {/* Active Area Content */}
+          {/* Tab Views */}
           {activeTab === 'dashboard' && (
             <DashboardOverviewView
               tenants={filteredTenants}
@@ -712,7 +699,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       </main>
 
       {/* ================= MODALS LAYER ================= */}
-      {/* Review Application Modal */}
       <ApplicationReviewModal
         application={reviewApp}
         isOpen={Boolean(reviewApp)}
@@ -721,7 +707,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         onReject={handleRejectApplication}
       />
 
-      {/* Tenant Detail Modal */}
       <TenantDetailModal
         tenant={detailTenant}
         isOpen={Boolean(detailTenant)}
@@ -742,7 +727,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         onDeleteTenant={handleDeleteTenant}
       />
 
-      {/* Tenant Activation Modal */}
       <TenantActivationModal
         tenant={activateTenant}
         isOpen={Boolean(activateTenant)}
@@ -752,7 +736,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         }}
       />
 
-      {/* Provision Tenant Modal */}
       <CreateTenantModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -762,7 +745,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         }}
       />
 
-      {/* Manage Admins Modal */}
       <ManageAdminsModal
         isOpen={Boolean(adminTenant)}
         tenant={adminTenant}
@@ -772,7 +754,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         }}
       />
 
-      {/* Update Mailbox Quota Modal */}
       <UpdateQuotaModal
         isOpen={Boolean(quotaTenant)}
         tenant={quotaTenant}
@@ -785,65 +766,63 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
       {/* 2FA Setup Modal */}
       {show2FaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-quartz-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-xl border border-quartz-200 shadow-2xl max-w-md w-full overflow-hidden text-xs">
-            <div className="px-6 py-4 border-b border-quartz-200 flex items-center justify-between bg-quartz-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden text-xs">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-quartz-900 text-white flex items-center justify-center">
-                  <QrCode size={16} />
+                <div className="h-7 w-7 rounded-md bg-indigo-600 text-white flex items-center justify-center">
+                  <QrCode size={15} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-quartz-900 text-xs uppercase tracking-wider">
+                  <h3 className="font-bold text-slate-900 text-xs">
                     Two-Factor Authentication
                   </h3>
-                  <p className="text-[11px] text-quartz-500">Enhance platform operator security</p>
+                  <p className="text-[11px] text-slate-500">Enhance operator security</p>
                 </div>
               </div>
               <button
                 onClick={() => setShow2FaModal(false)}
-                className="text-quartz-400 hover:text-quartz-700"
+                className="text-slate-400 hover:text-slate-600"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-4">
               {setup2FaError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded text-rose-700 text-xs">
-                  {setup2FaError}
-                </div>
+                <Alert type="error" message={setup2FaError} />
               )}
 
               {setup2FaSuccess ? (
                 <div className="text-center py-6 space-y-2">
-                  <CheckCircle2 size={42} className="text-emerald-600 mx-auto" />
-                  <div className="font-bold text-quartz-900 text-sm">2FA Successfully Enabled</div>
-                  <p className="text-quartz-500 text-xs">
-                    Your Super Admin account is now secured with TOTP verification.
+                  <CheckCircle2 size={40} className="text-emerald-600 mx-auto" />
+                  <div className="font-bold text-slate-900 text-sm">2FA Successfully Enabled</div>
+                  <p className="text-slate-500 text-xs">
+                    Your account is now secured with TOTP verification.
                   </p>
                 </div>
               ) : setup2FaLoading && !setupData ? (
-                <div className="text-center py-10 text-quartz-500 text-xs">
+                <div className="text-center py-8 text-slate-500 text-xs">
                   Generating authentication secret...
                 </div>
               ) : setupData ? (
                 <form onSubmit={handleConfirm2Fa} className="space-y-4">
-                  <p className="text-quartz-600">
+                  <p className="text-slate-600">
                     1. Scan this QR code with your authenticator app (Google Authenticator, 1Password, etc.):
                   </p>
-                  <div className="bg-white p-3 border border-quartz-200 rounded-lg flex items-center justify-center">
+                  <div className="bg-white p-3 border border-slate-200 rounded-lg flex items-center justify-center">
                     <img
                       src={setupData.qrCodeDataUrl}
                       alt="2FA QR Code"
-                      className="w-44 h-44 block"
+                      className="w-40 h-40 block"
                     />
                   </div>
-                  <div className="bg-quartz-50 p-2.5 rounded border border-quartz-200 text-center font-mono text-[11px] text-quartz-700 select-all">
+                  <div className="bg-slate-50 p-2 rounded border border-slate-200 text-center font-mono text-[11px] text-slate-700 select-all">
                     Key: <strong>{setupData.secret}</strong>
                   </div>
 
                   <div>
-                    <label className="block font-medium text-quartz-700 mb-1">
+                    <label className="field-label mb-1">
                       2. Enter the 6-digit verification code:
                     </label>
                     <input
@@ -852,25 +831,30 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
                       placeholder="123456"
                       value={totpCode}
                       onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-white border border-quartz-200 rounded-lg px-3 py-2 text-center text-base font-mono tracking-widest text-quartz-900 focus:border-quartz-900 focus:outline-none"
+                      className="form-input text-center text-base font-mono tracking-widest"
                     />
                   </div>
 
                   <div className="flex gap-2 pt-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
+                      size="md"
                       onClick={() => setShow2FaModal(false)}
-                      className="flex-1 py-2 bg-white border border-quartz-200 hover:bg-quartz-50 rounded-lg text-xs font-medium text-quartz-700 transition"
+                      className="flex-1"
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="submit"
+                      variant="primary"
+                      size="md"
                       disabled={setup2FaLoading || totpCode.length !== 6}
-                      className="flex-1 py-2 bg-quartz-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition shadow-xs"
+                      loading={setup2FaLoading}
+                      className="flex-1"
                     >
-                      {setup2FaLoading ? 'Verifying...' : 'Enable 2FA'}
-                    </button>
+                      Enable 2FA
+                    </Button>
                   </div>
                 </form>
               ) : null}

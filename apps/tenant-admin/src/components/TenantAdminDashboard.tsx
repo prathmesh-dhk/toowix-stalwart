@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { TenantSummary, MailboxItem, AuditItem, UserContext } from '../types';
+import toowixLogo from '../assets/toowix-logo.svg';
+import { Button } from './ui/Button';
+import { StatusBadge } from './ui/StatusBadge';
 
 interface TenantAdminDashboardProps {
   user?: UserContext | null;
@@ -266,7 +269,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8fafc]">
         <div className="flex flex-col items-center gap-3 text-slate-500">
-          <span className="material-symbols-outlined text-[32px] animate-spin text-[#1a73e8]">
+          <span className="material-symbols-outlined text-[32px] animate-spin text-indigo-600">
             progress_activity
           </span>
           <span className="text-xs font-medium">Loading workspace...</span>
@@ -286,15 +289,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           <div className="flex items-center gap-6">
             {/* Brand */}
             <div className="flex items-center gap-3 w-56">
-              <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white shadow-xs">
-                <span className="material-symbols-outlined text-[19px]">mail</span>
-              </div>
+              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
               <div className="flex flex-col">
                 <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight">
                   TOOWIX MAIL
                 </span>
                 <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-                  Tenant Console
+                  Admin Console
                 </span>
               </div>
             </div>
@@ -338,7 +339,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
               title="Open Webmail Client"
             >
-              <span className="material-symbols-outlined text-[16px] text-[#1a73e8]">open_in_new</span>
+              <span className="material-symbols-outlined text-[16px] text-indigo-600">open_in_new</span>
               <span>Webmail</span>
             </a>
 
@@ -352,7 +353,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   {adminEmail}
                 </span>
                 <span className="text-[11px] text-slate-400 font-normal leading-tight">
-                  Tenant Administrator
+                  Administrator
                 </span>
               </div>
             </div>
@@ -380,11 +381,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             {/* Dashboard */}
             <button
               onClick={() => setActiveNav('dashboard')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-left w-full ${
-                activeNav === 'dashboard'
-                  ? 'bg-blue-50 text-[#1a73e8]'
+              className={`flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-left w-full ${activeNav === 'dashboard'
+                  ? 'bg-indigo-50 text-indigo-600'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 <span className="material-symbols-outlined text-[18px]">dashboard</span>
@@ -395,17 +395,15 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             {/* Mailboxes with dynamic Count Badge */}
             <button
               onClick={() => setActiveNav('mailboxes')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
-                activeNav === 'mailboxes'
-                  ? 'bg-blue-50 text-[#1a73e8] font-semibold'
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'mailboxes'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 <span
-                  className={`material-symbols-outlined text-[18px] ${
-                    activeNav === 'mailboxes' ? 'text-[#1a73e8]' : 'text-slate-400'
-                  }`}
+                  className={`material-symbols-outlined text-[18px] ${activeNav === 'mailboxes' ? 'text-indigo-600' : 'text-slate-400'
+                    }`}
                 >
                   mail
                 </span>
@@ -419,17 +417,15 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             {/* Audit Log */}
             <button
               onClick={() => setActiveNav('audit')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
-                activeNav === 'audit'
-                  ? 'bg-blue-50 text-[#1a73e8] font-semibold'
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'audit'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 <span
-                  className={`material-symbols-outlined text-[18px] ${
-                    activeNav === 'audit' ? 'text-[#1a73e8]' : 'text-slate-400'
-                  }`}
+                  className={`material-symbols-outlined text-[18px] ${activeNav === 'audit' ? 'text-indigo-600' : 'text-slate-400'
+                    }`}
                 >
                   receipt_long
                 </span>
@@ -440,17 +436,15 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             {/* Admin Security / Domain & DNS */}
             <button
               onClick={() => setActiveNav('security')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
-                activeNav === 'security'
-                  ? 'bg-blue-50 text-[#1a73e8] font-semibold'
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'security'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 <span
-                  className={`material-symbols-outlined text-[18px] ${
-                    activeNav === 'security' ? 'text-[#1a73e8]' : 'text-slate-400'
-                  }`}
+                  className={`material-symbols-outlined text-[18px] ${activeNav === 'security' ? 'text-indigo-600' : 'text-slate-400'
+                    }`}
                 >
                   shield
                 </span>
@@ -517,7 +511,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
                 <div className="flex flex-col gap-1">
                   <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                    Tenant Overview
+                    Admin Overview
                   </h1>
                   <p className="text-xs text-slate-500 font-normal">
                     Organization mail services for{' '}
@@ -525,22 +519,21 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <button
+                  <Button
                     disabled={isSuspended || usagePercent >= 100}
                     onClick={handleOpenCreateModal}
-                    className={`px-4 py-2 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 ${
-                      isSuspended || usagePercent >= 100 ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                    size="sm"
+                    icon={<span className="material-symbols-outlined text-[16px]">add</span>}
                   >
-                    <span className="material-symbols-outlined text-[16px]">add</span>
-                    <span>Create mailbox</span>
-                  </button>
-                  <button
+                    Create mailbox
+                  </Button>
+                  <Button
                     onClick={() => setActiveNav('mailboxes')}
-                    className="px-3.5 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg text-xs font-medium transition-colors"
+                    variant="secondary"
+                    size="sm"
                   >
                     View mailboxes
-                  </button>
+                  </Button>
                 </div>
               </section>
 
@@ -570,13 +563,12 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          usagePercent >= 90
+                        className={`h-full rounded-full transition-all duration-500 ${usagePercent >= 90
                             ? 'bg-rose-500'
                             : usagePercent >= 75
-                            ? 'bg-amber-500'
-                            : 'bg-[#1a73e8]'
-                        }`}
+                              ? 'bg-amber-500'
+                          : 'bg-indigo-600'
+                          }`}
                         style={{ width: `${usagePercent}%` }}
                       ></div>
                     </div>
@@ -593,20 +585,15 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                       Operational Health
                     </span>
                     <span
-                      className={`material-symbols-outlined text-[18px] ${
-                        isSuspended ? 'text-rose-600' : 'text-emerald-600'
-                      }`}
+                      className={`material-symbols-outlined text-[18px] ${isSuspended ? 'text-rose-600' : 'text-emerald-600'
+                        }`}
                     >
                       verified
                     </span>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          isSuspended ? 'bg-rose-500' : 'bg-emerald-500'
-                        }`}
-                      ></span>
+                      <StatusBadge status={isSuspended ? 'suspended' : 'operational'} label={isSuspended ? 'Suspended' : 'Normal'} />
                       <span className="text-2xl font-semibold text-slate-900">
                         {isSuspended ? 'Suspended' : 'Normal'}
                       </span>
@@ -709,14 +696,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                               <span className="material-symbols-outlined text-[15px]">key</span>
                             </button>
 
-                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  mb.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
-                                }`}
-                              ></span>
-                              <span className="capitalize">{mb.status}</span>
-                            </div>
+                            <StatusBadge status={mb.status} label={mb.status} />
                           </div>
                         </div>
                       ))}
@@ -783,9 +763,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 <button
                   disabled={isSuspended || usagePercent >= 100}
                   onClick={handleOpenCreateModal}
-                  className={`px-4 py-2 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 self-start sm:self-auto ${
-                    isSuspended || usagePercent >= 100 ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
+                  className={`px-4 py-2 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 self-start sm:self-auto ${isSuspended || usagePercent >= 100 ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">add</span>
                   <span>Create mailbox</span>
@@ -854,16 +833,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                           <td className="px-4 py-3 font-mono text-slate-600">{mb.localPart}</td>
                           <td className="px-4 py-3">
                             <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                mb.status === 'active'
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${mb.status === 'active'
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
                                   : 'bg-amber-50 text-amber-700 border border-amber-200/60'
-                              }`}
+                                }`}
                             >
                               <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  mb.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
-                                }`}
+                                className={`w-1.5 h-1.5 rounded-full ${mb.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
+                                  }`}
                               ></span>
                               <span className="capitalize">{mb.status}</span>
                             </span>
@@ -951,11 +928,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                           </td>
                           <td className="px-4 py-3">
                             <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                log.success
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${log.success
                                   ? 'bg-emerald-50 text-emerald-700'
                                   : 'bg-rose-50 text-rose-700'
-                              }`}
+                                }`}
                             >
                               {log.success ? 'Success' : 'Failed'}
                             </span>
@@ -1168,9 +1144,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     title="Copy password to clipboard"
                   >
                     <span
-                      className={`material-symbols-outlined text-[15px] ${
-                        copiedPasswordKey === 'create-modal' ? 'text-emerald-600' : 'text-slate-500'
-                      }`}
+                      className={`material-symbols-outlined text-[15px] ${copiedPasswordKey === 'create-modal' ? 'text-emerald-600' : 'text-slate-500'
+                        }`}
                     >
                       {copiedPasswordKey === 'create-modal' ? 'done' : 'content_copy'}
                     </span>
@@ -1267,9 +1242,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     title="Copy password to clipboard"
                   >
                     <span
-                      className={`material-symbols-outlined text-[15px] ${
-                        copiedPasswordKey === 'reset-modal' ? 'text-emerald-600' : 'text-slate-500'
-                      }`}
+                      className={`material-symbols-outlined text-[15px] ${copiedPasswordKey === 'reset-modal' ? 'text-emerald-600' : 'text-slate-500'
+                        }`}
                     >
                       {copiedPasswordKey === 'reset-modal' ? 'done' : 'content_copy'}
                     </span>

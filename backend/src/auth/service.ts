@@ -92,7 +92,7 @@ export async function generateTotpQrCode(otpauthUrl: string): Promise<string> {
 
 export function verifyTotpCode(secret: string, code: string): boolean {
   try {
-    const result = verifySync({ token: code.trim(), secret });
+    const result = verifySync({ token: code.trim(), secret, epochTolerance: 30 });
     return result?.valid === true;
   } catch {
     return false;

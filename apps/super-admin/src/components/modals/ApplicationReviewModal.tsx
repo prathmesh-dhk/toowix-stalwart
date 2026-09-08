@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { RegistrationApplication } from '../../types';
-import { X, CheckCircle2, XCircle, Building2, Globe, User, Mail, Phone, Calendar, AlertCircle } from 'lucide-react';
+import { X, Building2, Globe, User, Mail, Phone, Calendar } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { Alert } from '../ui/Alert';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface ApplicationReviewModalProps {
   application: RegistrationApplication | null;
@@ -56,189 +59,187 @@ export const ApplicationReviewModal: React.FC<ApplicationReviewModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '640px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+    <div className="modal-backdrop-mock">
+      <div className="modal-card max-w-xl">
+        {/* Header */}
+        <div className="modal-header">
           <div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Review Tenant Application</h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', margin: '4px 0 0 0' }}>
-              Reference ID: <span style={{ fontFamily: 'monospace' }}>#{application._id.slice(-8).toUpperCase()}</span>
+            <h3 className="modal-title">Review Tenant Application</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Reference ID: <span className="font-mono text-slate-700">#{application._id.slice(-8).toUpperCase()}</span>
             </p>
           </div>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 4 }}
+            className="modal-close-btn"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        {error && (
-          <div style={{ background: 'var(--danger-bg)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 14px', borderRadius: 'var(--radius-md)', color: '#fca5a5', marginBottom: '16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <AlertCircle size={16} />
-            <span>{error}</span>
-          </div>
-        )}
+        {/* Body */}
+        <div className="modal-body space-y-4">
+          {error && (
+            <Alert type="error" message={error} onClose={() => setError(null)} />
+          )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {/* Status Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Application Status:</span>
+          {/* Status Row */}
+          <div className="flex items-center justify-between p-3 rounded-md bg-slate-50 border border-slate-200">
+            <span className="text-xs font-medium text-slate-600">Application Status:</span>
             {application.status === 'PENDING_REVIEW' && (
-              <span className="badge badge-warning">Pending Review</span>
+              <StatusBadge status="warning">Pending Review</StatusBadge>
             )}
             {application.status === 'APPROVED' && (
-              <span className="badge badge-success">
-                <CheckCircle2 size={13} /> Approved
-              </span>
+              <StatusBadge status="success">Approved</StatusBadge>
             )}
             {application.status === 'REJECTED' && (
-              <span className="badge badge-danger">
-                <XCircle size={13} /> Rejected
-              </span>
+              <StatusBadge status="danger">Rejected</StatusBadge>
             )}
           </div>
 
-          {/* Organization Details */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <Building2 size={13} /> Organization Name
+          {/* Organization Details Grid */}
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="p-3 bg-white rounded-md border border-slate-200">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-1">
+                <Building2 size={13} /> Organization
               </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)' }}>
+              <div className="font-semibold text-slate-900 text-sm">
                 {application.companyName}
               </div>
             </div>
 
-            <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <div className="p-3 bg-white rounded-md border border-slate-200">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-1">
                 <Globe size={13} /> Requested Domain
               </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--primary-light)', fontFamily: 'monospace' }}>
+              <div className="font-mono font-semibold text-indigo-600 text-sm">
                 {application.requestedDomain}
               </div>
             </div>
 
-            <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <User size={13} /> Applicant Name
+            <div className="p-3 bg-white rounded-md border border-slate-200">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-1">
+                <User size={13} /> Applicant
               </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 500 }}>
+              <div className="font-medium text-slate-900">
                 {application.applicantName}
               </div>
             </div>
 
-            <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <div className="p-3 bg-white rounded-md border border-slate-200">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-1">
                 <Mail size={13} /> Contact Email
               </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 500 }}>
+              <div className="font-medium text-slate-900 truncate">
                 {application.contactEmail}
               </div>
             </div>
 
-            <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <Phone size={13} /> Phone
+            <div className="p-3 bg-white rounded-md border border-slate-200">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-1">
+                <Phone size={13} /> Contact Phone
               </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>
+              <div className="text-slate-800">
                 {application.phone || '—'}
               </div>
             </div>
 
-            <div style={{ padding: '12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <Calendar size={13} /> Submitted Date
+            <div className="p-3 bg-white rounded-md border border-slate-200">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-1">
+                <Calendar size={13} /> Submitted At
               </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>
+              <div className="text-slate-800">
                 {new Date(application.createdAt).toLocaleString()}
               </div>
             </div>
           </div>
 
-          {/* Notes / Context */}
+          {/* Notes */}
           {application.notes && (
-            <div style={{ padding: '12px 14px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '4px' }}>Organization Details / Notes:</div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
-                {application.notes}
-              </div>
+            <div className="p-3 bg-slate-50 rounded-md border border-slate-200 text-xs">
+              <div className="text-[11px] font-semibold text-slate-500 mb-1">Notes / Context:</div>
+              <div className="text-slate-700 leading-relaxed">{application.notes}</div>
             </div>
           )}
 
-          {/* Rejection reason if already rejected */}
+          {/* Rejection Note if already rejected */}
           {application.status === 'REJECTED' && application.rejectionReason && (
-            <div style={{ padding: '12px 14px', background: 'var(--danger-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-              <div style={{ fontSize: '0.75rem', color: '#fca5a5', fontWeight: 600, marginBottom: '4px' }}>Rejection Reason:</div>
-              <div style={{ fontSize: '0.85rem', color: '#fca5a5' }}>{application.rejectionReason}</div>
+            <div className="p-3 bg-red-50 rounded-md border border-red-200 text-xs text-red-800">
+              <div className="font-semibold mb-0.5">Rejection Reason:</div>
+              <div>{application.rejectionReason}</div>
             </div>
           )}
 
-          {/* Rejection input when toggled */}
+          {/* Rejection Input */}
           {showRejectInput && (
-            <form onSubmit={handleConfirmReject} style={{ padding: '14px', background: 'rgba(239, 68, 68, 0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
-              <label className="form-label" style={{ color: '#fca5a5' }}>
+            <form onSubmit={handleConfirmReject} className="p-3.5 bg-red-50/50 rounded-md border border-red-200 space-y-2.5">
+              <label className="field-label text-red-900 mb-1">
                 Reason for Rejection (Required)
               </label>
               <textarea
-                className="form-input"
+                className="form-textarea w-full text-xs"
                 rows={3}
-                placeholder="e.g. Domain registration could not be verified or duplicate organization requested."
+                placeholder="State the reason for rejection (e.g. invalid domain verification or duplicate organization)."
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
                 required
-                style={{ resize: 'vertical', width: '100%', marginBottom: '12px' }}
               />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
                   type="button"
-                  className="btn btn-secondary btn-sm"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setShowRejectInput(false)}
                   disabled={loading}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="btn btn-danger btn-sm"
-                  disabled={loading || !rejectionReason.trim()}
+                  variant="danger"
+                  size="sm"
+                  loading={loading}
+                  disabled={!rejectionReason.trim()}
                 >
-                  {loading ? 'Rejecting...' : 'Confirm Rejection'}
-                </button>
+                  Confirm Rejection
+                </Button>
               </div>
             </form>
           )}
         </div>
 
-        {/* Modal Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-          <button
+        {/* Footer */}
+        <div className="modal-footer">
+          <Button
             type="button"
-            className="btn btn-secondary"
+            variant="secondary"
+            size="md"
             onClick={onClose}
             disabled={loading}
           >
             Close
-          </button>
+          </Button>
 
           {application.status === 'PENDING_REVIEW' && !showRejectInput && (
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
+            <div className="flex gap-2">
+              <Button
                 type="button"
-                className="btn btn-danger"
+                variant="danger"
+                size="md"
                 onClick={() => setShowRejectInput(true)}
                 disabled={loading}
               >
                 Reject
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="primary"
+                size="md"
                 onClick={handleApprove}
-                disabled={loading}
+                loading={loading}
               >
-                {loading ? 'Approving...' : 'Approve Application'}
-              </button>
+                Approve Application
+              </Button>
             </div>
           )}
         </div>

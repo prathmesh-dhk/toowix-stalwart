@@ -32,47 +32,47 @@ const EMPLOYEE_OPTIONS: EmployeeOption[] = [
 ];
 
 const COUNTRY_CODES = [
-  { code: '+1',   label: 'US / CA', flag: '🇺🇸' },
-  { code: '+44',  label: 'GB',      flag: '🇬🇧' },
-  { code: '+91',  label: 'IN',      flag: '🇮🇳' },
-  { code: '+61',  label: 'AU',      flag: '🇦🇺' },
-  { code: '+49',  label: 'DE',      flag: '🇩🇪' },
-  { code: '+33',  label: 'FR',      flag: '🇫🇷' },
-  { code: '+81',  label: 'JP',      flag: '🇯🇵' },
-  { code: '+86',  label: 'CN',      flag: '🇨🇳' },
-  { code: '+55',  label: 'BR',      flag: '🇧🇷' },
-  { code: '+52',  label: 'MX',      flag: '🇲🇽' },
-  { code: '+34',  label: 'ES',      flag: '🇪🇸' },
-  { code: '+39',  label: 'IT',      flag: '🇮🇹' },
-  { code: '+7',   label: 'RU',      flag: '🇷🇺' },
-  { code: '+82',  label: 'KR',      flag: '🇰🇷' },
-  { code: '+65',  label: 'SG',      flag: '🇸🇬' },
-  { code: '+971', label: 'AE',      flag: '🇦🇪' },
-  { code: '+966', label: 'SA',      flag: '🇸🇦' },
-  { code: '+27',  label: 'ZA',      flag: '🇿🇦' },
-  { code: '+234', label: 'NG',      flag: '🇳🇬' },
-  { code: '+62',  label: 'ID',      flag: '🇮🇩' },
-  { code: '+60',  label: 'MY',      flag: '🇲🇾' },
-  { code: '+63',  label: 'PH',      flag: '🇵🇭' },
-  { code: '+66',  label: 'TH',      flag: '🇹🇭' },
-  { code: '+84',  label: 'VN',      flag: '🇻🇳' },
-  { code: '+20',  label: 'EG',      flag: '🇪🇬' },
-  { code: '+31',  label: 'NL',      flag: '🇳🇱' },
-  { code: '+46',  label: 'SE',      flag: '🇸🇪' },
-  { code: '+47',  label: 'NO',      flag: '🇳🇴' },
-  { code: '+45',  label: 'DK',      flag: '🇩🇰' },
-  { code: '+41',  label: 'CH',      flag: '🇨🇭' },
-  { code: '+32',  label: 'BE',      flag: '🇧🇪' },
-  { code: '+48',  label: 'PL',      flag: '🇵🇱' },
-  { code: '+90',  label: 'TR',      flag: '🇹🇷' },
-  { code: '+92',  label: 'PK',      flag: '🇵🇰' },
-  { code: '+880', label: 'BD',      flag: '🇧🇩' },
-  { code: '+94',  label: 'LK',      flag: '🇱🇰' },
-  { code: '+64',  label: 'NZ',      flag: '🇳🇿' },
-  { code: '+54',  label: 'AR',      flag: '🇦🇷' },
-  { code: '+56',  label: 'CL',      flag: '🇨🇱' },
-  { code: '+57',  label: 'CO',      flag: '🇨🇴' },
-  { code: '+51',  label: 'PE',      flag: '🇵🇪' },
+  { code: '+1', label: 'US / CA', flag: '🇺🇸' },
+  { code: '+44', label: 'GB', flag: '🇬🇧' },
+  { code: '+91', label: 'IN', flag: '🇮🇳' },
+  { code: '+61', label: 'AU', flag: '🇦🇺' },
+  { code: '+49', label: 'DE', flag: '🇩🇪' },
+  { code: '+33', label: 'FR', flag: '🇫🇷' },
+  { code: '+81', label: 'JP', flag: '🇯🇵' },
+  { code: '+86', label: 'CN', flag: '🇨🇳' },
+  { code: '+55', label: 'BR', flag: '🇧🇷' },
+  { code: '+52', label: 'MX', flag: '🇲🇽' },
+  { code: '+34', label: 'ES', flag: '🇪🇸' },
+  { code: '+39', label: 'IT', flag: '🇮🇹' },
+  { code: '+7', label: 'RU', flag: '🇷🇺' },
+  { code: '+82', label: 'KR', flag: '🇰🇷' },
+  { code: '+65', label: 'SG', flag: '🇸🇬' },
+  { code: '+971', label: 'AE', flag: '🇦🇪' },
+  { code: '+966', label: 'SA', flag: '🇸🇦' },
+  { code: '+27', label: 'ZA', flag: '🇿🇦' },
+  { code: '+234', label: 'NG', flag: '🇳🇬' },
+  { code: '+62', label: 'ID', flag: '🇮🇩' },
+  { code: '+60', label: 'MY', flag: '🇲🇾' },
+  { code: '+63', label: 'PH', flag: '🇵🇭' },
+  { code: '+66', label: 'TH', flag: '🇹🇭' },
+  { code: '+84', label: 'VN', flag: '🇻🇳' },
+  { code: '+20', label: 'EG', flag: '🇪🇬' },
+  { code: '+31', label: 'NL', flag: '🇳🇱' },
+  { code: '+46', label: 'SE', flag: '🇸🇪' },
+  { code: '+47', label: 'NO', flag: '🇳🇴' },
+  { code: '+45', label: 'DK', flag: '🇩🇰' },
+  { code: '+41', label: 'CH', flag: '🇨🇭' },
+  { code: '+32', label: 'BE', flag: '🇧🇪' },
+  { code: '+48', label: 'PL', flag: '🇵🇱' },
+  { code: '+90', label: 'TR', flag: '🇹🇷' },
+  { code: '+92', label: 'PK', flag: '🇵🇰' },
+  { code: '+880', label: 'BD', flag: '🇧🇩' },
+  { code: '+94', label: 'LK', flag: '🇱🇰' },
+  { code: '+64', label: 'NZ', flag: '🇳🇿' },
+  { code: '+54', label: 'AR', flag: '🇦🇷' },
+  { code: '+56', label: 'CL', flag: '🇨🇱' },
+  { code: '+57', label: 'CO', flag: '🇨🇴' },
+  { code: '+51', label: 'PE', flag: '🇵🇪' },
 ];
 
 const REGIONS = [
@@ -488,24 +488,22 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                         }}
                       >
                         <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold transition-all ${
-                            isCompleted
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold transition-all ${isCompleted
                               ? 'bg-emerald-600 text-white'
                               : isActive
-                              ? 'bg-[#0f172a] text-white'
-                              : 'bg-gray-100 text-[#64748b]'
-                          }`}
+                                ? 'bg-[#0f172a] text-white'
+                                : 'bg-gray-100 text-[#64748b]'
+                            }`}
                         >
                           {isCompleted ? <Check size={13} strokeWidth={3} /> : item.num}
                         </span>
                         <span
-                          className={`transition-colors ${
-                            isCompleted
+                          className={`transition-colors ${isCompleted
                               ? 'text-emerald-700 font-semibold'
                               : isActive
-                              ? 'text-[#0f172a] font-semibold'
-                              : 'text-[#64748b]'
-                          }`}
+                                ? 'text-[#0f172a] font-semibold'
+                                : 'text-[#64748b]'
+                            }`}
                         >
                           {item.title}
                         </span>
@@ -569,7 +567,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                       <Building2 size={18} className="absolute right-3.5 top-3 text-gray-400 pointer-events-none" />
                     </div>
                     <p className="text-[11px] text-[#64748b] mt-1.5">
-                      Appears on tenant records, billing statements, and notifications.
+                      Appears on organization records, billing statements, and notifications.
                     </p>
                   </div>
 
@@ -584,11 +582,10 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                         return (
                           <label
                             key={opt}
-                            className={`relative flex items-center justify-center p-3 rounded-lg text-xs cursor-pointer transition select-none ${
-                              isSelected
+                            className={`relative flex items-center justify-center p-3 rounded-lg text-xs cursor-pointer transition select-none ${isSelected
                                 ? 'border-2 border-[#0f172a] bg-slate-50 font-semibold text-[#0f172a]'
                                 : 'border border-[#eaedf1] bg-white hover:border-gray-300 font-medium text-[#334155]'
-                            }`}
+                              }`}
                           >
                             <input
                               type="radio"
@@ -764,8 +761,8 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                             {contactCooldown > 0
                               ? `Resend in ${contactCooldown}s`
                               : contactOtpSent
-                              ? 'Resend Code'
-                              : 'Send OTP'}
+                                ? 'Resend Code'
+                                : 'Send OTP'}
                           </span>
                         </button>
                       )}
@@ -1066,8 +1063,8 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                             {recoveryCooldown > 0
                               ? `Resend in ${recoveryCooldown}s`
                               : recoveryOtpSent
-                              ? 'Resend Code'
-                              : 'Send Code'}
+                                ? 'Resend Code'
+                                : 'Send Code'}
                           </span>
                         </button>
                       )}
@@ -1315,7 +1312,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                   <div className="flex justify-between items-center pb-2 border-b border-[#eaedf1]">
                     <span className="text-[#64748b] font-medium">Reference Code</span>
                     <span className="font-mono text-[#0f172a] font-semibold">
-                      {submittedApp ? `#TENANT-${submittedApp.id.slice(-6).toUpperCase()}` : '#TENANT-89241-US'}
+                      {submittedApp ? `#ADMIN-${submittedApp.id.slice(-6).toUpperCase()}` : '#ADMIN-89241-US'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center pt-1">
