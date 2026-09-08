@@ -1,0 +1,163 @@
+version: '3.8'
+
+services:
+  # 1. MongoDB 7.0 - Single Source of Truth for Tenancy, Quotas, and Auth
+  mongodb:
+    image: mongo:7.0
+    container_name: toowix-prod-mongodb
+    restart: always
+    volumes:
+      - toowix-prod-mongodata:/data/db
+    networks:
+      - toowix-internal
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --eval 'db.adminCommand(\"ping\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Stalwart Mail Server (Community Edition) - Mail Delivery & Storage Engine Only
+  stalwart:
+    image: stalwartlabs/stalwart:latest
+    container_name: toowix-prod-stalwart
+    restart: always
+    # CRITICAL SECURITY INVARIANT:
+    # Stalwart Management API (8080) is NEVER exposed on host or public network.
+    # It is strictly reachable ONLY on toowix-internal by Toowix Backend.
+    ports:
+      # Public Mail Protocol Ports
+      - "25:25"       # SMTP MX inbound
+      - "587:587"     # SMTP Submission
+      - "465:465"     # SMTPS Submission
+      - "993:993"     # IMAPS
+      - "143:143"     # IMAP (STARTTLS)
+      - "4190:4190"   # ManageSieve
+    volumes:
+      - toowix-prod-stalwart-etc:/etc/stalwart
+      - toowix-prod-stalwart-data:/var/lib/stalwart
+    networks:
+      - toowix-internal
+      - toowix-public
+
+  # 3. Toowix Backend - Multi-Tenant Control Plane & API Service
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: toowix-prod-backend
+    restart: always
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongodb:27017/toowix_mail
+      JWT_SECRET: ${JWT_SECRET}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL}
+      ALERT_EMAIL: ${ALERT_EMAIL}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      STALWART_URL: http://stalwart:8080
+      STALWART_USER: ${STALWART_SERVICE_USER:-toowix-service@toowix.test}
+      STALWART_PASSWORD: ${STALWART_SERVICE_PASSWORD}
+      STALWART_ACCOUNT_ID: ${STALWART_ACCOUNT_ID:-b}
+      ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@toowix.com}
+      ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
+    volumes:
+      - toowix-prod-backups:/usr/src/app/backups
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - toowix-internal
+
+  # 4a. Toowix Super Admin SPA & Reverse Proxy (Nginx)
+  super-admin:
+    build:
+      context: ../apps/super-admin
+      dockerfile: Dockerfile
+    container_name: toowix-prod-super-admin
+    restart: always
+    ports:
+      - "${PORT_ADMIN_HTTP:-5174}:80"
+    depends_on:
+      - backend
+    networks:
+      - toowix-internal
+      - toowix-public
+
+  # 4b. Toowix Tenant Admin & Onboarding SPA & Reverse Proxy (Nginx)
+  tenant-admin:
+    build:
+      context: ../apps/tenant-admin
+      dockerfile: Dockerfile
+    container_name: toowix-prod-tenant-admin
+    restart: always
+    ports:
+      - "${PORT_HTTP:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - toowix-internal
+      - toowix-public
+
+
+  # 5. Bulwark JMAP Webmail (Modern Next.js client for Stalwart)
+  webmail:
+    image: ghcr.io/bulwarkmail/webmail:latest
+    container_name: toowix-prod-webmail
+    restart: always
+    ports:
+      - "${PORT_WEBMAIL:-8888}:3000"
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      JMAP_SERVER_URL: "http://stalwart:8080"
+    volumes:
+      - toowix-prod-bulwark-settings:/app/data/settings
+      - toowix-prod-bulwark-admin:/app/data/admin
+    depends_on:
+      - stalwart
+    networks:
+      - toowix-internal
+      - toowix-public
+
+  # 6. Automated Backup Worker (Scheduled Daily Cron)
+  backup-cron:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: toowix-prod-backup-cron
+    restart: always
+    entrypoint: ["/bin/sh", "-c", "echo '0 2 * * * /usr/src/app/scripts/backup-s3.sh >> /var/log/backup.log 2>&1' > /etc/crontabs/root && crond -f -l 2"]
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/toowix_mail
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+      S3_BUCKET: ${AWS_S3_BUCKET:-toowix-mail-backups}
+      RETENTION_DAYS: 30
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - toowix-prod-backups:/var/backups/toowix
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - toowix-internal
+
+networks:
+  # Strictly internal network: isolates MongoDB and Stalwart Management HTTP (8080)
+  toowix-internal:
+    driver: bridge
+    internal: false
+  # Public facing network for web SPA and inbound mail protocols
+  toowix-public:
+    driver: bridge
+
+volumes:
+  toowix-prod-mongodata:
+  toowix-prod-stalwart-etc:
+  toowix-prod-stalwart-data:
+  toowix-prod-bulwark-settings:
+  toowix-prod-bulwark-admin:
+  toowix-prod-backups:

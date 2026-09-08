@@ -1,0 +1,76 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: toowix-mail-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - toowix-mail-mongodata:/data/db
+    networks:
+      - toowix-internal
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --eval 'db.adminCommand(\"ping\")' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  stalwart:
+    image: stalwartlabs/stalwart:latest
+    container_name: toowix-mail-stalwart
+    restart: unless-stopped
+    ports:
+      # Expose Stalwart Management HTTP / WebUI on host 8090 for Super Admin out-of-band management
+      - "8090:8080"
+      # Expose mail ports (mapped to alternate host ports to avoid conflict in dev)
+      - "2525:25"
+      - "2587:587"
+      - "1993:993"
+      - "1143:143"
+    volumes:
+      - toowix-mail-stalwart-etc:/etc/stalwart
+      - toowix-mail-stalwart-data:/var/lib/stalwart
+    environment:
+      - STALWART_RECOVERY_ADMIN=admin:PlatformAdmin2026!
+    networks:
+      - toowix-internal
+      - toowix-public
+
+  # 3. Bulwark JMAP Webmail (Modern Next.js client for Stalwart)
+  webmail:
+    image: ghcr.io/bulwarkmail/webmail:latest
+    container_name: toowix-mail-webmail
+    restart: unless-stopped
+    command: ["node", "server-proxy.js"]
+    ports:
+      - "8888:3000"
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      # Unified Same-Origin endpoint: Proxies JMAP calls to Stalwart and UI calls to Next.js
+      JMAP_SERVER_URL: "http://localhost:8888"
+      STALWART_INTERNAL_URL: "http://stalwart:8080"
+      SESSION_SECRET: "toowix_bulwark_session_secret_32_chars_min_2026!"
+      COOKIE_SECURE: "false"
+    volumes:
+      - ./bulwark/server-proxy.js:/app/server-proxy.js:ro
+      - toowix-mail-bulwark-settings:/app/data/settings
+      - toowix-mail-bulwark-admin:/app/data/admin
+    depends_on:
+      - stalwart
+    networks:
+      - toowix-internal
+      - toowix-public
+
+networks:
+  toowix-internal:
+    driver: bridge
+  toowix-public:
+    driver: bridge
+
+volumes:
+  toowix-mail-mongodata:
+  toowix-mail-stalwart-etc:
+  toowix-mail-stalwart-data:
+  toowix-mail-bulwark-settings:
+  toowix-mail-bulwark-admin:
