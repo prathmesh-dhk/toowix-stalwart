@@ -66,7 +66,7 @@ export const ApplicationReviewModal: React.FC<ApplicationReviewModalProps> = ({
           <div>
             <h3 className="modal-title">Review Tenant Application</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Reference ID: <span className="font-mono text-slate-700">#{application._id.slice(-8).toUpperCase()}</span>
+              Reference ID: <span className="font-medium text-slate-700">#{application._id.slice(-8).toUpperCase()}</span>
             </p>
           </div>
           <button
@@ -112,7 +112,7 @@ export const ApplicationReviewModal: React.FC<ApplicationReviewModalProps> = ({
               <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-1">
                 <Globe size={13} /> Requested Domain
               </div>
-              <div className="font-mono font-semibold text-indigo-600 text-sm">
+              <div className="font-semibold text-indigo-600 text-sm">
                 {application.requestedDomain}
               </div>
             </div>

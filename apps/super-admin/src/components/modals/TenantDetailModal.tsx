@@ -91,7 +91,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
             <div>
               <h3 className="modal-title">{tenant.name}</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Tenant ID: <span className="font-mono text-slate-700">{tenant.id}</span>
+                Tenant ID: <span className="font-medium text-slate-700">{tenant.id}</span>
               </p>
             </div>
           </div>
@@ -122,7 +122,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
             {/* Quota */}
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div className="text-[11px] text-slate-500 mb-1">Mailbox Quota</div>
-              <div className="font-semibold text-slate-900 text-xs font-mono">
+              <div className="font-semibold text-slate-900 text-xs tabular-nums">
                 {tenant.mailboxCount || 0} / {tenant.mailboxLimit} ({usagePercent}%)
               </div>
               <div className="progress-bar-bg mt-2">
@@ -136,7 +136,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
             {/* Domain */}
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div className="text-[11px] text-slate-500 mb-1">Primary Domain</div>
-              <div className="font-semibold text-indigo-600 text-xs font-mono truncate">
+              <div className="font-semibold text-indigo-600 text-xs truncate">
                 {tenant.domain?.domainName || 'No domain'}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
@@ -149,7 +149,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-900">Assigned Administrators</span>
-              <span className="text-[11px] text-slate-400 font-mono">{admins.length} total</span>
+              <span className="text-[11px] text-slate-400 tabular-nums">{admins.length} total</span>
             </div>
 
             {loadingAdmins ? (
@@ -190,7 +190,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                   placeholder="Min. 8 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="form-input flex-1 h-8 text-xs font-mono"
+                  className="form-input flex-1 h-8 text-xs"
                 />
                 <Button
                   size="sm"

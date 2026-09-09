@@ -39,6 +39,7 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
     vi.spyOn(stalwartClient, 'createAccount').mockImplementation(async (input) => ({
       id: 'mock-acc-' + Math.random().toString(36).substring(7),
       name: input.name,
+      domainId: input.domainId,
       emailAddress: `${input.name}@mock.test`,
     }));
 

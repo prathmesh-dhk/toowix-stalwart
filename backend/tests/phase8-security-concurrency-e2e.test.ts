@@ -38,6 +38,7 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
   let tenantAdminBToken: string;
   let tenantAdminBId: string;
   let mailboxBId: string;
+  let mockDomains: any[] = [];
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
@@ -47,7 +48,7 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
     backupService.setBackupsDir(tempBackupsDir);
 
     // Dynamic Mock Stalwart Primitives
-    const mockDomains: any[] = [
+    mockDomains = [
       { id: 'dom-alpha', name: 'alpha.test', isEnabled: true, createdAt: '2026-01-01T00:00:00Z' },
       { id: 'dom-beta', name: 'beta.test', isEnabled: true, createdAt: '2026-01-01T00:00:00Z' },
     ];
@@ -63,6 +64,11 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       if (idx !== -1) mockDomains.splice(idx, 1);
     });
 
+    vi.spyOn(stalwartClient, 'updateDomainStatus').mockImplementation(async (domainId, isEnabled) => {
+      const dom = mockDomains.find(d => d.id === domainId || d.name === domainId);
+      if (dom) dom.isEnabled = isEnabled;
+    });
+
     vi.spyOn(stalwartClient, 'listDomains').mockImplementation(async () => {
       return [...mockDomains];
     });
@@ -70,6 +76,7 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
     vi.spyOn(stalwartClient, 'createAccount').mockImplementation(async (input) => ({
       id: `acc-${input.name}-${Math.random().toString(36).substring(7)}`,
       name: input.name,
+      domainId: input.domainId,
       emailAddress: `${input.name}@mock.test`,
     }));
 
@@ -77,7 +84,7 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
     vi.spyOn(stalwartClient, 'deleteAccount').mockResolvedValue();
 
     vi.spyOn(stalwartClient, 'listAccounts').mockResolvedValue([
-      { id: 'acc-service', name: 'toowix-service', emailAddress: 'toowix-service@toowix.test' },
+      { id: 'acc-service', name: 'toowix-service', domainId: 'dom-mock', emailAddress: 'toowix-service@toowix.test' },
     ]);
   });
 
@@ -536,6 +543,12 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       expect(lockedOutRes.status).toBe(403);
       expect(lockedOutRes.body.error).toBe('TENANT_SUSPENDED');
 
+      // Verify mailboxes are suspended and Stalwart domain is disabled
+      const suspendedMailbox = await MailboxModel.findOne({ tenantId: newTenantId });
+      expect(suspendedMailbox?.status).toBe('suspended');
+      const suspendedDom = mockDomains.find((d) => d.name === 'waynecorp.test');
+      expect(suspendedDom?.isEnabled).toBe(false);
+
       // -----------------------------------------------------------------------
       // STAGE 10: Super Admin Reactivates Tenant
       // -----------------------------------------------------------------------
@@ -544,6 +557,12 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(reactivateRes.status).toBe(200);
+
+      // Verify mailboxes are active and Stalwart domain is enabled
+      const activeMailbox = await MailboxModel.findOne({ tenantId: newTenantId });
+      expect(activeMailbox?.status).toBe('active');
+      const activeDom = mockDomains.find((d) => d.name === 'waynecorp.test');
+      expect(activeDom?.isEnabled).toBe(true);
 
       // Verify access restored: tenant is active and mailbox creation works
       const restoredRes = await request(app)

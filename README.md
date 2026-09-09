@@ -140,5 +140,5 @@ docker compose -f deploy/docker-compose.prod.yml up -d --build
 | Role | Email | Password |
 |---|---|---|
 | **Platform Administrator** | `admin@toowix.com` | `PlatformAdmin2026!` |
-| **Stalwart Master Admin** | `admin@toowix.test` | Configured during installation |
+| **Stalwart Master Admin** | `admin@toowix.test` | wzo1tYSEbJA6UJF6 |
 | **Stalwart Backend Service Principal** | `toowix-service@toowix.test` | Configured in `deploy/stalwart-bootstrap/` |

@@ -59,7 +59,17 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
   }, [logs, roleFilter, searchQuery]);
 
   return (
-    <div className="space-y-4">
+    <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
+      {/* Top Header & Context */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-900">Platform Audit Trail</h2>
+          <p className="text-xs text-slate-500">
+            Immutable cluster-wide log of security events, administrative changes, and tenant provisioning actions
+          </p>
+        </div>
+      </div>
+
       {/* Top Filter Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Role Filter Segmented Control */}
@@ -105,7 +115,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
             }`}
           >
             <span>Tenant Admin</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 font-semibold">
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60 font-semibold">
               {tenantAdminCount}
             </span>
           </button>
@@ -135,7 +145,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
               placeholder="Search action, actor, resource..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="form-input pl-9 h-9 text-xs"
+              className="w-full pl-9 pr-4 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
             />
           </div>
 
@@ -208,14 +218,14 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
                           <div className="text-xs text-slate-800">
                             {new Date(log.timestamp).toLocaleDateString()}
                           </div>
-                          <div className="text-[11px] text-slate-400 font-mono">
+                          <div className="text-[11px] text-slate-400 tabular-nums">
                             {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </div>
                         </td>
 
                         {/* Action */}
                         <td>
-                          <span className="font-semibold text-xs font-mono text-slate-900">
+                          <span className="font-semibold text-xs text-slate-900">
                             {log.action}
                           </span>
                         </td>
@@ -223,7 +233,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
                         {/* Actor & Role */}
                         <td>
                           <div className="flex flex-col text-xs">
-                            <span className="text-slate-800 font-mono text-[11px]">
+                            <span className="text-slate-800 text-[11px]">
                               {log.actor_id || 'system'}
                             </span>
                             <span className="text-[10px] text-slate-400 uppercase font-medium">
@@ -234,7 +244,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
 
                         {/* Resource */}
                         <td>
-                          <div className="flex flex-col text-xs font-mono">
+                          <div className="flex flex-col text-xs">
                             <span className="text-indigo-600 font-medium text-[11px]">
                               {log.resource || '—'}
                             </span>
@@ -276,6 +286,6 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 };

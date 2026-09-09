@@ -5,24 +5,28 @@ export interface UserContext {
   id: string;
   email: string;
   role: AdminRole;
-  tenantId: string | null;
+  tenantId?: string | null;
   twoFactorEnabled?: boolean;
 }
 
 export interface RegistrationApplication {
-  _id: string;
+  _id?: string;
+  id?: string;
   companyName: string;
   requestedDomain: string;
   applicantName: string;
   contactEmail: string;
+  employeeCount?: string | null;
+  region?: string | null;
   phone?: string | null;
   notes?: string | null;
   status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
   reviewedBy?: { _id: string; email: string } | string | null;
   reviewedAt?: string | null;
   rejectionReason?: string | null;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  submittedAt?: string;
 }
 
 export interface TenantSummary {
@@ -35,7 +39,7 @@ export interface TenantSummary {
   domain: {
     id: string;
     domainName: string;
-    stalwartDomainId: string | null;
+    stalwartDomainId?: string | null;
     status: string;
   } | null;
   mailboxCount: number;
@@ -84,3 +88,15 @@ export interface SystemMetrics {
     mailboxes: { total: number; active: number; provisioning: number; failed: number };
   };
 }
+
+export interface SessionItem {
+  sessionId: string;
+  deviceType: 'desktop' | 'mobile' | 'tablet' | 'unknown';
+  browser: string;
+  os: string;
+  ipAddress: string;
+  lastActiveAt: string;
+  createdAt: string;
+  isCurrent: boolean;
+}
+

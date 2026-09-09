@@ -45,7 +45,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, childre
     dotClass = 'yellow';
   } else if (['new', 'info'].includes(normalized)) {
     badgeClass = 'badge-new';
-    dotClass = 'blue';
+    dotClass = 'indigo';
   } else if (['rejected', 'error', 'failed', 'danger'].includes(normalized)) {
     badgeClass = 'badge-rejected';
     dotClass = 'red';

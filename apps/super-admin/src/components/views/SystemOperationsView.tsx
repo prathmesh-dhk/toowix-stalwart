@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Server,
   Database,
@@ -17,6 +17,7 @@ import {
   IntegrityCheckResult,
   DriftReport,
   SystemMetrics,
+  MailLimitConfig,
 } from '../../types';
 import { api } from '../../api';
 import { Button } from '../ui/Button';
@@ -47,6 +48,15 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
   const [verifyingBackupId, setVerifyingBackupId] = useState<string | null>(null);
   const [verificationModalResult, setVerificationModalResult] = useState<IntegrityCheckResult | null>(null);
   const [deletingBackupId, setDeletingBackupId] = useState<string | null>(null);
+
+  const [mailLimits, setMailLimits] = useState<MailLimitConfig>({
+    attachmentSizeMb: 5,
+    messageSizeMb: 6,
+    maxMailboxDepth: 10,
+    maxMailboxNameLength: 255,
+  });
+  const [savingMailLimits, setSavingMailLimits] = useState(false);
+  const [mailLimitsLoaded, setMailLimitsLoaded] = useState(false);
 
   // Drift Repair State
   const [repairingQuota, setRepairingQuota] = useState(false);
@@ -128,6 +138,41 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
     }
   };
 
+  const handleLoadMailLimits = async () => {
+    try {
+      const limits = await api.getMailLimits();
+      setMailLimits({
+        attachmentSizeMb: Number(limits.attachmentSizeMb ?? 5),
+        messageSizeMb: Number(limits.messageSizeMb ?? 6),
+        maxMailboxDepth: Number(limits.maxMailboxDepth ?? 10),
+        maxMailboxNameLength: Number(limits.maxMailboxNameLength ?? 255),
+      });
+      setMailLimitsLoaded(true);
+    } catch (err: any) {
+      onShowAlert('error', err.message || 'Failed to load global email limits.');
+    }
+  };
+
+  const handleSaveMailLimits = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingMailLimits(true);
+    try {
+      const res = await api.updateMailLimits(mailLimits);
+      setMailLimits(res.config);
+      onShowAlert('success', res.message || 'Mail limits updated successfully.');
+    } catch (err: any) {
+      onShowAlert('error', err.message || 'Failed to update global email limits.');
+    } finally {
+      setSavingMailLimits(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mailLimitsLoaded) {
+      void handleLoadMailLimits();
+    }
+  }, [mailLimitsLoaded]);
+
   const mongo = healthDetails?.services?.mongodb;
   const stalwart = healthDetails?.services?.stalwart;
   const system = healthDetails?.system;
@@ -150,30 +195,40 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
   const hasQuotaDrift = quotaDiscrepancyCount > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-8">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            System Operations
+          </h1>
+          <p className="text-xs text-slate-500 font-normal">
+            Cluster health diagnostics, state synchronization engine, and automated backup management
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onRefreshAll}
+          disabled={loading}
+          icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
+        >
+          Refresh Diagnostics
+        </Button>
+      </div>
+
       {/* 1. Core Services Telemetry Grid */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Server size={17} className="text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-900">
-              Core Infrastructure Health
-            </h3>
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={onRefreshAll}
-            disabled={loading}
-          >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh Diagnostics</span>
-          </Button>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Server size={17} className="text-indigo-600" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Core Infrastructure Health
+          </h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* MongoDB Health Card */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-md bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
@@ -192,7 +247,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-400">Ping Latency:</span>
-                <span className="font-semibold text-slate-800 font-mono">
+                <span className="font-semibold text-slate-800 tabular-nums">
                   {mongo?.pingMs !== undefined ? `${mongo.pingMs} ms` : 'N/A'}
                 </span>
               </div>
@@ -211,7 +266,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
           </div>
 
           {/* Stalwart Mail Card */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-100">
@@ -219,7 +274,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                 </div>
                 <div>
                   <div className="font-semibold text-xs text-slate-900">Stalwart Mail Engine</div>
-                  <div className="text-[11px] text-slate-400 font-mono">
+                  <div className="text-[11px] text-slate-400">
                     {stalwart?.edition || metrics?.stalwart?.edition || 'v0.8.0'}
                   </div>
                 </div>
@@ -232,19 +287,19 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-400">Engine Latency:</span>
-                <span className="font-semibold text-slate-800 font-mono">
+                <span className="font-semibold text-slate-800 tabular-nums">
                   {stalwart?.latencyMs !== undefined ? `${stalwart.latencyMs} ms` : 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Mail Queue Depth:</span>
-                <span className="font-semibold text-slate-800 font-mono">
+                <span className="font-semibold text-slate-800 tabular-nums">
                   {stalwart?.queueDepth ?? 0} messages
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Server Locale:</span>
-                <span className="text-slate-700 font-mono">
+                <span className="text-slate-700">
                   {stalwart?.locale || metrics?.stalwart?.locale || 'en_US'}
                 </span>
               </div>
@@ -252,7 +307,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
           </div>
 
           {/* Runtime Card */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-md bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100">
@@ -260,12 +315,12 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                 </div>
                 <div>
                   <div className="font-semibold text-xs text-slate-900">Host Runtime</div>
-                  <div className="text-[11px] text-slate-400 font-mono">
+                  <div className="text-[11px] text-slate-400">
                     Node {system?.nodeVersion || 'v20.x'} · {system?.platform || 'win32'}
                   </div>
                 </div>
               </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+              <span className="text-[11px] font-medium tabular-nums px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                 {formatUptime(system?.uptimeSeconds)}
               </span>
             </div>
@@ -273,19 +328,19 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-400">Memory (Heap):</span>
-                <span className="font-semibold text-slate-800 font-mono">
+                <span className="font-semibold text-slate-800 tabular-nums">
                   {system?.memoryUsage?.heapUsedMb ? `${system.memoryUsage.heapUsedMb} MB` : 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Memory (RSS):</span>
-                <span className="text-slate-700 font-mono">
+                <span className="text-slate-700 tabular-nums">
                   {system?.memoryUsage?.rssMb ? `${system.memoryUsage.rssMb} MB` : 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Eval Speed:</span>
-                <span className="text-slate-700 font-mono">
+                <span className="text-slate-700 tabular-nums">
                   {healthDetails?.evaluationTimeMs !== undefined ? `${healthDetails.evaluationTimeMs} ms` : 'N/A'}
                 </span>
               </div>
@@ -294,13 +349,85 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
         </div>
       </div>
 
-      {/* 2. State Drift & Reconciliation Engine */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
+      {/* 2. Mail Limit Configuration */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Server size={17} className="text-indigo-600" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Mail Limits
+          </h3>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+          <form onSubmit={handleSaveMailLimits} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <label className="field-label">Attachment Size</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={1}
+                    value={mailLimits.attachmentSizeMb}
+                    onChange={(e) => setMailLimits((prev) => ({ ...prev, attachmentSizeMb: Number(e.target.value || 1) }))}
+                    className="form-input pr-12"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 font-medium">MB</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="field-label">Email Message Size</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={1}
+                    value={mailLimits.messageSizeMb}
+                    onChange={(e) => setMailLimits((prev) => ({ ...prev, messageSizeMb: Number(e.target.value || 1) }))}
+                    className="form-input pr-12"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 font-medium">MB</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="field-label">Mailbox Depth</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={mailLimits.maxMailboxDepth}
+                  onChange={(e) => setMailLimits((prev) => ({ ...prev, maxMailboxDepth: Number(e.target.value || 1) }))}
+                  className="form-input"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="field-label">Mailbox Name Length</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={mailLimits.maxMailboxNameLength}
+                  onChange={(e) => setMailLimits((prev) => ({ ...prev, maxMailboxNameLength: Number(e.target.value || 1) }))}
+                  className="form-input"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button type="submit" variant="primary" size="md" loading={savingMailLimits}>
+                Save Mail Limits
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* 3. State Drift & Reconciliation Engine */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Layers size={17} className="text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-900">
-              State Drift & Reconciliation Engine
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              State Drift &amp; Reconciliation Engine
             </h3>
           </div>
           {hasQuotaDrift && (
@@ -316,7 +443,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
           )}
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs">
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
           {!driftReport ? (
             <div className="text-slate-400 text-xs text-center py-4">
               Reconciliation diagnostics not loaded.
@@ -327,7 +454,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                 {/* Domain Drift */}
                 <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="text-[11px] text-slate-500 mb-1">Domain Drift</div>
-                  <div className={`text-lg font-bold font-mono ${hasDomainDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  <div className={`text-lg font-bold ${hasDomainDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {!hasDomainDrift ? 'Synchronized' : 'Discrepancy'}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">
@@ -338,7 +465,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                 {/* Mailbox Drift */}
                 <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="text-[11px] text-slate-500 mb-1">Mailbox Account Drift</div>
-                  <div className={`text-lg font-bold font-mono ${hasMailboxDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  <div className={`text-lg font-bold ${hasMailboxDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {!hasMailboxDrift ? 'Synchronized' : 'Discrepancy'}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">
@@ -349,7 +476,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                 {/* Quota Drift */}
                 <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="text-[11px] text-slate-500 mb-1">Tenant Quota Drift</div>
-                  <div className={`text-lg font-bold font-mono ${hasQuotaDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  <div className={`text-lg font-bold ${hasQuotaDrift ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {!hasQuotaDrift ? 'Synchronized' : `${quotaDiscrepancyCount} Inconsistent`}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">
@@ -368,7 +495,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                     {quotaDiscrepancies.map((qd) => (
                       <div key={qd.tenantId} className="flex justify-between text-slate-700">
                         <span><strong>{qd.tenantName}</strong> (ID: {qd.tenantId.slice(-6)})</span>
-                        <span className="text-slate-500 font-mono">
+                        <span className="text-slate-500 tabular-nums">
                           Cached: {qd.recordedMailboxCount} → Actual in DB: {qd.actualActiveMailboxes} (Delta: {qd.recordedMailboxCount - qd.actualActiveMailboxes})
                         </span>
                       </div>
@@ -382,11 +509,11 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
       </div>
 
       {/* 3. Database Backup Engine */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <HardDrive size={17} className="text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-900">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Database Backup Engine
             </h3>
           </div>
@@ -430,14 +557,14 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                           <span className="font-semibold text-slate-900 text-xs">
                             {b.filename}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-400 tabular-nums">
                             SHA-256: {b.checksumSha256.slice(0, 16)}...
                           </span>
                         </div>
                       </td>
 
                       <td>
-                        <span className="text-xs font-mono text-slate-800">
+                        <span className="text-xs text-slate-800 tabular-nums">
                           {formatBytes(b.sizeBytes)}
                         </span>
                       </td>
@@ -452,7 +579,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
                       </td>
 
                       <td>
-                        <div className="text-xs text-slate-600 font-mono">
+                        <div className="text-xs text-slate-600">
                           {b.documentCounts?.tenants || 0} tenants · {b.documentCounts?.mailboxes || 0} mailboxes · {b.documentCounts?.auditLogs || 0} logs
                         </div>
                       </td>
@@ -498,7 +625,7 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
             <div className="modal-header">
               <div>
                 <h3 className="modal-title">Archive Verification</h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-mono">{verificationModalResult.filename}</p>
+                <p className="text-xs text-slate-500 mt-0.5 truncate">{verificationModalResult.filename}</p>
               </div>
               <button
                 onClick={() => setVerificationModalResult(null)}
@@ -519,13 +646,13 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Checksum Check:</span>
-                  <span className="font-mono text-slate-800 text-[11px]">
+                  <span className="font-medium text-slate-800 text-[11px]">
                     {verificationModalResult.checksumVerified ? 'SHA-256 Passed' : 'Failed'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Document Counts:</span>
-                  <span className="font-mono text-slate-800 text-[11px]">
+                  <span className="font-medium text-slate-800 text-[11px] tabular-nums">
                     {verificationModalResult.documentCounts?.tenants ?? 0} tenants, {verificationModalResult.documentCounts?.mailboxes ?? 0} mailboxes
                   </span>
                 </div>

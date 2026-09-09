@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { TenantSummary } from '../../types';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
+import { QuotaTierSelector } from '../ui/QuotaTierSelector';
 
 interface UpdateQuotaModalProps {
   isOpen: boolean;
@@ -66,7 +67,7 @@ export const UpdateQuotaModal: React.FC<UpdateQuotaModalProps> = ({
             </div>
             <div>
               <h3 className="modal-title">Adjust Mailbox Quota</h3>
-              <p className="text-xs text-slate-500 mt-0.5 font-mono">
+              <p className="text-xs text-slate-500 mt-0.5">
                 {tenant.name} · {tenant.domain?.domainName || 'No Domain'}
               </p>
             </div>
@@ -86,32 +87,22 @@ export const UpdateQuotaModal: React.FC<UpdateQuotaModalProps> = ({
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500">Currently Provisioned:</span>
-                <span className="font-semibold text-slate-800 font-mono">{currentUsage} mailboxes</span>
+                <span className="font-semibold text-slate-800 tabular-nums">{currentUsage} mailboxes</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Current Upper Limit:</span>
-                <span className="font-mono text-slate-600">{tenant.mailboxLimit}</span>
+                <span className="text-slate-600 tabular-nums font-medium">{tenant.mailboxLimit}</span>
               </div>
             </div>
 
-            <div>
-              <label className="field-label" htmlFor="newMailboxLimit">
-                New Mailbox Pool Quota
-              </label>
-              <input
-                id="newMailboxLimit"
-                type="number"
-                min={minAllowed}
-                max={10000}
-                className="form-input font-mono"
-                value={limit}
-                onChange={(e) => setLimit(parseInt(e.target.value, 10) || minAllowed)}
-                required
-              />
-              <span className="input-helper-text">
-                Must be at least {minAllowed} (current active mailboxes).
-              </span>
-            </div>
+            <QuotaTierSelector
+              value={limit}
+              minAllowed={minAllowed}
+              maxAllowed={10000}
+              label="New Mailbox Pool Quota"
+              onChange={(newLimit) => setLimit(newLimit)}
+              disabled={loading}
+            />
           </div>
 
           {/* Footer */}

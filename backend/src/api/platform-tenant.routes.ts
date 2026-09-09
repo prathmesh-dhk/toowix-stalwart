@@ -342,7 +342,70 @@ platformTenantRouter.post('/:id/suspend', async (req: Request, res: Response) =>
   tenant.status = 'suspended';
   await tenant.save();
 
-  await DomainModel.updateOne({ tenantId: tenant._id }, { status: 'suspended' });
+  const domain = await DomainModel.findOneAndUpdate(
+    { tenantId: tenant._id },
+    { status: 'suspended' },
+    { returnDocument: 'after' }
+  );
+
+  // 1. Resolve Stalwart domain ID if missing, and disable domain
+  let stalwartDomainId = domain?.stalwartDomainId;
+  if (!stalwartDomainId && domain?.domainName) {
+    try {
+      const liveDomains = await stalwartClient.listDomains();
+      const match = liveDomains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
+      if (match) {
+        stalwartDomainId = match.id;
+        domain.stalwartDomainId = match.id;
+        await domain.save();
+      }
+    } catch (err: any) {
+      console.warn(`[PlatformTenantRouter] Could not query Stalwart live domains for ${domain.domainName}:`, err.message);
+    }
+  }
+
+  if (stalwartDomainId) {
+    try {
+      await stalwartClient.updateDomainStatus(stalwartDomainId, false);
+    } catch (err: any) {
+      console.warn(`[PlatformTenantRouter] Failed to disable Stalwart domain ${stalwartDomainId}:`, err.message);
+    }
+  }
+
+  // 2. Cascade suspension to all mailboxes in MongoDB and freeze Stalwart accounts
+  const mailboxes = await MailboxModel.find({ tenantId: tenant._id });
+  await MailboxModel.updateMany({ tenantId: tenant._id }, { status: 'suspended' });
+
+  let liveAccounts: any[] = [];
+  try {
+    liveAccounts = await stalwartClient.listAccounts();
+  } catch (err: any) {
+    console.warn('[PlatformTenantRouter] Could not list Stalwart accounts during suspend:', err.message);
+  }
+
+  for (const mailbox of mailboxes) {
+    let accountId = mailbox.stalwartAccountId;
+    if (!accountId) {
+      const match = liveAccounts.find(
+        (a) =>
+          a.emailAddress?.toLowerCase() === mailbox.address.toLowerCase() ||
+          (a.name?.toLowerCase() === mailbox.localPart.toLowerCase() && (!stalwartDomainId || a.domainId === stalwartDomainId))
+      );
+      if (match) {
+        accountId = match.id;
+        mailbox.stalwartAccountId = match.id;
+        await mailbox.save();
+      }
+    }
+
+    if (accountId) {
+      try {
+        await stalwartClient.updateAccountStatus(accountId, true);
+      } catch (err: any) {
+        console.warn(`[PlatformTenantRouter] Failed to freeze Stalwart account ${accountId} (${mailbox.address}):`, err.message);
+      }
+    }
+  }
 
   await AuditLogModel.create({
     actorId: req.adminUser!.id,
@@ -372,7 +435,49 @@ platformTenantRouter.post('/:id/reactivate', async (req: Request, res: Response)
   tenant.status = 'active';
   await tenant.save();
 
-  await DomainModel.updateOne({ tenantId: tenant._id }, { status: 'active' });
+  const domain = await DomainModel.findOneAndUpdate(
+    { tenantId: tenant._id },
+    { status: 'active' },
+    { returnDocument: 'after' }
+  );
+
+  // 1. Resolve Stalwart domain ID if missing, and re-enable domain
+  let stalwartDomainId = domain?.stalwartDomainId;
+  if (!stalwartDomainId && domain?.domainName) {
+    try {
+      const liveDomains = await stalwartClient.listDomains();
+      const match = liveDomains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
+      if (match) {
+        stalwartDomainId = match.id;
+        domain.stalwartDomainId = match.id;
+        await domain.save();
+      }
+    } catch (err: any) {
+      console.warn(`[PlatformTenantRouter] Could not query Stalwart live domains for ${domain.domainName}:`, err.message);
+    }
+  }
+
+  if (stalwartDomainId) {
+    try {
+      await stalwartClient.updateDomainStatus(stalwartDomainId, true);
+    } catch (err: any) {
+      console.warn(`[PlatformTenantRouter] Failed to enable Stalwart domain ${stalwartDomainId}:`, err.message);
+    }
+  }
+
+  // 2. Restore mailboxes in MongoDB and unfreeze Stalwart accounts
+  const mailboxes = await MailboxModel.find({ tenantId: tenant._id });
+  await MailboxModel.updateMany({ tenantId: tenant._id }, { status: 'active' });
+
+  for (const mailbox of mailboxes) {
+    if (mailbox.stalwartAccountId) {
+      try {
+        await stalwartClient.updateAccountStatus(mailbox.stalwartAccountId, false);
+      } catch (err: any) {
+        console.warn(`[PlatformTenantRouter] Failed to unfreeze Stalwart account ${mailbox.stalwartAccountId} (${mailbox.address}):`, err.message);
+      }
+    }
+  }
 
   await AuditLogModel.create({
     actorId: req.adminUser!.id,

@@ -14,6 +14,7 @@ export interface OidcAuthTokenPayload {
   roles: AdminRole[];
   tenant_id: string | null;
   two_factor_verified: boolean;
+  sid?: string;
   iss: 'toowix-auth';
   aud: 'toowix-api';
   iat?: number;
@@ -35,6 +36,7 @@ declare global {
     interface Request {
       adminUser?: AdminUserContext;
       user?: AdminUserContext;
+      sessionId?: string;
     }
   }
 }

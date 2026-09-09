@@ -4,6 +4,7 @@ import { URL } from 'url';
 import { config } from '../config';
 import { SystemSettingsModel } from '../db/models/SystemSettings';
 import { logAudit } from '../audit/service';
+import { stalwartClient } from '../stalwart/client';
 
 export interface AlertNotification {
   title: string;
@@ -19,6 +20,13 @@ export interface AlertConfigData {
   alertEmail?: string;
   alertsEnabled: boolean;
   consecutiveFailureThreshold: number;
+}
+
+export interface MailLimitConfigData {
+  attachmentSizeMb: number;
+  messageSizeMb: number;
+  maxMailboxDepth: number;
+  maxMailboxNameLength: number;
 }
 
 export class AlertService {
@@ -175,6 +183,76 @@ export class AlertService {
       alertEmail: updated.alertEmail || '',
       alertsEnabled: updated.alertsEnabled,
       consecutiveFailureThreshold: updated.consecutiveFailureThreshold,
+    };
+  }
+
+  async getMailLimits(): Promise<MailLimitConfigData> {
+    const settings = await SystemSettingsModel.findOne({ key: 'mail_limits' });
+    if (!settings) {
+      return {
+        attachmentSizeMb: 5,
+        messageSizeMb: 6,
+        maxMailboxDepth: 10,
+        maxMailboxNameLength: 255,
+      };
+    }
+
+    return {
+      attachmentSizeMb: Number(settings.attachmentSizeMb ?? 5),
+      messageSizeMb: Number(settings.messageSizeMb ?? 6),
+      maxMailboxDepth: Number(settings.maxMailboxDepth ?? 10),
+      maxMailboxNameLength: Number(settings.maxMailboxNameLength ?? 255),
+    };
+  }
+
+  async updateMailLimits(
+    data: Partial<MailLimitConfigData>,
+    actorEmail: string = 'superadmin'
+  ): Promise<MailLimitConfigData> {
+    const payload: Partial<MailLimitConfigData> = {
+      attachmentSizeMb: Number(data.attachmentSizeMb ?? 5),
+      messageSizeMb: Number(data.messageSizeMb ?? 6),
+      maxMailboxDepth: Number(data.maxMailboxDepth ?? 10),
+      maxMailboxNameLength: Number(data.maxMailboxNameLength ?? 255),
+    };
+
+    const updated = await SystemSettingsModel.findOneAndUpdate(
+      { key: 'mail_limits' },
+      {
+        $set: {
+          ...payload,
+          updatedBy: actorEmail,
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    await stalwartClient.updateMailLimits({
+      attachmentSizeMb: Number(updated.attachmentSizeMb ?? 5),
+      messageSizeMb: Number(updated.messageSizeMb ?? 6),
+      maxMailboxDepth: Number(updated.maxMailboxDepth ?? 10),
+      maxMailboxNameLength: Number(updated.maxMailboxNameLength ?? 255),
+    });
+
+    await logAudit({
+      actorRole: 'SUPER_ADMIN',
+      actorEmail,
+      action: 'SYSTEM_MAIL_LIMITS_UPDATED',
+      resource: 'system_settings',
+      metadata: {
+        attachmentSizeMb: updated.attachmentSizeMb,
+        messageSizeMb: updated.messageSizeMb,
+        maxMailboxDepth: updated.maxMailboxDepth,
+        maxMailboxNameLength: updated.maxMailboxNameLength,
+      },
+      success: true,
+    });
+
+    return {
+      attachmentSizeMb: Number(updated.attachmentSizeMb ?? 5),
+      messageSizeMb: Number(updated.messageSizeMb ?? 6),
+      maxMailboxDepth: Number(updated.maxMailboxDepth ?? 10),
+      maxMailboxNameLength: Number(updated.maxMailboxNameLength ?? 255),
     };
   }
 

@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import {
   Building2,
   Globe,
-  Plus,
   Search,
   CheckCircle2,
   AlertTriangle,
@@ -12,6 +11,7 @@ import {
   Users,
   Trash2,
   RefreshCw,
+  Plus,
 } from 'lucide-react';
 import { TenantSummary } from '../../types';
 import { Button } from '../ui/Button';
@@ -67,7 +67,25 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
   }, [tenants, filterStatus, searchQuery]);
 
   return (
-    <div className="space-y-4">
+    <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
+      {/* Top Header & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-900">Tenant Directory</h2>
+          <p className="text-xs text-slate-500">
+            Review, provision, and administer organization tenants across the cluster
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={onCreateTenant}
+          icon={<Plus className="w-4 h-4" />}
+        >
+          Provision Tenant
+        </Button>
+      </div>
+
       {/* Top Filter Bar & Actions */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Status Filters Segmented Control */}
@@ -136,7 +154,7 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
           </button>
         </div>
 
-        {/* Right side: Search, Refresh, Provision */}
+        {/* Right side: Search, Refresh */}
         <div className="flex items-center gap-2.5">
           <div className="relative w-64">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -145,7 +163,7 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
               placeholder="Search organization or domain..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="form-input pl-9 h-9 text-xs"
+              className="w-full pl-9 pr-4 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
             />
           </div>
 
@@ -158,15 +176,6 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={onCreateTenant}
-          >
-            <Plus size={14} />
-            <span>Provision Tenant</span>
           </Button>
         </div>
       </div>
@@ -224,7 +233,7 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                             <div className="font-semibold text-slate-900 text-xs">
                               {tenant.name}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono">
+                            <div className="text-[11px] text-slate-400">
                               ID: {tenant.id.slice(-8)} · {tenant.adminCount || 0} admin{(tenant.adminCount || 0) !== 1 ? 's' : ''}
                             </div>
                           </div>
@@ -235,7 +244,7 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                       <td>
                         {tenant.domain ? (
                           <div className="flex flex-col text-xs">
-                            <div className="flex items-center gap-1 font-mono text-indigo-600 font-medium">
+                            <div className="flex items-center gap-1 text-indigo-600 font-medium">
                               <Globe size={12} className="text-slate-400" />
                               <span>{tenant.domain.domainName}</span>
                             </div>
@@ -259,10 +268,10 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                       <td>
                         <div className="w-36 space-y-1 text-xs">
                           <div className="flex justify-between text-[11px]">
-                            <span className="font-semibold text-slate-800 font-mono">
+                            <span className="font-semibold text-slate-800 tabular-nums">
                               {tenant.mailboxCount || 0} / {tenant.mailboxLimit}
                             </span>
-                            <span className="text-slate-400 font-mono">{usagePct}%</span>
+                            <span className="text-slate-400 tabular-nums">{usagePct}%</span>
                           </div>
                           <div className="progress-bar-bg">
                             <div
@@ -364,6 +373,6 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 };

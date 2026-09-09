@@ -24,7 +24,7 @@ describe('Tenant Lifecycle & Immutable Audit Trail Integration', () => {
     // Mock Stalwart client methods
     vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([]);
     vi.spyOn(stalwartClient, 'createDomain').mockResolvedValue({ id: 'dom-mock-id', name: 'lifecycle.test' });
-    vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({ id: 'acc-mock-id', name: 'user1' });
+    vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({ id: 'acc-mock-id', name: 'user1', domainId: 'dom-mock-id', emailAddress: 'user1@lifecycle.test' });
   });
 
   afterAll(async () => {

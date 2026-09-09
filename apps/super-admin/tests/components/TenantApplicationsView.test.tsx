@@ -1,12 +1,11 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { TenantApplicationsView } from '../../src/components/views/TenantApplicationsView';
 import { RegistrationApplication } from '../../src/types';
 
 const mockApplications: RegistrationApplication[] = [
   {
+    _id: 'app-1',
     id: 'app-1',
     companyName: 'NextGen AI Inc',
     requestedDomain: 'nextgenai.tech',
@@ -17,8 +16,11 @@ const mockApplications: RegistrationApplication[] = [
     notes: 'Urgent onboarding',
     status: 'PENDING_REVIEW',
     submittedAt: '2026-03-01T10:00:00.000Z',
+    createdAt: '2026-03-01T10:00:00.000Z',
+    updatedAt: '2026-03-01T10:00:00.000Z',
   },
   {
+    _id: 'app-2',
     id: 'app-2',
     companyName: 'Cyberdyne Systems',
     requestedDomain: 'cyberdyne.net',
@@ -29,6 +31,8 @@ const mockApplications: RegistrationApplication[] = [
     notes: 'Defense contractor',
     status: 'APPROVED',
     submittedAt: '2026-02-15T12:00:00.000Z',
+    createdAt: '2026-02-15T12:00:00.000Z',
+    updatedAt: '2026-02-15T12:00:00.000Z',
   },
 ];
 

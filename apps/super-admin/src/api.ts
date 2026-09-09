@@ -10,6 +10,7 @@ import {
   AlertConfig,
   IntegrityCheckResult,
   DriftReport,
+  SessionItem,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -191,6 +192,12 @@ export const api = {
     request<TenantSummary>(`/api/platform/tenants/${id}/mailbox-limit`, {
       method: 'PATCH',
       body: JSON.stringify({ mailboxLimit }),
+    }),
+  getMailLimits: () => request<{ attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number }>('/api/system/mail-limits'),
+  updateMailLimits: (payload: { attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number }) =>
+    request<{ success: boolean; message: string; config: { attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number } }>('/api/system/mail-limits', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
   activateTenant: (id: string) =>
     request<{
@@ -396,6 +403,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  // Active Device & Session Management
+  listSessions: () =>
+    request<{ sessions: SessionItem[] }>('/api/auth/sessions'),
+
+  revokeSession: (sessionId: string) =>
+    request<{ success: boolean; message: string }>(`/api/auth/sessions/${sessionId}`, {
+      method: 'DELETE',
+    }),
+
+  revokeOtherSessions: () =>
+    request<{ success: boolean; message: string; revokedCount: number }>('/api/auth/sessions/revoke-others', {
+      method: 'POST',
+    }),
 };
+
 
 

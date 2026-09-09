@@ -6,6 +6,10 @@ export interface ISystemSettings extends Document {
   alertEmail?: string;
   alertsEnabled: boolean;
   consecutiveFailureThreshold: number;
+  attachmentSizeMb?: number;
+  messageSizeMb?: number;
+  maxMailboxDepth?: number;
+  maxMailboxNameLength?: number;
   updatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -35,6 +39,26 @@ const SystemSettingsSchema = new Schema<ISystemSettings>(
     consecutiveFailureThreshold: {
       type: Number,
       default: 3,
+      min: 1,
+    },
+    attachmentSizeMb: {
+      type: Number,
+      default: 5,
+      min: 1,
+    },
+    messageSizeMb: {
+      type: Number,
+      default: 6,
+      min: 1,
+    },
+    maxMailboxDepth: {
+      type: Number,
+      default: 10,
+      min: 1,
+    },
+    maxMailboxNameLength: {
+      type: Number,
+      default: 255,
       min: 1,
     },
     updatedBy: {

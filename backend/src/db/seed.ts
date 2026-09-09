@@ -50,6 +50,21 @@ export async function seedSystemSettings(): Promise<void> {
     } else {
       console.log('[Seed] SystemSettings (alerts_config) already exists');
     }
+
+    const mailLimits = await SystemSettingsModel.findOne({ key: 'mail_limits' });
+    if (!mailLimits) {
+      await SystemSettingsModel.create({
+        key: 'mail_limits',
+        attachmentSizeMb: 5,
+        messageSizeMb: 6,
+        maxMailboxDepth: 10,
+        maxMailboxNameLength: 255,
+        updatedBy: 'system_seed',
+      });
+      console.log('[Seed] Initialized default SystemSettings (mail_limits)');
+    } else {
+      console.log('[Seed] SystemSettings (mail_limits) already exists');
+    }
   } catch (err) {
     console.error('[Seed SystemSettings Error]:', err);
     throw err;

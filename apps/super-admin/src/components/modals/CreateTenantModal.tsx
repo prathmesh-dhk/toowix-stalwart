@@ -3,6 +3,7 @@ import { X, Building2 } from 'lucide-react';
 import { api } from '../../api';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
+import { QuotaTierSelector } from '../ui/QuotaTierSelector';
 
 interface CreateTenantModalProps {
   isOpen: boolean;
@@ -101,7 +102,7 @@ export const CreateTenantModal: React.FC<CreateTenantModalProps> = ({
               <input
                 id="tenantDomain"
                 type="text"
-                className="form-input font-mono"
+                className="form-input"
                 placeholder="e.g. acme.com"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
@@ -112,24 +113,15 @@ export const CreateTenantModal: React.FC<CreateTenantModalProps> = ({
               </span>
             </div>
 
-            <div>
-              <label className="field-label" htmlFor="mailboxLimit">
-                Mailbox Quota Limit
-              </label>
-              <input
-                id="mailboxLimit"
-                type="number"
-                min="1"
-                max="10000"
-                className="form-input font-mono"
-                value={mailboxLimit}
-                onChange={(e) => setMailboxLimit(parseInt(e.target.value, 10) || 1)}
-                required
-              />
-              <span className="input-helper-text">
-                Maximum number of active mailboxes allowed.
-              </span>
-            </div>
+            <QuotaTierSelector
+              value={mailboxLimit}
+              minAllowed={1}
+              maxAllowed={10000}
+              label="Mailbox Quota Limit"
+              helperText="Maximum number of active mailboxes allowed."
+              onChange={(newLimit) => setMailboxLimit(newLimit)}
+              disabled={loading}
+            />
           </div>
 
           {/* Footer */}

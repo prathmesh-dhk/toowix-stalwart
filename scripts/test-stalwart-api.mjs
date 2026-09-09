@@ -6,9 +6,8 @@ const auth = Buffer.from('toowix-service@toowix.test:ToowixServiceSecret2026!Sec
 function request(body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
-    const req = https.request('https://mail.toowix.test/jmap/', {
+    const req = http.request('http://localhost:8090/jmap/', {
       method: 'POST',
-      rejectUnauthorized: false,
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(data),

@@ -155,6 +155,32 @@ export class StalwartClient {
   }
 
   /**
+   * Updates a domain's enabled status on Stalwart.
+   */
+  async updateDomainStatus(domainId: string, isEnabled: boolean): Promise<void> {
+    const responses = await this.dispatch([
+      [
+        'x:Domain/set',
+        {
+          accountId: this.accountId,
+          update: {
+            [domainId]: {
+              isEnabled,
+            },
+          },
+        },
+        'c_update_dom',
+      ],
+    ]);
+
+    const result = responses[0]?.[1];
+    if (result?.notUpdated?.[domainId]) {
+      const err = result.notUpdated[domainId];
+      throw new StalwartError(`Failed to update domain status in Stalwart: ${err.description || err.type}`, 'DOMAIN_UPDATE_FAILED', err);
+    }
+  }
+
+  /**
    * Destroys a domain and cleans up linked DKIM signatures.
    */
   async deleteDomain(domainId: string): Promise<void> {
@@ -287,6 +313,92 @@ export class StalwartClient {
     if (result?.notUpdated?.[accountId]) {
       const err = result.notUpdated[accountId];
       throw new StalwartError(`Failed to update password in Stalwart: ${err.description || err.type}`, 'PASSWORD_UPDATE_FAILED', err);
+    }
+  }
+
+  /**
+   * Applies the configured mail limits to the live Stalwart runtime.
+   * Values are stored in MB in the app and converted to bytes in Stalwart.
+   */
+  async updateMailLimits(limits: {
+    attachmentSizeMb: number;
+    messageSizeMb: number;
+    maxMailboxDepth: number;
+    maxMailboxNameLength: number;
+  }): Promise<void> {
+    const payload = {
+      maxAttachmentSize: Math.max(1, Number(limits.attachmentSizeMb ?? 5)) * 1024 * 1024,
+      maxMessageSize: Math.max(1, Number(limits.messageSizeMb ?? 6)) * 1024 * 1024,
+      maxMailboxDepth: Math.max(1, Number(limits.maxMailboxDepth ?? 10)),
+      maxMailboxNameLength: Math.max(1, Number(limits.maxMailboxNameLength ?? 255)),
+    };
+
+    const responses = await this.dispatch([
+      [
+        'x:Email/set',
+        {
+          accountId: this.accountId,
+          update: {
+            [this.accountId]: payload,
+          },
+        },
+        'c_update_mail_limits',
+      ],
+    ]);
+
+    const result = responses[0]?.[1];
+    if (result?.notUpdated?.[this.accountId]) {
+      const err = result.notUpdated[this.accountId];
+      throw new StalwartError(
+        `Failed to update mail limits in Stalwart: ${err.description || err.type}`,
+        'MAIL_LIMITS_UPDATE_FAILED',
+        err
+      );
+    }
+  }
+
+  /**
+   * Updates an account's active/suspended status in Stalwart.
+   * When suspended: sets permissions to @type Replace with empty sets,
+   *   which gives the account zero permissions (blocks all auth and mail sending).
+   * When reactivated: restores default inherited permissions via @type Inherit.
+   */
+  async updateAccountStatus(accountId: string, isSuspended: boolean): Promise<void> {
+    // Suspended: Replace all permissions with empty sets → zero permissions, cannot authenticate
+    // Active: Inherit permissions from role (default User role)
+    const permissionsPayload = isSuspended
+      ? {
+          '@type': 'Replace',
+          enabledPermissions: {},
+          disabledPermissions: {},
+        }
+      : {
+          '@type': 'Inherit',
+        };
+
+    const responses = await this.dispatch([
+      [
+        'x:Account/set',
+        {
+          accountId: this.accountId,
+          update: {
+            [accountId]: {
+              permissions: permissionsPayload,
+            },
+          },
+        },
+        'c_update_acc_status',
+      ],
+    ]);
+
+    const result = responses[0]?.[1];
+    if (result?.notUpdated?.[accountId]) {
+      const err = result.notUpdated[accountId];
+      throw new StalwartError(
+        `Failed to update account status in Stalwart: ${err.description || err.type}`,
+        'ACCOUNT_UPDATE_FAILED',
+        err
+      );
     }
   }
 

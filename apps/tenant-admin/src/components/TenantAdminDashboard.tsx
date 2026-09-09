@@ -4,6 +4,32 @@ import { TenantSummary, MailboxItem, AuditItem, UserContext } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
+import { ActiveDevicesView } from './ActiveDevicesView';
+import {
+  Loader2,
+  LogOut,
+  LayoutDashboard,
+  Mail,
+  FileText,
+  Shield,
+  Laptop,
+  AlertCircle,
+  AlertTriangle,
+  Plus,
+  Ban,
+  CheckCircle2,
+  Globe,
+  Users,
+  ArrowRight,
+  Key,
+  History,
+  Search,
+  Lock,
+  Copy,
+  Check,
+  RefreshCw,
+  X,
+} from 'lucide-react';
 
 interface TenantAdminDashboardProps {
   user?: UserContext | null;
@@ -14,7 +40,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'audit' | 'security'>('dashboard');
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'audit' | 'security' | 'devices'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
@@ -269,9 +295,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8fafc]">
         <div className="flex flex-col items-center gap-3 text-slate-500">
-          <span className="material-symbols-outlined text-[32px] animate-spin text-indigo-600">
-            progress_activity
-          </span>
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
           <span className="text-xs font-medium">Loading workspace...</span>
         </div>
       </div>
@@ -279,7 +303,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-body text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen bg-[#f8fafc] font-body text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
       {/* ========================================================================= */}
       {/* TOP HEADER (MATCHING GOOGLE STITCH DESIGN)                                */}
       {/* ========================================================================= */}
@@ -331,18 +355,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
           {/* Right Utility Actions */}
           <div className="flex items-center gap-4">
-            {/* Webmail external link */}
-            <a
-              href="http://localhost:8888"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Open Webmail Client"
-            >
-              <span className="material-symbols-outlined text-[16px] text-indigo-600">open_in_new</span>
-              <span>Webmail</span>
-            </a>
-
             {/* Admin Profile */}
             <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
               <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
@@ -365,7 +377,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
                 title="Sign Out"
               >
-                <span className="material-symbols-outlined text-[19px]">logout</span>
+                <LogOut className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -387,7 +399,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 }`}
             >
               <div className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-[18px]">dashboard</span>
+                <LayoutDashboard className={`w-[18px] h-[18px] ${activeNav === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'}`} />
                 <span>Dashboard</span>
               </div>
             </button>
@@ -401,12 +413,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 }`}
             >
               <div className="flex items-center gap-2.5">
-                <span
-                  className={`material-symbols-outlined text-[18px] ${activeNav === 'mailboxes' ? 'text-indigo-600' : 'text-slate-400'
-                    }`}
-                >
-                  mail
-                </span>
+                <Mail
+                  className={`w-[18px] h-[18px] ${activeNav === 'mailboxes' ? 'text-indigo-600' : 'text-slate-400'}`}
+                />
                 <span>Mailboxes</span>
               </div>
               <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
@@ -423,12 +432,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 }`}
             >
               <div className="flex items-center gap-2.5">
-                <span
-                  className={`material-symbols-outlined text-[18px] ${activeNav === 'audit' ? 'text-indigo-600' : 'text-slate-400'
-                    }`}
-                >
-                  receipt_long
-                </span>
+                <FileText
+                  className={`w-[18px] h-[18px] ${activeNav === 'audit' ? 'text-indigo-600' : 'text-slate-400'}`}
+                />
                 <span>Audit Log</span>
               </div>
             </button>
@@ -442,26 +448,31 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 }`}
             >
               <div className="flex items-center gap-2.5">
-                <span
-                  className={`material-symbols-outlined text-[18px] ${activeNav === 'security' ? 'text-indigo-600' : 'text-slate-400'
-                    }`}
-                >
-                  shield
-                </span>
+                <Shield
+                  className={`w-[18px] h-[18px] ${activeNav === 'security' ? 'text-indigo-600' : 'text-slate-400'}`}
+                />
                 <span>Admin Security</span>
+              </div>
+            </button>
+
+            {/* Active Devices & Sessions */}
+            <button
+              onClick={() => setActiveNav('devices')}
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'devices'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Laptop
+                  className={`w-[18px] h-[18px] ${activeNav === 'devices' ? 'text-indigo-600' : 'text-slate-400'}`}
+                />
+                <span>Active Devices</span>
               </div>
             </button>
           </nav>
         </div>
 
-        {/* Sidebar Footer info */}
-        <div className="pt-4 border-t border-slate-100 text-[11px] text-slate-400 flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <span>Stalwart Mail Engine</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-          </div>
-          <span className="font-mono text-[10px] text-slate-400">TLS 1.3 Strict Encrypted</span>
-        </div>
       </aside>
 
       {/* ========================================================================= */}
@@ -472,9 +483,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           {/* Operational Banners */}
           {isSuspended && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 text-rose-900">
-              <span className="material-symbols-outlined text-rose-600 text-[20px] shrink-0 mt-0.5">
-                warning
-              </span>
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               <div className="flex flex-col gap-0.5 text-xs">
                 <span className="font-semibold text-rose-900">
                   Workspace Suspended by Platform Administrators
@@ -488,9 +497,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
           {usagePercent >= 100 && !isSuspended && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 text-amber-900">
-              <span className="material-symbols-outlined text-amber-600 text-[20px] shrink-0 mt-0.5">
-                info
-              </span>
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="flex flex-col gap-0.5 text-xs">
                 <span className="font-semibold text-amber-900">
                   Mailbox Allocation Limit Reached ({mailboxLimit} / {mailboxLimit})
@@ -523,7 +530,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     disabled={isSuspended || usagePercent >= 100}
                     onClick={handleOpenCreateModal}
                     size="sm"
-                    icon={<span className="material-symbols-outlined text-[16px]">add</span>}
+                    icon={<Plus className="w-4 h-4" />}
                   >
                     Create mailbox
                   </Button>
@@ -545,9 +552,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Mailbox Allocation
                     </span>
-                    <span className="material-symbols-outlined text-[18px] text-slate-400">
-                      inventory_2
-                    </span>
+                    <Mail className="w-[18px] h-[18px] text-slate-400" />
                   </div>
                   <div className="flex flex-col gap-2">
                     <div className="flex items-baseline gap-2">
@@ -584,12 +589,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Operational Health
                     </span>
-                    <span
-                      className={`material-symbols-outlined text-[18px] ${isSuspended ? 'text-rose-600' : 'text-emerald-600'
-                        }`}
-                    >
-                      verified
-                    </span>
+                    {isSuspended ? (
+                      <Ban className="w-[18px] h-[18px] text-rose-600" />
+                    ) : (
+                      <CheckCircle2 className="w-[18px] h-[18px] text-emerald-600" />
+                    )}
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2">
@@ -612,9 +616,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Domain Summary
                     </span>
-                    <span className="material-symbols-outlined text-[18px] text-slate-400">
-                      dns
-                    </span>
+                    <Globe className="w-[18px] h-[18px] text-slate-400" />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2">
@@ -623,9 +625,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-emerald-700 mt-1">
-                      <span className="material-symbols-outlined text-[14px] text-emerald-600">
-                        check_circle
-                      </span>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                       <span>Authoritative domain verified</span>
                     </div>
                   </div>
@@ -638,29 +638,27 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 <section className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[18px] text-slate-400">
-                        group
-                      </span>
+                      <Users className="w-[18px] h-[18px] text-slate-400" />
                       <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                         Recently Added Mailboxes
                       </h2>
                     </div>
                     <button
                       onClick={() => setActiveNav('mailboxes')}
-                      className="text-xs font-medium text-[#1a73e8] hover:underline flex items-center gap-1"
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
                     >
                       <span>View all mailboxes</span>
-                      <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
                   {mailboxes.length === 0 ? (
                     <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-                      <span className="material-symbols-outlined text-[28px]">mark_email_unread</span>
+                      <Mail className="w-7 h-7" />
                       <p className="text-xs">No mailboxes created yet.</p>
                       <button
                         onClick={handleOpenCreateModal}
-                        className="text-xs font-medium text-[#1a73e8] hover:underline"
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
                       >
                         + Create your first mailbox
                       </button>
@@ -690,10 +688,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                             {/* Quick Reset action on hover */}
                             <button
                               onClick={() => handleOpenResetModal(mb)}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-[#1a73e8] rounded transition-opacity"
+                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 rounded transition-opacity"
                               title="Reset Password"
                             >
-                              <span className="material-symbols-outlined text-[15px]">key</span>
+                              <Key className="w-3.5 h-3.5" />
                             </button>
 
                             <StatusBadge status={mb.status} label={mb.status} />
@@ -708,25 +706,23 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[18px] text-slate-400">
-                        history
-                      </span>
+                      <History className="w-[18px] h-[18px] text-slate-400" />
                       <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                         Organization Event Log
                       </h2>
                     </div>
                     <button
                       onClick={() => setActiveNav('audit')}
-                      className="text-xs font-medium text-[#1a73e8] hover:underline flex items-center gap-1"
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
                     >
                       <span>View audit log</span>
-                      <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
                   {auditLogs.length === 0 ? (
                     <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-                      <span className="material-symbols-outlined text-[28px]">description</span>
+                      <FileText className="w-7 h-7" />
                       <p className="text-xs">No recent events recorded.</p>
                     </div>
                   ) : (
@@ -763,10 +759,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 <button
                   disabled={isSuspended || usagePercent >= 100}
                   onClick={handleOpenCreateModal}
-                  className={`px-4 py-2 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 self-start sm:self-auto ${isSuspended || usagePercent >= 100 ? 'opacity-50 cursor-not-allowed' : ''
+                  className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 self-start sm:self-auto ${isSuspended || usagePercent >= 100 ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                 >
-                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <Plus className="w-4 h-4" />
                   <span>Create mailbox</span>
                 </button>
               </div>
@@ -774,15 +770,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               {/* Filter controls */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="relative flex-1 max-w-md">
-                  <span className="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-[18px]">
-                    search
-                  </span>
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                   <input
                     type="text"
                     placeholder="Search by address or username..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-4 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-[#1a73e8] focus:border-[#1a73e8]"
+                    className="w-full pl-9 pr-4 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
                   />
                 </div>
 
@@ -791,7 +785,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value as any)}
-                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-[#1a73e8]"
+                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
                   >
                     <option value="all">All statuses</option>
                     <option value="active">Active only</option>
@@ -861,7 +855,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                               </a>
                               <button
                                 onClick={() => handleOpenResetModal(mb)}
-                                className="px-2 py-1 text-slate-600 hover:text-[#1a73e8] hover:bg-slate-100 rounded transition-colors"
+                                className="px-2 py-1 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded transition-colors"
                                 title="Reset Password"
                               >
                                 Reset Password
@@ -957,9 +951,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[19px] text-[#1a73e8]">
-                      dns
-                    </span>
+                    <Globe className="w-5 h-5 text-indigo-600" />
                     <h2 className="text-sm font-semibold text-slate-900">
                       Authoritative Domain Verification
                     </h2>
@@ -970,7 +962,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/60">
                     <span className="text-slate-400 block text-[11px]">Assigned Domain</span>
                     <span className="font-mono font-semibold text-slate-900 text-sm mt-0.5 block">
@@ -980,16 +972,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/60">
                     <span className="text-slate-400 block text-[11px]">Transport Security</span>
                     <span className="font-semibold text-slate-900 text-sm mt-0.5 block flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[16px] text-emerald-600">
-                        lock
-                      </span>
-                      TLS 1.3 Strict
-                    </span>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/60">
-                    <span className="text-slate-400 block text-[11px]">Mail Engine Core</span>
-                    <span className="font-semibold text-slate-900 text-sm mt-0.5 block">
-                      Stalwart Enterprise Node
+                      <Lock className="w-4 h-4 text-emerald-600" />
+                      TLS 1.3 Strict Encrypted
                     </span>
                   </div>
                 </div>
@@ -1047,7 +1031,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     >
                       <div className="flex flex-col gap-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded font-mono font-bold bg-blue-100 text-blue-800 text-[11px]">
+                          <span className="px-2 py-0.5 rounded font-mono font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60 text-[11px]">
                             {rec.type}
                           </span>
                           <span className="font-mono text-slate-700 font-semibold">{rec.name}</span>
@@ -1062,9 +1046,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                         onClick={() => copyToClipboard(rec.target, rec.key)}
                         className="self-start md:self-auto px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-medium transition-colors flex items-center gap-1.5 shrink-0"
                       >
-                        <span className="material-symbols-outlined text-[14px]">
-                          {copiedRecordKey === rec.key ? 'done' : 'content_copy'}
-                        </span>
+                        {copiedRecordKey === rec.key ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
                         <span>{copiedRecordKey === rec.key ? 'Copied' : 'Copy value'}</span>
                       </button>
                     </div>
@@ -1072,6 +1058,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 </div>
               </div>
             </section>
+          )}
+
+          {/* ===================================================================== */}
+          {/* VIEW: ACTIVE DEVICES & SESSIONS (FULL PAGE)                           */}
+          {/* ===================================================================== */}
+          {activeNav === 'devices' && (
+            <ActiveDevicesView />
           )}
         </main>
       </div>
@@ -1088,13 +1081,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 onClick={() => setShowCreateModal(false)}
                 className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
               >
-                <span className="material-symbols-outlined text-[18px]">close</span>
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {modalError && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[16px] text-rose-500">error</span>
+                <AlertCircle className="w-4 h-4 text-rose-500" />
                 <span>{modalError}</span>
               </div>
             )}
@@ -1109,7 +1102,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     placeholder="username"
                     value={localPart}
                     onChange={(e) => setLocalPart(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
-                    className="flex-1 px-3 py-1.5 text-xs rounded-l-lg border border-r-0 border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#1a73e8] focus:border-[#1a73e8]"
+                    className="flex-1 px-3 py-1.5 text-xs rounded-l-lg border border-r-0 border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
                   />
                   <span className="px-3 py-1.5 bg-slate-50 border border-slate-300 text-xs font-mono text-slate-500 rounded-r-lg">
                     @{domainName}
@@ -1123,9 +1116,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   <button
                     type="button"
                     onClick={() => setPassword(generateStrongPassword())}
-                    className="text-[11px] text-[#1a73e8] hover:underline flex items-center gap-1"
+                    className="text-[11px] text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
                   >
-                    <span className="material-symbols-outlined text-[13px]">refresh</span>
+                    <RefreshCw className="w-3.5 h-3.5" />
                     <span>Generate strong</span>
                   </button>
                 </div>
@@ -1135,7 +1128,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#1a73e8] focus:border-[#1a73e8]"
+                    className="flex-1 px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
                   />
                   <button
                     type="button"
@@ -1143,12 +1136,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium flex items-center gap-1 transition-colors shrink-0 shadow-xs"
                     title="Copy password to clipboard"
                   >
-                    <span
-                      className={`material-symbols-outlined text-[15px] ${copiedPasswordKey === 'create-modal' ? 'text-emerald-600' : 'text-slate-500'
-                        }`}
-                    >
-                      {copiedPasswordKey === 'create-modal' ? 'done' : 'content_copy'}
-                    </span>
+                    {copiedPasswordKey === 'create-modal' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                    )}
                     <span>{copiedPasswordKey === 'create-modal' ? 'Copied!' : 'Copy'}</span>
                   </button>
                 </div>
@@ -1168,12 +1160,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 <button
                   type="submit"
                   disabled={modalLoading}
-                  className="px-3.5 py-1.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
                 >
                   {modalLoading && (
-                    <span className="material-symbols-outlined text-[14px] animate-spin">
-                      progress_activity
-                    </span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   )}
                   <span>Create Mailbox</span>
                 </button>
@@ -1195,7 +1185,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 onClick={() => setSelectedMailboxForReset(null)}
                 className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
               >
-                <span className="material-symbols-outlined text-[18px]">close</span>
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -1209,7 +1199,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
             {resetModalError && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[16px] text-rose-500">error</span>
+                <AlertCircle className="w-4 h-4 text-rose-500" />
                 <span>{resetModalError}</span>
               </div>
             )}
@@ -1221,9 +1211,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   <button
                     type="button"
                     onClick={() => setNewMailboxPassword(generateStrongPassword())}
-                    className="text-[11px] text-[#1a73e8] hover:underline flex items-center gap-1"
+                    className="text-[11px] text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
                   >
-                    <span className="material-symbols-outlined text-[13px]">refresh</span>
+                    <RefreshCw className="w-3.5 h-3.5" />
                     <span>Generate strong</span>
                   </button>
                 </div>
@@ -1233,7 +1223,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     required
                     value={newMailboxPassword}
                     onChange={(e) => setNewMailboxPassword(e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#1a73e8]"
+                    className="flex-1 px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
                   />
                   <button
                     type="button"
@@ -1241,12 +1231,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium flex items-center gap-1 transition-colors shrink-0 shadow-xs"
                     title="Copy password to clipboard"
                   >
-                    <span
-                      className={`material-symbols-outlined text-[15px] ${copiedPasswordKey === 'reset-modal' ? 'text-emerald-600' : 'text-slate-500'
-                        }`}
-                    >
-                      {copiedPasswordKey === 'reset-modal' ? 'done' : 'content_copy'}
-                    </span>
+                    {copiedPasswordKey === 'reset-modal' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                    )}
                     <span>{copiedPasswordKey === 'reset-modal' ? 'Copied!' : 'Copy'}</span>
                   </button>
                 </div>
@@ -1263,12 +1252,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 <button
                   type="submit"
                   disabled={resetModalLoading}
-                  className="px-3.5 py-1.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-lg text-xs font-medium flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5"
                 >
                   {resetModalLoading && (
-                    <span className="material-symbols-outlined text-[14px] animate-spin">
-                      progress_activity
-                    </span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   )}
                   <span>Update Password</span>
                 </button>

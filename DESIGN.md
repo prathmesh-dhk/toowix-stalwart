@@ -103,7 +103,7 @@ typography:
     lineHeight: 14px
     letterSpacing: 0.05em
   code-md:
-    fontFamily: JetBrains Mono
+    fontFamily: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
     fontSize: 12px
     fontWeight: '500'
     lineHeight: 16px
@@ -187,7 +187,7 @@ The Toowix Enterprise Design System is an authoritative, high-density, mission-c
 
 ## 3. Typography Hierarchy
 
-The system pairs **Inter** for clean UI readability with **JetBrains Mono** for technical data.
+The system pairs **Inter** for clean UI readability with clean system monospace for technical data.
 
 ### Hierarchy & Scales
 - **Page Display Headline**: `Inter`, 24px–32px, Bold (700), Line Height: 1.25, Tracking: `-0.02em`. Used for primary dashboard and wizard view titles.
@@ -195,7 +195,7 @@ The system pairs **Inter** for clean UI readability with **JetBrains Mono** for 
 - **Sidebar Section Header**: `Inter`, 11px, Bold (700), Line Height: 16px, Tracking: `0.05em`, Uppercase, Color: `#64748B`.
 - **Body Regular**: `Inter`, 13px–14px, Regular (400), Line Height: 1.45, Color: `#334155`.
 - **Form Label**: `Inter`, 12px, Semi-Bold (600), Line Height: 16px, Tracking: `0.02em`, Color: `#334155`.
-- **Technical & Monospace Identifiers**: `JetBrains Mono`, 11px–13px, Medium (500), Line Height: 1.4. Used for email addresses, domain names, DNS targets (DKIM, SPF, MX), SHA hashes, IPv4/IPv6 addresses, and system ports.
+- **Technical & Monospace Identifiers**: System monospace (`ui-monospace`, `SFMono-Regular`, `Consolas`), 11px–13px, Medium (500), Line Height: 1.4. Used for raw payloads, DNS records, and cryptographic tokens.
 
 ---
 

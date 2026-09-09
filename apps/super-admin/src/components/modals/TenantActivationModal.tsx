@@ -102,7 +102,7 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
         <div className="modal-header">
           <div>
             <h3 className="modal-title">Tenant Activation</h3>
-            <p className="text-xs text-slate-500 mt-0.5 font-mono">{tenant.name} · {tenant.domain?.domainName}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{tenant.name} · {tenant.domain?.domainName}</p>
           </div>
           <button onClick={onClose} className="modal-close-btn">
             <X size={18} />
@@ -131,11 +131,11 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Domain:</span>
-                  <span className="font-mono text-indigo-600">{tenant.domain?.domainName}</span>
+                  <span className="font-medium text-indigo-600">{tenant.domain?.domainName}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Mailbox Limit:</span>
-                  <span className="font-mono text-slate-800">{tenant.mailboxLimit}</span>
+                  <span className="font-semibold text-slate-800 tabular-nums">{tenant.mailboxLimit}</span>
                 </div>
               </div>
             </div>
@@ -153,7 +153,7 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
                     type="text"
                     readOnly
                     value={activationResult.link}
-                    className="form-input flex-1 font-mono text-xs bg-slate-50"
+                    className="form-input flex-1 text-xs bg-slate-50"
                   />
                   <Button
                     size="sm"

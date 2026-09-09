@@ -47,11 +47,13 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
-      # Unified Same-Origin endpoint: Proxies JMAP calls to Stalwart and UI calls to Next.js
-      JMAP_SERVER_URL: "http://localhost:8888"
-      STALWART_INTERNAL_URL: "http://stalwart:8080"
+      # Unified Same-Origin endpoint: Proxies JMAP calls to the active local Stalwart instance on host port 8090
+      JMAP_SERVER_URL: "http://localhost:8090"
+      STALWART_INTERNAL_URL: "http://host.docker.internal:8090"
       SESSION_SECRET: "toowix_bulwark_session_secret_32_chars_min_2026!"
       COOKIE_SECURE: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./bulwark/server-proxy.js:/app/server-proxy.js:ro
       - toowix-mail-bulwark-settings:/app/data/settings

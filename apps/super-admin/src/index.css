@@ -29,21 +29,21 @@
   --slate-900: #0F172A;
 
   /* Semantic Status Colors */
-  --success-light: #DCFCE7;
-  --success-mid: #22C55E;
-  --success-dark: #15803D;
+  --success-light: #ECFDF5;
+  --success-mid: #10B981;
+  --success-dark: #047857;
 
-  --warning-light: #FEF9C3;
-  --warning-mid: #EAB308;
-  --warning-dark: #A16207;
+  --warning-light: #FFFBEB;
+  --warning-mid: #F59E0B;
+  --warning-dark: #B45309;
 
-  --error-light: #FEE2E2;
+  --error-light: #FEF2F2;
   --error-mid: #EF4444;
   --error-dark: #B91C1C;
 
-  --info-light: #DBEAFE;
-  --info-mid: #3B82F6;
-  --info-dark: #1D4ED8;
+  --info-light: #EEF2FF;
+  --info-mid: #4F46E5;
+  --info-dark: #4338CA;
 
   /* Surface & Base Tokens */
   --bg-color: #F8FAFC;
@@ -53,7 +53,7 @@
 
   /* Typography */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, "Liberation Mono", monospace;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   /* Spacing Scale */
   --space-1: 4px;
@@ -461,7 +461,7 @@ body {
 }
 .status-dot.green { background-color: var(--success-mid); }
 .status-dot.yellow { background-color: var(--warning-mid); }
-.status-dot.blue { background-color: var(--info-mid); }
+.status-dot.blue, .status-dot.indigo { background-color: var(--info-mid); }
 .status-dot.red { background-color: var(--error-mid); }
 .status-dot.gray { background-color: var(--slate-400); }
 

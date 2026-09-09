@@ -12,6 +12,7 @@ import {
   OidcAuthTokenPayload,
   TwoFactorPendingPayload,
 } from './types';
+import { sessionService } from '../services/session.service';
 
 export async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password, {
@@ -30,17 +31,23 @@ export async function verifyPassword(hash: string, password: string): Promise<bo
   }
 }
 
-export function generateOidcToken(user: AdminUserContext): string {
+export function generateOidcToken(
+  user: AdminUserContext,
+  sessionId?: string,
+  rememberMe: boolean = false
+): string {
   const payload: OidcAuthTokenPayload = {
     sub: user.id,
     email: user.email,
     roles: [user.role],
     tenant_id: user.tenantId,
     two_factor_verified: user.twoFactorEnabled,
+    ...(sessionId ? { sid: sessionId } : {}),
     iss: 'toowix-auth',
     aud: 'toowix-api',
   };
-  return jwt.sign(payload, config.jwtSecret, { expiresIn: '8h' });
+  const expiresIn = rememberMe ? '30d' : '8h';
+  return jwt.sign(payload, config.jwtSecret, { expiresIn });
 }
 
 export function generate2FaPendingToken(user: AdminUserContext): string {
@@ -118,8 +125,10 @@ export async function authenticatePortalUser(
   portalType: AdminRole,
   email: string,
   password: string,
-  clientIp?: string,
-  totpCode?: string
+  clientIp: string = 'unknown',
+  totpCode?: string,
+  userAgent: string = '',
+  rememberMe: boolean = false
 ): Promise<PortalLoginResult> {
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -227,8 +236,9 @@ export async function authenticatePortalUser(
         return { success: false, error: 'Invalid 6-digit 2FA verification code. Please try again.', statusCode: 401 };
       }
 
-      // Valid 2FA provided upfront -> issue OIDC token
-      const token = generateOidcToken(userContext);
+      // Valid 2FA provided upfront -> issue OIDC token and session
+      const session = await sessionService.createSession(userContext.id, userAgent, clientIp, rememberMe);
+      const token = generateOidcToken(userContext, session.sessionId, rememberMe);
       await AuditLogModel.create({
         actorId: userContext.id,
         actorRole: userContext.role,
@@ -257,8 +267,9 @@ export async function authenticatePortalUser(
     };
   }
 
-  // If 2FA is not yet configured, issue OIDC session token
-  const token = generateOidcToken(userContext);
+  // If 2FA is not yet configured, issue OIDC session token and session
+  const session = await sessionService.createSession(userContext.id, userAgent, clientIp, rememberMe);
+  const token = generateOidcToken(userContext, session.sessionId, rememberMe);
 
   await AuditLogModel.create({
     actorId: userContext.id,
@@ -281,7 +292,9 @@ export async function verifyAndComplete2FaLogin(
   tempToken: string,
   code: string,
   clientIp?: string,
-  method: 'totp' | 'email' = 'totp'
+  method: 'totp' | 'email' = 'totp',
+  userAgent?: string,
+  rememberMe: boolean = false
 ): Promise<{ success: true; token: string; user: AdminUserContext } | { success: false; error: string; statusCode: number }> {
   const pendingPayload = verify2FaPendingToken(tempToken);
   if (!pendingPayload) {
@@ -368,7 +381,8 @@ export async function verifyAndComplete2FaLogin(
     twoFactorEnabled: user.twoFactorEnabled,
   };
 
-  const token = generateOidcToken(userContext);
+  const session = await sessionService.createSession(userContext.id, userAgent, clientIp, rememberMe);
+  const token = generateOidcToken(userContext, session.sessionId, rememberMe);
 
   await AuditLogModel.create({
     actorId: userContext.id,

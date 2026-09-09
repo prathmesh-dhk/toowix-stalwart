@@ -61,7 +61,7 @@
 
   /* Typography */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, "Liberation Mono", monospace;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   /* Spacing Scale */
   --space-1: 4px;
@@ -469,7 +469,7 @@ body {
 }
 .status-dot.green { background-color: var(--success-mid); }
 .status-dot.yellow { background-color: var(--warning-mid); }
-.status-dot.blue { background-color: var(--info-mid); }
+.status-dot.blue, .status-dot.indigo { background-color: var(--info-mid); }
 .status-dot.red { background-color: var(--error-mid); }
 .status-dot.gray { background-color: var(--slate-400); }
 

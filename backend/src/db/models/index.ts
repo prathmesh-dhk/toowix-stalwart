@@ -7,3 +7,4 @@ export * from './ActivationToken';
 export * from './AuditLog';
 export * from './BackupRecord';
 export * from './SystemSettings';
+export * from './AdminSession';

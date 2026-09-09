@@ -363,6 +363,16 @@ export class MailboxService {
       throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
     }
 
+    // Tenant check: block if tenant is suspended
+    const tenant = await TenantModel.findById(mailbox.tenantId);
+    if (tenant?.status === 'suspended') {
+      throw {
+        status: 403,
+        code: 'TENANT_SUSPENDED',
+        message: 'Tenant is suspended; mailbox deletion is blocked',
+      };
+    }
+
     // 1. Delete from Stalwart if an account was provisioned
     if (mailbox.stalwartAccountId) {
       try {

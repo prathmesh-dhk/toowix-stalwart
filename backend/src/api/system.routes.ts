@@ -334,7 +334,46 @@ systemRouter.delete('/backups/:id', async (req: Request, res: Response): Promise
   }
 });
 
-// 9. Get Outage Alert Configuration
+// 9. Get Mail Limits Configuration
+systemRouter.get('/mail-limits', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const limits = await alertService.getMailLimits();
+    res.status(200).json(limits);
+  } catch (err: any) {
+    console.error('[System Mail Limits Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to load mail limit configuration' });
+  }
+});
+
+systemRouter.post('/mail-limits', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const actorEmail = (req as any).adminUser?.email || 'superadmin';
+    const body = req.body || {};
+    const numeric = (value: unknown, fallback: number) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    const payload = {
+      attachmentSizeMb: Math.max(1, numeric(body.attachmentSizeMb, 5)),
+      messageSizeMb: Math.max(1, numeric(body.messageSizeMb, 6)),
+      maxMailboxDepth: Math.max(1, numeric(body.maxMailboxDepth, 10)),
+      maxMailboxNameLength: Math.max(1, numeric(body.maxMailboxNameLength, 255)),
+    };
+
+    const config = await alertService.updateMailLimits(payload, actorEmail);
+    res.status(200).json({
+      success: true,
+      message: 'Mail limits updated successfully',
+      config,
+    });
+  } catch (err: any) {
+    console.error('[System Update Mail Limits Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to update mail limit configuration' });
+  }
+});
+
+// 10. Get Outage Alert Configuration
 systemRouter.get('/alerts/config', async (_req: Request, res: Response): Promise<void> => {
   try {
     const alertConfig = await alertService.getAlertConfig();
@@ -345,7 +384,7 @@ systemRouter.get('/alerts/config', async (_req: Request, res: Response): Promise
   }
 });
 
-// 10. Update Outage Alert Configuration
+// 11. Update Outage Alert Configuration
 systemRouter.post('/alerts/config', async (req: Request, res: Response): Promise<void> => {
   try {
     const actorEmail = (req as any).adminUser?.email || 'superadmin';

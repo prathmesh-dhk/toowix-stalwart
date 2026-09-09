@@ -12,21 +12,18 @@ import {
   UserContext,
 } from '../types';
 import {
+  CheckCircle2,
+  X,
+  QrCode,
+  Loader2,
+  ShieldAlert,
+  LogOut,
   LayoutDashboard,
   ClipboardList,
   Building2,
   Server,
-  History,
-  CheckCircle2,
-  X,
-  Search,
-  RefreshCw,
-  LogOut,
-  Mail,
-  ExternalLink,
-  ShieldCheck,
-  ShieldAlert,
-  QrCode,
+  Receipt,
+  Laptop,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
@@ -38,6 +35,7 @@ import { TenantApplicationsView } from './views/TenantApplicationsView';
 import { TenantsManagementView } from './views/TenantsManagementView';
 import { SystemOperationsView } from './views/SystemOperationsView';
 import { AuditLogView } from './views/AuditLogView';
+import { ActiveDevicesView } from './views/ActiveDevicesView';
 
 // Modals
 import { ApplicationReviewModal } from './modals/ApplicationReviewModal';
@@ -47,7 +45,7 @@ import { CreateTenantModal } from './modals/CreateTenantModal';
 import { ManageAdminsModal } from './modals/ManageAdminsModal';
 import { UpdateQuotaModal } from './modals/UpdateQuotaModal';
 
-export type DashboardTab = 'dashboard' | 'applications' | 'tenants' | 'operations' | 'audit';
+export type DashboardTab = 'dashboard' | 'applications' | 'tenants' | 'operations' | 'audit' | 'devices';
 
 export interface PlatformAdminDashboardProps {
   user?: UserContext | null;
@@ -67,12 +65,8 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   // Global Action Feedback Banner
   const [actionAlert, setActionAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Global Search
-  const [globalSearch, setGlobalSearch] = useState('');
 
-  // Telemetry Refresh State
-  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-  const [isRefreshing, setIsRefreshing] = useState(false);
+
 
   // 2FA Setup Modal State
   const [show2FaModal, setShow2FaModal] = useState(false);
@@ -201,7 +195,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         loadOperationsData(),
         loadAuditLogs(),
       ]);
-      setLastRefreshed(new Date());
       setInitialLoading(false);
     };
     init();
@@ -220,21 +213,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   }, [activeTab, loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs]);
 
-  // Refresh Telemetry Handler
-  const handleRefreshTelemetry = async () => {
-    setIsRefreshing(true);
-    try {
-      await Promise.all([
-        loadTenantsAndMetrics(),
-        loadOperationsData(),
-        loadApplications(),
-        loadAuditLogs(),
-      ]);
-      setLastRefreshed(new Date());
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+
 
   const showAlert = (type: 'success' | 'error', message: string) => {
     setActionAlert({ type, message });
@@ -357,44 +336,12 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   const stalwartStatus = healthDetails?.services?.stalwart?.status || metrics?.stalwart?.status || 'connected';
   const hasSystemIssue = mongoStatus !== 'healthy' || stalwartStatus !== 'connected';
 
-  // Global search filtering
-  const filteredTenants = useMemo(() => {
-    if (!globalSearch.trim()) return tenants;
-    const q = globalSearch.toLowerCase().trim();
-    return tenants.filter(
-      (t) =>
-        t.name?.toLowerCase().includes(q) ||
-        t.domain?.domainName?.toLowerCase().includes(q)
-    );
-  }, [tenants, globalSearch]);
-
-  const filteredApplications = useMemo(() => {
-    if (!globalSearch.trim()) return applications;
-    const q = globalSearch.toLowerCase().trim();
-    return applications.filter(
-      (a) =>
-        a.companyName?.toLowerCase().includes(q) ||
-        a.requestedDomain?.toLowerCase().includes(q) ||
-        a.applicantName?.toLowerCase().includes(q) ||
-        a.contactEmail?.toLowerCase().includes(q)
-    );
-  }, [applications, globalSearch]);
-
-  const formatLastUpdated = (d: Date) => {
-    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-    if (diffSec < 20) return 'just now';
-    if (diffSec < 60) return `${diffSec}s ago`;
-    const diffMin = Math.floor(diffSec / 60);
-    return `${diffMin}m ago`;
-  };
 
   if (initialLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="h-10 w-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white mx-auto shadow-sm animate-pulse">
-            <Mail size={20} />
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc]">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
           <div className="text-xs font-semibold text-slate-700">
             Loading Super Admin platform console...
           </div>
@@ -404,228 +351,231 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased flex flex-row selection:bg-indigo-100 selection:text-indigo-900">
-      {/* ================= SIDEBAR (240px) ================= */}
-      <aside className="w-60 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 min-h-screen z-30 sticky top-0 h-screen">
-        <div className="p-5">
-          {/* Brand Header */}
-          <div className="flex items-center justify-between pb-5 mb-5 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <img src={toowixLogo} alt="Toowix" className="h-8 w-8 object-contain" />
-              <div>
-                <span className="font-bold text-sm tracking-tight text-slate-900 block leading-tight">
-                  toowix
+    <div className="min-h-screen bg-[#f8fafc] font-body text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
+      {/* ========================================================================= */}
+      {/* TOP HEADER (MATCHING TENANT ADMIN & STITCH DESIGN)                        */}
+      {/* ========================================================================= */}
+      <header className="fixed top-0 inset-x-0 z-40 bg-white border-b border-slate-200 h-16">
+        <div className="h-full px-6 flex items-center justify-between">
+          {/* Brand & Platform Context */}
+          <div className="flex items-center gap-6">
+            {/* Brand */}
+            <div className="flex items-center gap-3 w-56">
+              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
+              <div className="flex flex-col">
+                <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight">
+                  TOOWIX MAIL
                 </span>
-                <span className="text-[11px] text-slate-400 font-medium">Platform Console</span>
+                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                  Platform Console
+                </span>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-              Super Admin
-            </span>
+
           </div>
 
-          {/* Navigation Section Title */}
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-3 mb-2">
-            Navigation
-          </div>
-
-          {/* Nav Items */}
-          <nav className="space-y-1">
-            <button
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-xs transition-colors text-left ${
-                activeTab === 'dashboard'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-              id="nav-dashboard"
-              onClick={() => setActiveTab('dashboard')}
-            >
-              <LayoutDashboard
-                size={16}
-                className={activeTab === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'}
-              />
-              <span>Dashboard</span>
-            </button>
-
-            <button
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors text-left ${
-                activeTab === 'applications'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-              id="nav-applications"
-              onClick={() => setActiveTab('applications')}
-            >
-              <div className="flex items-center gap-3">
-                <ClipboardList
-                  size={16}
-                  className={activeTab === 'applications' ? 'text-indigo-600' : 'text-slate-400'}
-                />
-                <span>Tenant Applications</span>
-              </div>
-              {pendingAppsCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 tabular-nums">
-                  {pendingAppsCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors text-left ${
-                activeTab === 'tenants'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-              id="nav-tenants"
-              onClick={() => setActiveTab('tenants')}
-            >
-              <div className="flex items-center gap-3">
-                <Building2
-                  size={16}
-                  className={activeTab === 'tenants' ? 'text-indigo-600' : 'text-slate-400'}
-                />
-                <span>Tenants</span>
-              </div>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 tabular-nums">
-                {activeTenantsCount}
-              </span>
-            </button>
-
-            <button
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors text-left ${
-                activeTab === 'operations'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-              id="nav-system-health"
-              onClick={() => setActiveTab('operations')}
-            >
-              <div className="flex items-center gap-3">
-                <Server
-                  size={16}
-                  className={activeTab === 'operations' ? 'text-indigo-600' : 'text-slate-400'}
-                />
-                <span>System Health</span>
-              </div>
-              <span
-                className={`h-2 w-2 rounded-full ${hasSystemIssue ? 'bg-red-500' : 'bg-emerald-500'}`}
-              />
-            </button>
-
-            <button
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-xs transition-colors text-left ${
-                activeTab === 'audit'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-[3px] border-indigo-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-              id="nav-audit-log"
-              onClick={() => setActiveTab('audit')}
-            >
-              <History
-                size={16}
-                className={activeTab === 'audit' ? 'text-indigo-600' : 'text-slate-400'}
-              />
-              <span>Audit Log</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Bottom Workspace Footer */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-          <span>Toowix Platform</span>
-          <span className="font-mono">v2.4.0</span>
-        </div>
-      </aside>
-
-      {/* ================= MAIN CONTENT ================= */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-y-auto">
-        {/* Top Header Bar (64px) */}
-        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-20 gap-4">
-          {/* Search Bar */}
-          <div className="relative flex-1 max-w-md">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15 rounded-md pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 outline-none transition"
-              placeholder="Search tenants, domains, applications..."
-              type="text"
-              value={globalSearch}
-              onChange={(e) => setGlobalSearch(e.target.value)}
-            />
-          </div>
-
-          {/* Right Controls: Telemetry, Webmail & Profile */}
-          <div className="flex items-center gap-3">
-            {/* Last Updated Indicator with Refresh */}
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-              <span id="lastUpdatedText">{formatLastUpdated(lastRefreshed)}</span>
-              <button
-                className={`p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition ${
-                  isRefreshing ? 'animate-spin' : ''
-                }`}
-                onClick={handleRefreshTelemetry}
-                title="Refresh telemetry"
-              >
-                <RefreshCw size={13} />
-              </button>
-            </div>
-
-            {/* Webmail Link */}
-            <a
-              href="http://localhost:8888"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition"
-              title="Open Webmail"
-            >
-              <Mail size={13} className="text-slate-500" />
-              <span>Webmail</span>
-              <ExternalLink size={11} className="text-slate-400" />
-            </a>
+          {/* Right Utility Actions */}
+          <div className="flex items-center gap-4">
 
             {/* 2FA Security Pill / Setup */}
             {user?.twoFactorEnabled ? (
               <span
-                className="hidden lg:inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200"
+                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60"
                 title="Two-factor authentication is active"
               >
-                <ShieldCheck size={13} /> 2FA Active
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>2FA Active</span>
               </span>
             ) : (
               <button
                 onClick={handleOpen2FaSetup}
-                className="hidden lg:inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition"
+                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
                 title="Set up two-factor authentication"
               >
-                <ShieldAlert size={13} /> Set up 2FA
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                <span>Set up 2FA</span>
               </button>
             )}
 
             {/* Super Admin Profile */}
-            <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
-              <div className="h-7 w-7 rounded-full bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center font-bold text-xs font-mono">
+            <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
+              <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
                 {userInitials}
               </div>
-              <div className="leading-tight hidden sm:block">
-                <div className="text-xs font-semibold text-slate-900">
+              <div className="hidden lg:flex flex-col text-left">
+                <span className="text-xs font-medium text-slate-900 leading-tight">
                   {user?.email || 'admin@toowix.com'}
-                </div>
-                <div className="text-[10px] text-slate-400 font-medium">Super Admin</div>
+                </span>
+                <span className="text-[11px] text-slate-400 font-normal leading-tight">
+                  Super Admin
+                </span>
               </div>
-              {onLogout && (
-                <button
-                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition ml-1"
-                  onClick={onLogout}
-                  title="Sign out"
-                >
-                  <LogOut size={15} />
-                </button>
-              )}
             </div>
-          </div>
-        </header>
 
-        {/* Workspace Container */}
-        <div className="p-6 max-w-7xl w-full mx-auto space-y-6">
+            {/* Sign Out */}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ========================================================================= */}
+      {/* SIDEBAR NAVIGATION RAIL (MATCHING TENANT ADMIN)                           */}
+      {/* ========================================================================= */}
+      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between p-4">
+        <div className="flex flex-col gap-6">
+          <nav className="flex flex-col gap-1">
+            {/* Dashboard */}
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-left w-full ${
+                activeTab === 'dashboard'
+                  ? 'bg-indigo-50 text-indigo-600'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+              }`}
+              id="nav-dashboard"
+            >
+              <div className="flex items-center gap-2.5">
+                <LayoutDashboard
+                  className={`w-[18px] h-[18px] ${
+                    activeTab === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span>Dashboard</span>
+              </div>
+            </button>
+
+            {/* Tenant Applications */}
+            <button
+              onClick={() => setActiveTab('applications')}
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+                activeTab === 'applications'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+              id="nav-applications"
+            >
+              <div className="flex items-center gap-2.5">
+                <ClipboardList
+                  className={`w-[18px] h-[18px] ${
+                    activeTab === 'applications' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span>Tenant Applications</span>
+              </div>
+              {pendingAppsCount > 0 ? (
+                <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/60">
+                  {pendingAppsCount}
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
+                  0
+                </span>
+              )}
+            </button>
+
+            {/* Tenants */}
+            <button
+              onClick={() => setActiveTab('tenants')}
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+                activeTab === 'tenants'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+              id="nav-tenants"
+            >
+              <div className="flex items-center gap-2.5">
+                <Building2
+                  className={`w-[18px] h-[18px] ${
+                    activeTab === 'tenants' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span>Tenants</span>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
+                {activeTenantsCount}
+              </span>
+            </button>
+
+            {/* System Health */}
+            <button
+              onClick={() => setActiveTab('operations')}
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+                activeTab === 'operations'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+              id="nav-system-health"
+            >
+              <div className="flex items-center gap-2.5">
+                <Server
+                  className={`w-[18px] h-[18px] ${
+                    activeTab === 'operations' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span>System Health</span>
+              </div>
+              <span
+                className={`h-2 w-2 rounded-full ${hasSystemIssue ? 'bg-rose-500' : 'bg-emerald-500'}`}
+              />
+            </button>
+
+            {/* Audit Log */}
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+                activeTab === 'audit'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+              id="nav-audit-log"
+            >
+              <div className="flex items-center gap-2.5">
+                <Receipt
+                  className={`w-[18px] h-[18px] ${
+                    activeTab === 'audit' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span>Audit Log</span>
+              </div>
+            </button>
+
+            {/* Devices */}
+            <button
+              onClick={() => setActiveTab('devices')}
+              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+                activeTab === 'devices'
+                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+              id="nav-devices"
+            >
+              <div className="flex items-center gap-2.5">
+                <Laptop
+                  className={`w-[18px] h-[18px] ${
+                    activeTab === 'devices' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span>Active Devices</span>
+              </div>
+            </button>
+          </nav>
+        </div>
+
+      </aside>
+
+      {/* ========================================================================= */}
+      {/* MAIN VIEW CONTAINER                                                       */}
+      {/* ========================================================================= */}
+      <div className="pl-60 pt-16 min-h-screen bg-[#f8fafc]">
+        <main className="max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
           {/* Global Action Alert */}
           {actionAlert && (
             <Alert
@@ -638,10 +588,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
           {/* Tab Views */}
           {activeTab === 'dashboard' && (
             <DashboardOverviewView
-              tenants={filteredTenants}
+              tenants={tenants}
               metrics={metrics}
               healthDetails={healthDetails}
-              applications={filteredApplications}
+              applications={applications}
               backups={backups}
               driftReport={driftReport}
               recentAuditLogs={auditLogs}
@@ -653,7 +603,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
           {activeTab === 'applications' && (
             <TenantApplicationsView
-              applications={filteredApplications}
+              applications={applications}
               loading={appsLoading}
               onRefresh={loadApplications}
               onReviewApplication={(app) => setReviewApp(app)}
@@ -662,7 +612,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
           {activeTab === 'tenants' && (
             <TenantsManagementView
-              tenants={filteredTenants}
+              tenants={tenants}
               loading={tenantsLoading}
               onRefresh={loadTenantsAndMetrics}
               onCreateTenant={() => setShowCreateModal(true)}
@@ -695,9 +645,12 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               onRefresh={loadAuditLogs}
             />
           )}
-        </div>
-      </main>
 
+          {activeTab === 'devices' && (
+            <ActiveDevicesView />
+          )}
+        </main>
+      </div>
       {/* ================= MODALS LAYER ================= */}
       <ApplicationReviewModal
         application={reviewApp}
@@ -831,7 +784,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
                       placeholder="123456"
                       value={totpCode}
                       onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                      className="form-input text-center text-base font-mono tracking-widest"
+                      className="form-input text-center text-base tracking-widest tabular-nums font-semibold"
                     />
                   </div>
 

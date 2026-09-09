@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { UserContext } from '../types';
-import { Mail, LogOut, ShieldCheck, ShieldAlert, Building2, ExternalLink, X, QrCode, CheckCircle2 } from 'lucide-react';
+import { Mail, LogOut, ShieldCheck, ShieldAlert, Building2, ExternalLink, X, QrCode, CheckCircle2, Laptop } from 'lucide-react';
 import { api } from '../api';
 import toowixLogo from '../assets/toowix-logo.svg';
+import { ActiveSessionsModal } from './modals/ActiveSessionsModal';
 
 interface NavbarProps {
   user: UserContext;
@@ -12,6 +13,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated }) => {
   const [show2FaModal, setShow2FaModal] = useState(false);
+  const [showSessionsModal, setShowSessionsModal] = useState(false);
   const [setupData, setSetupData] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null);
   const [totpCode, setTotpCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -124,6 +126,16 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
             {user.email}
           </span>
 
+          <button
+            onClick={() => setShowSessionsModal(true)}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Manage logged-in devices and sessions"
+          >
+            <Laptop size={14} color="var(--primary)" />
+            <span>Devices</span>
+          </button>
+
           <a
             href="http://localhost:8888"
             target="_blank"
@@ -148,6 +160,12 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
           </button>
         </div>
       </header>
+
+      {/* Active Devices & Sessions Modal */}
+      <ActiveSessionsModal
+        isOpen={showSessionsModal}
+        onClose={() => setShowSessionsModal(false)}
+      />
 
       {/* 2FA Setup Modal */}
       {show2FaModal && (

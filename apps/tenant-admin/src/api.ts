@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication } from './types';
+import { UserContext, TenantSummary, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -365,6 +365,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  // Active Device & Session Management
+  listSessions: () =>
+    request<{ sessions: SessionItem[] }>('/api/auth/sessions'),
+
+  revokeSession: (sessionId: string) =>
+    request<{ success: boolean; message: string }>(`/api/auth/sessions/${sessionId}`, {
+      method: 'DELETE',
+    }),
+
+  revokeOtherSessions: () =>
+    request<{ success: boolean; message: string; revokedCount: number }>('/api/auth/sessions/revoke-others', {
+      method: 'POST',
+    }),
 };
+
 
 

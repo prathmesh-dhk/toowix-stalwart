@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-STALWART_URL="${1:-http://localhost:8080}"
+STALWART_URL="${1:-http://localhost:8090}"
 ADMIN_USER="${2:-admin@toowix.test}"
 ADMIN_PASS="${3:-wzo1tYSEbJA6UJF6}"
 SERVICE_USER="${4:-toowix-service@toowix.test}"

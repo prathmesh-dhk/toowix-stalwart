@@ -34,12 +34,14 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
     vi.spyOn(stalwartClient, 'createAccount').mockImplementation(async (input) => ({
       id: 'mock-acc-' + Math.random().toString(36).substring(7),
       name: input.name,
+      domainId: input.domainId,
       emailAddress: `${input.name}@mock.test`,
     }));
 
     vi.spyOn(stalwartClient, 'updateAccountPassword').mockResolvedValue();
     vi.spyOn(stalwartClient, 'deleteAccount').mockResolvedValue();
     vi.spyOn(stalwartClient, 'deleteDomain').mockResolvedValue();
+    vi.spyOn(stalwartClient, 'updateDomainStatus').mockResolvedValue();
 
     vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([
       {
@@ -55,6 +57,7 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
       {
         id: 'acc-service',
         name: 'toowix-service',
+        domainId: 'dom-wayne',
         emailAddress: 'toowix-service@toowix.test',
       },
     ]);
@@ -222,7 +225,17 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
   // 2. Super Admin Tenant Lifecycle & Quotas
   // =========================================================================
   describe('Super Admin Tenant Lifecycle & Quotas', () => {
-    it('should suspend a tenant and mark its domain as suspended', async () => {
+    it('should suspend a tenant and mark its domain and mailboxes as suspended', async () => {
+      // Create a test mailbox for tenantA
+      await MailboxModel.create({
+        tenantId: tenantAId,
+        domainId: domainAId,
+        address: 'alice@acme.test',
+        localPart: 'alice',
+        domainName: 'acme.test',
+        status: 'active',
+      });
+
       const res = await request(app)
         .post(`/api/platform/tenants/${tenantAId}/suspend`)
         .set('Authorization', `Bearer ${superAdminToken}`);
@@ -233,14 +246,18 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
       const domain = await DomainModel.findOne({ tenantId: tenantAId });
       expect(domain?.status).toBe('suspended');
 
+      const mailbox = await MailboxModel.findOne({ tenantId: tenantAId, address: 'alice@acme.test' });
+      expect(mailbox?.status).toBe('suspended');
+
       const audit = await AuditLogModel.findOne({ action: 'TENANT_SUSPENDED' });
       expect(audit).not.toBeNull();
     });
 
-    it('should reactivate a suspended tenant and mark its domain active', async () => {
+    it('should reactivate a suspended tenant and restore its domain and mailboxes to active', async () => {
       // First suspend
       await TenantModel.updateOne({ _id: tenantAId }, { status: 'suspended' });
       await DomainModel.updateOne({ tenantId: tenantAId }, { status: 'suspended' });
+      await MailboxModel.updateMany({ tenantId: tenantAId }, { status: 'suspended' });
 
       const res = await request(app)
         .post(`/api/platform/tenants/${tenantAId}/reactivate`)
@@ -251,6 +268,9 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
 
       const domain = await DomainModel.findOne({ tenantId: tenantAId });
       expect(domain?.status).toBe('active');
+
+      const mailboxes = await MailboxModel.find({ tenantId: tenantAId });
+      expect(mailboxes.every((m) => m.status === 'active')).toBe(true);
 
       const audit = await AuditLogModel.findOne({ action: 'TENANT_REACTIVATED' });
       expect(audit).not.toBeNull();

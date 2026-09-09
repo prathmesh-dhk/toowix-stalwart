@@ -221,7 +221,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased flex flex-col justify-between selection:bg-blue-100 selection:text-blue-700">
+    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased flex flex-col justify-between selection:bg-indigo-100 selection:text-indigo-900">
       {/* Minimalist Top Navbar */}
       <header className="w-full border-b border-slate-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-30">
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -241,7 +241,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
             <span className="text-slate-500 hidden sm:inline">Already activated?</span>
             <button
               onClick={onBackToLogin}
-              className="text-blue-600 hover:text-blue-700 font-medium transition-colors cursor-pointer bg-transparent border-none p-0"
+              className="text-indigo-600 hover:text-indigo-700 font-medium transition-colors cursor-pointer bg-transparent border-none p-0"
             >
               Sign in
             </button>
@@ -296,7 +296,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
             {/* STAGE 1: TOKEN VALIDATION */}
             {stage === 1 && (
               <div className="py-10 text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto text-blue-600">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center mx-auto text-indigo-600">
                   <Loader2 className="w-6 h-6 animate-spin" />
                 </div>
                 <div className="space-y-1">
@@ -358,7 +358,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
                         placeholder="Enter your registration password"
                         required
                         autoComplete="current-password"
-                        className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 transition pr-10 font-mono"
+                        className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 transition pr-10 font-mono"
                       />
                       <button
                         type="button"
@@ -379,7 +379,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
                       checked={agreeTerms}
                       onChange={(e) => setAgreeTerms(e.target.checked)}
                       required
-                      className="h-4 w-4 mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      className="h-4 w-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                     />
                     <label htmlFor="agree-terms" className="text-xs text-slate-600 cursor-pointer leading-relaxed">
                       I confirm administrative responsibility for{' '}
@@ -440,7 +440,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
                     <button
                       type="button"
                       onClick={handleCopySecret}
-                      className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-blue-50 border border-blue-100 transition cursor-pointer"
+                      className="text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-indigo-50 border border-indigo-100 transition cursor-pointer"
                     >
                       {copiedSecret ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
                       <span>{copiedSecret ? 'Copied' : 'Copy'}</span>
@@ -465,7 +465,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
                           value={d}
                           onChange={(e) => handleDigitChange(i, e.target.value)}
                           onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          className="w-10 h-12 text-center text-lg font-bold rounded-xl border border-slate-200 bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 outline-none transition"
+                          className="w-10 h-12 text-center text-lg font-bold rounded-xl border border-slate-200 bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 outline-none transition"
                         />
                       ))}
                     </div>

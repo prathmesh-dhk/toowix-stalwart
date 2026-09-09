@@ -1,9 +1,10 @@
 const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
 
 const PROXY_PORT = parseInt(process.env.PORT || '3000', 10);
 const NEXT_PORT = 3001;
-const STALWART_TARGET = process.env.STALWART_INTERNAL_URL || 'http://stalwart:8080';
+const STALWART_TARGET = process.env.STALWART_INTERNAL_URL || 'http://host.docker.internal:8090';
 
 console.log('[Toowix Webmail Proxy] Starting Next.js background server on port', NEXT_PORT);
 
@@ -27,6 +28,7 @@ nextProc.on('exit', (code) => {
 
 // 2. Create the reverse proxy server on port 3000
 const stalwartUrl = new URL(STALWART_TARGET);
+const isStalwartHttps = stalwartUrl.protocol === 'https:';
 
 const proxy = http.createServer((req, res) => {
   const isJmap = req.url.startsWith('/.well-known/jmap') || req.url.startsWith('/jmap');
@@ -43,8 +45,10 @@ const proxy = http.createServer((req, res) => {
     return res.end();
   }
 
+  const transport = (isJmap && isStalwartHttps) ? https : http;
   const targetHost = isJmap ? stalwartUrl.hostname : '127.0.0.1';
-  const targetPort = isJmap ? parseInt(stalwartUrl.port || '80', 10) : NEXT_PORT;
+  const defaultPort = isStalwartHttps ? '443' : '80';
+  const targetPort = isJmap ? parseInt(stalwartUrl.port || defaultPort, 10) : NEXT_PORT;
 
   const isSession = isJmap && req.method === 'GET' && (req.url.startsWith('/.well-known/jmap') || req.url.startsWith('/jmap/session'));
 
@@ -56,12 +60,13 @@ const proxy = http.createServer((req, res) => {
     }
   }
 
-  const proxyReq = http.request({
+  const proxyReq = transport.request({
     host: targetHost,
     port: targetPort,
     path: req.url,
     method: req.method,
     headers: headers,
+    rejectUnauthorized: false,
   }, (proxyRes) => {
     const resHeaders = { ...proxyRes.headers };
     if (isJmap) {
@@ -125,15 +130,18 @@ const proxy = http.createServer((req, res) => {
 // Handle WebSocket upgrade for JMAP push notifications (/jmap/ws)
 proxy.on('upgrade', (req, socket, head) => {
   const isJmap = req.url.startsWith('/jmap');
+  const transport = (isJmap && isStalwartHttps) ? https : http;
   const targetHost = isJmap ? stalwartUrl.hostname : '127.0.0.1';
-  const targetPort = isJmap ? parseInt(stalwartUrl.port || '80', 10) : NEXT_PORT;
+  const defaultPort = isStalwartHttps ? '443' : '80';
+  const targetPort = isJmap ? parseInt(stalwartUrl.port || defaultPort, 10) : NEXT_PORT;
 
-  const proxyReq = http.request({
+  const proxyReq = transport.request({
     host: targetHost,
     port: targetPort,
     path: req.url,
     method: req.method,
     headers: { ...req.headers, host: `${targetHost}:${targetPort}` },
+    rejectUnauthorized: false,
   });
 
   proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {

@@ -5,16 +5,19 @@ export interface UserContext {
   id: string;
   email: string;
   role: AdminRole;
-  tenantId: string | null;
+  tenantId?: string | null;
   twoFactorEnabled?: boolean;
 }
 
 export interface RegistrationApplication {
   _id: string;
+  id?: string;
   companyName: string;
   requestedDomain: string;
   applicantName: string;
   contactEmail: string;
+  employeeCount?: string | null;
+  region?: string | null;
   phone?: string | null;
   notes?: string | null;
   status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
@@ -23,6 +26,7 @@ export interface RegistrationApplication {
   rejectionReason?: string | null;
   createdAt: string;
   updatedAt: string;
+  submittedAt?: string;
 }
 
 export interface TenantSummary {
@@ -35,7 +39,7 @@ export interface TenantSummary {
   domain: {
     id: string;
     domainName: string;
-    stalwartDomainId: string | null;
+    stalwartDomainId?: string | null;
     status: string;
   } | null;
   mailboxCount: number;
@@ -152,6 +156,13 @@ export interface AlertConfig {
   consecutiveFailureThreshold: number;
 }
 
+export interface MailLimitConfig {
+  attachmentSizeMb: number;
+  messageSizeMb: number;
+  maxMailboxDepth: number;
+  maxMailboxNameLength: number;
+}
+
 export interface IntegrityCheckResult {
   valid: boolean;
   backupId: string;
@@ -219,3 +230,15 @@ export interface DriftReport {
     }>;
   };
 }
+
+export interface SessionItem {
+  sessionId: string;
+  deviceType: 'desktop' | 'mobile' | 'tablet' | 'unknown';
+  browser: string;
+  os: string;
+  ipAddress: string;
+  lastActiveAt: string;
+  createdAt: string;
+  isCurrent: boolean;
+}
+

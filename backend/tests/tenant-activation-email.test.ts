@@ -210,6 +210,6 @@ describe('Tenant Activation Email Dispatch & Onboarding Lifecycle', () => {
     // Verify audit log
     const audit = await AuditLogModel.findOne({ action: 'TENANT_ACTIVATION_EMAIL_RESENT' });
     expect(audit).not.toBeNull();
-    expect(audit?.tenantId.toString()).toBe(tenantId);
+    expect(audit?.tenantId?.toString()).toBe(tenantId);
   });
 });

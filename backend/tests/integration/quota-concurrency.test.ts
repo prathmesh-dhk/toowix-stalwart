@@ -25,6 +25,8 @@ describe('Concurrency & Quota Integrity: Race-Condition Defense', () => {
     vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({
       id: 'acc-1',
       name: 'test-user',
+      domainId: 'stalwart-dom-1',
+      emailAddress: 'test-user@concurrency.test',
     });
   });
 
@@ -67,7 +69,7 @@ describe('Concurrency & Quota Integrity: Race-Condition Defense', () => {
     ]);
     vi.spyOn(stalwartClient, 'createAccount').mockImplementation(async (acc) => {
       accountCounter++;
-      return { id: `stalwart-acc-${accountCounter}`, name: acc.name };
+      return { id: `stalwart-acc-${accountCounter}`, name: acc.name, domainId: acc.domainId, emailAddress: `${acc.name}@${domain.domainName}` };
     });
 
     // Launch 50 concurrent requests for distinct local parts

@@ -5,6 +5,7 @@ import {
   authenticatePortalUser,
   verifyAndComplete2FaLogin,
   verify2FaPendingToken,
+  verifyOidcToken,
   generateTotpSecret,
   generateTotpQrCode,
   verifyTotpCode,
@@ -15,10 +16,11 @@ import {
   hashSecurityAnswer,
   maskEmail,
 } from '../auth/service';
-import { requireAuth, loginRateLimiter } from '../auth/middleware';
+import { requireAuth, loginRateLimiter, extractToken } from '../auth/middleware';
 import { AdminUserModel } from '../db/models/AdminUser';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { emailService } from '../services/email.service';
+import { sessionService } from '../services/session.service';
 import { stalwartClient } from '../stalwart/client';
 
 export const authRouter = Router();
@@ -71,8 +73,9 @@ authRouter.post('/super-admin/login', loginRateLimiter(), async (req: Request, r
 
   const { email, password, totpCode, rememberMe } = parseResult.data;
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  const userAgent = req.headers['user-agent'];
 
-  const result = await authenticatePortalUser('SUPER_ADMIN', email, password, clientIp, totpCode);
+  const result = await authenticatePortalUser('SUPER_ADMIN', email, password, clientIp, totpCode, userAgent, !!rememberMe);
 
   if (!result.success) {
     return res.status(result.statusCode).json({ error: 'AUTH_FAILED', message: result.error });
@@ -109,8 +112,9 @@ authRouter.post('/tenant-admin/login', loginRateLimiter(), async (req: Request, 
 
   const { email, password, totpCode, rememberMe } = parseResult.data;
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  const userAgent = req.headers['user-agent'];
 
-  const result = await authenticatePortalUser('TENANT_ADMIN', email, password, clientIp, totpCode);
+  const result = await authenticatePortalUser('TENANT_ADMIN', email, password, clientIp, totpCode, userAgent, !!rememberMe);
 
   if (!result.success) {
     return res.status(result.statusCode).json({ error: 'AUTH_FAILED', message: result.error });
@@ -193,8 +197,9 @@ authRouter.post('/2fa/verify', async (req: Request, res: Response) => {
 
   const { tempToken, code, rememberMe, method } = parseResult.data;
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  const userAgent = req.headers['user-agent'];
 
-  const result = await verifyAndComplete2FaLogin(tempToken, code, clientIp, method);
+  const result = await verifyAndComplete2FaLogin(tempToken, code, clientIp, method, userAgent, !!rememberMe);
 
   if (!result.success) {
     return res.status(result.statusCode).json({ error: '2FA_FAILED', message: result.error });
@@ -271,9 +276,77 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
 });
 
 // 7. Logout
-authRouter.post('/logout', (_req: Request, res: Response) => {
+authRouter.post('/logout', async (req: Request, res: Response) => {
   res.clearCookie('toowix_session');
+  const token = extractToken(req);
+  if (token) {
+    try {
+      const payload = verifyOidcToken(token);
+      if (payload && payload.sid) {
+        await sessionService.revokeSession(payload.sub, payload.sid, payload.email);
+      }
+    } catch {
+      // Best-effort cleanup
+    }
+  }
   return res.status(200).json({ success: true, message: 'Logged out successfully' });
+});
+
+// =========================================================================
+// SESSION MANAGEMENT ENDPOINTS
+// =========================================================================
+
+// List active sessions for the authenticated user
+authRouter.get('/sessions', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const adminUser = req.adminUser!;
+    const sessions = await sessionService.listUserSessions(adminUser.id, req.sessionId);
+    return res.status(200).json({ sessions });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: err.message || 'Failed to list sessions' });
+  }
+});
+
+// Revoke a specific session
+authRouter.delete('/sessions/:sessionId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const adminUser = req.adminUser!;
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'sessionId is required' });
+    }
+
+    const success = await sessionService.revokeSession(adminUser.id, sessionId, adminUser.email);
+    if (!success) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Session not found or already revoked' });
+    }
+
+    return res.status(200).json({ success: true, message: 'Session revoked successfully' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: err.message || 'Failed to revoke session' });
+  }
+});
+
+// Revoke all sessions except the current one
+authRouter.post('/sessions/revoke-others', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const adminUser = req.adminUser!;
+    if (!req.sessionId) {
+      return res.status(400).json({
+        error: 'CURRENT_SESSION_REQUIRED',
+        message: 'Current session ID could not be identified from your token. Please log in again.',
+      });
+    }
+
+    const revokedCount = await sessionService.revokeOtherSessions(adminUser.id, req.sessionId, adminUser.email);
+    return res.status(200).json({
+      success: true,
+      message: `Successfully revoked ${revokedCount} other session${revokedCount === 1 ? '' : 's'}.`,
+      revokedCount,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: err.message || 'Failed to revoke other sessions' });
+  }
 });
 
 // =========================================================================

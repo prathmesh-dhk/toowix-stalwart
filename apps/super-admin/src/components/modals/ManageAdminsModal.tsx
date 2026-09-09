@@ -125,7 +125,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
             </div>
             <div>
               <h3 className="modal-title">Manage Administrators</h3>
-              <p className="text-xs text-slate-500 mt-0.5 font-mono">{tenant.name} ({tenant.domain?.domainName})</p>
+              <p className="text-xs text-slate-500 mt-0.5">{tenant.name} ({tenant.domain?.domainName})</p>
             </div>
           </div>
           <button onClick={onClose} className="modal-close-btn">
@@ -152,7 +152,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                     <div key={adm._id || adm.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
                       <div>
                         <div className="font-semibold text-slate-900">{adm.email}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400">
                           ID: {(adm._id || adm.id).slice(-8)} · Role: {adm.role || 'TENANT_ADMIN'}
                         </div>
                       </div>
@@ -184,7 +184,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                   placeholder="Min. 8 characters"
                   value={resetPasswordInput}
                   onChange={(e) => setResetPasswordInput(e.target.value)}
-                  className="form-input flex-1 h-8 text-xs font-mono"
+                  className="form-input flex-1 h-8 text-xs"
                 />
                 <Button
                   size="sm"
@@ -239,7 +239,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                   placeholder="Min. 8 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="form-input text-xs font-mono"
+                  className="form-input text-xs"
                 />
               </div>
             </div>

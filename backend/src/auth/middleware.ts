@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyOidcToken } from './service';
 import { AdminUserContext } from './types';
+import { sessionService } from '../services/session.service';
 
 // Rate Limiter Memory Store for brute-force protection
 interface RateLimitEntry {
@@ -55,7 +56,7 @@ export function extractToken(req: Request): string | null {
   return null;
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
 
   if (!token) {
@@ -65,6 +66,21 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const payload = verifyOidcToken(token);
   if (!payload) {
     return res.status(401).json({ error: 'TOKEN_EXPIRED', message: 'Invalid or expired session token' });
+  }
+
+  if (payload.sid) {
+    try {
+      const active = await sessionService.isSessionActive(payload.sid);
+      if (!active) {
+        return res.status(401).json({
+          error: 'SESSION_REVOKED',
+          message: 'This session has been revoked from another device or has expired.',
+        });
+      }
+      req.sessionId = payload.sid;
+    } catch (err) {
+      return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to verify session' });
+    }
   }
 
   req.adminUser = {

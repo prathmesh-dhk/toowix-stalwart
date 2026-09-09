@@ -192,7 +192,52 @@ describe('Phase 7: Production Operations, System Health, Backup Engine & Prometh
     });
   });
 
-  describe('2. Backup Engine (AES-256-GCM, Checksums & Integrity Verification)', () => {
+  describe('2. Mail Limit Configuration', () => {
+    it('GET /api/system/mail-limits returns the current global mail limits', async () => {
+      const res = await request(app)
+        .get('/api/system/mail-limits')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('attachmentSizeMb');
+      expect(res.body).toHaveProperty('messageSizeMb');
+      expect(res.body).toHaveProperty('maxMailboxDepth');
+      expect(res.body).toHaveProperty('maxMailboxNameLength');
+    });
+
+    it('POST /api/system/mail-limits persists updated super-admin mail limits and syncs Stalwart', async () => {
+      const payload = {
+        attachmentSizeMb: 5,
+        messageSizeMb: 6,
+        maxMailboxDepth: 10,
+        maxMailboxNameLength: 255,
+      };
+
+      const syncSpy = vi.spyOn(stalwartClient, 'updateMailLimits').mockResolvedValue();
+
+      const res = await request(app)
+        .post('/api/system/mail-limits')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send(payload);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.config.attachmentSizeMb).toBe(5);
+      expect(res.body.config.messageSizeMb).toBe(6);
+      expect(res.body.config.maxMailboxDepth).toBe(10);
+      expect(res.body.config.maxMailboxNameLength).toBe(255);
+      expect(syncSpy).toHaveBeenCalledWith(payload);
+
+      const saved = await SystemSettingsModel.findOne({ key: 'mail_limits' });
+      expect(saved).not.toBeNull();
+      expect(saved?.attachmentSizeMb).toBe(5);
+      expect(saved?.messageSizeMb).toBe(6);
+      expect(saved?.maxMailboxDepth).toBe(10);
+      expect(saved?.maxMailboxNameLength).toBe(255);
+    });
+  });
+
+  describe('3. Backup Engine (AES-256-GCM, Checksums & Integrity Verification)', () => {
     it('POST /api/system/backup creates an on-demand encrypted backup and logs audit event', async () => {
       const res = await request(app)
         .post('/api/system/backup')

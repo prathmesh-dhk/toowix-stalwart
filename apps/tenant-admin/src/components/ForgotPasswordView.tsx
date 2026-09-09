@@ -11,7 +11,6 @@ import {
   Eye,
   EyeOff,
   Loader2,
-  ShieldCheck,
   AlertCircle,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
@@ -312,11 +311,11 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   };
 
   return (
-    <div className="font-sans antialiased text-slate-800 bg-slate-50 min-h-screen relative overflow-x-hidden flex flex-col justify-between selection:bg-blue-100 selection:text-blue-700">
+    <div className="font-sans antialiased text-slate-800 bg-slate-50 min-h-screen relative overflow-x-hidden flex flex-col justify-between selection:bg-indigo-100 selection:text-indigo-900">
       {/* Background fluid meshes */}
       <div aria-hidden="true" className="fixed inset-0 pointer-events-none ambient-bg z-0">
         <div className="absolute bottom-[22%] left-[-15%] w-[130%] h-[320px] fluid-ribbon opacity-80 pointer-events-none"></div>
-        <div className="absolute bottom-[18%] -left-10 w-[110%] h-[180px] bg-gradient-to-r from-cyan-200/40 via-blue-400/35 to-indigo-300/30 blur-3xl opacity-75 pointer-events-none"></div>
+        <div className="absolute bottom-[18%] -left-10 w-[110%] h-[180px] bg-gradient-to-r from-cyan-200/40 via-indigo-400/35 to-indigo-300/30 blur-3xl opacity-75 pointer-events-none"></div>
         <div className="subtle-dot absolute top-[36%] left-[13%] opacity-70 pointer-events-none"></div>
         <div className="subtle-dot absolute top-[32%] left-[6.5%] w-3 h-3 opacity-60 pointer-events-none"></div>
         <div className="subtle-dot absolute top-[80%] left-[10.5%] w-4 h-4 opacity-50 pointer-events-none"></div>
@@ -338,42 +337,22 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
           <span className="text-xl font-bold tracking-tight text-slate-900 futuristic-title">toowix</span>
         </a>
 
-        {/* Security Pill */}
-        <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-white/60 shadow-sm text-xs font-medium text-slate-600">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Password Reset</span>
-          <span className="text-slate-300">|</span>
-          <span className="text-slate-500">Identity Recovery</span>
-        </div>
       </header>
 
       {/* Main Content */}
       <main className="relative z-10 flex-grow flex items-center justify-center px-6 py-8">
         <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-        {/* Left Hero: Brand Narrative & Conversational Pills */}
-        <section aria-label="Account Recovery" className="lg:col-span-6 flex flex-col justify-center items-center lg:items-start pl-0 lg:pl-6">
-          <div className="space-y-2.5 max-w-sm mb-12 select-none">
-            <div className="dialogue-pill rounded-2xl px-4 py-2 text-xs font-normal text-slate-500 w-fit opacity-70 ml-2">
-              Account recovery available
-            </div>
-            <div className="dialogue-pill rounded-2xl px-4 py-2 text-xs font-medium text-slate-600 w-fit opacity-85 ml-1">
-              Secure identity verification
-            </div>
-            <div className="dialogue-pill rounded-2xl px-4.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 border border-white shadow-md shadow-blue-900/5">
-              Multiple recovery methods available
-            </div>
-          </div>
-
-          <div className="relative flex flex-col items-start select-none">
-            <div className="absolute -left-7 -top-4 w-3.5 h-3.5 rounded-full bg-blue-400/40"></div>
-            <div className="absolute -left-12 top-6 w-2.5 h-2.5 rounded-full bg-sky-400/30"></div>
-            <div className="absolute -left-4 bottom-0 w-3 h-3 rounded-full bg-indigo-400/30"></div>
-
-            <span className="text-[11px] font-bold text-slate-400 tracking-[0.4em] uppercase mb-0.5">ACCOUNT ACCESS</span>
-            <h1 className="text-6xl sm:text-7xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-950 via-slate-900 to-blue-700 leading-none">
+        {/* Left Hero: Brand Identity */}
+        <section aria-label="Brand Identity" className="lg:col-span-6 flex flex-col justify-center items-center lg:items-start pl-0 lg:pl-8">
+          <div className="flex items-center gap-4 sm:gap-6 select-none" data-purpose="brand-logo-lockup">
+            <img
+              src={toowixLogo}
+              alt="Toowix"
+              className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-contain"
+            />
+            <span className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-slate-900 flex items-center">
               toowix
-            </h1>
-            <span className="text-xs font-bold text-slate-400/80 letter-spacing-expanded uppercase mt-2.5">IDENTITY RECOVERY</span>
+            </span>
           </div>
         </section>
 
@@ -398,79 +377,58 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
             {stage === 1 && (
               <section className="step-content" id="stage-1">
                 <div className="mb-6">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 block">Step 1 of 3</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 1 of 3</span>
                   <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-1">Reset your password</h2>
                   <p className="text-slate-500 text-xs mt-1.5 leading-relaxed">
                     Verify your account email to proceed with identity recovery.
                   </p>
                 </div>
 
-                <form className="space-y-5" onSubmit={handleStage1Submit}>
-                  {/* If email is known, show censored preview card. Otherwise show input. */}
-                  {email ? (
-                    <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100/70 text-blue-600 flex items-center justify-center font-mono font-bold text-sm shrink-0">
-                        @
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">Account</span>
-                        <span className="font-mono text-sm font-bold text-slate-900">
-                          {maskEmailPreview(email)}
-                        </span>
-                      </div>
+                <form className="space-y-4" onSubmit={handleStage1Submit}>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-600" htmlFor="primary-email">
+                      Administrator email
+                    </label>
+                    <div className="relative">
+                      <input
+                        className="w-full h-11 px-4 pr-10 bg-slate-50/90 border border-slate-200/80 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+                        id="primary-email"
+                        name="email"
+                        placeholder="admin@company.com"
+                        required
+                        type="email"
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          setError(null);
+                        }}
+                      />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                        <Mail size={16} />
+                      </span>
                     </div>
-                  ) : (
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1.5" htmlFor="primary-email">
-                        Administrator email address
-                      </label>
-                      <div className="relative">
-                        <input
-                          className="w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-slate-800 transition outline-none"
-                          id="primary-email"
-                          name="email"
-                          placeholder="admin@example.com"
-                          required
-                          type="email"
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value);
-                            setError(null);
-                          }}
-                        />
-                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                          <Mail size={16} />
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                  </div>
 
-                  <button
-                    className="btn btn-primary btn-lg w-full group"
-                    type="submit"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <>
-                        <span>Continue</span>
-                        <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
-                      </>
-                    )}
-                  </button>
+                  <div className="pt-2">
+                    <button
+                      className="btn btn-primary btn-lg w-full"
+                      type="submit"
+                      disabled={loading}
+                    >
+                      <span>{loading ? 'Verifying...' : 'Continue'}</span>
+                    </button>
+                  </div>
+
+                  <div className="text-center pt-3">
+                    <button
+                      type="button"
+                      onClick={onBackToLogin}
+                      className="text-xs text-slate-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 transition-colors cursor-pointer border-none bg-transparent"
+                    >
+                      ← Back to sign in
+                    </button>
+                  </div>
                 </form>
-
-                <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <button
-                    className="text-slate-500 hover:text-slate-800 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent"
-                    onClick={onBackToLogin}
-                    type="button"
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Back to sign in</span>
-                  </button>
-                </div>
               </section>
             )}
 
@@ -483,7 +441,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                 <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl mb-4 text-xs">
                   <div className="flex items-center gap-2 truncate">
                     <span className="text-slate-400">Account:</span>
-                    <span className="font-mono font-semibold text-slate-900 truncate">
+                    <span className="font-medium text-slate-900 truncate">
                       {maskedCurrentEmail || maskEmailPreview(email)}
                     </span>
                   </div>
@@ -493,14 +451,14 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                       setStage(1);
                       setError(null);
                     }}
-                    className="text-blue-600 hover:underline font-medium text-[11px] shrink-0 cursor-pointer border-none bg-transparent"
+                    className="text-indigo-600 hover:underline font-medium text-[11px] shrink-0 cursor-pointer border-none bg-transparent"
                   >
                     Change
                   </button>
                 </div>
 
                 <div className="mb-4">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 block">Step 2 of 3</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 2 of 3</span>
                   <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Modes of recovery</h2>
                   <p className="text-slate-500 text-xs mt-1">Select how you would like to verify your identity:</p>
                 </div>
@@ -512,7 +470,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                     type="button"
                     onClick={() => handleSwitchMode('current_otp')}
                     className={`p-3 text-left rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${recoveryMode === 'current_otp'
-                        ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm'
+                        ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm'
                         : 'bg-white border-slate-200 hover:border-slate-300'
                       }`}
                   >
@@ -536,7 +494,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                     className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${!hasRecoveryEmail
                         ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
                         : recoveryMode === 'recovery_otp'
-                          ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm cursor-pointer'
+                          ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
                           : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
                       }`}
                   >
@@ -564,7 +522,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                     className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${!hasTotp
                         ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
                         : recoveryMode === 'totp'
-                          ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm cursor-pointer'
+                          ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
                           : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
                       }`}
                   >
@@ -592,7 +550,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                     className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${!hasSecurityQuestions
                         ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
                         : recoveryMode === 'questions'
-                          ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-sm cursor-pointer'
+                          ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
                           : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
                       }`}
                   >
@@ -620,15 +578,15 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                 {/* MODE 1: OTP on Current Email */}
                 {recoveryMode === 'current_otp' && (
                   <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
-                    <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
                       <div className="flex items-center gap-2 truncate">
-                        <Mail size={15} className="text-blue-600 shrink-0" />
+                        <Mail size={15} className="text-indigo-600 shrink-0" />
                         <span className="truncate">
-                          Destination: <strong className="font-mono text-slate-900 font-semibold">{maskedCurrentEmail || maskEmailPreview(email)}</strong>
+                          Destination: <strong className="text-slate-900 font-semibold">{maskedCurrentEmail || maskEmailPreview(email)}</strong>
                         </span>
                       </div>
                       <button
-                        className="text-blue-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
+                        className="text-indigo-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
                         onClick={() => handleSendOtp('current')}
                         disabled={otpCooldown > 0 || sendingOtp}
                         type="button"
@@ -646,7 +604,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                           <input
                             key={i}
                             ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-mono font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 outline-none"
+                            className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
                             maxLength={1}
                             type="text"
                             value={d}
@@ -659,12 +617,12 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
                     {otpCooldown > 0 && otpSentTarget === 'current' && (
                       <div className="text-center text-xs text-slate-400">
-                        Code sent. Resend in <span className="font-mono font-semibold text-slate-700">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
+                        Code sent. Resend in <span className="font-semibold text-slate-700 tabular-nums">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
                       </div>
                     )}
 
                     <button
-                      className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
+                      className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
                       type="submit"
                       disabled={loading || digits.join('').length !== 6}
                     >
@@ -683,15 +641,15 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                 {/* MODE 2: OTP on Recovery Email */}
                 {recoveryMode === 'recovery_otp' && (
                   <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
-                    <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
                       <div className="flex items-center gap-2 truncate">
-                        <ShieldAlert size={15} className="text-blue-600 shrink-0" />
+                        <ShieldAlert size={15} className="text-indigo-600 shrink-0" />
                         <span className="truncate">
-                          Destination: <strong className="font-mono text-slate-900 font-semibold">{maskedRecoveryEmail}</strong>
+                          Destination: <strong className="text-slate-900 font-semibold">{maskedRecoveryEmail}</strong>
                         </span>
                       </div>
                       <button
-                        className="text-blue-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
+                        className="text-indigo-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
                         onClick={() => handleSendOtp('recovery')}
                         disabled={otpCooldown > 0 || sendingOtp}
                         type="button"
@@ -709,7 +667,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                           <input
                             key={i}
                             ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-mono font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 outline-none"
+                            className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
                             maxLength={1}
                             type="text"
                             value={d}
@@ -722,12 +680,12 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
                     {otpCooldown > 0 && otpSentTarget === 'recovery' && (
                       <div className="text-center text-xs text-slate-400">
-                        Code sent. Resend in <span className="font-mono font-semibold text-slate-700">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
+                        Code sent. Resend in <span className="font-semibold text-slate-700 tabular-nums">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
                       </div>
                     )}
 
                     <button
-                      className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
+                      className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
                       type="submit"
                       disabled={loading || digits.join('').length !== 6}
                     >
@@ -760,7 +718,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                           <input
                             key={i}
                             ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-mono font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 outline-none"
+                            className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
                             maxLength={1}
                             type="text"
                             value={d}
@@ -772,7 +730,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                     </div>
 
                     <button
-                      className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
+                      className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
                       type="submit"
                       disabled={loading || digits.join('').length !== 6}
                     >
@@ -802,7 +760,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                             {idx + 1}. {q}
                           </label>
                           <input
-                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none"
+                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none"
                             placeholder="Your answer"
                             type="text"
                             value={answers[q] || ''}
@@ -815,7 +773,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
                     {questions.length > 0 && (
                       <button
-                        className="w-full py-3.5 px-5 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
+                        className="w-full py-3.5 px-5 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
                         type="submit"
                         disabled={loading}
                       >
@@ -867,7 +825,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                     </label>
                     <div className="relative">
                       <input
-                        className="w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-slate-800 transition outline-none font-mono"
+                        className="w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 text-slate-800 transition outline-none"
                         id="new-pass"
                         required
                         type={showNewPass ? 'text' : 'password'}
@@ -891,9 +849,9 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                     </label>
                     <div className="relative">
                       <input
-                        className={`w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border rounded-xl focus:bg-white focus:ring-2 text-slate-800 transition outline-none font-mono ${passwordsMatch
+                        className={`w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50/70 border rounded-xl focus:bg-white focus:ring-2 text-slate-800 transition outline-none ${passwordsMatch
                             ? 'border-emerald-500 focus:ring-emerald-500/20'
-                            : 'border-slate-200 focus:border-blue-600 focus:ring-blue-600/20'
+                            : 'border-slate-200 focus:border-indigo-600 focus:ring-indigo-600/20'
                           }`}
                         id="confirm-pass"
                         required
@@ -928,7 +886,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                   </div>
 
                   <button
-                    className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
+                    className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
                     type="submit"
                     disabled={loading}
                   >
@@ -975,7 +933,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                 <div className="my-6 p-3.5 bg-slate-50 border border-slate-100 rounded-xl text-left text-xs space-y-1.5 text-slate-600">
                   <div className="flex justify-between">
                     <span className="text-slate-400">Account:</span>
-                    <span className="font-mono font-medium text-slate-800">{maskedCurrentEmail || maskEmailPreview(email)}</span>
+                    <span className="font-medium text-slate-800">{maskedCurrentEmail || maskEmailPreview(email)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Status:</span>
@@ -988,7 +946,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                 </div>
 
                 <button
-                  className="w-full py-3.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 group cursor-pointer border-none"
+                  className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 group cursor-pointer border-none"
                   onClick={onBackToLogin}
                   type="button"
                 >

@@ -54,7 +54,17 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
   }, [applications, filterStatus, searchQuery]);
 
   return (
-    <div className="space-y-4">
+    <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
+      {/* Top Header & Context */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-900">Tenant Applications</h2>
+          <p className="text-xs text-slate-500">
+            Review, verify authoritative DNS credentials, and approve inbound organization tenant requests
+          </p>
+        </div>
+      </div>
+
       {/* Top Filter Bar & Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Status Filter Segmented Control */}
@@ -192,7 +202,7 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
                           <span className="font-semibold text-slate-900 text-xs">
                             {app.companyName}
                           </span>
-                          <div className="flex items-center gap-1 text-[11px] text-indigo-600 font-mono mt-0.5">
+                          <div className="flex items-center gap-1 text-[11px] text-indigo-600 font-medium mt-0.5">
                             <Globe size={11} className="text-slate-400" />
                             <span>{app.requestedDomain}</span>
                           </div>
@@ -258,6 +268,6 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 };
