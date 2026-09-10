@@ -65,6 +65,16 @@ services:
       STALWART_ACCOUNT_ID: ${STALWART_ACCOUNT_ID:-b}
       ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@toowix.com}
       ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      TENANT_ADMIN_URL: ${TENANT_ADMIN_URL:-http://localhost:5174}
+      SMTP_HOST: ${SMTP_HOST:-email.toowix.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER_EMAIL: ${SMTP_USER_EMAIL:-prathmesh@dhkinnovations.com}
+      SMTP_USERNAME: ${SMTP_USERNAME:-prathmesh@dhkinnovations.com}
+      SMTP_PASS: ${SMTP_PASS:-seaocean1690}
+      SMTP_FROM: ${SMTP_FROM:-"Toowix Mail Platform" <prathmesh@dhkinnovations.com>}
+      SMTP_ENABLE: ${SMTP_ENABLE:-true}
     volumes:
       - toowix-prod-backups:/usr/src/app/backups
     depends_on:
