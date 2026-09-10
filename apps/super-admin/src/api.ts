@@ -11,6 +11,7 @@ import {
   IntegrityCheckResult,
   DriftReport,
   SessionItem,
+  PlatformAnalytics,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -417,6 +418,10 @@ export const api = {
     request<{ success: boolean; message: string; revokedCount: number }>('/api/auth/sessions/revoke-others', {
       method: 'POST',
     }),
+
+  // Analytics
+  getAnalytics: () =>
+    request<PlatformAnalytics>('/api/system/analytics'),
 };
 
 

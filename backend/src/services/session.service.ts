@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { AdminSessionModel, IAdminSession, DeviceType } from '../db/models/AdminSession';
 import { AuditLogModel } from '../db/models/AuditLog';
+import { resolveIpLocation } from '../utils/geo';
 
 export interface ParsedUserAgent {
   deviceType: DeviceType;
@@ -38,7 +39,7 @@ export function parseUserAgent(ua: string = ''): ParsedUserAgent {
   if (/Edg\//i.test(ua)) browser = 'Microsoft Edge';
   else if (/Chrome\//i.test(ua)) browser = 'Google Chrome';
   else if (/Firefox\//i.test(ua)) browser = 'Mozilla Firefox';
-  else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Apple Safari';
+  else if (/Safari\//i.test(ua)) browser = 'Apple Safari';
   else if (/OPR\/|Opera\//i.test(ua)) browser = 'Opera';
 
   return { deviceType, browser, os };
@@ -56,6 +57,8 @@ export interface SessionResponseItem {
   browser: string;
   os: string;
   ipAddress: string;
+  location?: string;
+  countryCode?: string;
   lastActiveAt: string;
   createdAt: string;
   isCurrent: boolean;
@@ -74,6 +77,7 @@ export class SessionService {
     const rawUa = userAgent || 'Unknown User-Agent';
     const parsed = parseUserAgent(rawUa);
     const cleanedIp = cleanIpAddress(ipAddress || '127.0.0.1');
+    const geo = await resolveIpLocation(cleanedIp);
     const sessionId = uuidv4();
     const durationMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000;
     const expiresAt = new Date(Date.now() + durationMs);
@@ -86,6 +90,8 @@ export class SessionService {
       browser: parsed.browser,
       os: parsed.os,
       ipAddress: cleanedIp,
+      location: geo.location,
+      countryCode: geo.countryCode,
       lastActiveAt: new Date(),
       expiresAt,
       isRevoked: false,
@@ -156,6 +162,8 @@ export class SessionService {
       browser: s.browser,
       os: s.os,
       ipAddress: s.ipAddress,
+      location: s.location || 'Localhost',
+      countryCode: s.countryCode || undefined,
       lastActiveAt: s.lastActiveAt.toISOString(),
       createdAt: s.createdAt.toISOString(),
       isCurrent: s.sessionId === currentSessionId,
@@ -213,6 +221,10 @@ export class SessionService {
     currentSessionId: string,
     actorEmail?: string
   ): Promise<number> {
+    if (!currentSessionId || typeof currentSessionId !== 'string') {
+      throw new Error('currentSessionId is required to revoke other sessions');
+    }
+
     const result = await AdminSessionModel.updateMany(
       {
         userId: new Types.ObjectId(userId.toString()),

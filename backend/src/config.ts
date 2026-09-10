@@ -10,7 +10,7 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'toowix_default_jwt_secret_dev_only_32_bytes',
   frontendOrigin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
   stalwart: {
-    url: process.env.STALWART_URL || 'http://localhost:8090',
+    url: process.env.STALWART_URL || 'https://127.0.0.1:443',
     user: process.env.STALWART_USER || 'toowix-service@toowix.test',
     password: process.env.STALWART_PASSWORD || 'ToowixServiceSecret2026!Secure',
     accountId: process.env.STALWART_ACCOUNT_ID || 'b'

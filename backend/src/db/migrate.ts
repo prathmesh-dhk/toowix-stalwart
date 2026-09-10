@@ -10,6 +10,7 @@ import {
   AuditLogModel,
   BackupRecordModel,
   SystemSettingsModel,
+  AdminSessionModel,
 } from './models';
 
 export async function runMigrations(): Promise<void> {
@@ -26,6 +27,7 @@ export async function runMigrations(): Promise<void> {
     { name: 'AuditLog', model: AuditLogModel },
     { name: 'BackupRecord', model: BackupRecordModel },
     { name: 'SystemSettings', model: SystemSettingsModel },
+    { name: 'AdminSession', model: AdminSessionModel },
   ];
 
   for (const item of models) {
@@ -38,7 +40,7 @@ export async function runMigrations(): Promise<void> {
     }
   }
 
-  console.log('[Migration] All 9 database models & indexes synchronized successfully.');
+  console.log('[Migration] All 10 database models & indexes synchronized successfully.');
 }
 
 if (require.main === module) {

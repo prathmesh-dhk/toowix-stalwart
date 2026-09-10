@@ -20,8 +20,8 @@ services:
     container_name: toowix-mail-stalwart
     restart: unless-stopped
     ports:
-      # Expose Stalwart Management HTTP / WebUI on host 8090 for Super Admin out-of-band management
-      - "8090:8080"
+      # Expose Stalwart Management HTTP / WebUI on host 8085 for Super Admin out-of-band management
+      - "8085:8080"
       # Expose mail ports (mapped to alternate host ports to avoid conflict in dev)
       - "2525:25"
       - "2587:587"
@@ -47,9 +47,9 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
-      # Unified Same-Origin endpoint: Proxies JMAP calls to the active local Stalwart instance on host port 8090
-      JMAP_SERVER_URL: "http://localhost:8090"
-      STALWART_INTERNAL_URL: "http://host.docker.internal:8090"
+      # Unified Same-Origin endpoint: Proxies JMAP calls to internal Stalwart instance
+      JMAP_SERVER_URL: "http://stalwart:8080"
+      STALWART_INTERNAL_URL: "http://stalwart:8080"
       SESSION_SECRET: "toowix_bulwark_session_secret_32_chars_min_2026!"
       COOKIE_SECURE: "false"
     extra_hosts:

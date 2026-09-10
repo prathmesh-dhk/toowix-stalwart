@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Globe,
   Users,
+  Building2,
   ArrowRight,
   Key,
   History,
@@ -303,16 +304,16 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-body text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
       {/* ========================================================================= */}
       {/* TOP HEADER (MATCHING GOOGLE STITCH DESIGN)                                */}
       {/* ========================================================================= */}
       <header className="fixed top-0 inset-x-0 z-40 bg-white border-b border-slate-200 h-16">
         <div className="h-full px-6 flex items-center justify-between">
           {/* Brand & Tenant Context */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             {/* Brand */}
-            <div className="flex items-center gap-3 w-56">
+            <div className="flex items-center gap-3">
               <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
               <div className="flex flex-col">
                 <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight">
@@ -324,32 +325,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               </div>
             </div>
 
-            <div className="h-5 w-px bg-slate-200 hidden md:block"></div>
+            <span className="text-slate-300 font-light text-base hidden md:inline select-none">/</span>
 
-            {/* Prominent Tenant Context */}
-            <div className="hidden md:flex items-center gap-3">
-              <span className="text-sm font-semibold text-slate-900">
+            {/* Organization Badge */}
+            <div className="hidden md:inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">
+              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="font-medium text-slate-800 tracking-tight">
                 {tenant?.name || 'Acme Technologies'}
               </span>
-              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/80">
-                {domainName}
-              </span>
-              {isSuspended ? (
-                <span className="inline-flex items-center gap-1.5 text-xs text-rose-700 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                  Suspended
-                </span>
-              ) : tenant?.status === 'approved_pending_setup' ? (
-                <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                  Pending Activation
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  Active
-                </span>
-              )}
             </div>
           </div>
 
@@ -385,94 +368,127 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       </header>
 
       {/* ========================================================================= */}
-      {/* SIDEBAR NAVIGATION RAIL                                                   */}
+      {/* SIDEBAR NAVIGATION RAIL (MATCHING GOOGLE ADMIN & DESIGN.MD)               */}
       {/* ========================================================================= */}
-      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between p-4">
-        <div className="flex flex-col gap-6">
-          <nav className="flex flex-col gap-1">
+      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
+        <div className="flex flex-col gap-1 overflow-y-auto">
+          {/* Main Navigation Group */}
+          <div className="flex flex-col gap-0.5">
             {/* Dashboard */}
             <button
               onClick={() => setActiveNav('dashboard')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-left w-full ${activeNav === 'dashboard'
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
-                }`}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'dashboard'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-dashboard"
             >
-              <div className="flex items-center gap-2.5">
-                <LayoutDashboard className={`w-[18px] h-[18px] ${activeNav === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                <span>Dashboard</span>
+              <div className="flex items-center gap-3.5 min-w-0">
+                <LayoutDashboard
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'dashboard' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Dashboard</span>
               </div>
             </button>
 
             {/* Mailboxes with dynamic Count Badge */}
             <button
               onClick={() => setActiveNav('mailboxes')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'mailboxes'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'mailboxes'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-mailboxes"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <Mail
-                  className={`w-[18px] h-[18px] ${activeNav === 'mailboxes' ? 'text-indigo-600' : 'text-slate-400'}`}
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'mailboxes' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
                 />
-                <span>Mailboxes</span>
+                <span className="truncate">Mailboxes</span>
               </div>
-              <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
+              <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
                 {mailboxCount}
               </span>
+            </button>
+          </div>
+
+          {/* Divider matching Google Admin console */}
+          <div className="my-2 border-t border-slate-200/80" />
+
+          {/* Security & Organization Governance */}
+          <div className="flex flex-col gap-0.5">
+            {/* Admin Security / Domain & DNS */}
+            <button
+              onClick={() => setActiveNav('security')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'security'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-security"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <Shield
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'security' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Admin Security</span>
+              </div>
             </button>
 
             {/* Audit Log */}
             <button
               onClick={() => setActiveNav('audit')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'audit'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'audit'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-audit"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <FileText
-                  className={`w-[18px] h-[18px] ${activeNav === 'audit' ? 'text-indigo-600' : 'text-slate-400'}`}
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'audit' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
                 />
-                <span>Audit Log</span>
-              </div>
-            </button>
-
-            {/* Admin Security / Domain & DNS */}
-            <button
-              onClick={() => setActiveNav('security')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'security'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Shield
-                  className={`w-[18px] h-[18px] ${activeNav === 'security' ? 'text-indigo-600' : 'text-slate-400'}`}
-                />
-                <span>Admin Security</span>
+                <span className="truncate">Audit Log</span>
               </div>
             </button>
 
             {/* Active Devices & Sessions */}
             <button
               onClick={() => setActiveNav('devices')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${activeNav === 'devices'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'devices'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-devices"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <Laptop
-                  className={`w-[18px] h-[18px] ${activeNav === 'devices' ? 'text-indigo-600' : 'text-slate-400'}`}
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'devices' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
                 />
-                <span>Active Devices</span>
+                <span className="truncate">Active Devices</span>
               </div>
             </button>
-          </nav>
+          </div>
         </div>
-
       </aside>
 
       {/* ========================================================================= */}
@@ -522,7 +538,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   </h1>
                   <p className="text-xs text-slate-500 font-normal">
                     Organization mail services for{' '}
-                    <span className="font-mono text-slate-700">@{domainName}</span>
+                    <span className="font-medium text-slate-700">@{domainName}</span>
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
@@ -620,7 +636,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-2xl font-semibold font-mono text-slate-900 truncate">
+                      <span className="text-2xl font-semibold tracking-tight text-slate-900 truncate">
                         {domainName}
                       </span>
                     </div>

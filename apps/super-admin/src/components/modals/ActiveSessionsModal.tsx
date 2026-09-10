@@ -9,6 +9,7 @@ import {
   RefreshCw,
   ShieldCheck,
   AlertTriangle,
+  MapPin,
 } from 'lucide-react';
 import { api } from '../../api';
 import { SessionItem } from '../../types';
@@ -244,6 +245,16 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
                         <Globe className="w-3.5 h-3.5 text-slate-400" />
                         <span className="font-mono">{session.ipAddress}</span>
                       </span>
+
+                      {session.location && (
+                        <>
+                          <span>•</span>
+                          <span className="inline-flex items-center gap-1 text-slate-600 font-medium">
+                            <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span>{session.location}</span>
+                          </span>
+                        </>
+                      )}
 
                       <span>•</span>
 

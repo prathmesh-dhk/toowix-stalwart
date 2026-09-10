@@ -18,6 +18,7 @@ import {
 } from '../auth/service';
 import { requireAuth, loginRateLimiter, extractToken } from '../auth/middleware';
 import { AdminUserModel } from '../db/models/AdminUser';
+import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { emailService } from '../services/email.service';
 import { sessionService } from '../services/session.service';
@@ -818,9 +819,12 @@ authRouter.post('/forgot-password/reset', async (req: Request, res: Response) =>
   user.passwordResetOtp = null;
   await user.save();
 
-  // If user has Stalwart account, update password on Stalwart as well
+  // If user has associated mailbox in Stalwart, update password on Stalwart as well
   try {
-    await stalwartClient.updateAccountPassword(user.email, newPassword);
+    const mailbox = await MailboxModel.findOne({ address: user.email });
+    if (mailbox?.stalwartAccountId) {
+      await stalwartClient.updateAccountPassword(mailbox.stalwartAccountId, newPassword);
+    }
   } catch {
     // mailbox may not exist yet or Super Admin without mailbox
   }

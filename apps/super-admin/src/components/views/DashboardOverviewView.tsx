@@ -7,19 +7,23 @@ import {
   AuditItem,
   DriftReport,
   BackupRecordItem,
+  PlatformAnalytics,
 } from '../../types';
 import { Button } from '../ui/Button';
 import { StatusBadge } from '../ui/StatusBadge';
 import {
   Plus,
   Mail,
-  Ban,
   CheckCircle2,
   Server,
   ArrowRight,
   ClipboardList,
   History,
   FileText,
+  BarChart3,
+  HardDrive,
+  SendHorizontal,
+  Inbox,
 } from 'lucide-react';
 
 interface DashboardOverviewViewProps {
@@ -30,7 +34,8 @@ interface DashboardOverviewViewProps {
   backups: BackupRecordItem[];
   driftReport: DriftReport | null;
   recentAuditLogs: AuditItem[];
-  onNavigateTab: (tab: 'applications' | 'tenants' | 'operations' | 'audit') => void;
+  analyticsData?: PlatformAnalytics | null;
+  onNavigateTab: (tab: 'applications' | 'tenants' | 'operations' | 'audit' | 'analytics') => void;
   onReviewApplication: (app: RegistrationApplication) => void;
   onActivateTenant: (tenant: TenantSummary) => void;
 }
@@ -67,6 +72,7 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
   backups,
   driftReport: _driftReport,
   recentAuditLogs,
+  analyticsData,
   onNavigateTab,
   onReviewApplication,
   onActivateTenant,
@@ -178,34 +184,59 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Operational Health */}
+        {/* Card 2: Email Analytics Snapshot */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between shadow-xs">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Operational Health
+              Email Analytics
             </span>
-            {hasSystemIssue ? (
-              <Ban className="w-[18px] h-[18px] text-rose-600" />
-            ) : (
-              <CheckCircle2 className="w-[18px] h-[18px] text-emerald-600" />
-            )}
+            <BarChart3 className="w-[18px] h-[18px] text-indigo-500" />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-              <StatusBadge
-                status={hasSystemIssue ? 'suspended' : 'operational'}
-                label={hasSystemIssue ? 'Degraded' : 'Normal'}
-              />
-              <span className="text-2xl font-semibold text-slate-900">
-                {hasSystemIssue ? 'Degraded' : 'Normal'}
+          <div className="flex flex-col gap-3">
+            {/* Storage row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <HardDrive className="w-3.5 h-3.5 text-amber-500" />
+                <span>Storage Used</span>
+              </div>
+              <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                {analyticsData
+                  ? analyticsData.snapshot.platform.totalStorageBytes >= 1073741824
+                    ? `${(analyticsData.snapshot.platform.totalStorageBytes / 1073741824).toFixed(2)} GB`
+                    : analyticsData.snapshot.platform.totalStorageBytes >= 1048576
+                    ? `${(analyticsData.snapshot.platform.totalStorageBytes / 1048576).toFixed(1)} MB`
+                    : `${Math.round(analyticsData.snapshot.platform.totalStorageBytes / 1024)} KB`
+                  : '—'}
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {hasSystemIssue
-                ? 'Cluster services requiring operator review'
-                : 'No actions required — all services operational'}
-            </p>
+            {/* Emails Sent row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <SendHorizontal className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Emails Sent</span>
+              </div>
+              <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                {analyticsData ? analyticsData.snapshot.platform.totalEmailsSent.toLocaleString() : '—'}
+              </span>
+            </div>
+            {/* Inbox row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <Inbox className="w-3.5 h-3.5 text-blue-500" />
+                <span>Inbox Emails</span>
+              </div>
+              <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                {analyticsData ? analyticsData.snapshot.platform.totalEmailsInbox.toLocaleString() : '—'}
+              </span>
+            </div>
           </div>
+          <button
+            onClick={() => onNavigateTab('analytics')}
+            className="mt-4 flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+          >
+            <span>View full analytics</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
         </div>
 
         {/* Card 3: Cluster & Delivery Summary */}

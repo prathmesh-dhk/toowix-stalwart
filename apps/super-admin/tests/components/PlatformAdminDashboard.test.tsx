@@ -14,6 +14,7 @@ vi.mock('../../src/api', () => ({
     getAlertConfig: vi.fn(),
     listBackups: vi.fn(),
     getReconciliationReport: vi.fn(),
+    getAnalytics: vi.fn().mockResolvedValue(null),
   },
   clearStoredToken: vi.fn(),
   getStoredToken: vi.fn(() => 'mock-super-token'),

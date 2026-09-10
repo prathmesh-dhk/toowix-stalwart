@@ -95,8 +95,11 @@ export interface SessionItem {
   browser: string;
   os: string;
   ipAddress: string;
+  location?: string;
+  countryCode?: string;
   lastActiveAt: string;
   createdAt: string;
   isCurrent: boolean;
 }
+
 

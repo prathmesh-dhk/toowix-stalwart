@@ -4,7 +4,7 @@ const { spawn } = require('child_process');
 
 const PROXY_PORT = parseInt(process.env.PORT || '3000', 10);
 const NEXT_PORT = 3001;
-const STALWART_TARGET = process.env.STALWART_INTERNAL_URL || 'http://host.docker.internal:8090';
+const STALWART_TARGET = process.env.STALWART_INTERNAL_URL || 'http://stalwart:8080';
 
 console.log('[Toowix Webmail Proxy] Starting Next.js background server on port', NEXT_PORT);
 
@@ -152,6 +152,12 @@ proxy.on('upgrade', (req, socket, head) => {
         .join('\r\n') +
       '\r\n\r\n'
     );
+    if (proxyHead && proxyHead.length) {
+      socket.write(proxyHead);
+    }
+    if (head && head.length) {
+      proxySocket.write(head);
+    }
     proxySocket.pipe(socket);
     socket.pipe(proxySocket);
   });

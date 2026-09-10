@@ -9,6 +9,7 @@ import {
   AuditLogModel,
   BackupRecordModel,
   SystemSettingsModel,
+  AdminSessionModel,
 } from './models';
 
 export interface DbConnectionOptions {
@@ -48,6 +49,7 @@ export async function connectDatabase(options: DbConnectionOptions): Promise<typ
         AuditLogModel.createIndexes(),
         BackupRecordModel.createIndexes(),
         SystemSettingsModel.createIndexes(),
+        AdminSessionModel.createIndexes(),
       ]);
     }
 

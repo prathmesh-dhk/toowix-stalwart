@@ -29,7 +29,7 @@ const mockApplications: RegistrationApplication[] = [
     employeeCount: '100 – 499',
     region: 'United States (us-central1)',
     notes: 'Defense contractor',
-    status: 'APPROVED',
+    status: 'REJECTED',
     submittedAt: '2026-02-15T12:00:00.000Z',
     createdAt: '2026-02-15T12:00:00.000Z',
     updatedAt: '2026-02-15T12:00:00.000Z',
@@ -51,15 +51,15 @@ describe('TenantApplicationsView Component', () => {
     expect(screen.getByText('nextgenai.tech')).toBeInTheDocument();
     expect(screen.getByText('Sarah Connor')).toBeInTheDocument();
 
-    // Cyberdyne is APPROVED, so not visible under PENDING_REVIEW filter
+    // Cyberdyne is REJECTED, so not visible under PENDING_REVIEW filter
     expect(screen.queryByText('Cyberdyne Systems')).not.toBeInTheDocument();
   });
 
-  it('switches tabs to show approved applications', () => {
+  it('switches tabs to show rejected applications', () => {
     render(<TenantApplicationsView {...defaultProps} />);
 
-    const approvedTab = screen.getByRole('button', { name: /approved/i });
-    fireEvent.click(approvedTab);
+    const rejectedTab = screen.getByRole('button', { name: /rejected/i });
+    fireEvent.click(rejectedTab);
 
     expect(screen.getByText('Cyberdyne Systems')).toBeInTheDocument();
     expect(screen.queryByText('NextGen AI Inc')).not.toBeInTheDocument();

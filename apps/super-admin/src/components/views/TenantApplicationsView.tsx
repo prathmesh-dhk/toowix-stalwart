@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import {
   ClipboardList,
   Search,
-  CheckCircle2,
   XCircle,
   Clock,
   Globe,
@@ -26,19 +25,17 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
   onRefresh,
   onReviewApplication,
 }) => {
-  const [filterStatus, setFilterStatus] = useState<'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING_REVIEW');
+  const [filterStatus, setFilterStatus] = useState<'PENDING_REVIEW' | 'REJECTED'>('PENDING_REVIEW');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Tab counts
   const pendingCount = useMemo(() => applications.filter((a) => a.status === 'PENDING_REVIEW').length, [applications]);
-  const approvedCount = useMemo(() => applications.filter((a) => a.status === 'APPROVED').length, [applications]);
   const rejectedCount = useMemo(() => applications.filter((a) => a.status === 'REJECTED').length, [applications]);
-  const allCount = applications.length;
 
   // Filtered applications
   const filteredApps = useMemo(() => {
     return applications.filter((app) => {
-      if (filterStatus !== 'ALL' && app.status !== filterStatus) {
+      if (app.status !== filterStatus) {
         return false;
       }
       if (searchQuery.trim()) {
@@ -87,22 +84,6 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setFilterStatus('APPROVED')}
-            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
-              filterStatus === 'APPROVED'
-                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <CheckCircle2 size={13} />
-            <span>Approved</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
-              {approvedCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setFilterStatus('REJECTED')}
             className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
               filterStatus === 'REJECTED'
@@ -114,21 +95,6 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
             <span>Rejected</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-semibold">
               {rejectedCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setFilterStatus('ALL')}
-            className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
-              filterStatus === 'ALL'
-                ? 'bg-white text-indigo-600 font-semibold shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span>All Submissions</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-semibold">
-              {allCount}
             </span>
           </button>
         </div>
@@ -171,12 +137,12 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
             <div className="text-sm font-semibold text-slate-800 mb-1">
               {filterStatus === 'PENDING_REVIEW'
                 ? 'No Applications Pending Review'
-                : 'No Applications Match Criteria'}
+                : 'No Rejected Applications'}
             </div>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
               {filterStatus === 'PENDING_REVIEW'
                 ? 'All tenant registration requests have been reviewed and processed.'
-                : 'Try adjusting your search query or selecting a different status filter above.'}
+                : 'No tenant registration applications have been rejected.'}
             </p>
           </div>
         ) : (

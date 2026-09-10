@@ -10,6 +10,8 @@ export interface IAdminSession extends Document {
   browser: string;
   os: string;
   ipAddress: string;
+  location?: string;
+  countryCode?: string;
   lastActiveAt: Date;
   expiresAt: Date;
   isRevoked: boolean;
@@ -51,6 +53,14 @@ const AdminSessionSchema = new Schema<IAdminSession>(
     ipAddress: {
       type: String,
       default: 'unknown',
+    },
+    location: {
+      type: String,
+      default: 'Localhost',
+    },
+    countryCode: {
+      type: String,
+      default: null,
     },
     lastActiveAt: {
       type: Date,

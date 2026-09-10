@@ -10,6 +10,7 @@ import {
   AlertConfig,
   DriftReport,
   UserContext,
+  PlatformAnalytics,
 } from '../types';
 import {
   CheckCircle2,
@@ -24,6 +25,7 @@ import {
   Server,
   Receipt,
   Laptop,
+  BarChart3,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
@@ -36,6 +38,7 @@ import { TenantsManagementView } from './views/TenantsManagementView';
 import { SystemOperationsView } from './views/SystemOperationsView';
 import { AuditLogView } from './views/AuditLogView';
 import { ActiveDevicesView } from './views/ActiveDevicesView';
+import { AnalyticsView } from './views/AnalyticsView';
 
 // Modals
 import { ApplicationReviewModal } from './modals/ApplicationReviewModal';
@@ -45,7 +48,7 @@ import { CreateTenantModal } from './modals/CreateTenantModal';
 import { ManageAdminsModal } from './modals/ManageAdminsModal';
 import { UpdateQuotaModal } from './modals/UpdateQuotaModal';
 
-export type DashboardTab = 'dashboard' | 'applications' | 'tenants' | 'operations' | 'audit' | 'devices';
+export type DashboardTab = 'dashboard' | 'applications' | 'tenants' | 'analytics' | 'operations' | 'audit' | 'devices';
 
 export interface PlatformAdminDashboardProps {
   user?: UserContext | null;
@@ -97,6 +100,9 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+
+  const [analyticsData, setAnalyticsData] = useState<PlatformAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   // Modal Triggers
   const [reviewApp, setReviewApp] = useState<RegistrationApplication | null>(null);
@@ -185,6 +191,18 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   }, []);
 
+  const loadAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    try {
+      const res = await api.getAnalytics();
+      setAnalyticsData(res);
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, []);
+
   // Initial Boot Load
   useEffect(() => {
     const init = async () => {
@@ -206,12 +224,14 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     if (activeTab === 'tenants') loadTenantsAndMetrics();
     if (activeTab === 'operations') loadOperationsData();
     if (activeTab === 'audit') loadAuditLogs();
+    if (activeTab === 'analytics') loadAnalytics();
     if (activeTab === 'dashboard') {
       loadTenantsAndMetrics();
       loadOperationsData();
       loadApplications();
+      loadAnalytics();
     }
-  }, [activeTab, loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs]);
+  }, [activeTab, loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs, loadAnalytics]);
 
 
 
@@ -351,7 +371,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-body text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
       {/* ========================================================================= */}
       {/* TOP HEADER (MATCHING TENANT ADMIN & STITCH DESIGN)                        */}
       {/* ========================================================================= */}
@@ -427,55 +447,58 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       </header>
 
       {/* ========================================================================= */}
-      {/* SIDEBAR NAVIGATION RAIL (MATCHING TENANT ADMIN)                           */}
+      {/* SIDEBAR NAVIGATION RAIL (MATCHING GOOGLE ADMIN & DESIGN.MD)               */}
       {/* ========================================================================= */}
-      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between p-4">
-        <div className="flex flex-col gap-6">
-          <nav className="flex flex-col gap-1">
+      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
+        <div className="flex flex-col gap-1 overflow-y-auto">
+          {/* Main Navigation Group */}
+          <div className="flex flex-col gap-0.5">
             {/* Dashboard */}
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-left w-full ${
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'dashboard'
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
               }`}
               id="nav-dashboard"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <LayoutDashboard
-                  className={`w-[18px] h-[18px] ${
-                    activeTab === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'dashboard' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
                   }`}
+                  strokeWidth={1.75}
                 />
-                <span>Dashboard</span>
+                <span className="truncate">Dashboard</span>
               </div>
             </button>
 
             {/* Tenant Applications */}
             <button
               onClick={() => setActiveTab('applications')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'applications'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
               }`}
               id="nav-applications"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <ClipboardList
-                  className={`w-[18px] h-[18px] ${
-                    activeTab === 'applications' ? 'text-indigo-600' : 'text-slate-400'
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'applications' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
                   }`}
+                  strokeWidth={1.75}
                 />
-                <span>Tenant Applications</span>
+                <span className="truncate">Tenant Applications</span>
               </div>
               {pendingAppsCount > 0 ? (
-                <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/60">
+                <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/60">
                   {pendingAppsCount}
                 </span>
               ) : (
-                <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
+                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
                   0
                 </span>
               )}
@@ -484,91 +507,121 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             {/* Tenants */}
             <button
               onClick={() => setActiveTab('tenants')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'tenants'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
               }`}
               id="nav-tenants"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <Building2
-                  className={`w-[18px] h-[18px] ${
-                    activeTab === 'tenants' ? 'text-indigo-600' : 'text-slate-400'
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'tenants' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
                   }`}
+                  strokeWidth={1.75}
                 />
-                <span>Tenants</span>
+                <span className="truncate">Tenants</span>
               </div>
-              <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
+              <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
                 {activeTenantsCount}
               </span>
             </button>
 
+            {/* Analytics */}
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeTab === 'analytics'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-analytics"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <BarChart3
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'analytics' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Analytics</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Divider matching Google Admin console */}
+          <div className="my-2 border-t border-slate-200/80" />
+
+          {/* System Operations & Governance Group */}
+          <div className="flex flex-col gap-0.5">
             {/* System Health */}
             <button
               onClick={() => setActiveTab('operations')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'operations'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
               }`}
               id="nav-system-health"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <Server
-                  className={`w-[18px] h-[18px] ${
-                    activeTab === 'operations' ? 'text-indigo-600' : 'text-slate-400'
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'operations' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
                   }`}
+                  strokeWidth={1.75}
                 />
-                <span>System Health</span>
+                <span className="truncate">System Health</span>
               </div>
               <span
-                className={`h-2 w-2 rounded-full ${hasSystemIssue ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                className={`h-2 w-2 rounded-full shrink-0 ${hasSystemIssue ? 'bg-rose-500' : 'bg-emerald-500'}`}
               />
             </button>
 
             {/* Audit Log */}
             <button
               onClick={() => setActiveTab('audit')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'audit'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
               }`}
               id="nav-audit-log"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <Receipt
-                  className={`w-[18px] h-[18px] ${
-                    activeTab === 'audit' ? 'text-indigo-600' : 'text-slate-400'
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'audit' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
                   }`}
+                  strokeWidth={1.75}
                 />
-                <span>Audit Log</span>
+                <span className="truncate">Audit Log</span>
               </div>
             </button>
 
             {/* Devices */}
             <button
               onClick={() => setActiveTab('devices')}
-              className={`flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left w-full ${
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'devices'
-                  ? 'bg-indigo-50 text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
               }`}
               id="nav-devices"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <Laptop
-                  className={`w-[18px] h-[18px] ${
-                    activeTab === 'devices' ? 'text-indigo-600' : 'text-slate-400'
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'devices' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
                   }`}
+                  strokeWidth={1.75}
                 />
-                <span>Active Devices</span>
+                <span className="truncate">Active Devices</span>
               </div>
             </button>
-          </nav>
+          </div>
         </div>
-
       </aside>
 
       {/* ========================================================================= */}
@@ -595,6 +648,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               backups={backups}
               driftReport={driftReport}
               recentAuditLogs={auditLogs}
+              analyticsData={analyticsData}
               onNavigateTab={(tab) => setActiveTab(tab)}
               onReviewApplication={(app) => setReviewApp(app)}
               onActivateTenant={(tenant) => setActivateTenant(tenant)}
@@ -643,6 +697,14 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               logs={auditLogs}
               loading={auditLoading}
               onRefresh={loadAuditLogs}
+            />
+          )}
+
+          {activeTab === 'analytics' && (
+            <AnalyticsView
+              data={analyticsData}
+              loading={analyticsLoading}
+              onRefresh={loadAnalytics}
             />
           )}
 

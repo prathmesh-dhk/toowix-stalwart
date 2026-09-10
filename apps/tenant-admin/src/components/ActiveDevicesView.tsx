@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Search,
   Monitor,
+  MapPin,
 } from 'lucide-react';
 import { api } from '../api';
 import { SessionItem } from '../types';
@@ -117,6 +118,7 @@ export const ActiveDevicesView: React.FC = () => {
         s.browser?.toLowerCase().includes(q) ||
         s.os?.toLowerCase().includes(q) ||
         s.ipAddress?.toLowerCase().includes(q) ||
+        s.location?.toLowerCase().includes(q) ||
         s.deviceType?.toLowerCase().includes(q)
     );
   }, [sessions, searchQuery]);
@@ -315,6 +317,12 @@ export const ActiveDevicesView: React.FC = () => {
                         <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700 border border-slate-200/60 tabular-nums font-medium">
                           IP: {session.ipAddress}
                         </span>
+                        {session.location && (
+                          <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700 border border-slate-200/60 font-medium inline-flex items-center gap-1">
+                            <MapPin size={11} className="text-indigo-500 shrink-0" />
+                            <span>{session.location}</span>
+                          </span>
+                        )}
                         <span className="flex items-center gap-1">
                           <Clock size={12} className="text-slate-400" />
                           <span>{formatActivity(session.lastActiveAt, isCurrent)}</span>

@@ -139,9 +139,6 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
               <div className="font-semibold text-indigo-600 text-xs truncate">
                 {tenant.domain?.domainName || 'No domain'}
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">
-                {tenant.domain?.stalwartDomainId ? 'Stalwart Synced' : 'Pending Sync'}
-              </div>
             </div>
           </div>
 

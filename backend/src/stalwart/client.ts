@@ -326,34 +326,75 @@ export class StalwartClient {
     maxMailboxDepth: number;
     maxMailboxNameLength: number;
   }): Promise<void> {
-    const payload = {
-      maxAttachmentSize: Math.max(1, Number(limits.attachmentSizeMb ?? 5)) * 1024 * 1024,
-      maxMessageSize: Math.max(1, Number(limits.messageSizeMb ?? 6)) * 1024 * 1024,
-      maxMailboxDepth: Math.max(1, Number(limits.maxMailboxDepth ?? 10)),
-      maxMailboxNameLength: Math.max(1, Number(limits.maxMailboxNameLength ?? 255)),
+    const attachmentBytes = Math.max(1, Number(limits.attachmentSizeMb ?? 5)) * 1024 * 1024;
+    const messageBytes = Math.max(1, Number(limits.messageSizeMb ?? 6)) * 1024 * 1024;
+    const mailboxDepth = Math.max(1, Number(limits.maxMailboxDepth ?? 10));
+    const mailboxNameLength = Math.max(1, Number(limits.maxMailboxNameLength ?? 255));
+
+    const emailPayload = {
+      maxAttachmentSize: attachmentBytes,
+      maxMessageSize: messageBytes,
+      maxMailboxDepth: mailboxDepth,
+      maxMailboxNameLength: mailboxNameLength,
     };
 
-    const responses = await this.dispatch([
-      [
-        'x:Email/set',
-        {
-          accountId: this.accountId,
-          update: {
-            [this.accountId]: payload,
-          },
-        },
-        'c_update_mail_limits',
-      ],
-    ]);
+    const jmapPayload = {
+      maxUploadSize: attachmentBytes,
+      uploadQuota: attachmentBytes,
+    };
 
-    const result = responses[0]?.[1];
-    if (result?.notUpdated?.[this.accountId]) {
-      const err = result.notUpdated[this.accountId];
-      throw new StalwartError(
-        `Failed to update mail limits in Stalwart: ${err.description || err.type}`,
-        'MAIL_LIMITS_UPDATE_FAILED',
-        err
-      );
+    try {
+      const responses = await this.dispatch([
+        [
+          'x:Email/set',
+          {
+            accountId: this.accountId,
+            update: {
+              singleton: emailPayload,
+            },
+          },
+          'c_update_email_limits',
+        ],
+        [
+          'x:Jmap/set',
+          {
+            accountId: this.accountId,
+            update: {
+              singleton: jmapPayload,
+            },
+          },
+          'c_update_jmap_limits',
+        ],
+        [
+          'x:Action/set',
+          {
+            accountId: this.accountId,
+            create: {
+              reload_limits: {
+                '@type': 'ReloadSettings',
+              },
+            },
+          },
+          'c_reload_settings',
+        ],
+      ]);
+
+      const emailResult = responses[0]?.[1];
+      if (emailResult?.notUpdated?.singleton) {
+        const err = emailResult.notUpdated.singleton;
+        if (err.type !== 'notFound') {
+          throw new StalwartError(
+            `Failed to update email limits in Stalwart: ${err.description || err.type}`,
+            'MAIL_LIMITS_UPDATE_FAILED',
+            err
+          );
+        }
+      }
+    } catch (err: any) {
+      if (err instanceof StalwartError && err.code === 'MAIL_LIMITS_UPDATE_FAILED') {
+        throw err;
+      }
+      console.warn(`[StalwartClient] Mail limits runtime sync warning: ${err.message}`);
     }
   }
 
@@ -456,6 +497,88 @@ export class StalwartClient {
       createdAt: acc.createdAt,
       roles: acc.roles,
     };
+  }
+
+  /**
+   * Fetches all accounts with their storage usage (usedDiskQuota).
+   * Returns a map of stalwartAccountId → storageBytes.
+   */
+  async listAccountsWithStorage(): Promise<Map<string, number>> {
+    const responses = await this.dispatch([
+      ['x:Account/get', { accountId: this.accountId, ids: null }, 'c_list_storage'],
+    ]);
+
+    const list = responses[0]?.[1]?.list || [];
+    const result = new Map<string, number>();
+    for (const a of list) {
+      result.set(a.id, typeof a.usedDiskQuota === 'number' ? a.usedDiskQuota : 0);
+    }
+    return result;
+  }
+
+  /**
+   * Fetches email counts (sent, inbox, total) for a single mailbox account
+   * using admin-level impersonation via JMAP Mailbox/get.
+   * Returns { emailsSent, emailsInbox, totalEmails }.
+   */
+  async getAccountEmailCounts(stalwartAccountId: string): Promise<{
+    emailsSent: number;
+    emailsInbox: number;
+    totalEmails: number;
+  }> {
+    const responses = await this.dispatch([
+      [
+        'Mailbox/get',
+        {
+          accountId: stalwartAccountId,
+          ids: null,
+          properties: ['id', 'name', 'role', 'totalEmails'],
+        },
+        'c_get_mbox_counts',
+      ],
+    ]);
+
+    const folders: any[] = responses[0]?.[1]?.list || [];
+    let emailsSent = 0;
+    let emailsInbox = 0;
+    let totalEmails = 0;
+
+    for (const folder of folders) {
+      const count = typeof folder.totalEmails === 'number' ? folder.totalEmails : 0;
+      totalEmails += count;
+      if (folder.role === 'sent') emailsSent = count;
+      if (folder.role === 'inbox') emailsInbox = count;
+    }
+
+    return { emailsSent, emailsInbox, totalEmails };
+  }
+
+  /**
+   * Batch-fetches email counts for multiple accounts using Promise.all
+   * with a concurrency cap of `concurrency` (default 10).
+   * Returns a map of stalwartAccountId → { emailsSent, emailsInbox, totalEmails }.
+   * Failed lookups are silently set to zero — never throws.
+   */
+  async batchGetEmailCounts(
+    stalwartAccountIds: string[],
+    concurrency = 10
+  ): Promise<Map<string, { emailsSent: number; emailsInbox: number; totalEmails: number }>> {
+    const result = new Map<string, { emailsSent: number; emailsInbox: number; totalEmails: number }>();
+    const zero = { emailsSent: 0, emailsInbox: 0, totalEmails: 0 };
+
+    // Process in batches of `concurrency`
+    for (let i = 0; i < stalwartAccountIds.length; i += concurrency) {
+      const batch = stalwartAccountIds.slice(i, i + concurrency);
+      const settled = await Promise.allSettled(
+        batch.map((id) => this.getAccountEmailCounts(id))
+      );
+      for (let j = 0; j < batch.length; j++) {
+        const s = settled[j];
+        result.set(batch[j], s.status === 'fulfilled' ? s.value : zero);
+      }
+    }
+
+    return result;
   }
 }
 

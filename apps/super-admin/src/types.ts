@@ -237,8 +237,61 @@ export interface SessionItem {
   browser: string;
   os: string;
   ipAddress: string;
+  location?: string;
+  countryCode?: string;
   lastActiveAt: string;
   createdAt: string;
   isCurrent: boolean;
 }
 
+export interface AnalyticsTenantRow {
+  tenantId: string;
+  tenantName: string;
+  domainName: string;
+  status: 'active' | 'suspended';
+  mailboxCount: number;
+  mailboxLimit: number;
+  utilizationPct: number;
+  storageBytes: number;
+  emailsSent: number;
+  emailsInbox: number;
+  totalEmails: number;
+  topMailboxes: { address: string; storageBytes: number; emailsSent: number }[];
+}
+
+export interface PlatformAnalytics {
+  generatedAt: string;
+  stalwartReachable: boolean;
+  snapshot: {
+    totalMailboxes: number;
+    activeMailboxes: number;
+    suspendedMailboxes: number;
+    totalTenants: number;
+    activeTenants: number;
+    suspendedTenants: number;
+    totalDomains: number;
+    platform: {
+      totalStorageBytes: number;
+      avgStoragePerMailboxBytes: number;
+      totalEmailsSent: number;
+      totalEmailsInbox: number;
+      totalEmails: number;
+    };
+  };
+  perTenant: AnalyticsTenantRow[];
+  topStorageConsumers: {
+    address: string;
+    tenantName: string;
+    storageBytes: number;
+    emailsSent: number;
+  }[];
+  auditSummary: {
+    last30Days: {
+      total: number;
+      logins: number;
+      mailboxEvents: number;
+      tenantLifecycle: number;
+      securityEvents: number;
+    };
+  };
+}

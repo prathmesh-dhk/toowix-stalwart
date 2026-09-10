@@ -91,6 +91,10 @@
   padding: 0;
 }
 
+html, body, #root {
+  font-family: var(--font-sans);
+}
+
 html {
   scroll-behavior: smooth;
   background-color: var(--bg-color);

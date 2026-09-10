@@ -243,14 +243,9 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                       {/* Domain */}
                       <td>
                         {tenant.domain ? (
-                          <div className="flex flex-col text-xs">
-                            <div className="flex items-center gap-1 text-indigo-600 font-medium">
-                              <Globe size={12} className="text-slate-400" />
-                              <span>{tenant.domain.domainName}</span>
-                            </div>
-                            <span className={`text-[10px] ${tenant.domain.stalwartDomainId ? 'text-emerald-700' : 'text-amber-700'}`}>
-                              {tenant.domain.stalwartDomainId ? 'Stalwart Synced' : 'Pending Sync'}
-                            </span>
+                          <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
+                            <Globe size={13} className="text-slate-400" />
+                            <span>{tenant.domain.domainName}</span>
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400">No domain</span>

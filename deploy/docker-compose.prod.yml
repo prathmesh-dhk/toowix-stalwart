@@ -46,6 +46,8 @@ services:
       dockerfile: Dockerfile
     container_name: toowix-prod-backend
     restart: always
+    ports:
+      - "127.0.0.1:4000:4000"
     environment:
       PORT: 4000
       NODE_ENV: production
@@ -57,7 +59,7 @@ services:
       AWS_S3_BUCKET: ${AWS_S3_BUCKET}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      STALWART_URL: http://stalwart:8090
+      STALWART_URL: ${STALWART_URL:-http://stalwart:8080}
       STALWART_USER: ${STALWART_SERVICE_USER:-toowix-service@toowix.test}
       STALWART_PASSWORD: ${STALWART_SERVICE_PASSWORD}
       STALWART_ACCOUNT_ID: ${STALWART_ACCOUNT_ID:-b}
@@ -79,7 +81,7 @@ services:
     container_name: toowix-prod-super-admin
     restart: always
     ports:
-      - "${PORT_ADMIN_HTTP:-5174}:80"
+      - "${PORT_ADMIN_HTTP:-5173}:80"
     depends_on:
       - backend
     networks:
@@ -94,7 +96,7 @@ services:
     container_name: toowix-prod-tenant-admin
     restart: always
     ports:
-      - "${PORT_HTTP:-80}:80"
+      - "${PORT_HTTP:-5174}:80"
     depends_on:
       - backend
     networks:
@@ -112,7 +114,7 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
-      JMAP_SERVER_URL: "http://stalwart:8090"
+      JMAP_SERVER_URL: "${STALWART_URL:-http://stalwart:8080}"
     volumes:
       - toowix-prod-bulwark-settings:/app/data/settings
       - toowix-prod-bulwark-admin:/app/data/admin

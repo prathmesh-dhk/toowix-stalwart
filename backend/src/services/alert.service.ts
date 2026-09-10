@@ -227,12 +227,16 @@ export class AlertService {
       { upsert: true, returnDocument: 'after' }
     );
 
-    await stalwartClient.updateMailLimits({
-      attachmentSizeMb: Number(updated.attachmentSizeMb ?? 5),
-      messageSizeMb: Number(updated.messageSizeMb ?? 6),
-      maxMailboxDepth: Number(updated.maxMailboxDepth ?? 10),
-      maxMailboxNameLength: Number(updated.maxMailboxNameLength ?? 255),
-    });
+    try {
+      await stalwartClient.updateMailLimits({
+        attachmentSizeMb: Number(updated.attachmentSizeMb ?? 5),
+        messageSizeMb: Number(updated.messageSizeMb ?? 6),
+        maxMailboxDepth: Number(updated.maxMailboxDepth ?? 10),
+        maxMailboxNameLength: Number(updated.maxMailboxNameLength ?? 255),
+      });
+    } catch (err: any) {
+      console.warn('[AlertService] Non-fatal error during Stalwart mail limits sync:', err.message);
+    }
 
     await logAudit({
       actorRole: 'SUPER_ADMIN',

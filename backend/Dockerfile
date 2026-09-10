@@ -3,6 +3,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+RUN apk add --no-cache python3 make g++
+
 COPY package*.json ./
 RUN npm ci
 
@@ -22,10 +24,9 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 COPY --from=builder /app/dist ./dist
-COPY src/db/migrations ./src/db/migrations
-COPY src/db/migrations ./dist/db/migrations
 
 EXPOSE 4000
 
-# Run migrations and start API server
+# Start API server
 CMD ["node", "dist/index.js"]
+

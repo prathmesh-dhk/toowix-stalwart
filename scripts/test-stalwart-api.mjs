@@ -1,4 +1,5 @@
 // scripts/test-stalwart-api.mjs
+import http from 'http';
 import https from 'https';
 
 const auth = Buffer.from('toowix-service@toowix.test:ToowixServiceSecret2026!Secure').toString('base64');
@@ -6,7 +7,7 @@ const auth = Buffer.from('toowix-service@toowix.test:ToowixServiceSecret2026!Sec
 function request(body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
-    const req = http.request('http://localhost:8090/jmap/', {
+    const req = http.request('http://localhost:8085/jmap/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

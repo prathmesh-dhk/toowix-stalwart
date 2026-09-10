@@ -11,6 +11,7 @@ import {
   AuditLogModel,
   BackupRecordModel,
   SystemSettingsModel,
+  AdminSessionModel,
 } from '../db/models';
 import { runMigrations } from '../db/migrate';
 import { seedAll } from '../db/seed';
@@ -44,6 +45,7 @@ async function clearDatabase() {
     { name: 'audit_logs', model: AuditLogModel },
     { name: 'backup_records', model: BackupRecordModel },
     { name: 'system_settings', model: SystemSettingsModel },
+    { name: 'admin_sessions', model: AdminSessionModel },
   ];
 
   for (const col of collections) {
