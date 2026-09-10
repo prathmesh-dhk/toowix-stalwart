@@ -250,7 +250,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
       </header>
 
       {/* Main Centered Container */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 sm:py-12 w-full">
+      <main className="page-content-scaled flex-1 flex flex-col items-center justify-center px-4 py-8 sm:py-12 w-full">
         <div className="w-full max-w-[440px]">
           {/* Subtle Stepper Indicator (for stages 2 & 3) */}
           {(stage === 2 || stage === 3) && (

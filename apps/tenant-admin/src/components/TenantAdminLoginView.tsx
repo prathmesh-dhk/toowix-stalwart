@@ -202,7 +202,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 flex-grow flex items-center justify-center px-6 py-8">
+      <main className="page-content-scaled relative z-10 flex-grow flex items-center justify-center px-6 py-8">
         <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           {/* Left Hero Showcase */}
           <section aria-label="Brand Identity" className="lg:col-span-6 flex flex-col justify-center items-center lg:items-start pl-0 lg:pl-8">

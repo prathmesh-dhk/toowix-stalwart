@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
-import { TenantSummary, MailboxItem, AuditItem, UserContext } from '../types';
+import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
 import { ActiveDevicesView } from './ActiveDevicesView';
+import { SecuritySettingsView } from './SecuritySettingsView';
+import { DomainSwitcher } from './DomainSwitcher';
+import { DomainSetupModal } from './DomainSetupModal';
 import {
   Loader2,
   LogOut,
@@ -30,6 +33,8 @@ import {
   Check,
   RefreshCw,
   X,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
 
 interface TenantAdminDashboardProps {
@@ -39,9 +44,12 @@ interface TenantAdminDashboardProps {
 
 export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user, onLogout }) => {
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
+  const [domains, setDomains] = useState<DomainItem[]>([]);
+  const [activeDomain, setActiveDomain] = useState<DomainItem | null>(null);
+  const [showDomainModal, setShowDomainModal] = useState(false);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'audit' | 'security' | 'devices'>('dashboard');
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
@@ -58,6 +66,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [newMailboxPassword, setNewMailboxPassword] = useState('');
   const [resetModalLoading, setResetModalLoading] = useState(false);
   const [resetModalError, setResetModalError] = useState<string | null>(null);
+
+  // Delete Mailbox Confirmation Modal state
+  const [selectedMailboxForDelete, setSelectedMailboxForDelete] = useState<MailboxItem | null>(null);
+  const [deleteModalLoading, setDeleteModalLoading] = useState(false);
+  const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
 
   // DNS copy feedback
   const [copiedRecordKey, setCopiedRecordKey] = useState<string | null>(null);
@@ -113,16 +126,58 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     setTimeout(() => setCopiedPasswordKey(null), 2000);
   };
 
-  const loadTenantData = async () => {
+  const loadTenantData = async (targetDomainId?: string) => {
     try {
-      const [tenantRes, mailboxesRes, auditRes] = await Promise.all([
+      const [tenantRes, domainsRes, auditRes] = await Promise.all([
         api.getTenantMe(),
-        api.listMyMailboxes(),
+        typeof api.listTenantDomains === 'function'
+          ? api.listTenantDomains().catch(() => ({ domains: [] }))
+          : Promise.resolve({ domains: [] }),
         api.getAuditLogs({ limit: 50 }).catch(() => ({ logs: [] })),
       ]);
-      setTenant(tenantRes.tenant);
-      setMailboxes(mailboxesRes.mailboxes || []);
+
+      const loadedTenant = tenantRes.tenant;
+      const loadedDomains: DomainItem[] = domainsRes?.domains?.length
+        ? domainsRes.domains
+        : loadedTenant.domains?.length
+          ? loadedTenant.domains
+          : loadedTenant.domain
+            ? [{
+                id: loadedTenant.domain.id,
+                domainName: loadedTenant.domain.domainName,
+                status: loadedTenant.domain.status,
+                mailboxLimit: loadedTenant.mailboxLimit || 50,
+                employeeCount: loadedTenant.mailboxLimit || 50,
+                mailboxCount: loadedTenant.mailboxCount || 0,
+                isPrimary: true,
+              }]
+            : [];
+
+      setTenant(loadedTenant);
+      setDomains(loadedDomains);
       setAuditLogs(auditRes.logs || []);
+
+      // Determine active domain
+      let currentDomain: DomainItem | null = null;
+      if (targetDomainId) {
+        currentDomain = loadedDomains.find((d) => d.id === targetDomainId) || null;
+      } else if (activeDomain) {
+        currentDomain = loadedDomains.find((d) => d.id === activeDomain.id) || null;
+      }
+
+      if (!currentDomain && loadedDomains.length > 0) {
+        currentDomain = loadedDomains.find((d) => d.isPrimary) || loadedDomains[0];
+      }
+
+      setActiveDomain(currentDomain);
+
+      // Load mailboxes for active domain
+      if (currentDomain) {
+        const mailboxesRes = await api.listMyMailboxes(currentDomain.id);
+        setMailboxes(mailboxesRes.mailboxes || []);
+      } else {
+        setMailboxes([]);
+      }
     } catch (err) {
       console.error('Failed to load tenant data:', err);
     } finally {
@@ -134,6 +189,20 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     loadTenantData();
   }, []);
 
+  const handleSelectDomain = async (domain: DomainItem) => {
+    setActiveDomain(domain);
+    try {
+      const res = await api.listMyMailboxes(domain.id);
+      setMailboxes(res.mailboxes || []);
+    } catch (err) {
+      console.error('Failed to load mailboxes for domain:', err);
+    }
+  };
+
+  const handleDomainAdded = async (newDomain: DomainItem) => {
+    await loadTenantData(newDomain.id);
+  };
+
   const handleOpenCreateModal = () => {
     setLocalPart('');
     setPassword(generateStrongPassword());
@@ -143,6 +212,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
   const handleCreateMailbox = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeDomain) {
+      setModalError('Please add or select a domain before creating mailboxes.');
+      return;
+    }
+
     const cleanPrefix = localPart.trim().toLowerCase();
     if (!cleanPrefix) {
       setModalError('Please enter a username prefix.');
@@ -164,11 +238,12 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       await api.createMailbox({
         localPart: cleanPrefix,
         password,
+        domainId: activeDomain.id,
       });
       setShowCreateModal(false);
       setLocalPart('');
       setPassword('');
-      await loadTenantData();
+      await loadTenantData(activeDomain.id);
     } catch (err: any) {
       setModalError(err.message || 'Failed to create mailbox.');
     } finally {
@@ -199,7 +274,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       setSelectedMailboxForReset(null);
       setNewMailboxPassword('');
       alert(`Password for ${addr} has been updated successfully.`);
-      await loadTenantData();
+      await loadTenantData(activeDomain?.id);
     } catch (err: any) {
       setResetModalError(err.message || 'Failed to update mailbox password.');
     } finally {
@@ -207,16 +282,24 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     }
   };
 
-  const handleDeleteMailbox = async (mb: MailboxItem) => {
-    if (!confirm(`Are you sure you want to permanently delete mailbox "${mb.address}"? All associated messages and data will be removed.`)) {
-      return;
-    }
+  const handleOpenDeleteModal = (mb: MailboxItem) => {
+    setSelectedMailboxForDelete(mb);
+    setDeleteModalError(null);
+  };
+
+  const handleConfirmDeleteMailbox = async () => {
+    if (!selectedMailboxForDelete) return;
+    setDeleteModalLoading(true);
+    setDeleteModalError(null);
 
     try {
-      await api.deleteMailbox(mb.id);
-      await loadTenantData();
+      await api.deleteMailbox(selectedMailboxForDelete.id);
+      setSelectedMailboxForDelete(null);
+      await loadTenantData(activeDomain?.id);
     } catch (err: any) {
-      alert(`Failed to delete mailbox: ${err.message}`);
+      setDeleteModalError(err.message || 'Failed to delete mailbox.');
+    } finally {
+      setDeleteModalLoading(false);
     }
   };
 
@@ -252,7 +335,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     return prefix.slice(0, 2).toUpperCase();
   };
 
-  const formatAuditAction = (action: string, metadata: any) => {
+  const formatAuditAction = (action: string, metadata?: any) => {
     switch (action) {
       case 'MAILBOX_CREATED':
         return `${metadata?.address || 'Mailbox'} created`;
@@ -281,9 +364,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     });
   }, [mailboxes, searchTerm, statusFilter]);
 
-  const domainName = tenant?.domain?.domainName || 'domain.com';
-  const mailboxCount = tenant?.mailboxCount || mailboxes.length || 0;
-  const mailboxLimit = tenant?.mailboxLimit || 50;
+  const domainName = activeDomain?.domainName || tenant?.domain?.domainName || '';
+  const mailboxCount = mailboxes.length;
+  const mailboxLimit = activeDomain?.mailboxLimit ?? (tenant?.mailboxLimit || 10);
   const usagePercent = Math.min(100, Math.round((mailboxCount / Math.max(1, mailboxLimit)) * 100));
   const availableCount = Math.max(0, mailboxLimit - mailboxCount);
   const isSuspended = tenant?.status === 'suspended';
@@ -315,14 +398,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             {/* Brand */}
             <div className="flex items-center gap-3">
               <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
-              <div className="flex flex-col">
-                <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight">
-                  TOOWIX MAIL
-                </span>
-                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-                  Admin Console
-                </span>
-              </div>
+              <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight select-none">
+                TOOWIX ADMIN
+              </span>
             </div>
 
             <span className="text-slate-300 font-light text-base hidden md:inline select-none">/</span>
@@ -372,6 +450,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       {/* ========================================================================= */}
       <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
         <div className="flex flex-col gap-1 overflow-y-auto">
+          {/* Domain Tab / Switcher Dropdown (Top of Sidebar) */}
+          <DomainSwitcher
+            domains={domains}
+            activeDomain={activeDomain}
+            onSelectDomain={handleSelectDomain}
+            onOpenAddDomain={() => setShowDomainModal(true)}
+          />
+
           {/* Main Navigation Group */}
           <div className="flex flex-col gap-0.5">
             {/* Dashboard */}
@@ -425,7 +511,28 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
           {/* Security & Organization Governance */}
           <div className="flex flex-col gap-0.5">
-            {/* Admin Security / Domain & DNS */}
+            {/* Domains & DNS */}
+            <button
+              onClick={() => setActiveNav('domains')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'domains'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-domains"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <Globe
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'domains' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Domains & DNS</span>
+              </div>
+            </button>
+
+            {/* Account Security */}
             <button
               onClick={() => setActiveNav('security')}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
@@ -442,7 +549,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   }`}
                   strokeWidth={1.75}
                 />
-                <span className="truncate">Admin Security</span>
+                <span className="truncate">Account Security</span>
               </div>
             </button>
 
@@ -495,7 +602,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       {/* MAIN VIEW CONTAINER                                                       */}
       {/* ========================================================================= */}
       <div className="pl-60 pt-16 min-h-screen bg-[#f8fafc]">
-        <main className="max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
+        <main className="page-content-scaled w-full max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
           {/* Operational Banners */}
           {isSuspended && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 text-rose-900">
@@ -529,6 +636,39 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           {/* VIEW: DASHBOARD (MAIN SCREEN MATCHING STITCH DESIGN)                   */}
           {/* ===================================================================== */}
           {activeNav === 'dashboard' && (
+            domains.length === 0 ? (
+              <div className="bg-gradient-to-br from-white via-indigo-50/20 to-indigo-100/30 border border-indigo-100 rounded-2xl p-8 sm:p-10 shadow-xs flex flex-col md:flex-row items-center justify-between gap-8 animate-in fade-in">
+                <div className="flex flex-col gap-3.5 max-w-xl">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-700 text-xs font-semibold w-fit">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Welcome to Toowix Mail Platform</span>
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                    Connect your first domain to get started
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    You haven&apos;t added any domains yet. Connect your domain, select your initial employee tier, and we will automatically provision your mail routing and DNS records so you can start creating team mailboxes.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDomainModal(true)}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                      id="btn-add-first-domain-dashboard"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Your First Domain</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl bg-indigo-50 border border-indigo-200/60 flex flex-col items-center justify-center text-indigo-600 p-6 shrink-0 text-center shadow-2xs">
+                  <Globe className="w-12 h-12 mb-2 stroke-[1.5]" />
+                  <span className="text-xs font-bold text-slate-800">Multi-Domain Ready</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5">Flexible Employee Tiers</span>
+                </div>
+              </div>
+            ) : (
             <>
               {/* TOP ACTION & CONTEXT BAR */}
               <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
@@ -758,12 +898,32 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 </section>
               </div>
             </>
+            )
           )}
 
           {/* ===================================================================== */}
           {/* VIEW: FULL MAILBOXES TABLE                                            */}
           {/* ===================================================================== */}
           {activeNav === 'mailboxes' && (
+            domains.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-xs animate-in fade-in">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-1 shadow-2xs">
+                  <Globe className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-semibold text-slate-900">No Domains Configured</h3>
+                <p className="text-xs text-slate-500 max-w-sm">
+                  You must add a domain and choose an employee tier before creating and managing mailbox accounts.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowDomainModal(true)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer mt-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Your First Domain</span>
+                </button>
+              </div>
+            ) : (
             <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div className="flex flex-col gap-1">
@@ -877,7 +1037,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                                 Reset Password
                               </button>
                               <button
-                                onClick={() => handleDeleteMailbox(mb)}
+                                onClick={() => handleOpenDeleteModal(mb)}
                                 className="px-2 py-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded transition-colors"
                                 title="Delete Mailbox"
                               >
@@ -892,6 +1052,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 </table>
               </div>
             </section>
+            )
           )}
 
           {/* ===================================================================== */}
@@ -959,9 +1120,28 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           )}
 
           {/* ===================================================================== */}
-          {/* VIEW: ADMIN SECURITY & DOMAIN DNS RECORDS                             */}
+          {/* VIEW: DOMAINS & DNS ZONE RECORDS                                      */}
           {/* ===================================================================== */}
-          {activeNav === 'security' && (
+          {activeNav === 'domains' && (
+            domains.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-xs animate-in fade-in">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-1 shadow-2xs">
+                  <Globe className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-semibold text-slate-900">No Domains Configured</h3>
+                <p className="text-xs text-slate-500 max-w-sm">
+                  Connect your domain to view authoritative DNS zone routing records (MX, SPF, DKIM, DMARC).
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowDomainModal(true)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer mt-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Your First Domain</span>
+                </button>
+              </div>
+            ) : (
             <section className="flex flex-col gap-6">
               {/* Domain Health Card */}
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
@@ -1074,6 +1254,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 </div>
               </div>
             </section>
+            )
+          )}
+
+          {/* ===================================================================== */}
+          {/* VIEW: ACCOUNT SECURITY (2FA & RECOVERY EMAIL)                         */}
+          {/* ===================================================================== */}
+          {activeNav === 'security' && (
+            <SecuritySettingsView user={user} />
           )}
 
           {/* ===================================================================== */}
@@ -1090,7 +1278,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       {/* ========================================================================= */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4">
-          <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-slate-200 p-6 flex flex-col gap-5">
+          <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-slate-200 p-6 flex flex-col gap-5 page-content-scaled">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">Create New Mailbox</h3>
               <button
@@ -1194,7 +1382,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       {/* ========================================================================= */}
       {selectedMailboxForReset && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4">
-          <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-slate-200 p-6 flex flex-col gap-4">
+          <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-slate-200 p-6 flex flex-col gap-4 page-content-scaled">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">Reset Password</h3>
               <button
@@ -1280,6 +1468,117 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DELETE MAILBOX CONFIRMATION POPUP                                 */}
+      {/* ========================================================================= */}
+      {selectedMailboxForDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-mailbox-title"
+          onClick={() => {
+            if (!deleteModalLoading) {
+              setSelectedMailboxForDelete(null);
+              setDeleteModalError(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 page-content-scaled"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="delete-mailbox-title" className="text-sm font-semibold text-slate-900">
+                    Delete Mailbox
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Permanent deletion warning
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deleteModalLoading) {
+                    setSelectedMailboxForDelete(null);
+                    setDeleteModalError(null);
+                  }
+                }}
+                disabled={deleteModalLoading}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-rose-50/70 border border-rose-200 rounded-xl text-xs text-slate-700 leading-relaxed space-y-1.5">
+              <p>
+                Are you sure you want to permanently delete{' '}
+                <strong className="text-slate-900 font-semibold">{selectedMailboxForDelete.address}</strong>?
+              </p>
+              <p className="text-rose-700 font-medium">
+                All associated messages, folders, and settings will be permanently erased. This action cannot be undone.
+              </p>
+            </div>
+
+            {deleteModalError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>{deleteModalError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMailboxForDelete(null);
+                  setDeleteModalError(null);
+                }}
+                disabled={deleteModalLoading}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteMailbox}
+                disabled={deleteModalLoading}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {deleteModalLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Mailbox</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DOMAIN SETUP WIZARD (MULTI-DOMAIN & EMPLOYEE TIERS)                */}
+      {/* ========================================================================= */}
+      <DomainSetupModal
+        isOpen={showDomainModal}
+        onClose={() => setShowDomainModal(false)}
+        onDomainAdded={handleDomainAdded}
+      />
     </div>
   );
 };

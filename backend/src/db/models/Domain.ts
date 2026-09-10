@@ -7,6 +7,9 @@ export interface IDomain extends Document {
   domainName: string;
   stalwartDomainId?: string | null;
   status: DomainStatus;
+  mailboxLimit: number;
+  employeeCount: number;
+  isPrimary?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,7 +20,6 @@ const DomainSchema = new Schema<IDomain>(
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
       required: true,
-      unique: true, // HARD RULE: 1 tenant = exactly 1 domain
       index: true,
     },
     domainName: {
@@ -39,11 +41,26 @@ const DomainSchema = new Schema<IDomain>(
       default: 'active',
       index: true,
     },
+    mailboxLimit: {
+      type: Number,
+      required: true,
+      default: 10,
+    },
+    employeeCount: {
+      type: Number,
+      default: 10,
+    },
+    isPrimary: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
     collection: 'domains',
   }
 );
+
+DomainSchema.index({ tenantId: 1, domainName: 1 });
 
 export const DomainModel = mongoose.model<IDomain>('Domain', DomainSchema);

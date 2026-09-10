@@ -17,7 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
       <header className="navbar">
         <div className="brand">
           <img src={toowixLogo} alt="Toowix" className="brand-icon object-contain" />
-          <span>TOOWIX <span style={{ color: 'var(--primary-light)', fontWeight: 400 }}>MAIL</span></span>
+          <span>TOOWIX <span style={{ color: 'var(--primary-light)', fontWeight: 400 }}>ADMIN</span></span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>

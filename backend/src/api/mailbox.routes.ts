@@ -12,6 +12,7 @@ const createMailboxSchema = z.object({
     .min(1, 'Local part is required')
     .regex(/^[a-zA-Z0-9._-]+$/, 'Local part can only contain letters, numbers, dots, hyphens, and underscores'),
   password: z.string().min(8, 'Password must be at least 8 characters long'),
+  domainId: z.string().optional(),
 });
 
 const resetPasswordSchema = z.object({
@@ -31,8 +32,10 @@ tenantMailboxRouter.get('/', async (req: Request, res: Response): Promise<void> 
     return;
   }
 
+  const domainId = typeof req.query.domainId === 'string' && req.query.domainId.trim() ? req.query.domainId.trim() : undefined;
+
   try {
-    const mailboxes = await MailboxService.listMailboxes(tenantId);
+    const mailboxes = await MailboxService.listMailboxes(tenantId, domainId);
     res.status(200).json({ mailboxes });
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });

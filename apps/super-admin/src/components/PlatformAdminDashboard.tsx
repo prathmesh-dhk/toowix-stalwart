@@ -628,7 +628,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       {/* MAIN VIEW CONTAINER                                                       */}
       {/* ========================================================================= */}
       <div className="pl-60 pt-16 min-h-screen bg-[#f8fafc]">
-        <main className="max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
+        <main className="page-content-scaled max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
           {/* Global Action Alert */}
           {actionAlert && (
             <Alert
@@ -782,7 +782,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       {/* 2FA Setup Modal */}
       {show2FaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden text-xs">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden text-xs page-content-scaled">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2.5">
                 <div className="h-7 w-7 rounded-md bg-indigo-600 text-white flex items-center justify-center">

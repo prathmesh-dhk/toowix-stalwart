@@ -9,6 +9,7 @@ import { StalwartAccountExistsError, StalwartError } from '../stalwart/errors';
 export interface CreateMailboxInput {
   localPart: string;
   password: string;
+  domainId?: string;
 }
 
 export interface MailboxRecord {
@@ -100,12 +101,36 @@ export class MailboxService {
       };
     }
 
-    // 2. Resolve single 1:1 domain for tenant
-    const domain = await DomainModel.findOne({ tenantId });
-    if (!domain) {
-      // Rollback quota
-      await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
-      throw { status: 400, code: 'DOMAIN_MISSING', message: 'Tenant does not have an assigned domain' };
+    // 2. Resolve domain for tenant (either by input.domainId or default to primary/first domain)
+    let domain;
+    if (input.domainId && mongoose.Types.ObjectId.isValid(input.domainId)) {
+      domain = await DomainModel.findOne({ _id: input.domainId, tenantId });
+      if (!domain) {
+        // Rollback quota
+        await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
+        throw { status: 404, code: 'DOMAIN_NOT_FOUND', message: 'Specified domain was not found for this tenant' };
+      }
+    } else {
+      domain = await DomainModel.findOne({ tenantId }).sort({ isPrimary: -1, createdAt: 1 });
+      if (!domain) {
+        // Rollback quota
+        await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
+        throw { status: 400, code: 'DOMAIN_MISSING', message: 'Tenant does not have an assigned domain' };
+      }
+    }
+
+    // Check domain-level mailboxLimit if configured
+    if (domain.mailboxLimit) {
+      const currentDomainCount = await MailboxModel.countDocuments({ domainId: domain._id });
+      if (currentDomainCount >= domain.mailboxLimit) {
+        // Rollback quota
+        await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
+        throw {
+          status: 409,
+          code: 'DOMAIN_QUOTA_EXCEEDED',
+          message: `Mailbox limit of ${domain.mailboxLimit} reached for domain '${domain.domainName}'`,
+        };
+      }
     }
 
     const fullAddress = `${localPart}@${domain.domainName}`;
@@ -242,12 +267,17 @@ export class MailboxService {
   /**
    * List all mailboxes for a tenant.
    */
-  static async listMailboxes(tenantId: string): Promise<MailboxRecord[]> {
+  static async listMailboxes(tenantId: string, domainId?: string): Promise<MailboxRecord[]> {
     if (!mongoose.Types.ObjectId.isValid(tenantId)) {
       return [];
     }
 
-    const docs = await MailboxModel.find({ tenantId }).sort({ createdAt: 1 });
+    const filter: any = { tenantId };
+    if (domainId && mongoose.Types.ObjectId.isValid(domainId)) {
+      filter.domainId = domainId;
+    }
+
+    const docs = await MailboxModel.find(filter).sort({ createdAt: 1 });
 
     return docs.map((doc) => ({
       id: doc._id.toString(),

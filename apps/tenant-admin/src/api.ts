@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -45,6 +45,8 @@ export interface LoginResponse {
   tempToken?: string;
   hasRecoveryEmail?: boolean;
   maskedRecoveryEmail?: string | null;
+  defaultMethod?: 'totp' | 'email';
+  maskedEmail?: string | null;
   user: UserContext;
 }
 
@@ -198,12 +200,31 @@ export const api = {
       body: JSON.stringify({ newPassword }),
     }),
 
-  // Tenant Admin - Self View
+  // Tenant Admin - Self View & Multi-Domain
   getTenantMe: () => request<{ tenant: TenantSummary }>('/api/tenants/me'),
+  listTenantDomains: () => request<{ domains: DomainItem[] }>('/api/tenants/me/domains'),
+  createTenantDomain: (body: { domainName: string; employeeTier: number }) =>
+    request<{
+      success: boolean;
+      domain: DomainItem;
+      dnsRecords: Array<{
+        type: string;
+        name: string;
+        target: string;
+        priority: string;
+        desc: string;
+      }>;
+    }>('/api/tenants/me/domains', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
-  // Mailboxes
-  listMyMailboxes: () => request<{ mailboxes: MailboxItem[] }>('/api/tenants/me/mailboxes'),
-  createMailbox: (body: { localPart: string; password: string }) =>
+  // Mailboxes (Domain Scoped)
+  listMyMailboxes: (domainId?: string) => {
+    const q = domainId ? `?domainId=${encodeURIComponent(domainId)}` : '';
+    return request<{ mailboxes: MailboxItem[] }>(`/api/tenants/me/mailboxes${q}`);
+  },
+  createMailbox: (body: { localPart: string; password: string; domainId?: string }) =>
     request<MailboxItem>('/api/tenants/me/mailboxes', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -250,6 +271,24 @@ export const api = {
     request<{ success: boolean; message: string; verificationToken: string }>('/api/public/contact-email/verify-otp', {
       method: 'POST',
       body: JSON.stringify({ email, code }),
+    }),
+
+  publicRegister: (body: {
+    email: string;
+    emailVerificationToken: string;
+    password: string;
+    securityQuestions: Array<{ question: string; answer: string }>;
+  }) =>
+    request<{
+      success: boolean;
+      message: string;
+      user: {
+        id: string;
+        email: string;
+      };
+    }>('/api/public/register', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 
   publicSetupTotp: (label?: string) =>
@@ -378,6 +417,44 @@ export const api = {
   revokeOtherSessions: () =>
     request<{ success: boolean; message: string; revokedCount: number }>('/api/auth/sessions/revoke-others', {
       method: 'POST',
+    }),
+
+  // Account Security & Recovery Email Settings
+  getSecuritySettings: () =>
+    request<SecuritySettings>('/api/auth/security/settings'),
+
+  sendRecoveryEmailOtp: (email: string) =>
+    request<{ success: boolean; message: string; expiresMinutes: number }>('/api/auth/security/recovery-email/send-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  verifyRecoveryEmailOtp: (code: string) =>
+    request<{ success: boolean; message: string; recoveryEmail: string }>('/api/auth/security/recovery-email/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  removeRecoveryEmail: () =>
+    request<{ success: boolean; message: string }>('/api/auth/security/recovery-email', {
+      method: 'DELETE',
+    }),
+
+  update2FaMode: (mode: 'totp' | 'email' | 'disabled') =>
+    request<{ success: boolean; message: string; twoFactorEnabled: boolean; twoFactorMethod: 'totp' | 'email' | null }>('/api/auth/security/2fa/mode', {
+      method: 'POST',
+      body: JSON.stringify({ mode }),
+    }),
+
+  setupTotp2Fa: () =>
+    request<{ secret: string; qrCodeDataUrl: string }>('/api/auth/2fa/setup', {
+      method: 'POST',
+    }),
+
+  confirmTotp2Fa: (code: string) =>
+    request<{ success: boolean; message: string }>('/api/auth/2fa/confirm-setup', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
     }),
 };
 

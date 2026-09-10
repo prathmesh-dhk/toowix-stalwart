@@ -175,6 +175,16 @@ publicRouter.post('/contact-email/send-otp', async (req: Request, res: Response)
   }
 
   const normalizedEmail = parseResult.data.email.trim().toLowerCase();
+
+  // Check if account already exists with this email
+  const existingUser = await AdminUserModel.findOne({ email: normalizedEmail });
+  if (existingUser) {
+    return res.status(409).json({
+      error: 'EMAIL_ALREADY_EXISTS',
+      message: 'An account with this email address already exists. Please sign in instead.',
+    });
+  }
+
   const otpCode = crypto.randomInt(100000, 999999).toString();
   const codeHash = crypto.createHash('sha256').update(otpCode).digest('hex');
 
@@ -245,6 +255,117 @@ publicRouter.post('/contact-email/verify-otp', async (req: Request, res: Respons
     success: true,
     message: 'Contact email successfully verified',
     verificationToken,
+  });
+});
+
+const directRegisterSchema = z.object({
+  email: z.string().email('Valid email is required'),
+  emailVerificationToken: z.string().min(1, 'Email verification token is required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  securityQuestions: z
+    .array(
+      z.object({
+        question: z.string().min(3, 'Security question is required'),
+        answer: z.string().min(2, 'Security answer must be at least 2 characters'),
+      })
+    )
+    .length(3, 'Exactly 3 security questions are required')
+    .refine(
+      (items) => {
+        const questions = items.map((q) => q.question.trim().toLowerCase());
+        return new Set(questions).size === 3;
+      },
+      {
+        message: 'You must select exactly 3 unique security questions',
+      }
+    ),
+});
+
+// 2d. Direct Self-Service Registration (Email -> OTP -> Password -> Security Questions)
+publicRouter.post('/register', registrationRateLimiter(), async (req: Request, res: Response) => {
+  const parseResult = directRegisterSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
+  }
+
+  const { email, emailVerificationToken, password, securityQuestions } = parseResult.data;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // 1. Verify email verification token
+  const tokenPayload = verifyContactEmailVerificationToken(emailVerificationToken);
+  if (!tokenPayload || tokenPayload.email !== normalizedEmail) {
+    return res.status(400).json({
+      error: 'INVALID_VERIFICATION_TOKEN',
+      message: 'Email verification code has expired or is invalid. Please verify your email again.',
+    });
+  }
+
+  // 2. Check if email already registered
+  const existingUser = await AdminUserModel.findOne({ email: normalizedEmail });
+  if (existingUser) {
+    return res.status(409).json({
+      error: 'EMAIL_ALREADY_EXISTS',
+      message: 'An account with this email address already exists. Please sign in instead.',
+    });
+  }
+
+  // 3. Hash password and security questions
+  const passwordHash = await hashPassword(password);
+  const processedSecurityQuestions = securityQuestions.map((sq) => ({
+    question: sq.question.trim(),
+    answerHash: hashSecurityAnswer(sq.answer),
+  }));
+
+  // 4. Create Tenant with active status
+  const baseName = normalizedEmail.split('@')[0];
+  const formattedName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+  const tenant = await TenantModel.create({
+    name: `${formattedName}'s Organization`,
+    contactEmail: normalizedEmail,
+    status: 'active',
+    mailboxLimit: 50,
+    mailboxCount: 0,
+  });
+
+  // 5. Create Tenant Admin User (active, 2FA disabled initially, with security questions)
+  const adminUser = await AdminUserModel.create({
+    email: normalizedEmail,
+    name: formattedName,
+    passwordHash,
+    role: 'TENANT_ADMIN',
+    tenantId: tenant._id,
+    status: 'active',
+    twoFactorEnabled: false,
+    recoveryEmail: normalizedEmail,
+    securityQuestions: processedSecurityQuestions,
+  });
+
+  // 6. Audit log
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  await AuditLogModel.create({
+    actorId: adminUser._id,
+    actorRole: 'TENANT_ADMIN',
+    actorEmail: adminUser.email,
+    actorIp: clientIp,
+    tenantId: tenant._id,
+    action: 'TENANT_ADMIN_REGISTERED',
+    resource: 'ADMIN_USER',
+    resourceId: adminUser._id.toString(),
+    status: 'SUCCESS',
+    metadata: {
+      tenantId: tenant._id.toString(),
+      tenantName: tenant.name,
+    },
+    timestamp: new Date(),
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: 'Registration successful! You can now log in to your account.',
+    user: {
+      id: adminUser._id.toString(),
+      email: adminUser.email,
+    },
   });
 });
 

@@ -37,7 +37,8 @@ export class MetricsService {
         const durationSeconds = duration[0] + duration[1] / 1e9;
 
         // Clean route path (replace IDs with :id to avoid high cardinality)
-        const normalizedRoute = (req.baseUrl || '') + (req.route?.path || req.path || '/')
+        const rawRoutePath = Array.isArray(req.route?.path) ? req.route.path[0] : (req.route?.path || req.path || '/');
+        const normalizedRoute = (req.baseUrl || '') + String(rawRoutePath)
           .replace(/[0-9a-fA-F]{24}/g, ':id')
           .replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, ':uuid');
 

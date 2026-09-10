@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RegisterView } from '../../src/components/RegisterView';
 
 vi.mock('../../src/api', () => ({
   api: {
-    publicRegisterTenant: vi.fn(),
+    publicSendContactEmailOtp: vi.fn(),
+    publicVerifyContactEmailOtp: vi.fn(),
+    publicRegister: vi.fn(),
   },
 }));
+
+import { api } from '../../src/api';
 
 describe('RegisterView Component', () => {
   const onBackToLogin = vi.fn();
@@ -16,17 +20,16 @@ describe('RegisterView Component', () => {
     vi.clearAllMocks();
   });
 
-  it('renders Step 1 (Organization Details) and employee count choices', () => {
+  it('renders Step 1 (Create your account) matching Sign In theme', () => {
     render(<RegisterView onBackToLogin={onBackToLogin} />);
 
-    expect(screen.getByText('Company')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/e\.g\. Acme Global Inc\./i)).toBeInTheDocument();
-    expect(screen.getByText('Just you (1)')).toBeInTheDocument();
-    expect(screen.getByText('10 – 99')).toBeInTheDocument();
+    expect(screen.getByText('Create your account')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/abc@mail\.com/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^next/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
   });
 
-  it('calls onBackToLogin when clicking top Sign In button', () => {
+  it('calls onBackToLogin when clicking Sign in link', () => {
     render(<RegisterView onBackToLogin={onBackToLogin} />);
 
     const signInBtn = screen.getByRole('button', { name: /^sign in$/i });
@@ -35,19 +38,25 @@ describe('RegisterView Component', () => {
     expect(onBackToLogin).toHaveBeenCalled();
   });
 
-  it('advances to Step 2 (Administrator Contact) after filling business name', async () => {
+  it('advances to Step 2 (Verify your email) after entering email and clicking Next', async () => {
+    vi.mocked(api.publicSendContactEmailOtp).mockResolvedValueOnce({
+      success: true,
+      message: 'Verification code sent',
+      expiresMinutes: 10,
+    });
+
     render(<RegisterView onBackToLogin={onBackToLogin} />);
 
-    const businessNameInput = screen.getByPlaceholderText(/e\.g\. Acme Global Inc\./i);
-    await userEvent.type(businessNameInput, 'Wayne Enterprises');
+    const emailInput = screen.getByPlaceholderText(/abc@mail\.com/i);
+    await userEvent.type(emailInput, 'admin@mycompany.com');
 
-    // Click Continue
-    const continueBtn = screen.getByRole('button', { name: /continue/i });
-    fireEvent.click(continueBtn);
+    const nextBtn = screen.getByRole('button', { name: /^next/i });
+    fireEvent.click(nextBtn);
 
-    // Step 2 is mounted
-    expect(await screen.findByText('Admin')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Alex')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Morgan')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.publicSendContactEmailOtp).toHaveBeenCalledWith('admin@mycompany.com');
+      expect(screen.getByText('Verify your email')).toBeInTheDocument();
+      expect(screen.getByText('admin@mycompany.com')).toBeInTheDocument();
+    });
   });
 });

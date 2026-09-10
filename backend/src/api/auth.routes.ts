@@ -88,6 +88,8 @@ authRouter.post('/super-admin/login', loginRateLimiter(), async (req: Request, r
       tempToken: result.tempToken,
       hasRecoveryEmail: (result as any).hasRecoveryEmail || false,
       maskedRecoveryEmail: (result as any).maskedRecoveryEmail || null,
+      defaultMethod: (result as any).defaultMethod || 'totp',
+      maskedEmail: (result as any).maskedEmail || null,
       user: {
         id: result.user.id,
         email: result.user.email,
@@ -127,6 +129,8 @@ authRouter.post('/tenant-admin/login', loginRateLimiter(), async (req: Request, 
       tempToken: result.tempToken,
       hasRecoveryEmail: (result as any).hasRecoveryEmail || false,
       maskedRecoveryEmail: (result as any).maskedRecoveryEmail || null,
+      defaultMethod: (result as any).defaultMethod || 'totp',
+      maskedEmail: (result as any).maskedEmail || null,
       user: {
         id: result.user.id,
         email: result.user.email,
@@ -163,7 +167,7 @@ authRouter.post('/2fa/send-otp', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
   }
 
-  const destinationEmail = user.recoveryEmail || user.email;
+  const destinationEmail = user.twoFactorMethod === 'email' ? user.email : (user.recoveryEmail || user.email);
   const otpCode = crypto.randomInt(100000, 999999).toString();
   const codeHash = hashSecurityAnswer(otpCode);
 
@@ -183,8 +187,9 @@ authRouter.post('/2fa/send-otp', async (req: Request, res: Response) => {
 
   return res.status(200).json({
     success: true,
-    message: 'Verification code sent to recovery email',
+    message: user.twoFactorMethod === 'email' ? 'Verification code sent to account email' : 'Verification code sent to recovery email',
     maskedRecoveryEmail: maskEmail(destinationEmail),
+    maskedEmail: maskEmail(destinationEmail),
     expiresMinutes: 10,
   });
 });
@@ -251,6 +256,7 @@ authRouter.post('/2fa/confirm-setup', requireAuth, async (req: Request, res: Res
   }
 
   dbUser.twoFactorEnabled = true;
+  dbUser.twoFactorMethod = 'totp';
   await dbUser.save();
 
   await AuditLogModel.create({
@@ -846,6 +852,226 @@ authRouter.post('/forgot-password/reset', async (req: Request, res: Response) =>
   return res.status(200).json({
     success: true,
     message: 'Your password has been successfully reset! You can now sign in with your new password.',
+  });
+});
+
+// ==========================================
+// 8. Account Security & Recovery Endpoints
+// ==========================================
+
+// 8.1 Get Current Security Settings
+authRouter.get('/security/settings', requireAuth, async (req: Request, res: Response) => {
+  const adminUser = req.adminUser!;
+  const user = await AdminUserModel.findById(adminUser.id);
+  if (!user) {
+    return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
+  }
+
+  return res.status(200).json({
+    email: user.email,
+    recoveryEmail: user.recoveryEmail || null,
+    twoFactorEnabled: user.twoFactorEnabled,
+    twoFactorMethod: user.twoFactorMethod || (user.twoFactorEnabled ? 'totp' : null),
+    hasTotpConfigured: !!user.twoFactorSecret,
+  });
+});
+
+// 8.2 Send Verification OTP to New Recovery Email
+authRouter.post('/security/recovery-email/send-otp', requireAuth, async (req: Request, res: Response) => {
+  const schema = z.object({
+    email: z.string().email('Valid recovery email address is required').trim().toLowerCase(),
+  });
+  const parseResult = schema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
+  }
+
+  const { email: recoveryEmail } = parseResult.data;
+  const adminUser = req.adminUser!;
+  const user = await AdminUserModel.findById(adminUser.id);
+  if (!user) {
+    return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
+  }
+
+  const otpCode = crypto.randomInt(100000, 999999).toString();
+  const codeHash = hashSecurityAnswer(otpCode);
+
+  user.recoveryEmailOtp = {
+    email: recoveryEmail,
+    codeHash,
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    attempts: 0,
+  };
+  await user.save();
+
+  await emailService.sendRecoveryEmailVerificationOtpEmail({
+    to: recoveryEmail,
+    recipientName: user.email,
+    otpCode,
+    expiresMinutes: 10,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: `Verification code sent to ${recoveryEmail}`,
+    expiresMinutes: 10,
+  });
+});
+
+// 8.3 Verify OTP and Save Recovery Email
+authRouter.post('/security/recovery-email/verify-otp', requireAuth, async (req: Request, res: Response) => {
+  const schema = z.object({
+    code: z.string().length(6, '6-digit OTP code required').trim(),
+  });
+  const parseResult = schema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
+  }
+
+  const { code } = parseResult.data;
+  const adminUser = req.adminUser!;
+  const user = await AdminUserModel.findById(adminUser.id);
+  if (!user) {
+    return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
+  }
+
+  if (!user.recoveryEmailOtp || !user.recoveryEmailOtp.codeHash || !user.recoveryEmailOtp.expiresAt) {
+    return res.status(400).json({ error: 'NO_OTP_REQUESTED', message: 'No recovery email verification in progress. Please request a new code.' });
+  }
+
+  if (new Date() > new Date(user.recoveryEmailOtp.expiresAt)) {
+    user.recoveryEmailOtp = null;
+    await user.save();
+    return res.status(400).json({ error: 'OTP_EXPIRED', message: 'Verification code has expired. Please request a new code.' });
+  }
+
+  if (user.recoveryEmailOtp.attempts >= 5) {
+    user.recoveryEmailOtp = null;
+    await user.save();
+    return res.status(429).json({ error: 'TOO_MANY_ATTEMPTS', message: 'Too many incorrect attempts. Please request a new verification code.' });
+  }
+
+  const incomingHash = hashSecurityAnswer(code);
+  const isMatch = crypto.timingSafeEqual(Buffer.from(user.recoveryEmailOtp.codeHash), Buffer.from(incomingHash));
+  if (!isMatch) {
+    user.recoveryEmailOtp.attempts += 1;
+    await user.save();
+    return res.status(400).json({ error: 'INVALID_CODE', message: 'Incorrect 6-digit verification code.' });
+  }
+
+  const newRecoveryEmail = user.recoveryEmailOtp.email;
+  user.recoveryEmail = newRecoveryEmail;
+  user.recoveryEmailOtp = null;
+  await user.save();
+
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  await AuditLogModel.create({
+    actorId: user._id,
+    actorRole: user.role,
+    actorEmail: user.email,
+    tenantId: user.tenantId,
+    action: 'ADMIN_RECOVERY_EMAIL_UPDATED',
+    resource: 'ADMIN_USER',
+    resourceId: user._id.toString(),
+    status: 'SUCCESS',
+    metadata: { recoveryEmail: newRecoveryEmail },
+    timestamp: new Date(),
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Recovery email verified and updated successfully.',
+    recoveryEmail: newRecoveryEmail,
+  });
+});
+
+// 8.4 Remove Recovery Email
+authRouter.delete('/security/recovery-email', requireAuth, async (req: Request, res: Response) => {
+  const adminUser = req.adminUser!;
+  const user = await AdminUserModel.findById(adminUser.id);
+  if (!user) {
+    return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
+  }
+
+  user.recoveryEmail = null;
+  user.recoveryEmailOtp = null;
+  await user.save();
+
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  await AuditLogModel.create({
+    actorId: user._id,
+    actorRole: user.role,
+    actorEmail: user.email,
+    tenantId: user.tenantId,
+    action: 'ADMIN_RECOVERY_EMAIL_REMOVED',
+    resource: 'ADMIN_USER',
+    resourceId: user._id.toString(),
+    status: 'SUCCESS',
+    timestamp: new Date(),
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Recovery email removed successfully.',
+  });
+});
+
+// 8.5 Switch / Configure 2FA Mode ('totp' | 'email' | 'disabled')
+authRouter.post('/security/2fa/mode', requireAuth, async (req: Request, res: Response) => {
+  const schema = z.object({
+    mode: z.enum(['totp', 'email', 'disabled']),
+  });
+  const parseResult = schema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
+  }
+
+  const { mode } = parseResult.data;
+  const adminUser = req.adminUser!;
+  const user = await AdminUserModel.findById(adminUser.id);
+  if (!user) {
+    return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
+  }
+
+  if (mode === 'totp') {
+    if (!user.twoFactorSecret) {
+      return res.status(400).json({
+        error: 'TOTP_NOT_CONFIGURED',
+        message: 'Please complete Authenticator app setup before enabling TOTP 2FA.',
+      });
+    }
+    user.twoFactorEnabled = true;
+    user.twoFactorMethod = 'totp';
+  } else if (mode === 'email') {
+    user.twoFactorEnabled = true;
+    user.twoFactorMethod = 'email';
+  } else {
+    // disabled
+    user.twoFactorEnabled = false;
+    user.twoFactorMethod = undefined;
+  }
+
+  await user.save();
+
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  await AuditLogModel.create({
+    actorId: user._id,
+    actorRole: user.role,
+    actorEmail: user.email,
+    tenantId: user.tenantId,
+    action: mode === 'disabled' ? 'ADMIN_2FA_DISABLED' : 'ADMIN_2FA_ENABLED',
+    resource: 'ADMIN_USER',
+    resourceId: user._id.toString(),
+    status: 'SUCCESS',
+    metadata: { twoFactorMode: mode },
+    timestamp: new Date(),
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: `Two-factor authentication updated to: ${mode}`,
+    twoFactorEnabled: user.twoFactorEnabled,
+    twoFactorMethod: user.twoFactorMethod || null,
   });
 });
 

@@ -29,6 +29,23 @@ export interface RegistrationApplication {
   submittedAt?: string;
 }
 
+export interface DomainItem {
+  id: string;
+  domainName: string;
+  status: string;
+  mailboxLimit: number;
+  employeeCount: number;
+  mailboxCount: number;
+  isPrimary: boolean;
+  createdAt?: string;
+  dnsRecords?: Array<{
+    type: string;
+    name: string;
+    value: string;
+    priority?: number;
+  }>;
+}
+
 export interface TenantSummary {
   id: string;
   name: string;
@@ -42,6 +59,7 @@ export interface TenantSummary {
     stalwartDomainId?: string | null;
     status: string;
   } | null;
+  domains?: DomainItem[];
   mailboxCount: number;
   adminCount: number;
   availableMailboxes?: number;
@@ -102,4 +120,10 @@ export interface SessionItem {
   isCurrent: boolean;
 }
 
-
+export interface SecuritySettings {
+  email: string;
+  recoveryEmail: string | null;
+  twoFactorEnabled: boolean;
+  twoFactorMethod: 'totp' | 'email' | null;
+  hasTotpConfigured: boolean;
+}

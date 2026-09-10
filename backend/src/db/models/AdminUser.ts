@@ -16,8 +16,15 @@ export interface IAdminUser extends Document {
   tenantId?: Types.ObjectId | null;
   status: AdminUserStatus;
   twoFactorEnabled: boolean;
+  twoFactorMethod?: 'totp' | 'email';
   twoFactorSecret?: string | null;
   recoveryEmail?: string | null;
+  recoveryEmailOtp?: {
+    email: string;
+    codeHash: string;
+    expiresAt: Date;
+    attempts: number;
+  } | null;
   securityQuestions?: ISecurityQuestionItem[];
   loginOtp?: {
     codeHash: string;
@@ -90,6 +97,11 @@ const AdminUserSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    twoFactorMethod: {
+      type: String,
+      enum: ['totp', 'email'],
+      default: 'totp',
+    },
     twoFactorSecret: {
       type: String,
       default: null,
@@ -99,6 +111,12 @@ const AdminUserSchema = new Schema(
       default: null,
       lowercase: true,
       trim: true,
+    },
+    recoveryEmailOtp: {
+      email: { type: String, default: null },
+      codeHash: { type: String, default: null },
+      expiresAt: { type: Date, default: null },
+      attempts: { type: Number, default: 0 },
     },
     securityQuestions: [
       {

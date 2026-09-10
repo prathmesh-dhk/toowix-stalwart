@@ -13,6 +13,7 @@ import {
   TwoFactorPendingPayload,
 } from './types';
 import { sessionService } from '../services/session.service';
+import { emailService } from '../services/email.service';
 
 export async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password, {
@@ -118,7 +119,16 @@ export function maskEmail(email: string): string {
 
 export type PortalLoginResult =
   | { success: true; requires2FA: false; token: string; user: AdminUserContext }
-  | { success: true; requires2FA: true; tempToken: string; user: AdminUserContext; hasRecoveryEmail?: boolean; maskedRecoveryEmail?: string | null }
+  | {
+      success: true;
+      requires2FA: true;
+      tempToken: string;
+      user: AdminUserContext;
+      defaultMethod?: 'totp' | 'email';
+      hasRecoveryEmail?: boolean;
+      maskedRecoveryEmail?: string | null;
+      maskedEmail?: string | null;
+    }
   | { success: false; error: string; statusCode: number };
 
 export async function authenticatePortalUser(
@@ -257,12 +267,37 @@ export async function authenticatePortalUser(
 
     // No 2FA code provided yet -> issue short-lived temp token
     const tempToken = generate2FaPendingToken(userContext);
+    const defaultMethod = user.twoFactorMethod || 'totp';
+
+    if (defaultMethod === 'email') {
+      const otpCode = crypto.randomInt(100000, 999999).toString();
+      const codeHash = hashSecurityAnswer(otpCode);
+      user.loginOtp = {
+        codeHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        attempts: 0,
+      };
+      await user.save();
+      try {
+        await emailService.sendLogin2FaOtpEmail({
+          to: user.email,
+          recipientName: user.email,
+          otpCode,
+          expiresMinutes: 10,
+        });
+      } catch (err) {
+        console.error('Failed to auto-send 2FA email OTP during login:', err);
+      }
+    }
+
     return {
       success: true,
       requires2FA: true,
       tempToken,
       hasRecoveryEmail: !!user.recoveryEmail,
       maskedRecoveryEmail: user.recoveryEmail ? maskEmail(user.recoveryEmail) : null,
+      defaultMethod,
+      maskedEmail: maskEmail(user.email),
       user: userContext,
     };
   }

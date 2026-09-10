@@ -99,6 +99,12 @@
   padding: 0;
 }
 
+/* Page content and modals 125% zoom while preserving navbar & sidebar at 100% */
+.page-content-scaled,
+.modal-card {
+  zoom: 1.25;
+}
+
 html, body, #root {
   font-family: var(--font-sans);
 }

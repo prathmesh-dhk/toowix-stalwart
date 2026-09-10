@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TenantAdminDashboard } from '../../src/components/TenantAdminDashboard';
 import { api } from '../../src/api';
@@ -13,6 +13,8 @@ vi.mock('../../src/api', () => ({
     createMailbox: vi.fn(),
     resetMailboxPassword: vi.fn(),
     deleteMailbox: vi.fn(),
+    listTenantDomains: vi.fn(),
+    createTenantDomain: vi.fn(),
   },
   clearStoredToken: vi.fn(),
 }));
@@ -71,6 +73,21 @@ describe('TenantAdminDashboard Component', () => {
           status: 'active',
           createdAt: '2026-01-03T00:00:00.000Z',
           updatedAt: '2026-01-03T00:00:00.000Z',
+        },
+      ],
+    });
+
+    vi.mocked(api.listTenantDomains).mockResolvedValue({
+      domains: [
+        {
+          id: 'dom-1',
+          domainName: 'acmecorp.com',
+          status: 'active',
+          mailboxLimit: 50,
+          employeeCount: 50,
+          mailboxCount: 2,
+          isPrimary: true,
+          createdAt: '2026-01-01T00:00:00.000Z',
         },
       ],
     });
@@ -175,4 +192,115 @@ describe('TenantAdminDashboard Component', () => {
       await screen.findByText(/Mailbox limit of 50 reached for tenant/i)
     ).toBeInTheDocument();
   });
+
+  it('opens confirmation popup before deleting mailbox and executes deletion upon confirmation', async () => {
+    vi.mocked(api.deleteMailbox).mockResolvedValueOnce({ success: true });
+
+    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    await screen.findByText('Admin Overview');
+
+    // Switch to Mailboxes tab
+    const mailboxesTab = screen.getByText('View all mailboxes');
+    fireEvent.click(mailboxesTab);
+
+    // Find delete button for alice@acmecorp.com
+    const deleteButtons = await screen.findAllByRole('button', { name: /^delete$/i });
+    expect(deleteButtons.length).toBeGreaterThan(0);
+
+    // Click delete on first mailbox
+    fireEvent.click(deleteButtons[0]);
+
+    // Delete confirmation popup should appear
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: /delete mailbox/i })).toBeInTheDocument();
+    expect(within(dialog).getByText(/alice@acmecorp\.com/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/permanent deletion warning/i)).toBeInTheDocument();
+
+    // Test cancel
+    const cancelBtn = within(dialog).getByRole('button', { name: /^cancel$/i });
+    fireEvent.click(cancelBtn);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(api.deleteMailbox).not.toHaveBeenCalled();
+
+    // Click delete again and confirm
+    fireEvent.click(deleteButtons[0]);
+    const dialogAgain = await screen.findByRole('dialog');
+    expect(dialogAgain).toBeInTheDocument();
+
+    const confirmDeleteBtn = within(dialogAgain).getByRole('button', { name: /delete mailbox/i });
+    fireEvent.click(confirmDeleteBtn);
+
+    await waitFor(() => {
+      expect(api.deleteMailbox).toHaveBeenCalledWith('mb-1');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('displays onboarding empty state card on dashboard when tenant has 0 domains', async () => {
+    vi.mocked(api.getTenantMe).mockResolvedValueOnce({
+      tenant: {
+        id: 'tenant-empty',
+        name: 'New Company',
+        status: 'active',
+        mailboxLimit: 10,
+        mailboxCount: 0,
+        adminCount: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        domain: null,
+        domains: [],
+      },
+    });
+    vi.mocked(api.listTenantDomains).mockResolvedValueOnce({ domains: [] });
+
+    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+
+    expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add your first domain/i })).toBeInTheDocument();
+  });
+
+  it('allows switching domain from top sidebar dropdown and reloads scoped mailboxes', async () => {
+    const multiDomains = [
+      {
+        id: 'dom-1',
+        domainName: 'primary.com',
+        status: 'active',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        mailboxCount: 1,
+        isPrimary: true,
+      },
+      {
+        id: 'dom-2',
+        domainName: 'secondary.com',
+        status: 'active',
+        mailboxLimit: 25,
+        employeeCount: 25,
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    ];
+
+    vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: multiDomains });
+    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+
+    expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
+    expect(screen.getAllByText('primary.com').length).toBeGreaterThan(0);
+
+    // Click domain switcher trigger
+    const switcher = screen.getByRole('button', { name: /primary\.com/i });
+    fireEvent.click(switcher);
+
+    // Click secondary.com
+    const secondaryOption = screen.getByText('secondary.com');
+    fireEvent.click(secondaryOption);
+
+    // Verify listMyMailboxes was called with dom-2
+    await waitFor(() => {
+      expect(api.listMyMailboxes).toHaveBeenCalledWith('dom-2');
+    });
+  });
 });
+
+

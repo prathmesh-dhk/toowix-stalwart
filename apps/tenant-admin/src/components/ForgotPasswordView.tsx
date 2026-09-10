@@ -67,6 +67,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
   // Selected recovery mode: 1. current_otp, 2. recovery_otp, 3. totp, 4. questions
   const [recoveryMode, setRecoveryMode] = useState<RecoveryMode>('current_otp');
+  const [recoveryStep, setRecoveryStep] = useState<'select' | 'verify'>('select');
 
   // OTP State (shared for current email, recovery email, and totp)
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
@@ -99,6 +100,15 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       return () => clearTimeout(timer);
     }
   }, [otpCooldown]);
+
+  // Focus first digit when entering verify step
+  useEffect(() => {
+    if (stage === 2 && recoveryStep === 'verify' && recoveryMode !== 'questions') {
+      setTimeout(() => {
+        digitRefs.current[0]?.focus();
+      }, 100);
+    }
+  }, [stage, recoveryStep, recoveryMode]);
 
   // Handle 6-digit code inputs
   const handleDigitChange = (index: number, val: string) => {
@@ -164,6 +174,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       // Default to 1. OTP on current email
       setRecoveryMode('current_otp');
       setDigits(['', '', '', '', '', '']);
+      setRecoveryStep('select');
       setStage(2);
     } catch (err: any) {
       setError(err.message || 'No active administrator account was found for this email address.');
@@ -175,8 +186,9 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   // =========================================================================
   // STAGE 2: Send OTP (Current or Recovery Email)
   // =========================================================================
-  const handleSendOtp = async (target: 'current' | 'recovery') => {
-    if (otpCooldown > 0 || sendingOtp) return;
+  const handleSendOtp = async (target: 'current' | 'recovery'): Promise<boolean> => {
+    if (otpCooldown > 0 && otpSentTarget === target) return true;
+    if (sendingOtp) return false;
     setError(null);
     setSendingOtp(true);
     try {
@@ -184,10 +196,49 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       setOtpCooldown(60);
       setOtpSentTarget(target);
       setError(null);
+      return true;
     } catch (err: any) {
       setError(err.message || 'Failed to dispatch verification code.');
+      return false;
     } finally {
       setSendingOtp(false);
+    }
+  };
+
+  // =========================================================================
+  // STAGE 2: Next button click from mode selection
+  // =========================================================================
+  const handleProceedToVerification = async () => {
+    setError(null);
+    if (recoveryMode === 'current_otp') {
+      const sent = await handleSendOtp('current');
+      if (sent) {
+        setDigits(['', '', '', '', '', '']);
+        setRecoveryStep('verify');
+      }
+    } else if (recoveryMode === 'recovery_otp') {
+      if (!hasRecoveryEmail) {
+        setError('Recovery email is not configured for this account.');
+        return;
+      }
+      const sent = await handleSendOtp('recovery');
+      if (sent) {
+        setDigits(['', '', '', '', '', '']);
+        setRecoveryStep('verify');
+      }
+    } else if (recoveryMode === 'totp') {
+      if (!hasTotp) {
+        setError('Authenticator app is not enabled for this account.');
+        return;
+      }
+      setDigits(['', '', '', '', '', '']);
+      setRecoveryStep('verify');
+    } else if (recoveryMode === 'questions') {
+      if (!hasSecurityQuestions) {
+        setError('Security questions are not configured for this account.');
+        return;
+      }
+      setRecoveryStep('verify');
     }
   };
 
@@ -340,7 +391,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 flex-grow flex items-center justify-center px-6 py-8">
+      <main className="page-content-scaled relative z-10 flex-grow flex items-center justify-center px-6 py-8">
         <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
         {/* Left Hero: Brand Identity */}
         <section aria-label="Brand Identity" className="lg:col-span-6 flex flex-col justify-center items-center lg:items-start pl-0 lg:pl-8">
@@ -430,379 +481,422 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                   </div>
                 </form>
               </section>
-            )}
-
-            {/* ==================================================== */}
+            )}            {/* ==================================================== */}
             {/* STAGE 2: 4 Modes of Recovery                         */}
             {/* ==================================================== */}
             {stage === 2 && (
               <section className="step-content" id="stage-2">
-                {/* Account identifier badge */}
-                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl mb-4 text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-slate-400">Account:</span>
-                    <span className="font-medium text-slate-900 truncate">
-                      {maskedCurrentEmail || maskEmailPreview(email)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStage(1);
-                      setError(null);
-                    }}
-                    className="text-indigo-600 hover:underline font-medium text-[11px] shrink-0 cursor-pointer border-none bg-transparent"
-                  >
-                    Change
-                  </button>
-                </div>
-
-                <div className="mb-4">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 2 of 3</span>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Modes of recovery</h2>
-                  <p className="text-slate-500 text-xs mt-1">Select how you would like to verify your identity:</p>
-                </div>
-
-                {/* 4 Interactive Modes Selection Grid */}
-                <div className="grid grid-cols-2 gap-2 mb-5">
-                  {/* Mode 1: OTP on current email */}
-                  <button
-                    type="button"
-                    onClick={() => handleSwitchMode('current_otp')}
-                    className={`p-3 text-left rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${recoveryMode === 'current_otp'
-                        ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'current_otp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <Mail size={14} />
-                      </div>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Ready</span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">1. Current Email</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">{maskedCurrentEmail || maskEmailPreview(email)}</div>
-                    </div>
-                  </button>
-
-                  {/* Mode 2: OTP on recovery email */}
-                  <button
-                    type="button"
-                    disabled={!hasRecoveryEmail}
-                    onClick={() => handleSwitchMode('recovery_otp')}
-                    className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${!hasRecoveryEmail
-                        ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                        : recoveryMode === 'recovery_otp'
-                          ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
-                          : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'recovery_otp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <ShieldAlert size={14} />
-                      </div>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hasRecoveryEmail ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
-                        {hasRecoveryEmail ? 'Ready' : 'None'}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">2. Recovery Email</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {hasRecoveryEmail ? maskedRecoveryEmail : 'Not configured'}
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Mode 3: Authenticator app OTP */}
-                  <button
-                    type="button"
-                    disabled={!hasTotp}
-                    onClick={() => handleSwitchMode('totp')}
-                    className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${!hasTotp
-                        ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                        : recoveryMode === 'totp'
-                          ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
-                          : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'totp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <Smartphone size={14} />
-                      </div>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hasTotp ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
-                        {hasTotp ? '2FA' : 'Disabled'}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">3. Authenticator OTP</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {hasTotp ? 'Google / Authy' : 'Not enabled'}
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Mode 4: Recovery questions */}
-                  <button
-                    type="button"
-                    disabled={!hasSecurityQuestions}
-                    onClick={() => handleSwitchMode('questions')}
-                    className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${!hasSecurityQuestions
-                        ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                        : recoveryMode === 'questions'
-                          ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
-                          : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'questions' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <HelpCircle size={14} />
-                      </div>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${hasSecurityQuestions ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
-                        {hasSecurityQuestions ? '3 Setup' : 'None'}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">4. Questions</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {hasSecurityQuestions ? '3 Questions' : 'Not configured'}
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                {/* ==================================================== */}
-                {/* ACTIVE VERIFICATION PANEL FOR SELECTED MODE          */}
-                {/* ==================================================== */}
-
-                {/* MODE 1: OTP on Current Email */}
-                {recoveryMode === 'current_otp' && (
-                  <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
-                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                {recoveryStep === 'select' ? (
+                  <>
+                    {/* Account identifier badge */}
+                    <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl mb-4 text-xs">
                       <div className="flex items-center gap-2 truncate">
-                        <Mail size={15} className="text-indigo-600 shrink-0" />
-                        <span className="truncate">
-                          Destination: <strong className="text-slate-900 font-semibold">{maskedCurrentEmail || maskEmailPreview(email)}</strong>
+                        <span className="text-slate-400">Account:</span>
+                        <span className="font-medium text-slate-900 truncate">
+                          {maskedCurrentEmail || maskEmailPreview(email)}
                         </span>
                       </div>
                       <button
-                        className="text-indigo-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
-                        onClick={() => handleSendOtp('current')}
-                        disabled={otpCooldown > 0 || sendingOtp}
                         type="button"
+                        onClick={() => {
+                          setStage(1);
+                          setRecoveryStep('select');
+                          setError(null);
+                        }}
+                        className="text-indigo-600 hover:underline font-medium text-[11px] shrink-0 cursor-pointer border-none bg-transparent"
                       >
-                        {sendingOtp ? 'Sending...' : otpCooldown > 0 && otpSentTarget === 'current' ? `Resend (${otpCooldown}s)` : 'Send Code'}
+                        Change
                       </button>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
-                        Enter 6-digit verification code
-                      </label>
-                      <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
-                        {digits.map((d, i) => (
-                          <input
-                            key={i}
-                            ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
-                            maxLength={1}
-                            type="text"
-                            value={d}
-                            onChange={(e) => handleDigitChange(i, e.target.value)}
-                            onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          />
-                        ))}
-                      </div>
+                    <div className="mb-4">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 2 of 3</span>
+                      <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Modes of recovery</h2>
+                      <p className="text-slate-500 text-xs mt-1">Select how you would like to verify your identity:</p>
                     </div>
 
-                    {otpCooldown > 0 && otpSentTarget === 'current' && (
-                      <div className="text-center text-xs text-slate-400">
-                        Code sent. Resend in <span className="font-semibold text-slate-700 tabular-nums">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
-                      </div>
-                    )}
-
-                    <button
-                      className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                      type="submit"
-                      disabled={loading || digits.join('').length !== 6}
-                    >
-                      {loading ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <span>Verify Current Email Code</span>
-                          <ArrowRight size={16} />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                )}
-
-                {/* MODE 2: OTP on Recovery Email */}
-                {recoveryMode === 'recovery_otp' && (
-                  <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
-                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
-                      <div className="flex items-center gap-2 truncate">
-                        <ShieldAlert size={15} className="text-indigo-600 shrink-0" />
-                        <span className="truncate">
-                          Destination: <strong className="text-slate-900 font-semibold">{maskedRecoveryEmail}</strong>
-                        </span>
-                      </div>
+                    {/* 4 Interactive Modes Selection Grid (without green badges) */}
+                    <div className="grid grid-cols-2 gap-2 mb-5">
+                      {/* Mode 1: OTP on current email */}
                       <button
-                        className="text-indigo-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
-                        onClick={() => handleSendOtp('recovery')}
-                        disabled={otpCooldown > 0 || sendingOtp}
                         type="button"
+                        onClick={() => handleSwitchMode('current_otp')}
+                        className={`p-3 text-left rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                          recoveryMode === 'current_otp'
+                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
                       >
-                        {sendingOtp ? 'Sending...' : otpCooldown > 0 && otpSentTarget === 'recovery' ? `Resend (${otpCooldown}s)` : 'Send Code'}
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
-                        Enter 6-digit verification code
-                      </label>
-                      <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
-                        {digits.map((d, i) => (
-                          <input
-                            key={i}
-                            ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
-                            maxLength={1}
-                            type="text"
-                            value={d}
-                            onChange={(e) => handleDigitChange(i, e.target.value)}
-                            onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {otpCooldown > 0 && otpSentTarget === 'recovery' && (
-                      <div className="text-center text-xs text-slate-400">
-                        Code sent. Resend in <span className="font-semibold text-slate-700 tabular-nums">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
-                      </div>
-                    )}
-
-                    <button
-                      className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                      type="submit"
-                      disabled={loading || digits.join('').length !== 6}
-                    >
-                      {loading ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <span>Verify Recovery Email Code</span>
-                          <ArrowRight size={16} />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                )}
-
-                {/* MODE 3: Authenticator App OTP */}
-                {recoveryMode === 'totp' && (
-                  <form className="space-y-4" onSubmit={handleVerifyTotp}>
-                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center gap-2.5 text-xs text-slate-700">
-                      <Smartphone size={16} className="text-indigo-600 shrink-0" />
-                      <span>Open your authenticator app (Google Authenticator, Authy, etc.) and enter the current 6-digit code.</span>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
-                        6-digit authenticator code
-                      </label>
-                      <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
-                        {digits.map((d, i) => (
-                          <input
-                            key={i}
-                            ref={(el) => (digitRefs.current[i] = el)}
-                            className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
-                            maxLength={1}
-                            type="text"
-                            value={d}
-                            onChange={(e) => handleDigitChange(i, e.target.value)}
-                            onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                      type="submit"
-                      disabled={loading || digits.join('').length !== 6}
-                    >
-                      {loading ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <span>Verify Authenticator Code</span>
-                          <ArrowRight size={16} />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                )}
-
-                {/* MODE 4: Recovery Questions */}
-                {recoveryMode === 'questions' && (
-                  <form className="space-y-3.5" onSubmit={handleVerifyQuestions}>
-                    {questions.length === 0 ? (
-                      <div className="text-xs text-slate-500 py-3 text-center">
-                        No security questions are configured for this account. Please select an alternate recovery mode above.
-                      </div>
-                    ) : (
-                      questions.map((q, idx) => (
-                        <div key={idx}>
-                          <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                            {idx + 1}. {q}
-                          </label>
-                          <input
-                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none"
-                            placeholder="Your answer"
-                            type="text"
-                            value={answers[q] || ''}
-                            onChange={(e) => setAnswers({ ...answers, [q]: e.target.value })}
-                            required
-                          />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'current_otp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                            <Mail size={14} />
+                          </div>
                         </div>
-                      ))
-                    )}
-
-                    {questions.length > 0 && (
-                      <button
-                        className="w-full py-3.5 px-5 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border-none"
-                        type="submit"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <>
-                            <span>Verify Security Answers</span>
-                            <ArrowRight size={16} />
-                          </>
-                        )}
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">1. Current Email</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">{maskedCurrentEmail || maskEmailPreview(email)}</div>
+                        </div>
                       </button>
-                    )}
-                  </form>
-                )}
 
-                <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <button
-                    className="text-slate-500 hover:text-slate-800 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent"
-                    onClick={() => {
-                      setStage(1);
-                      setError(null);
-                    }}
-                    type="button"
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Use a different email</span>
-                  </button>
-                </div>
+                      {/* Mode 2: OTP on recovery email */}
+                      <button
+                        type="button"
+                        disabled={!hasRecoveryEmail}
+                        onClick={() => handleSwitchMode('recovery_otp')}
+                        className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
+                          !hasRecoveryEmail
+                            ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
+                            : recoveryMode === 'recovery_otp'
+                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
+                            : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'recovery_otp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                            <ShieldAlert size={14} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">2. Recovery Email</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                            {hasRecoveryEmail ? maskedRecoveryEmail : 'Not configured'}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Mode 3: Authenticator app OTP */}
+                      <button
+                        type="button"
+                        disabled={!hasTotp}
+                        onClick={() => handleSwitchMode('totp')}
+                        className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
+                          !hasTotp
+                            ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
+                            : recoveryMode === 'totp'
+                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
+                            : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'totp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                            <Smartphone size={14} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">3. Authenticator OTP</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                            {hasTotp ? 'Google / Authy' : 'Not enabled'}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Mode 4: Recovery questions */}
+                      <button
+                        type="button"
+                        disabled={!hasSecurityQuestions}
+                        onClick={() => handleSwitchMode('questions')}
+                        className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
+                          !hasSecurityQuestions
+                            ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
+                            : recoveryMode === 'questions'
+                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
+                            : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'questions' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                            <HelpCircle size={14} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">4. Questions</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                            {hasSecurityQuestions ? '3 Questions' : 'Not configured'}
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Step 2A: Next Button to advance to verification */}
+                    <div className="pt-2">
+                      <button
+                        className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
+                        type="button"
+                        onClick={handleProceedToVerification}
+                        disabled={sendingOtp}
+                      >
+                        <span>{sendingOtp ? 'Sending code...' : 'Next'}</span>
+                        <ArrowRight size={16} />
+                      </button>
+                    </div>
+
+                    <div className="text-center pt-3">
+                      <button
+                        className="text-xs text-slate-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent transition-colors"
+                        onClick={() => {
+                          setStage(1);
+                          setRecoveryStep('select');
+                          setError(null);
+                        }}
+                        type="button"
+                      >
+                        <ArrowLeft size={14} />
+                        <span>Use a different email</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* ==================================================== */
+                  /* STEP 2B: Enter OTP / Verification Challenge          */
+                  /* ==================================================== */
+                  <>
+                    <div className="mb-5">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 2 of 3</span>
+                      <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">
+                        {recoveryMode === 'current_otp' && 'Verify email code'}
+                        {recoveryMode === 'recovery_otp' && 'Verify recovery code'}
+                        {recoveryMode === 'totp' && 'Authenticator verification'}
+                        {recoveryMode === 'questions' && 'Security questions'}
+                      </h2>
+                      <p className="text-slate-500 text-xs mt-1">
+                        {recoveryMode === 'current_otp' && `Enter the 6-digit verification code sent to ${maskedCurrentEmail || maskEmailPreview(email)}.`}
+                        {recoveryMode === 'recovery_otp' && `Enter the 6-digit verification code sent to ${maskedRecoveryEmail}.`}
+                        {recoveryMode === 'totp' && 'Enter the 6-digit code from your authenticator app.'}
+                        {recoveryMode === 'questions' && 'Answer your security questions to verify your identity.'}
+                      </p>
+                    </div>
+
+                    {/* MODE 1: OTP on Current Email */}
+                    {recoveryMode === 'current_otp' && (
+                      <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
+                        <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                          <div className="flex items-center gap-2 truncate">
+                            <Mail size={15} className="text-indigo-600 shrink-0" />
+                            <span className="truncate">
+                              Destination: <strong className="text-slate-900 font-semibold">{maskedCurrentEmail || maskEmailPreview(email)}</strong>
+                            </span>
+                          </div>
+                          <button
+                            className="text-indigo-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
+                            onClick={() => handleSendOtp('current')}
+                            disabled={otpCooldown > 0 || sendingOtp}
+                            type="button"
+                          >
+                            {sendingOtp ? 'Sending...' : otpCooldown > 0 && otpSentTarget === 'current' ? `Resend (${otpCooldown}s)` : 'Resend Code'}
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
+                            Enter 6-digit verification code
+                          </label>
+                          <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
+                            {digits.map((d, i) => (
+                              <input
+                                key={i}
+                                ref={(el) => (digitRefs.current[i] = el)}
+                                className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
+                                maxLength={1}
+                                type="text"
+                                value={d}
+                                onChange={(e) => handleDigitChange(i, e.target.value)}
+                                onKeyDown={(e) => handleDigitKeyDown(i, e)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        {otpCooldown > 0 && otpSentTarget === 'current' && (
+                          <div className="text-center text-xs text-slate-400">
+                            Code sent. Resend in <span className="font-semibold text-slate-700 tabular-nums">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
+                          </div>
+                        )}
+
+                        <button
+                          className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
+                          type="submit"
+                          disabled={loading || digits.join('').length !== 6}
+                        >
+                          {loading ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <>
+                              <span>Verify Code</span>
+                              <ArrowRight size={16} />
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    )}
+
+                    {/* MODE 2: OTP on Recovery Email */}
+                    {recoveryMode === 'recovery_otp' && (
+                      <form className="space-y-4" onSubmit={handleVerifyEmailOtp}>
+                        <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                          <div className="flex items-center gap-2 truncate">
+                            <ShieldAlert size={15} className="text-indigo-600 shrink-0" />
+                            <span className="truncate">
+                              Destination: <strong className="text-slate-900 font-semibold">{maskedRecoveryEmail}</strong>
+                            </span>
+                          </div>
+                          <button
+                            className="text-indigo-600 hover:underline font-semibold text-[11px] disabled:opacity-50 shrink-0 cursor-pointer border-none bg-transparent"
+                            onClick={() => handleSendOtp('recovery')}
+                            disabled={otpCooldown > 0 || sendingOtp}
+                            type="button"
+                          >
+                            {sendingOtp ? 'Sending...' : otpCooldown > 0 && otpSentTarget === 'recovery' ? `Resend (${otpCooldown}s)` : 'Resend Code'}
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
+                            Enter 6-digit verification code
+                          </label>
+                          <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
+                            {digits.map((d, i) => (
+                              <input
+                                key={i}
+                                ref={(el) => (digitRefs.current[i] = el)}
+                                className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
+                                maxLength={1}
+                                type="text"
+                                value={d}
+                                onChange={(e) => handleDigitChange(i, e.target.value)}
+                                onKeyDown={(e) => handleDigitKeyDown(i, e)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        {otpCooldown > 0 && otpSentTarget === 'recovery' && (
+                          <div className="text-center text-xs text-slate-400">
+                            Code sent. Resend in <span className="font-semibold text-slate-700 tabular-nums">00:{otpCooldown < 10 ? `0${otpCooldown}` : otpCooldown}</span>
+                          </div>
+                        )}
+
+                        <button
+                          className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
+                          type="submit"
+                          disabled={loading || digits.join('').length !== 6}
+                        >
+                          {loading ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <>
+                              <span>Verify Code</span>
+                              <ArrowRight size={16} />
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    )}
+
+                    {/* MODE 3: Authenticator App OTP */}
+                    {recoveryMode === 'totp' && (
+                      <form className="space-y-4" onSubmit={handleVerifyTotp}>
+                        <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center gap-2.5 text-xs text-slate-700">
+                          <Smartphone size={16} className="text-indigo-600 shrink-0" />
+                          <span>Open your authenticator app (Google Authenticator, Authy, etc.) and enter the current 6-digit code.</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-2 text-center">
+                            6-digit authenticator code
+                          </label>
+                          <div className="grid grid-cols-6 gap-2" onPaste={handleDigitPaste}>
+                            {digits.map((d, i) => (
+                              <input
+                                key={i}
+                                ref={(el) => (digitRefs.current[i] = el)}
+                                className="h-11 text-center font-bold text-lg rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none tabular-nums"
+                                maxLength={1}
+                                type="text"
+                                value={d}
+                                onChange={(e) => handleDigitChange(i, e.target.value)}
+                                onKeyDown={(e) => handleDigitKeyDown(i, e)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        <button
+                          className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
+                          type="submit"
+                          disabled={loading || digits.join('').length !== 6}
+                        >
+                          {loading ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <>
+                              <span>Verify Authenticator Code</span>
+                              <ArrowRight size={16} />
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    )}
+
+                    {/* MODE 4: Recovery Questions */}
+                    {recoveryMode === 'questions' && (
+                      <form className="space-y-3.5" onSubmit={handleVerifyQuestions}>
+                        {questions.length === 0 ? (
+                          <div className="text-xs text-slate-500 py-3 text-center">
+                            No security questions are configured for this account. Please select an alternate recovery mode.
+                          </div>
+                        ) : (
+                          questions.map((q, idx) => (
+                            <div key={idx}>
+                              <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                                {idx + 1}. {q}
+                              </label>
+                              <input
+                                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none"
+                                placeholder="Your answer"
+                                type="text"
+                                value={answers[q] || ''}
+                                onChange={(e) => setAnswers({ ...answers, [q]: e.target.value })}
+                                required
+                              />
+                            </div>
+                          ))
+                        )}
+
+                        {questions.length > 0 && (
+                          <button
+                            className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2 mt-2"
+                            type="submit"
+                            disabled={loading}
+                          >
+                            {loading ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <>
+                                <span>Verify Security Answers</span>
+                                <ArrowRight size={16} />
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </form>
+                    )}
+
+                    {/* Back to mode selection */}
+                    <div className="mt-5 pt-3 border-t border-slate-100 text-center">
+                      <button
+                        className="text-xs text-slate-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent transition-colors"
+                        onClick={() => {
+                          setRecoveryStep('select');
+                          setError(null);
+                        }}
+                        type="button"
+                      >
+                        <ArrowLeft size={14} />
+                        <span>Choose another recovery method</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </section>
             )}
 
