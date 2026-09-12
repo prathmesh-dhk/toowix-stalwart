@@ -6,6 +6,7 @@ import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
 import { ActiveDevicesView } from './ActiveDevicesView';
 import { SecuritySettingsView } from './SecuritySettingsView';
+import { StorageView } from './StorageView';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
 import {
@@ -13,13 +14,13 @@ import {
   LogOut,
   LayoutDashboard,
   Mail,
+  HardDrive,
   FileText,
   Shield,
   Laptop,
   AlertCircle,
   AlertTriangle,
   Plus,
-  Ban,
   CheckCircle2,
   Globe,
   Users,
@@ -34,7 +35,9 @@ import {
   RefreshCw,
   X,
   Trash2,
-  Sparkles,
+  MoreVertical,
+  Ban,
+  KeyRound,
 } from 'lucide-react';
 
 interface TenantAdminDashboardProps {
@@ -49,10 +52,44 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [showDomainModal, setShowDomainModal] = useState(false);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
+
+  // 2FA Setup Notification State (removable per login session)
+  const [dismissed2FaBanner, setDismissed2FaBanner] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('toowix_dismissed_2fa_banner') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [is2FaEnabled, setIs2FaEnabled] = useState<boolean>(Boolean(user?.twoFactorEnabled));
+
+  useEffect(() => {
+    if (user?.twoFactorEnabled !== undefined) {
+      setIs2FaEnabled(Boolean(user.twoFactorEnabled));
+    }
+    if (typeof api.getSecuritySettings === 'function') {
+      api.getSecuritySettings()
+        .then((sec) => {
+          if (typeof sec?.twoFactorEnabled === 'boolean') {
+            setIs2FaEnabled(sec.twoFactorEnabled);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user?.twoFactorEnabled]);
+
+  const handleDismiss2FaBanner = () => {
+    setDismissed2FaBanner(true);
+    try {
+      sessionStorage.setItem('toowix_dismissed_2fa_banner', 'true');
+    } catch {
+      // ignore
+    }
+  };
 
   // Create Mailbox Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -69,8 +106,27 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
   // Delete Mailbox Confirmation Modal state
   const [selectedMailboxForDelete, setSelectedMailboxForDelete] = useState<MailboxItem | null>(null);
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
   const [deleteModalLoading, setDeleteModalLoading] = useState(false);
   const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
+
+  const isDeleteConfirmed = Boolean(
+    selectedMailboxForDelete &&
+    deleteConfirmEmail.trim().toLowerCase() === selectedMailboxForDelete.address.toLowerCase()
+  );
+
+  // Mailbox three-dots actions menu
+  const [openMenuMailboxId, setOpenMenuMailboxId] = useState<string | null>(null);
+
+  // Suspend Mailbox Confirmation Modal state
+  const [selectedMailboxForSuspend, setSelectedMailboxForSuspend] = useState<MailboxItem | null>(null);
+  const [suspendModalLoading, setSuspendModalLoading] = useState(false);
+  const [suspendModalError, setSuspendModalError] = useState<string | null>(null);
+
+  // Reactivate Mailbox Confirmation Modal state
+  const [selectedMailboxForReactivate, setSelectedMailboxForReactivate] = useState<MailboxItem | null>(null);
+  const [reactivateModalLoading, setReactivateModalLoading] = useState(false);
+  const [reactivateModalError, setReactivateModalError] = useState<string | null>(null);
 
   // DNS copy feedback
   const [copiedRecordKey, setCopiedRecordKey] = useState<string | null>(null);
@@ -189,6 +245,17 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     loadTenantData();
   }, []);
 
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('[data-mailbox-menu]')) {
+        setOpenMenuMailboxId(null);
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, []);
+
   const handleSelectDomain = async (domain: DomainItem) => {
     setActiveDomain(domain);
     try {
@@ -255,6 +322,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     setSelectedMailboxForReset(mb);
     setNewMailboxPassword(generateStrongPassword());
     setResetModalError(null);
+    setOpenMenuMailboxId(null);
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -282,19 +350,66 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     }
   };
 
+  const handleOpenSuspendModal = (mb: MailboxItem) => {
+    setSelectedMailboxForSuspend(mb);
+    setSuspendModalError(null);
+    setOpenMenuMailboxId(null);
+  };
+
+  const handleConfirmSuspendMailbox = async () => {
+    if (!selectedMailboxForSuspend) return;
+    setSuspendModalLoading(true);
+    setSuspendModalError(null);
+
+    try {
+      await api.suspendMailbox(selectedMailboxForSuspend.id);
+      setSelectedMailboxForSuspend(null);
+      await loadTenantData(activeDomain?.id);
+    } catch (err: any) {
+      setSuspendModalError(err.message || 'Failed to suspend mailbox.');
+    } finally {
+      setSuspendModalLoading(false);
+    }
+  };
+
+  const handleOpenReactivateModal = (mb: MailboxItem) => {
+    setSelectedMailboxForReactivate(mb);
+    setReactivateModalError(null);
+    setOpenMenuMailboxId(null);
+  };
+
+  const handleConfirmReactivateMailbox = async () => {
+    if (!selectedMailboxForReactivate) return;
+    setReactivateModalLoading(true);
+    setReactivateModalError(null);
+
+    try {
+      await api.reactivateMailbox(selectedMailboxForReactivate.id);
+      setSelectedMailboxForReactivate(null);
+      await loadTenantData(activeDomain?.id);
+    } catch (err: any) {
+      setReactivateModalError(err.message || 'Failed to reactivate mailbox.');
+    } finally {
+      setReactivateModalLoading(false);
+    }
+  };
+
   const handleOpenDeleteModal = (mb: MailboxItem) => {
     setSelectedMailboxForDelete(mb);
+    setDeleteConfirmEmail('');
     setDeleteModalError(null);
+    setOpenMenuMailboxId(null);
   };
 
   const handleConfirmDeleteMailbox = async () => {
-    if (!selectedMailboxForDelete) return;
+    if (!selectedMailboxForDelete || !isDeleteConfirmed) return;
     setDeleteModalLoading(true);
     setDeleteModalError(null);
 
     try {
       await api.deleteMailbox(selectedMailboxForDelete.id);
       setSelectedMailboxForDelete(null);
+      setDeleteConfirmEmail('');
       await loadTenantData(activeDomain?.id);
     } catch (err: any) {
       setDeleteModalError(err.message || 'Failed to delete mailbox.');
@@ -504,6 +619,27 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 {mailboxCount}
               </span>
             </button>
+
+            {/* Storage */}
+            <button
+              onClick={() => setActiveNav('storage')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'storage'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-storage"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <HardDrive
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'storage' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Storage</span>
+              </div>
+            </button>
           </div>
 
           {/* Divider matching Google Admin console */}
@@ -632,43 +768,66 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             </div>
           )}
 
+          {/* 2FA Setup Reminder Banner (Removable per login session) */}
+          {!is2FaEnabled && !dismissed2FaBanner && activeNav !== 'security' && (
+            <div
+              role="region"
+              aria-label="Two-Factor Authentication Setup Notice"
+              className="relative overflow-hidden bg-gradient-to-r from-indigo-50/90 via-blue-50/40 to-white border border-indigo-100/90 rounded-2xl p-4 sm:p-5 shadow-xs transition-all animate-in fade-in duration-200"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                    <Shield className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        Enhance account security with Two-Factor Authentication
+                      </h3>
+                      <span className="px-2 py-0.5 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 rounded-full">
+                        Recommended
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+                      Protect your administrative controls and organization mailboxes from unauthorized access. Set up an authenticator app or email-based 2-step verification.
+                    </p>
+                    <div className="mt-2.5 flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setActiveNav('security')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
+                      >
+                        <span>Set up 2FA</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDismiss2FaBanner}
+                        className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 transition-colors"
+                      >
+                        Remind me later
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDismiss2FaBanner}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors shrink-0"
+                  aria-label="Dismiss 2FA notification"
+                  title="Dismiss for this session"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ===================================================================== */}
-          {/* VIEW: DASHBOARD (MAIN SCREEN MATCHING STITCH DESIGN)                   */}
+          {/* VIEW: DASHBOARD (ADMIN OVERVIEW)                                      */}
           {/* ===================================================================== */}
           {activeNav === 'dashboard' && (
-            domains.length === 0 ? (
-              <div className="bg-gradient-to-br from-white via-indigo-50/20 to-indigo-100/30 border border-indigo-100 rounded-2xl p-8 sm:p-10 shadow-xs flex flex-col md:flex-row items-center justify-between gap-8 animate-in fade-in">
-                <div className="flex flex-col gap-3.5 max-w-xl">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-700 text-xs font-semibold w-fit">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Welcome to Toowix Mail Platform</span>
-                  </div>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-                    Connect your first domain to get started
-                  </h2>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    You haven&apos;t added any domains yet. Connect your domain, select your initial employee tier, and we will automatically provision your mail routing and DNS records so you can start creating team mailboxes.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowDomainModal(true)}
-                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
-                      id="btn-add-first-domain-dashboard"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add Your First Domain</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl bg-indigo-50 border border-indigo-200/60 flex flex-col items-center justify-center text-indigo-600 p-6 shrink-0 text-center shadow-2xs">
-                  <Globe className="w-12 h-12 mb-2 stroke-[1.5]" />
-                  <span className="text-xs font-bold text-slate-800">Multi-Domain Ready</span>
-                  <span className="text-[10px] text-slate-500 mt-0.5">Flexible Employee Tiers</span>
-                </div>
-              </div>
-            ) : (
             <>
               {/* TOP ACTION & CONTEXT BAR */}
               <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
@@ -677,13 +836,19 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     Admin Overview
                   </h1>
                   <p className="text-xs text-slate-500 font-normal">
-                    Organization mail services for{' '}
-                    <span className="font-medium text-slate-700">@{domainName}</span>
+                    {domainName ? (
+                      <>
+                        Organization mail services for{' '}
+                        <span className="font-medium text-slate-700">@{domainName}</span>
+                      </>
+                    ) : (
+                      'Organization mail infrastructure and domain controls'
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <Button
-                    disabled={isSuspended || usagePercent >= 100}
+                    disabled={isSuspended || domains.length === 0 || usagePercent >= 100}
                     onClick={handleOpenCreateModal}
                     size="sm"
                     icon={<Plus className="w-4 h-4" />}
@@ -691,214 +856,262 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     Create mailbox
                   </Button>
                   <Button
-                    onClick={() => setActiveNav('mailboxes')}
+                    onClick={() => setActiveNav(domains.length === 0 ? 'domains' : 'mailboxes')}
                     variant="secondary"
                     size="sm"
                   >
-                    View mailboxes
+                    {domains.length === 0 ? 'Domain settings' : 'View mailboxes'}
                   </Button>
                 </div>
               </section>
 
-              {/* 3-PART OVERVIEW GRID */}
-              <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {/* Card 1: Mailbox Allocation */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                      Mailbox Allocation
-                    </span>
-                    <Mail className="w-[18px] h-[18px] text-slate-400" />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-semibold text-slate-900">
-                        {mailboxCount}{' '}
-                        <span className="text-sm font-normal text-slate-500">
-                          / {mailboxLimit} Used
-                        </span>
-                      </span>
-                      <span className="text-xs text-slate-500 ml-auto font-medium">
-                        {usagePercent}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${usagePercent >= 90
-                            ? 'bg-rose-500'
-                            : usagePercent >= 75
-                              ? 'bg-amber-500'
-                          : 'bg-indigo-600'
-                          }`}
-                        style={{ width: `${usagePercent}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-[11px] text-slate-500 mt-1">
-                      {availableCount} Available for assignment
-                    </span>
-                  </div>
-                </div>
-
-                {/* Card 2: Operational Health */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                      Operational Health
-                    </span>
-                    {isSuspended ? (
-                      <Ban className="w-[18px] h-[18px] text-rose-600" />
-                    ) : (
-                      <CheckCircle2 className="w-[18px] h-[18px] text-emerald-600" />
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1.5">
+              {/* ONBOARDING SETUP BANNER WHEN NO DOMAINS CONFIGURED */}
+              {domains.length === 0 && (
+                <section className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6 animate-in fade-in">
+                  <div className="flex flex-col gap-3 max-w-2xl">
                     <div className="flex items-center gap-2">
-                      <StatusBadge status={isSuspended ? 'suspended' : 'operational'} label={isSuspended ? 'Suspended' : 'Normal'} />
-                      <span className="text-2xl font-semibold text-slate-900">
-                        {isSuspended ? 'Suspended' : 'Normal'}
+                      <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+                        Setup Required
                       </span>
+                      <span className="text-xs text-slate-400">•</span>
+                      <span className="text-xs text-slate-500 font-medium">Getting Started</span>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {isSuspended
-                        ? 'Mail services suspended by platform control plane'
-                        : 'No actions required — all services operational'}
-                    </p>
-                  </div>
-                </div>
 
-                {/* Card 3: Domain Summary */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between shadow-xs">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                      Domain Summary
-                    </span>
-                    <Globe className="w-[18px] h-[18px] text-slate-400" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-semibold tracking-tight text-slate-900 truncate">
-                        {domainName}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-700 mt-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Authoritative domain verified</span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* SIDE-BY-SIDE DUAL PANELS */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Left Panel: Recently Added Mailboxes */}
-                <section className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-[18px] h-[18px] text-slate-400" />
-                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Recently Added Mailboxes
+                    <div className="flex flex-col gap-1.5">
+                      <h2 className="text-xl font-bold tracking-tight text-slate-900">
+                        Connect your first domain to get started
                       </h2>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Add an authoritative domain to allocate employee mailbox seats. Once added, your DNS records (MX, SPF, DKIM) will be generated automatically so you can start provisioning team accounts.
+                      </p>
                     </div>
-                    <button
-                      onClick={() => setActiveNav('mailboxes')}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
-                    >
-                      <span>View all mailboxes</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
 
-                  {mailboxes.length === 0 ? (
-                    <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-                      <Mail className="w-7 h-7" />
-                      <p className="text-xs">No mailboxes created yet.</p>
+                    <div className="flex items-center gap-3 pt-1">
                       <button
-                        onClick={handleOpenCreateModal}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
+                        type="button"
+                        onClick={() => setShowDomainModal(true)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                        id="btn-add-first-domain-dashboard"
                       >
-                        + Create your first mailbox
+                        <Plus className="w-4 h-4" />
+                        <span>Add Your First Domain</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveNav('domains')}
+                        className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+                      >
+                        Learn about DNS setup
                       </button>
                     </div>
-                  ) : (
-                    <div className="flex flex-col divide-y divide-slate-100">
-                      {mailboxes.slice(0, 4).map((mb) => (
-                        <div
-                          key={mb.id}
-                          className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors group"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-medium shrink-0">
-                              {getInitials(mb.address)}
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-xs font-medium text-slate-900 truncate">
-                                {mb.address}
-                              </span>
-                              <span className="text-[11px] text-slate-400 mt-0.5">
-                                Created {formatRelativeTime(mb.createdAt)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 shrink-0">
-                            {/* Quick Reset action on hover */}
-                            <button
-                              onClick={() => handleOpenResetModal(mb)}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 rounded transition-opacity"
-                              title="Reset Password"
-                            >
-                              <Key className="w-3.5 h-3.5" />
-                            </button>
-
-                            <StatusBadge status={mb.status} label={mb.status} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                {/* Right Panel: Organization Event Log */}
-                <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <History className="w-[18px] h-[18px] text-slate-400" />
-                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Organization Event Log
-                      </h2>
-                    </div>
-                    <button
-                      onClick={() => setActiveNav('audit')}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
-                    >
-                      <span>View audit log</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
                   </div>
 
-                  {auditLogs.length === 0 ? (
-                    <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-                      <FileText className="w-7 h-7" />
-                      <p className="text-xs">No recent events recorded.</p>
+                  {/* Clean 3-Step Setup Checklist */}
+                  <div className="w-full md:w-64 bg-slate-50 border border-slate-200/70 rounded-xl p-4 flex flex-col gap-3 shrink-0">
+                    <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
+                      Setup Checklist
+                    </span>
+                    <div className="flex flex-col gap-2.5 text-xs">
+                      <div className="flex items-center gap-2 text-indigo-700 font-medium">
+                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          1
+                        </span>
+                        <span>Connect Domain</span>
+                        <span className="ml-auto text-[10px] bg-indigo-50 px-1.5 py-0.5 rounded text-indigo-600 font-semibold border border-indigo-200/50">Next</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <span className="w-5 h-5 rounded-full bg-slate-200/70 text-slate-500 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          2
+                        </span>
+                        <span>Publish DNS Records</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <span className="w-5 h-5 rounded-full bg-slate-200/70 text-slate-500 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          3
+                        </span>
+                        <span>Create Team Mailboxes</span>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex flex-col divide-y divide-slate-100">
-                      {auditLogs.slice(0, 4).map((log) => (
-                        <div key={log.id} className="py-3 flex flex-col gap-0.5">
-                          <span className="text-xs text-slate-800 leading-snug">
-                            {formatAuditAction(log.action, log.metadata)}
+                  </div>
+                </section>
+              )}
+
+              {/* OVERVIEW CONTENT - ONLY VISIBLE ONCE FIRST DOMAIN IS CONFIGURED */}
+              {domains.length > 0 && (
+                <>
+                  {/* 2-PART OVERVIEW GRID */}
+                  <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Card 1: Mailbox Allocation */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Mailbox Allocation
+                        </span>
+                        <Mail className="w-[18px] h-[18px] text-slate-400" />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-semibold text-slate-900">
+                            {mailboxCount}{' '}
+                            <span className="text-sm font-normal text-slate-500">
+                              / {mailboxLimit} Used
+                            </span>
                           </span>
-                          <span className="text-[11px] text-slate-400">
-                            {formatRelativeTime(log.timestamp)}
+                          <span className="text-xs text-slate-500 ml-auto font-medium">
+                            {usagePercent}%
                           </span>
                         </div>
-                      ))}
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              usagePercent >= 90
+                                ? 'bg-rose-500'
+                                : usagePercent >= 75
+                                  ? 'bg-amber-500'
+                                  : 'bg-indigo-600'
+                            }`}
+                            style={{ width: `${usagePercent}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-[11px] text-slate-500 mt-1">
+                          {availableCount} Available for assignment
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </section>
-              </div>
+
+                    {/* Card 2: Domain Summary */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Domain Summary
+                        </span>
+                        <Globe className="w-[18px] h-[18px] text-slate-400" />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl font-semibold tracking-tight text-slate-900 truncate">
+                            {domainName || 'No domain'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 mt-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Authoritative domain verified</span>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* SIDE-BY-SIDE DUAL PANELS */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Left Panel: Recently Added Mailboxes */}
+                    <section className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-[18px] h-[18px] text-slate-400" />
+                          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Recently Added Mailboxes
+                          </h2>
+                        </div>
+                        <button
+                          onClick={() => setActiveNav('mailboxes')}
+                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>View all mailboxes</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {mailboxes.length === 0 ? (
+                        <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
+                          <Mail className="w-7 h-7 text-slate-300" />
+                          <p className="text-xs text-slate-500">No mailboxes created yet.</p>
+                          <button
+                            onClick={handleOpenCreateModal}
+                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                          >
+                            + Create your first mailbox
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col divide-y divide-slate-100">
+                          {mailboxes.slice(0, 4).map((mb) => (
+                            <div
+                              key={mb.id}
+                              className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors group"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-medium shrink-0">
+                                  {getInitials(mb.address)}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-xs font-medium text-slate-900 truncate">
+                                    {mb.address}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 mt-0.5">
+                                    Created {formatRelativeTime(mb.createdAt)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0">
+                                <button
+                                  onClick={() => handleOpenResetModal(mb)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 rounded transition-opacity"
+                                  title="Reset Password"
+                                >
+                                  <Key className="w-3.5 h-3.5" />
+                                </button>
+
+                                <StatusBadge status={mb.status} label={mb.status} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+
+                    {/* Right Panel: Organization Event Log */}
+                    <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <History className="w-[18px] h-[18px] text-slate-400" />
+                          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            Organization Event Log
+                          </h2>
+                        </div>
+                        <button
+                          onClick={() => setActiveNav('audit')}
+                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>View audit log</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {auditLogs.length === 0 ? (
+                        <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
+                          <FileText className="w-7 h-7 text-slate-300" />
+                          <p className="text-xs text-slate-500">No recent events recorded.</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col divide-y divide-slate-100">
+                          {auditLogs.slice(0, 4).map((log) => (
+                            <div key={log.id} className="py-3 flex flex-col gap-0.5">
+                              <span className="text-xs text-slate-800 leading-snug">
+                                {formatAuditAction(log.action, log.metadata)}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                {formatRelativeTime(log.timestamp)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                </>
+              )}
             </>
-            )
           )}
 
           {/* ===================================================================== */}
@@ -971,7 +1184,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <div className="overflow-x-auto border border-slate-200 rounded-lg min-h-[240px]">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
@@ -1019,30 +1232,66 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                             {new Date(mb.createdAt).toLocaleDateString()}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <div className="inline-flex items-center gap-1">
-                              <a
-                                href="http://localhost:8888"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
-                                title="Open in Webmail"
-                              >
-                                Webmail
-                              </a>
+                            <div className="relative inline-block text-left" data-mailbox-menu>
                               <button
-                                onClick={() => handleOpenResetModal(mb)}
-                                className="px-2 py-1 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded transition-colors"
-                                title="Reset Password"
+                                type="button"
+                                onClick={() => setOpenMenuMailboxId(openMenuMailboxId === mb.id ? null : mb.id)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                title="Mailbox actions"
+                                aria-label="Mailbox actions"
                               >
-                                Reset Password
+                                <MoreVertical className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={() => handleOpenDeleteModal(mb)}
-                                className="px-2 py-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded transition-colors"
-                                title="Delete Mailbox"
-                              >
-                                Delete
-                              </button>
+
+                              {openMenuMailboxId === mb.id && (
+                                <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 focus:outline-none">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleOpenResetModal(mb);
+                                      setOpenMenuMailboxId(null);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                  >
+                                    <KeyRound className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span>Reset Password</span>
+                                  </button>
+
+                                  {mb.status === 'active' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenSuspendModal(mb)}
+                                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50/70 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <Ban className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                      <span>Suspend Mailbox</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenReactivateModal(mb)}
+                                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50/70 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <span>Reactivate Mailbox</span>
+                                    </button>
+                                  )}
+
+                                  <div className="h-px bg-slate-100 my-1"></div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleOpenDeleteModal(mb);
+                                      setOpenMenuMailboxId(null);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                    <span>Delete Mailbox</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1261,7 +1510,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           {/* VIEW: ACCOUNT SECURITY (2FA & RECOVERY EMAIL)                         */}
           {/* ===================================================================== */}
           {activeNav === 'security' && (
-            <SecuritySettingsView user={user} />
+            <SecuritySettingsView user={user} on2FaStatusChange={(enabled) => setIs2FaEnabled(enabled)} />
+          )}
+
+          {/* ===================================================================== */}
+          {/* VIEW: STORAGE MONITORING                                              */}
+          {/* ===================================================================== */}
+          {activeNav === 'storage' && (
+            <StorageView activeDomain={activeDomain} />
           )}
 
           {/* ===================================================================== */}
@@ -1481,6 +1737,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           onClick={() => {
             if (!deleteModalLoading) {
               setSelectedMailboxForDelete(null);
+              setDeleteConfirmEmail('');
               setDeleteModalError(null);
             }
           }}
@@ -1508,6 +1765,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 onClick={() => {
                   if (!deleteModalLoading) {
                     setSelectedMailboxForDelete(null);
+                    setDeleteConfirmEmail('');
                     setDeleteModalError(null);
                   }
                 }}
@@ -1519,20 +1777,145 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               </button>
             </div>
 
-            <div className="p-3.5 bg-rose-50/70 border border-rose-200 rounded-xl text-xs text-slate-700 leading-relaxed space-y-1.5">
+            {/* Short and clear warning message */}
+            <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-900 leading-relaxed">
+              This action cannot be undone. All mailbox data will be permanently deleted.
+            </div>
+
+            {/* Confirmation input requiring exact email address */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (isDeleteConfirmed && !deleteModalLoading) {
+                  handleConfirmDeleteMailbox();
+                }
+              }}
+              className="flex flex-col gap-4"
+            >
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="delete-confirm-email" className="text-xs text-slate-600 font-normal">
+                  To confirm, type <strong className="text-slate-900 font-semibold select-all">{selectedMailboxForDelete.address}</strong> below:
+                </label>
+                <input
+                  id="delete-confirm-email"
+                  type="text"
+                  value={deleteConfirmEmail}
+                  onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                  placeholder={selectedMailboxForDelete.address}
+                  disabled={deleteModalLoading}
+                  autoFocus
+                  autoComplete="off"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-medium text-slate-900 placeholder:text-slate-400 transition-colors"
+                />
+              </div>
+
+              {deleteModalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                  <span>{deleteModalError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMailboxForDelete(null);
+                    setDeleteConfirmEmail('');
+                    setDeleteModalError(null);
+                  }}
+                  disabled={deleteModalLoading}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleteModalLoading || !isDeleteConfirmed}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {deleteModalLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Mailbox</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: SUSPEND MAILBOX CONFIRMATION POPUP                                */}
+      {/* ========================================================================= */}
+      {selectedMailboxForSuspend && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="suspend-mailbox-title"
+          onClick={() => {
+            if (!suspendModalLoading) {
+              setSelectedMailboxForSuspend(null);
+              setSuspendModalError(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 page-content-scaled"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                  <Ban className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="suspend-mailbox-title" className="text-sm font-semibold text-slate-900">
+                    Suspend Mailbox
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Temporary access restriction
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!suspendModalLoading) {
+                    setSelectedMailboxForSuspend(null);
+                    setSuspendModalError(null);
+                  }
+                }}
+                disabled={suspendModalLoading}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl text-xs text-slate-700 leading-relaxed space-y-1.5">
               <p>
-                Are you sure you want to permanently delete{' '}
-                <strong className="text-slate-900 font-semibold">{selectedMailboxForDelete.address}</strong>?
+                Are you sure you want to suspend{' '}
+                <strong className="text-slate-900 font-semibold">{selectedMailboxForSuspend.address}</strong>?
               </p>
-              <p className="text-rose-700 font-medium">
-                All associated messages, folders, and settings will be permanently erased. This action cannot be undone.
+              <p className="text-amber-800 font-medium">
+                The user will be immediately blocked from signing in to webmail and sending or receiving messages. Mailbox data and configurations will be preserved.
               </p>
             </div>
 
-            {deleteModalError && (
+            {suspendModalError && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-                <span>{deleteModalError}</span>
+                <span>{suspendModalError}</span>
               </div>
             )}
 
@@ -1540,29 +1923,131 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedMailboxForDelete(null);
-                  setDeleteModalError(null);
+                  setSelectedMailboxForSuspend(null);
+                  setSuspendModalError(null);
                 }}
-                disabled={deleteModalLoading}
+                disabled={suspendModalLoading}
                 className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleConfirmDeleteMailbox}
-                disabled={deleteModalLoading}
-                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                onClick={handleConfirmSuspendMailbox}
+                disabled={suspendModalLoading}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
               >
-                {deleteModalLoading ? (
+                {suspendModalLoading ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Deleting...</span>
+                    <span>Suspending...</span>
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Mailbox</span>
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Suspend Mailbox</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: REACTIVATE MAILBOX CONFIRMATION POPUP                              */}
+      {/* ========================================================================= */}
+      {selectedMailboxForReactivate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reactivate-mailbox-title"
+          onClick={() => {
+            if (!reactivateModalLoading) {
+              setSelectedMailboxForReactivate(null);
+              setReactivateModalError(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 page-content-scaled"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="reactivate-mailbox-title" className="text-sm font-semibold text-slate-900">
+                    Reactivate Mailbox
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Restore active account access
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!reactivateModalLoading) {
+                    setSelectedMailboxForReactivate(null);
+                    setReactivateModalError(null);
+                  }
+                }}
+                disabled={reactivateModalLoading}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-slate-700 leading-relaxed space-y-1.5">
+              <p>
+                Are you sure you want to reactivate{' '}
+                <strong className="text-slate-900 font-semibold">{selectedMailboxForReactivate.address}</strong>?
+              </p>
+              <p className="text-emerald-800 font-medium">
+                The user will regain immediate access to sign in to webmail and send or receive messages.
+              </p>
+            </div>
+
+            {reactivateModalError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>{reactivateModalError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMailboxForReactivate(null);
+                  setReactivateModalError(null);
+                }}
+                disabled={reactivateModalLoading}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReactivateMailbox}
+                disabled={reactivateModalLoading}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {reactivateModalLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Reactivating...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Reactivate Mailbox</span>
                   </>
                 )}
               </button>

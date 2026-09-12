@@ -319,3 +319,85 @@ All management and directory operations on Stalwart Community Edition execute ag
 2. **Linked DKIM Deletion:** When a tenant domain is removed or migrated by Platform Admin, the backend queries `x:DkimSignature/query` / `x:DkimSignature/get` for the matching `domainId`, and safely deletes DKIM signatures before destroying the domain principal.
 3. **Password Confidentiality:** Mailbox passwords are sent directly from the Toowix Backend to Stalwart's `x:Account/set` and are **never** stored in PostgreSQL.
 4. **Idempotency:** Stalwart's `primaryKeyViolation` error allows Toowix to distinguish between a new conflicting mailbox and an idempotent retry.
+
+---
+
+## 7. DKIM Signature Object & DNS Zone File (Live Verified — Domain Activation Spike)
+
+**Date of Verification:** September 12, 2026, against the dev container (`toowix-mail-stalwart`, JMAP reachable in-container at `http://127.0.0.1:8080/jmap/`; the host-mapped port `8085` was unreachable from this environment's shell sandbox during verification — `docker exec ... curl` was used instead. The Toowix backend itself always reaches Stalwart over the internal Docker network, so this is a test-tooling quirk only, not a production concern.)
+
+### A. Domains create their own DKIM keys automatically
+Every domain returned by `x:Domain/get` carries a `dkimManagement` object:
+```json
+"dkimManagement": {
+  "@type": "Automatic",
+  "algorithms": { "Dkim1Ed25519Sha256": true, "Dkim1RsaSha256": true },
+  "selectorTemplate": "v{version}-{algorithm}-{date-%Y%m%d}",
+  "rotateAfter": 7776000000,
+  "retireAfter": 604800000,
+  "deleteAfter": 2592000000
+}
+```
+No explicit "generate DKIM key" call is needed — creating a domain via `x:Domain/set` auto-generates **two** active DKIM signatures (one Ed25519, one RSA) with selectors following the template above (e.g. `v1-rsa-20260907`, `v1-ed25519-20260907`).
+
+### B. `x:DkimSignature/get` — real response shape
+```json
+{
+  "accountId": "b",
+  "list": [
+    {
+      "id": "jdpxkb7abxqa",
+      "domainId": "d",
+      "selector": "v1-rsa-20260907",
+      "@type": "Dkim1RsaSha256",
+      "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...(base64 DER SubjectPublicKeyInfo)...IDAQAB",
+      "stage": "active",
+      "privateKey": { "secret": "****", "@type": "Text" },
+      "canonicalization": "relaxed/relaxed",
+      "headers": { "From": true, "To": true, "Date": true, "Subject": true, "Message-ID": true },
+      "report": true,
+      "auid": null, "expire": null, "thirdParty": null, "thirdPartyHash": null,
+      "memberTenantId": null, "createdAt": "2026-09-07T09:49:21Z", "nextTransitionAt": null
+    },
+    { "...": "second entry, same domainId, @type: Dkim1Ed25519Sha256, selector v1-ed25519-20260907, shorter base64 publicKey" }
+  ],
+  "notFound": []
+}
+```
+Key facts:
+- `privateKey.secret` is **always redacted to `"****"`** in the response — Stalwart never returns private key material over this API, only the public key. Safe to call from the backend at activation time.
+- There is no server-side filter-by-`domainId` argument observed on `x:DkimSignature/get`; fetch the full unfiltered `list` (as `deleteDomain()` already does) and filter client-side by `domainId` + `stage === 'active'`.
+- A domain normally has **two active DKIM entries** (RSA + Ed25519). Toowix should publish DKIM TXT records for both selectors — Stalwart signs outgoing mail with both.
+- DKIM DNS record construction: `name = "${selector}._domainkey.${domainName}"`, `type: 'TXT'`, `value` — for RSA: `v=DKIM1; k=rsa; p=${publicKey}`; for Ed25519: `v=DKIM1; k=ed25519; p=${publicKey}` (the `publicKey` field is already the raw base64 to go after `p=`, for both algorithms — no reformatting needed beyond wrapping in the `v=DKIM1; k=...; p=...` envelope).
+
+### C. `Domain.dnsZoneFile` is already a complete, Stalwart-authored zone
+Every domain's `x:Domain/get` response includes a fully pre-rendered `dnsZoneFile` string (already captured into `StalwartDomain.dnsZoneFile` in `backend/src/stalwart/types.ts`, but never parsed/used anywhere today). Example (redacted) for a live domain:
+```
+v1-ed25519-20260907._domainkey.toowix.test. IN TXT "v=DKIM1; k=ed25519; h=sha256; p=QOkG7d2..."
+v1-rsa-20260907._domainkey.toowix.test. IN TXT (
+    "v=DKIM1; k=rsa; h=sha256; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A..."
+    "...continuation, DNS TXT split into <=255-byte quoted chunks..."
+)
+toowix.test. IN TXT "v=spf1 mx -all"
+toowix.test. IN MX 10 localhost.
+_dmarc.toowix.test. IN TXT "v=DMARC1; p=reject; rua=mailto:postmaster@toowix.test"
+_caldavs._tcp.toowix.test. IN SRV 0 1 443 localhost.
+_carddavs._tcp.toowix.test. IN SRV 0 1 443 localhost.
+_imaps._tcp.toowix.test. IN SRV 0 1 993 localhost.
+_jmap._tcp.toowix.test. IN SRV 0 1 443 localhost.
+_pop3s._tcp.toowix.test. IN SRV 0 1 995 localhost.
+_submissions._tcp.toowix.test. IN SRV 0 1 465 localhost.
+mta-sts.toowix.test. IN CNAME localhost.
+_mta-sts.toowix.test. IN TXT "v=STSv1; id=..."
+_smtp._tls.toowix.test. IN TXT "v=TLSRPTv1; rua=mailto:postmaster@toowix.test"
+autoconfig.toowix.test. IN CNAME localhost.
+autodiscover.toowix.test. IN CNAME localhost.
+```
+Notes/discrepancies to resolve deliberately in `dns-records.service.ts`, not silently inherit:
+- **MX target and SRV/CNAME targets show `localhost.`** in this dev environment — production Stalwart config must point these at the real public mail hostname (e.g. `mail.toowix.com`) before this zone file is fit to hand to GoDaddy; do not publish `localhost.` targets to a customer's public DNS. Confirm/patch Stalwart's server hostname config before wiring the real activation flow to a production Stalwart instance.
+- **SPF here is `v=spf1 mx -all`** (hard fail) — stricter than `docs/DOMAIN_SETUP_GUIDE.md`'s documented `v=spf1 mx include:_spf.toowix.com ~all` (soft fail + include). These disagree; pick one canonical policy.
+- **DMARC here is `p=reject` immediately** — much stricter than a typical progressive rollout (`p=none` → `p=quarantine` → `p=reject`) and disagrees with the existing hardcoded placeholder in `tenant.routes.ts` (`p=quarantine`). Pick one canonical policy; a progressive DMARC rollout is generally safer for a new customer domain and worth considering even though it's not what Stalwart auto-generates.
+- The zone file also includes MTA-STS, TLS-RPT, autoconfig/autodiscover CNAME, and UA-auto-config records not mentioned in `docs/DOMAIN_SETUP_GUIDE.md` at all — worth including for completeness once the canonical record set is finalized, but not required for baseline mail deliverability (MX/SPF/DKIM/DMARC).
+
+### D. Recommended approach for `dns-records.service.ts`
+Prefer building the required record set from **structured `x:DkimSignature/get` output** (selector + publicKey + algorithm, per-domain) combined with Toowix's own canonical (not Stalwart-default) MX/SPF/DMARC policy, rather than regex-parsing the free-text `dnsZoneFile`. The structured DKIM data is small, typed, and stable; the zone file is useful only as a human-readable cross-check/fallback display, not as a machine-parsed source of truth for the fields that matter (SPF/DMARC policy is deliberately going to differ from Stalwart's auto-generated default per the discrepancies above).

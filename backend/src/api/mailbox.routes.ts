@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireTenantAdmin, requireAnyAdmin } from '../auth/middleware';
 import { MailboxService } from '../services/mailbox.service';
+import { stalwartClient } from '../stalwart/client';
 
 export const tenantMailboxRouter = Router();
 export const mailboxRouter = Router();
@@ -37,6 +38,56 @@ tenantMailboxRouter.get('/', async (req: Request, res: Response): Promise<void> 
   try {
     const mailboxes = await MailboxService.listMailboxes(tenantId, domainId);
     res.status(200).json({ mailboxes });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });
+  }
+});
+
+// GET /api/tenants/me/mailboxes/storage
+tenantMailboxRouter.get('/storage', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId || req.user?.tenantId;
+  if (!tenantId) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing' });
+    return;
+  }
+
+  const domainId = typeof req.query.domainId === 'string' && req.query.domainId.trim() ? req.query.domainId.trim() : undefined;
+
+  try {
+    const mailboxes = await MailboxService.listMailboxes(tenantId, domainId);
+    let storageMap = new Map<string, number>();
+    try {
+      storageMap = await stalwartClient.listAccountsWithStorage();
+    } catch {
+      // Graceful fallback
+    }
+
+    let totalStorageBytes = 0;
+    let mailboxesWithData = 0;
+
+    const mailboxItems = mailboxes.map((m) => {
+      const bytes = m.stalwartAccountId ? (storageMap.get(m.stalwartAccountId) || 0) : 0;
+      totalStorageBytes += bytes;
+      if (bytes > 0) mailboxesWithData++;
+      return {
+        id: m.id,
+        address: m.address,
+        localPart: m.localPart,
+        domainId: m.domainId,
+        storageBytes: bytes,
+        status: m.status,
+        createdAt: m.createdAt,
+      };
+    });
+
+    res.status(200).json({
+      summary: {
+        totalStorageBytes,
+        mailboxCount: mailboxes.length,
+        mailboxesWithData,
+      },
+      mailboxes: mailboxItems,
+    });
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });
   }
@@ -114,6 +165,40 @@ mailboxRouter.post('/:id/reset-password', async (req: Request, res: Response): P
   }
 });
 
+mailboxRouter.post('/:id/suspend', async (req: Request, res: Response): Promise<void> => {
+  const role = req.adminUser?.role || req.user?.role;
+  const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+
+  try {
+    const mailbox = await MailboxService.suspendMailbox(
+      req.params.id,
+      tenantId,
+      req.adminUser?.id || req.user?.id,
+      req.adminUser?.role || req.user?.role
+    );
+    res.status(200).json({ message: 'Mailbox successfully suspended', mailbox });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });
+  }
+});
+
+mailboxRouter.post('/:id/reactivate', async (req: Request, res: Response): Promise<void> => {
+  const role = req.adminUser?.role || req.user?.role;
+  const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+
+  try {
+    const mailbox = await MailboxService.reactivateMailbox(
+      req.params.id,
+      tenantId,
+      req.adminUser?.id || req.user?.id,
+      req.adminUser?.role || req.user?.role
+    );
+    res.status(200).json({ message: 'Mailbox successfully reactivated', mailbox });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });
+  }
+});
+
 mailboxRouter.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   const role = req.adminUser?.role || req.user?.role;
   const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
@@ -130,3 +215,4 @@ mailboxRouter.delete('/:id', async (req: Request, res: Response): Promise<void> 
     res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });
   }
 });
+

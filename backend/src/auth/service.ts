@@ -128,8 +128,39 @@ export type PortalLoginResult =
       hasRecoveryEmail?: boolean;
       maskedRecoveryEmail?: string | null;
       maskedEmail?: string | null;
+      hasBackupCodes?: boolean;
+      remainingBackupCodes?: number;
+      isRecoveryEmail?: boolean;
+      hasEmail2Fa?: boolean;
     }
   | { success: false; error: string; statusCode: number };
+
+export interface GeneratedBackupCodes {
+  plainCodes: string[];
+  hashedCodes: Array<{ codeHash: string; used: boolean; usedAt: Date | null }>;
+}
+
+export function generateBackupCodes(count: number = 10): GeneratedBackupCodes {
+  const plainCodes: string[] = [];
+  const hashedCodes: Array<{ codeHash: string; used: boolean; usedAt: Date | null }> = [];
+
+  for (let i = 0; i < count; i++) {
+    const part1 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const part2 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const code = `${part1}-${part2}`;
+    plainCodes.push(code);
+
+    const normalized = code.replace(/[-\s]/g, '').toUpperCase();
+    const codeHash = hashSecurityAnswer(normalized);
+    hashedCodes.push({
+      codeHash,
+      used: false,
+      usedAt: null,
+    });
+  }
+
+  return { plainCodes, hashedCodes };
+}
 
 export async function authenticatePortalUser(
   portalType: AdminRole,
@@ -290,14 +321,24 @@ export async function authenticatePortalUser(
       }
     }
 
+    const hasDistinctRecovery = !!(user.recoveryEmail && user.recoveryEmail.trim().toLowerCase() !== user.email.trim().toLowerCase());
+    const destinationEmail = (user.twoFactorMethod === 'email' || !hasDistinctRecovery) ? user.email : (user.recoveryEmail || user.email);
+    const isRecoveryEmail = hasDistinctRecovery && user.twoFactorMethod !== 'email';
+
+    const remainingBackupCodes = user.backupCodes ? user.backupCodes.filter((c: any) => !c.used).length : 0;
+
     return {
       success: true,
       requires2FA: true,
       tempToken,
-      hasRecoveryEmail: !!user.recoveryEmail,
-      maskedRecoveryEmail: user.recoveryEmail ? maskEmail(user.recoveryEmail) : null,
+      hasRecoveryEmail: hasDistinctRecovery,
+      maskedRecoveryEmail: (hasDistinctRecovery && user.recoveryEmail) ? maskEmail(user.recoveryEmail) : null,
       defaultMethod,
-      maskedEmail: maskEmail(user.email),
+      hasEmail2Fa: true,
+      maskedEmail: maskEmail(destinationEmail),
+      isRecoveryEmail,
+      hasBackupCodes: remainingBackupCodes > 0,
+      remainingBackupCodes,
       user: userContext,
     };
   }
@@ -327,7 +368,7 @@ export async function verifyAndComplete2FaLogin(
   tempToken: string,
   code: string,
   clientIp?: string,
-  method: 'totp' | 'email' = 'totp',
+  method: 'totp' | 'email' | 'backup_code' = 'totp',
   userAgent?: string,
   rememberMe: boolean = false
 ): Promise<{ success: true; token: string; user: AdminUserContext } | { success: false; error: string; statusCode: number }> {
@@ -341,7 +382,40 @@ export async function verifyAndComplete2FaLogin(
     return { success: false, error: 'User account not found.', statusCode: 404 };
   }
 
-  if (method === 'email') {
+  if (method === 'backup_code') {
+    if (!user.backupCodes || user.backupCodes.length === 0) {
+      return { success: false, error: 'No backup codes are configured for this account.', statusCode: 400 };
+    }
+
+    const normalizedInput = code.replace(/[-\s]/g, '').toUpperCase();
+    const incomingHash = hashSecurityAnswer(normalizedInput);
+
+    const matchingCodeIndex = user.backupCodes.findIndex(
+      (item) => !item.used && item.codeHash === incomingHash
+    );
+
+    if (matchingCodeIndex === -1) {
+      await AuditLogModel.create({
+        actorId: user._id,
+        actorRole: user.role,
+        actorEmail: user.email,
+        actorIp: clientIp,
+        tenantId: user.tenantId,
+        action: 'AUTH_2FA_VERIFICATION_FAILED',
+        resource: 'ADMIN_USER',
+        resourceId: user._id.toString(),
+        status: 'FAILED',
+        metadata: { reason: 'invalid_backup_code' },
+        timestamp: new Date(),
+      });
+      return { success: false, error: 'Invalid or previously used backup code. Please verify and try another code.', statusCode: 401 };
+    }
+
+    // Mark as used
+    user.backupCodes[matchingCodeIndex].used = true;
+    user.backupCodes[matchingCodeIndex].usedAt = new Date();
+    await user.save();
+  } else if (method === 'email') {
     if (!user.loginOtp || !user.loginOtp.codeHash || !user.loginOtp.expiresAt) {
       return { success: false, error: 'No email verification code was requested. Please click Send Code first.', statusCode: 400 };
     }

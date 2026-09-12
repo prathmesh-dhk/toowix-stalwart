@@ -107,9 +107,16 @@ describe('SuperAdminLoginView Component', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
-    // 2FA challenge screen appears
+    // 2FA challenge screen appears - Step 1: Choose method
     expect(await screen.findByText(/two-factor authentication/i)).toBeInTheDocument();
-    expect(screen.getByText(/6-digit authenticator code/i)).toBeInTheDocument();
+    expect(screen.getByText(/choose a verification method to complete sign in/i)).toBeInTheDocument();
+    expect(screen.getByText('Authenticator app')).toBeInTheDocument();
+
+    // Click Continue to proceed to Step 2
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    // Step 2: Enter code screen
+    expect(await screen.findByText(/6-digit authenticator code/i)).toBeInTheDocument();
 
     // Verify 6 digit inputs exist
     const inputs = screen.getAllByRole('textbox');
@@ -134,4 +141,67 @@ describe('SuperAdminLoginView Component', () => {
       );
     });
   });
+
+  it('allows bypassing 2FA with emergency backup code via "Use backup code"', async () => {
+    vi.mocked(api.superAdminLogin).mockResolvedValueOnce({
+      requires2FA: true,
+      tempToken: 'super-temp-2fa-token-backup',
+      hasBackupCodes: true,
+      remainingBackupCodes: 10,
+      user: {
+        id: 'super-1',
+        email: 'root@toowix.com',
+        role: 'SUPER_ADMIN',
+      },
+    });
+
+    vi.mocked(api.verify2Fa).mockResolvedValueOnce({
+      token: 'valid-super-backup-token',
+      user: {
+        id: 'super-1',
+        email: 'root@toowix.com',
+        role: 'SUPER_ADMIN',
+      },
+    });
+
+    render(
+      <SuperAdminLoginView
+        onSuccess={onSuccess}
+        onForgotPassword={onForgotPassword}
+      />
+    );
+
+    await userEvent.type(screen.getByPlaceholderText(/admin@toowix.com/i), 'root@toowix.com');
+    await userEvent.type(screen.getByLabelText(/password/i), 'SuperMasterKey2026!');
+
+    fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    // In 2FA selection screen, click "Use backup code"
+    const useBackupCodeBtn = await screen.findByRole('button', { name: /use backup code/i });
+    expect(useBackupCodeBtn).toBeInTheDocument();
+    fireEvent.click(useBackupCodeBtn);
+
+    // Emergency backup code screen rendered
+    expect(await screen.findByText(/Emergency backup code/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('XXXX-XXXX')).toBeInTheDocument();
+
+    // Enter backup code
+    const codeInput = screen.getByPlaceholderText('XXXX-XXXX');
+    await userEvent.type(codeInput, 'ABCD-1234');
+
+    const verifyBtn = screen.getByRole('button', { name: /verify and sign in/i });
+    fireEvent.click(verifyBtn);
+
+    await waitFor(() => {
+      expect(api.verify2Fa).toHaveBeenCalledWith('super-temp-2fa-token-backup', 'ABCD-1234', false, 'backup_code');
+      expect(onSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'super-1',
+          email: 'root@toowix.com',
+          role: 'SUPER_ADMIN',
+        })
+      );
+    });
+  });
 });
+

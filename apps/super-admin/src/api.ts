@@ -59,6 +59,12 @@ export interface LoginResponse {
   tempToken?: string;
   hasRecoveryEmail?: boolean;
   maskedRecoveryEmail?: string | null;
+  defaultMethod?: 'totp' | 'email';
+  hasEmail2Fa?: boolean;
+  maskedEmail?: string | null;
+  isRecoveryEmail?: boolean;
+  hasBackupCodes?: boolean;
+  remainingBackupCodes?: number;
   user: UserContext;
 }
 
@@ -90,12 +96,12 @@ export const api = {
     }),
 
   send2FaLoginOtp: (tempToken: string) =>
-    request<{ success: boolean; message: string; maskedRecoveryEmail: string; expiresMinutes: number }>('/api/auth/2fa/send-otp', {
+    request<{ success: boolean; message: string; maskedRecoveryEmail?: string; maskedEmail?: string; isRecoveryEmail?: boolean; expiresMinutes: number }>('/api/auth/2fa/send-otp', {
       method: 'POST',
       body: JSON.stringify({ tempToken }),
     }),
 
-  verify2Fa: (tempToken: string, code: string, rememberMe?: boolean, method: 'totp' | 'email' = 'totp') =>
+  verify2Fa: (tempToken: string, code: string, rememberMe?: boolean, method: 'totp' | 'email' | 'backup_code' = 'totp') =>
     request<{ token: string; user: UserContext }>('/api/auth/2fa/verify', {
       method: 'POST',
       body: JSON.stringify({ tempToken, code, rememberMe, method }),
@@ -107,7 +113,7 @@ export const api = {
     }),
 
   confirm2Fa: (code: string) =>
-    request<{ success: boolean; message: string }>('/api/auth/2fa/confirm-setup', {
+    request<{ success: boolean; message: string; backupCodes?: string[] }>('/api/auth/2fa/confirm-setup', {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
@@ -132,6 +138,7 @@ export const api = {
       hasTotp?: boolean;
       hasSecurityQuestions: boolean;
       securityQuestions: string[];
+      hasBackupCodes?: boolean;
     }>('/api/auth/forgot-password/initiate', {
       method: 'POST',
       body: JSON.stringify({ email }),
@@ -151,6 +158,12 @@ export const api = {
 
   verifyForgotPasswordTotp: (email: string, code: string) =>
     request<{ success: boolean; resetToken: string; message: string }>('/api/auth/forgot-password/verify-totp', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
+
+  verifyForgotPasswordBackupCode: (email: string, code: string) =>
+    request<{ success: boolean; resetToken: string; message: string }>('/api/auth/forgot-password/verify-backup-code', {
       method: 'POST',
       body: JSON.stringify({ email, code }),
     }),

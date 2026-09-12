@@ -15,6 +15,8 @@ export interface ITenant extends Document {
   status: TenantStatus;
   mailboxLimit: number;
   mailboxCount: number;
+  trialStartedAt?: Date | null;
+  trialEndsAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,6 +63,14 @@ const TenantSchema = new Schema<ITenant>(
       required: true,
       default: 0,
       min: 0,
+    },
+    trialStartedAt: {
+      type: Date,
+      default: null,
+    },
+    trialEndsAt: {
+      type: Date,
+      default: null,
     },
   },
   {

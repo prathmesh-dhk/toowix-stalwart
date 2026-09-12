@@ -12,6 +12,7 @@ import { AuditLogModel } from '../db/models/AuditLog';
 import { MailboxModel } from '../db/models/Mailbox';
 import { hashPassword } from '../auth/service';
 import { stalwartClient } from '../stalwart/client';
+import { activateDomain, retryVerify, DomainActivationError } from '../services/domain-activation.service';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
 
@@ -88,29 +89,9 @@ platformTenantRouter.post('/', async (req: Request, res: Response) => {
     });
   }
 
-  // Provision domain in Stalwart
-  let stalwartDomainId: string | null = null;
-  try {
-    const created = await stalwartClient.createDomain(normalizedDomain, `Tenant: ${name.trim()}`);
-    stalwartDomainId = created.id;
-  } catch (err: any) {
-    if (err.name === 'StalwartDomainExistsError' || err.code === 'DOMAIN_EXISTS') {
-      try {
-        const domains = await stalwartClient.listDomains();
-        const existing = domains.find((d) => d.name.toLowerCase() === normalizedDomain);
-        stalwartDomainId = existing ? existing.id : null;
-      } catch {
-        stalwartDomainId = null;
-      }
-    } else {
-      console.error('[Stalwart Domain Creation Error]:', err);
-      return res.status(502).json({
-        error: 'STALWART_DOMAIN_PROVISION_FAILED',
-        message: `Failed to provision domain "${normalizedDomain}" on Stalwart: ${err.message}`,
-      });
-    }
-  }
-
+  // Stalwart domain creation and DNS provisioning happen only when a Super
+  // Admin explicitly clicks "Activate Domain" later (see
+  // domain-activation.service.ts) — not at tenant-creation time.
   const tenant = await TenantModel.create({
     name: name.trim(),
     status: 'active',
@@ -121,8 +102,10 @@ platformTenantRouter.post('/', async (req: Request, res: Response) => {
   const domain = await DomainModel.create({
     tenantId: tenant._id,
     domainName: normalizedDomain,
-    stalwartDomainId,
+    stalwartDomainId: null,
     status: 'active',
+    dnsStatus: 'not_started',
+    isPrimary: true,
   });
 
   await AuditLogModel.create({
@@ -138,7 +121,6 @@ platformTenantRouter.post('/', async (req: Request, res: Response) => {
     metadata: {
       tenantId: tenant._id.toString(),
       domainId: domain._id.toString(),
-      stalwartDomainId,
       name: tenant.name,
       domain: domain.domainName,
       mailboxLimit,
@@ -157,8 +139,9 @@ platformTenantRouter.post('/', async (req: Request, res: Response) => {
     domain: {
       id: domain._id.toString(),
       domainName: domain.domainName,
-      stalwartDomainId: domain.stalwartDomainId || null,
+      stalwartDomainId: null,
       status: domain.status,
+      dnsStatus: domain.dnsStatus,
     },
     adminCount: 0,
     availableMailboxes: tenant.mailboxLimit,
@@ -327,6 +310,92 @@ platformTenantRouter.post('/:id/resend-activation', async (req: Request, res: Re
     contactEmail,
     emailSent: emailResult.success,
     emailError: emailResult.error,
+  });
+});
+
+// 2c. Activate Domain (DNS/mail provisioning via Stalwart + GoDaddy — distinct
+// from "/:id/activate" above, which only activates the Tenant Admin's login).
+platformTenantRouter.post('/:id/domains/:domainId/activate', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });
+  }
+
+  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId: req.params.id });
+  if (!domain) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found for this tenant' });
+  }
+
+  try {
+    const result = await activateDomain(req.params.domainId, {
+      id: req.adminUser!.id,
+      email: req.adminUser!.email,
+      role: req.adminUser!.role,
+    });
+    return res.status(200).json({
+      success: true,
+      dnsStatus: result.dnsStatus,
+      dnsRecords: result.dnsRecords || [],
+      dnsConflicts: result.dnsConflicts || [],
+    });
+  } catch (err: any) {
+    if (err instanceof DomainActivationError) {
+      return res.status(err.statusCode).json({ error: err.code, message: err.message });
+    }
+    console.error('[Domain Activation Error]:', err);
+    return res.status(502).json({ error: 'DOMAIN_ACTIVATION_FAILED', message: err.message || 'Domain activation failed' });
+  }
+});
+
+// 2d. Retry / Verify Domain Activation
+platformTenantRouter.post('/:id/domains/:domainId/retry-verify', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });
+  }
+
+  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId: req.params.id });
+  if (!domain) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found for this tenant' });
+  }
+
+  try {
+    const result = await retryVerify(req.params.domainId, {
+      id: req.adminUser!.id,
+      email: req.adminUser!.email,
+      role: req.adminUser!.role,
+    });
+    return res.status(200).json({
+      success: true,
+      dnsStatus: result.dnsStatus,
+      dnsRecords: result.dnsRecords || [],
+      dnsConflicts: result.dnsConflicts || [],
+    });
+  } catch (err: any) {
+    if (err instanceof DomainActivationError) {
+      return res.status(err.statusCode).json({ error: err.code, message: err.message });
+    }
+    console.error('[Domain Retry/Verify Error]:', err);
+    return res.status(502).json({ error: 'DOMAIN_RETRY_FAILED', message: err.message || 'Domain retry/verify failed' });
+  }
+});
+
+// 2e. Domain DNS Activation Status
+platformTenantRouter.get('/:id/domains/:domainId/dns-status', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });
+  }
+
+  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId: req.params.id });
+  if (!domain) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found for this tenant' });
+  }
+
+  return res.status(200).json({
+    dnsStatus: domain.dnsStatus,
+    dnsRecords: domain.dnsRecords || [],
+    dnsConflicts: domain.dnsConflicts || [],
+    dnsVerificationStartedAt: domain.dnsVerificationStartedAt,
+    dnsVerifiedAt: domain.dnsVerifiedAt,
+    activatedAt: domain.activatedAt,
   });
 });
 

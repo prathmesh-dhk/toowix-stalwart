@@ -101,6 +101,26 @@ describe.skipIf(!isStalwartOnline)('Phase 5: Stalwart Integration Client (Live S
     ).resolves.not.toThrow();
   });
 
+  it('should query active DKIM keys for the created domain without errors', async () => {
+    const keys = await stalwartClient.getActiveDkimKeys(createdDomainId);
+    expect(Array.isArray(keys)).toBe(true);
+    for (const key of keys) {
+      expect(key.selector).toBeTruthy();
+      expect(key.publicKey).toBeTruthy();
+      expect(key.stage).toBe('active');
+      expect(['Dkim1RsaSha256', 'Dkim1Ed25519Sha256']).toContain(key.algorithm);
+    }
+  });
+
+  it('should fetch a single domain by ID and verify manual DKIM and ACME TLS configuration', async () => {
+    const domain = await stalwartClient.getDomain(createdDomainId);
+    expect(domain).not.toBeNull();
+    expect(domain?.name).toBe('phase5-test.test');
+    expect(domain?.dnsZoneFile).toBeTruthy();
+    expect((domain as any)?.dkimManagement?.['@type']).toBe('Manual');
+    expect((domain as any)?.certificateManagement?.['@type']).toBe('Automatic');
+  });
+
   it('should delete the domain and its linked DKIM keys successfully', async () => {
     await expect(
       stalwartClient.deleteDomain(createdDomainId)
@@ -140,7 +160,8 @@ describe('Phase 5: Stalwart Client Unit Tests (Offline / Mocked)', () => {
     expect(domains[1].name).toBe('acme.com');
   });
 
-  it('should create domain and extract ID and name', async () => {
+  it('should create domain with manual DKIM and ACME TLS certificate management', async () => {
+    client.setAcmeProviderId('mock-acme-prov-1');
     const mockDispatch = vi.fn().mockResolvedValue([
       [
         'x:Domain/set',
@@ -167,6 +188,13 @@ describe('Phase 5: Stalwart Client Unit Tests (Offline / Mocked)', () => {
               name: 'newdomain.org',
               description: 'Test Org',
               isEnabled: true,
+              dkimManagement: {
+                '@type': 'Manual',
+              },
+              certificateManagement: {
+                '@type': 'Automatic',
+                acmeProviderId: 'mock-acme-prov-1',
+              },
             },
           },
         },
@@ -175,7 +203,44 @@ describe('Phase 5: Stalwart Client Unit Tests (Offline / Mocked)', () => {
     ]);
   });
 
+  it('should resolve ACME provider by account 3299314325', async () => {
+    const mockDispatch = vi.fn().mockResolvedValue([
+      [
+        'x:AcmeProvider/get',
+        {
+          list: [
+            { id: 'prov-le-1', description: 'https://acme-v02.api.letsencrypt.org/directory (3299314325)' },
+          ],
+        },
+        'c_get_acme_prov',
+      ],
+    ]);
+    (client as any).dispatch = mockDispatch;
+
+    const provId = await client.getAcmeProviderId();
+    expect(provId).toBe('prov-le-1');
+  });
+
+  it('should resolve ACME provider by Let\'s Encrypt directory URL', async () => {
+    const mockDispatch = vi.fn().mockResolvedValue([
+      [
+        'x:AcmeProvider/get',
+        {
+          list: [
+            { id: 'prov-le-2', directory: 'https://acme-v02.api.letsencrypt.org/directory' },
+          ],
+        },
+        'c_get_acme_prov',
+      ],
+    ]);
+    (client as any).dispatch = mockDispatch;
+
+    const provId = await client.getAcmeProviderId();
+    expect(provId).toBe('prov-le-2');
+  });
+
   it('should throw StalwartDomainExistsError on duplicate domain creation', async () => {
+    client.setAcmeProviderId('mock-acme-prov-1');
     const mockDispatch = vi.fn().mockResolvedValue([
       [
         'x:Domain/set',
@@ -394,6 +459,63 @@ describe('Phase 5: Stalwart Client Unit Tests (Offline / Mocked)', () => {
     expect(mockDispatch).toHaveBeenCalledWith([
       ['x:Account/set', { accountId: 'b', destroy: ['acc-to-delete'] }, 'c_del_acc'],
     ]);
+  });
+
+  it('should filter DKIM signatures by domainId and active stage only', async () => {
+    const mockDispatch = vi.fn().mockResolvedValue([
+      [
+        'x:DkimSignature/get',
+        {
+          list: [
+            { id: 'k1', domainId: 'dom-a', selector: 'v1-rsa-20260101', '@type': 'Dkim1RsaSha256', publicKey: 'PK_RSA', stage: 'active' },
+            { id: 'k2', domainId: 'dom-a', selector: 'v1-ed25519-20260101', '@type': 'Dkim1Ed25519Sha256', publicKey: 'PK_ED', stage: 'active' },
+            { id: 'k3', domainId: 'dom-b', selector: 'v1-rsa-20260101', '@type': 'Dkim1RsaSha256', publicKey: 'PK_OTHER', stage: 'active' },
+            { id: 'k4', domainId: 'dom-a', selector: 'v0-rsa-20250101', '@type': 'Dkim1RsaSha256', publicKey: 'PK_RETIRED', stage: 'retired' },
+          ],
+        },
+        'c_get_dkim_active',
+      ],
+    ]);
+    (client as any).dispatch = mockDispatch;
+
+    const keys = await client.getActiveDkimKeys('dom-a');
+    expect(keys).toHaveLength(2);
+    expect(keys.map((k) => k.id).sort()).toEqual(['k1', 'k2']);
+    expect(keys.every((k) => k.stage === 'active')).toBe(true);
+  });
+
+  it('should fetch a single domain by ID via ids filter', async () => {
+    const mockDispatch = vi.fn().mockResolvedValue([
+      [
+        'x:Domain/get',
+        { list: [{ id: 'dom-1', name: 'toowix.test', isEnabled: true, dnsZoneFile: 'zone...' }] },
+        'c_get_dom',
+      ],
+    ]);
+    (client as any).dispatch = mockDispatch;
+
+    const domain = await client.getDomain('dom-1');
+    expect(domain).toEqual({
+      id: 'dom-1',
+      name: 'toowix.test',
+      isEnabled: true,
+      createdAt: undefined,
+      description: undefined,
+      dnsZoneFile: 'zone...',
+    });
+    expect(mockDispatch).toHaveBeenCalledWith([
+      ['x:Domain/get', { accountId: 'b', ids: ['dom-1'] }, 'c_get_dom'],
+    ]);
+  });
+
+  it('should return null from getDomain when the domain is not found', async () => {
+    const mockDispatch = vi.fn().mockResolvedValue([
+      ['x:Domain/get', { list: [] }, 'c_get_dom'],
+    ]);
+    (client as any).dispatch = mockDispatch;
+
+    const domain = await client.getDomain('missing-id');
+    expect(domain).toBeNull();
   });
 
   it('should delete linked DKIM signatures when deleting domain', async () => {

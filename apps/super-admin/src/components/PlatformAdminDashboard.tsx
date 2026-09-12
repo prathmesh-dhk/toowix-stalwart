@@ -18,6 +18,8 @@ import {
   QrCode,
   Loader2,
   ShieldAlert,
+  Shield,
+  ArrowRight,
   LogOut,
   LayoutDashboard,
   ClipboardList,
@@ -26,6 +28,9 @@ import {
   Receipt,
   Laptop,
   BarChart3,
+  Copy,
+  Check,
+  Printer,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
@@ -78,6 +83,26 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   const [setup2FaLoading, setSetup2FaLoading] = useState(false);
   const [setup2FaError, setSetup2FaError] = useState<string | null>(null);
   const [setup2FaSuccess, setSetup2FaSuccess] = useState(false);
+  const [setupBackupCodes, setSetupBackupCodes] = useState<string[]>([]);
+  const [copiedCodes, setCopiedCodes] = useState(false);
+
+  // 2FA Setup Reminder Banner State (removable per login session)
+  const [dismissed2FaBanner, setDismissed2FaBanner] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('toowix_dismissed_2fa_banner') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleDismiss2FaBanner = () => {
+    setDismissed2FaBanner(true);
+    try {
+      sessionStorage.setItem('toowix_dismissed_2fa_banner', 'true');
+    } catch {
+      // ignore
+    }
+  };
 
   // Data States
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
@@ -331,20 +356,125 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     setSetup2FaLoading(true);
     setSetup2FaError(null);
     try {
-      await api.confirm2Fa(totpCode);
+      const res = await api.confirm2Fa(totpCode);
       setSetup2FaSuccess(true);
+      if (res.backupCodes && res.backupCodes.length > 0) {
+        setSetupBackupCodes(res.backupCodes);
+      }
       if (onUserUpdated && user) {
         onUserUpdated({ ...user, twoFactorEnabled: true });
       }
-      setTimeout(() => {
-        setShow2FaModal(false);
-        setSetupData(null);
-        setTotpCode('');
-      }, 1500);
+      if (!res.backupCodes || res.backupCodes.length === 0) {
+        setTimeout(() => {
+          setShow2FaModal(false);
+          setSetupData(null);
+          setTotpCode('');
+          setSetup2FaSuccess(false);
+        }, 1500);
+      }
     } catch (err: any) {
       setSetup2FaError(err.message || 'Verification failed. The code is invalid or has expired.');
     } finally {
       setSetup2FaLoading(false);
+    }
+  };
+
+  const handlePrintBackupCodes = () => {
+    if (!setupBackupCodes.length) return;
+    try {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        window.print();
+        return;
+      }
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Toowix Mail - Emergency Backup Codes</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                padding: 40px;
+                color: #0f172a;
+                max-width: 480px;
+                margin: 0 auto;
+              }
+              .header {
+                border-bottom: 2px solid #e2e8f0;
+                padding-bottom: 16px;
+                margin-bottom: 20px;
+              }
+              h1 {
+                font-size: 20px;
+                margin: 0 0 6px 0;
+                color: #0f172a;
+              }
+              p {
+                font-size: 13px;
+                color: #64748b;
+                margin: 0;
+                line-height: 1.5;
+              }
+              .alert {
+                background: #fffbeb;
+                border: 1px solid #fde68a;
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-size: 12px;
+                color: #92400e;
+                margin: 16px 0 20px 0;
+              }
+              .codes-block {
+                background: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 18px 24px;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 15px;
+                line-height: 1.9;
+                text-align: center;
+                font-weight: 700;
+                letter-spacing: 1.5px;
+              }
+              .code-row {
+                padding: 1px 0;
+              }
+              .footer {
+                margin-top: 24px;
+                font-size: 11px;
+                color: #94a3b8;
+                text-align: center;
+                border-top: 1px solid #f1f5f9;
+                padding-top: 12px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Toowix Mail - Emergency Backup Codes</h1>
+              <p>Keep these 10 single-use codes in a safe place. Each code can only be used once to bypass two-factor authentication.</p>
+            </div>
+            <div class="alert">
+              Important: Each code can only be used once. If you regenerate new codes, all previous codes will stop working.
+            </div>
+            <div class="codes-block">
+              ${setupBackupCodes.map((code) => `
+                <div class="code-row">${code}</div>
+              `).join('')}
+            </div>
+            <div class="footer">
+              Generated on ${new Date().toLocaleDateString()} &bull; Toowix Account Security
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    } catch {
+      window.print();
     }
   };
 
@@ -638,6 +768,62 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             />
           )}
 
+          {/* 2FA Setup Reminder Banner (Removable per login session) */}
+          {!user?.twoFactorEnabled && !dismissed2FaBanner && (
+            <div
+              role="region"
+              aria-label="Two-Factor Authentication Setup Notice"
+              className="relative overflow-hidden bg-gradient-to-r from-indigo-50/90 via-blue-50/40 to-white border border-indigo-100/90 rounded-2xl p-4 sm:p-5 shadow-xs transition-all animate-in fade-in duration-200"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                    <Shield className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        Enhance account security with Two-Factor Authentication
+                      </h3>
+                      <span className="px-2 py-0.5 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 rounded-full">
+                        Recommended
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+                      Protect your super administrator platform controls from unauthorized access. Set up an authenticator app (TOTP) to secure your account.
+                    </p>
+                    <div className="mt-2.5 flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleOpen2FaSetup}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
+                      >
+                        <span>Set up 2FA</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDismiss2FaBanner}
+                        className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 transition-colors"
+                      >
+                        Remind me later
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDismiss2FaBanner}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors shrink-0"
+                  aria-label="Dismiss 2FA notification"
+                  title="Dismiss for this session"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Tab Views */}
           {activeTab === 'dashboard' && (
             <DashboardOverviewView
@@ -809,13 +995,75 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               )}
 
               {setup2FaSuccess ? (
-                <div className="text-center py-6 space-y-2">
-                  <CheckCircle2 size={40} className="text-emerald-600 mx-auto" />
-                  <div className="font-bold text-slate-900 text-sm">2FA Successfully Enabled</div>
-                  <p className="text-slate-500 text-xs">
-                    Your account is now secured with TOTP verification.
-                  </p>
-                </div>
+                setupBackupCodes.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="text-center py-2 space-y-1">
+                      <CheckCircle2 size={32} className="text-emerald-600 mx-auto" />
+                      <div className="font-bold text-slate-900 text-sm">2FA Successfully Enabled</div>
+                      <p className="text-slate-500 text-xs">
+                        Save these 10 emergency backup codes in a safe place. Each code can be used once to bypass 2FA. A copy has also been sent to your email.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 font-mono text-sm font-semibold tracking-widest text-slate-900 text-center select-all space-y-1.5">
+                      {setupBackupCodes.map((c, i) => (
+                        <div key={i}>
+                          {c}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        onClick={() => {
+                          navigator.clipboard.writeText(setupBackupCodes.join('\n'));
+                          setCopiedCodes(true);
+                          setTimeout(() => setCopiedCodes(false), 2000);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5"
+                      >
+                        {copiedCodes ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                        <span>{copiedCodes ? 'Copied' : 'Copy all'}</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        onClick={handlePrintBackupCodes}
+                        className="flex items-center justify-center gap-1.5 px-3.5"
+                      >
+                        <Printer size={14} />
+                        <span>Print</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="md"
+                        onClick={() => {
+                          setShow2FaModal(false);
+                          setSetupData(null);
+                          setTotpCode('');
+                          setSetup2FaSuccess(false);
+                          setSetupBackupCodes([]);
+                        }}
+                        className="flex-1"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 space-y-2">
+                    <CheckCircle2 size={40} className="text-emerald-600 mx-auto" />
+                    <div className="font-bold text-slate-900 text-sm">2FA Successfully Enabled</div>
+                    <p className="text-slate-500 text-xs">
+                      Your account is now secured with TOTP verification.
+                    </p>
+                  </div>
+                )
               ) : setup2FaLoading && !setupData ? (
                 <div className="text-center py-8 text-slate-500 text-xs">
                   Generating authentication secret...

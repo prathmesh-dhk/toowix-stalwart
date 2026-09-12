@@ -24,6 +24,20 @@ export interface OtpEmailParams {
   expiresMinutes?: number;
 }
 
+export interface BackupCodesEmailParams {
+  to: string;
+  recipientName?: string;
+  backupCodes: string[];
+}
+
+export interface DomainActivationFailedEmailParams {
+  to: string;
+  recipientName?: string;
+  domainName: string;
+  reason: 'conflict' | 'propagation_timeout';
+  conflictDetails?: Array<{ type: string; name: string; foundValue: string }>;
+}
+
 export interface EmailDispatchResult {
   success: boolean;
   activationLink: string;
@@ -620,6 +634,188 @@ This code will expire in ${expiresMinutes} minutes. If you did not attempt to si
       console.warn(`OTP Code: ${params.otpCode}`);
       console.warn(`============================================================\n`);
 
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Dispatches emergency 2FA backup codes to the administrator's email.
+   */
+  async sendBackupCodesEmail(params: BackupCodesEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const subject = 'Toowix Security: Your 2FA Emergency Backup Codes';
+    const formattedCodeList = params.backupCodes.map((code, idx) => `  ${idx + 1}. ${code}`).join('\n');
+    const text = `
+Hello ${params.recipientName || 'Administrator'},
+
+Two-factor authentication has been enabled or updated for your Toowix administrator account.
+
+Here are your 10 single-use emergency backup codes. Keep them in a safe place. If you ever lose access to your authenticator app or email verification, each backup code can be used once to sign in.
+
+${formattedCodeList}
+
+Important:
+- Each backup code can only be used once.
+- Once used, the code is deactivated.
+- You can regenerate new backup codes at any time from your Security Settings.
+
+— The Toowix Security Team
+    `.trim();
+
+    const codeHtmlItems = params.backupCodes
+      .map(
+        (code) =>
+          `<div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px 14px; font-family: monospace; font-size: 1.05rem; font-weight: 600; color: #a5b4fc; text-align: center; letter-spacing: 1px;">${code}</div>`
+      )
+      .join('');
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
+  <div style="max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
+    <div style="display: flex; align-items: center; margin-bottom: 24px;">
+      <div style="background: #6366f1; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">T</div>
+      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
+    </div>
+    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.35rem;">Emergency 2FA Backup Codes</h2>
+    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
+      Hello ${params.recipientName || 'Administrator'},<br/>
+      Two-factor authentication has been configured for your account. Below are your <strong>10 emergency backup codes</strong>. Store them in a secure place:
+    </p>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 24px 0;">
+      ${codeHtmlItems}
+    </div>
+    <div style="background: #0f172a; border-left: 4px solid #6366f1; border-radius: 4px; padding: 14px 16px; margin: 20px 0;">
+      <p style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.5; margin: 0;">
+        • Each code can only be used <strong>once</strong> to bypass 2FA.<br/>
+        • If you exhaust these codes or suspect compromise, regenerate them in your <strong>Security Settings</strong>.
+      </p>
+    </div>
+    <p style="color: #64748b; font-size: 0.8rem; margin-top: 24px; line-height: 1.4;">
+      If you did not enable two-factor authentication, please contact your platform administrator immediately.
+    </p>
+  </div>
+</body>
+</html>
+    `.trim();
+
+    try {
+      const transporter = this.getTransporter();
+      const info = await transporter.sendMail({
+        from: config.smtp.from,
+        to: params.to,
+        subject,
+        text,
+        html,
+      });
+
+      console.log(`\n============================================================`);
+      console.log(`[EMAIL DISPATCH: SUCCESS] 2FA Backup Codes`);
+      console.log(`To: ${params.to}`);
+      console.log(`Codes: ${params.backupCodes.join(', ')}`);
+      console.log(`Message ID: ${info.messageId}`);
+      console.log(`============================================================\n`);
+
+      return { success: true, messageId: info.messageId };
+    } catch (err: any) {
+      console.warn(`\n============================================================`);
+      console.warn(`[EMAIL DISPATCH: BACKUP CODES FALLBACK / LOGGED]`);
+      console.warn(`Could not deliver backup codes to ${params.to} via SMTP: ${err.message}`);
+      console.warn(`Backup Codes:\n${params.backupCodes.join('\n')}`);
+      console.warn(`============================================================\n`);
+
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Notifies an admin (Tenant Admin and/or Super Admin — caller sends one
+   * per recipient) that a domain's DNS activation stopped: either a
+   * pre-existing conflicting record was found, or the propagation retry
+   * window (see SystemSettings.dnsActivationMaxHours) elapsed without the
+   * required records verifying publicly.
+   */
+  async sendDomainActivationFailedEmail(
+    params: DomainActivationFailedEmailParams
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const subject =
+      params.reason === 'conflict'
+        ? `Action required: DNS conflict detected for ${params.domainName}`
+        : `Action required: DNS activation timed out for ${params.domainName}`;
+
+    const reasonText =
+      params.reason === 'conflict'
+        ? `A conflicting DNS record was found for ${params.domainName} that Toowix will not overwrite automatically:\n\n` +
+          (params.conflictDetails || [])
+            .map((c) => `  - ${c.type} ${c.name}: ${c.foundValue}`)
+            .join('\n')
+        : `The required DNS records for ${params.domainName} were not detected as published within the allowed verification window.`;
+
+    const text = `
+Hello ${params.recipientName || 'Administrator'},
+
+Domain activation for ${params.domainName} has stopped and needs attention.
+
+${reasonText}
+
+Resolve the issue with your DNS provider, then use "Retry / Verify" in the Toowix Admin portal to continue activation. No mail service or existing data has been affected.
+
+— The Toowix Platform Team
+    `.trim();
+
+    const conflictHtmlRows = (params.conflictDetails || [])
+      .map(
+        (c) =>
+          `<tr><td style="padding:6px 10px;border:1px solid #334155;font-family:monospace;">${c.type}</td><td style="padding:6px 10px;border:1px solid #334155;font-family:monospace;">${c.name}</td><td style="padding:6px 10px;border:1px solid #334155;font-family:monospace;">${c.foundValue}</td></tr>`
+      )
+      .join('');
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
+  <div style="max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
+    <div style="display: flex; align-items: center; margin-bottom: 24px;">
+      <div style="background: #ef4444; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">!</div>
+      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
+    </div>
+    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.35rem;">Domain activation stopped: ${params.domainName}</h2>
+    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
+      Hello ${params.recipientName || 'Administrator'},<br/>
+      ${
+        params.reason === 'conflict'
+          ? 'A conflicting DNS record was found and Toowix will not overwrite it automatically:'
+          : 'The required DNS records were not detected as published within the allowed verification window.'
+      }
+    </p>
+    ${
+      params.conflictDetails && params.conflictDetails.length
+        ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:0.85rem;color:#cbd5e1;"><thead><tr><th style="padding:6px 10px;border:1px solid #334155;text-align:left;">Type</th><th style="padding:6px 10px;border:1px solid #334155;text-align:left;">Name</th><th style="padding:6px 10px;border:1px solid #334155;text-align:left;">Existing Value</th></tr></thead><tbody>${conflictHtmlRows}</tbody></table>`
+        : ''
+    }
+    <p style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.5;">
+      Resolve the issue with your DNS provider, then use <strong>Retry / Verify</strong> in the Toowix Admin portal to continue activation. No mail service or existing data has been affected.
+    </p>
+  </div>
+</body>
+</html>
+    `.trim();
+
+    try {
+      const transporter = this.getTransporter();
+      const info = await transporter.sendMail({
+        from: config.smtp.from,
+        to: params.to,
+        subject,
+        text,
+        html,
+      });
+      console.log(`[EMAIL DISPATCH: SUCCESS] Domain Activation Failed (${params.reason}) -> ${params.to}`);
+      return { success: true, messageId: info.messageId };
+    } catch (err: any) {
+      console.warn(`[EMAIL DISPATCH: FALLBACK / LOGGED] Domain Activation Failed email to ${params.to}: ${err.message}`);
       return { success: false, error: err.message };
     }
   }

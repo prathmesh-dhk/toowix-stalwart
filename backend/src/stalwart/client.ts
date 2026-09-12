@@ -6,6 +6,7 @@ import {
   StalwartAccount,
   CreateAccountInput,
   StalwartCreatedAccount,
+  StalwartDkimKey,
 } from './types';
 import {
   StalwartError,
@@ -18,6 +19,7 @@ export class StalwartClient {
   private readonly baseUrl: string;
   private readonly authHeader: string;
   private readonly accountId: string;
+  private cachedAcmeProviderId: string | null = null;
 
   constructor() {
     this.baseUrl = config.stalwart.url.replace(/\/+$/, '');
@@ -92,14 +94,136 @@ export class StalwartClient {
     }
   }
 
+  /**
+   * Clears the cached ACME provider ID.
+   */
+  clearCachedAcmeProviderId(): void {
+    this.cachedAcmeProviderId = null;
+  }
+
+  /**
+   * Explicitly sets or overrides the cached ACME provider ID.
+   */
+  setAcmeProviderId(id: string | null): void {
+    this.cachedAcmeProviderId = id;
+  }
+
+  /**
+   * Resolves the ACME provider ID configured on Stalwart.
+   * Prioritizes:
+   * 1. Cached provider ID
+   * 2. Explicit config (STALWART_ACME_PROVIDER_ID)
+   * 3. Provider matching account 3299314325 (from Stalwart UI)
+   * 4. Provider matching Let's Encrypt directory
+   * 5. First available provider in Stalwart
+   * 6. Auto-creation of Let's Encrypt provider if none exist
+   */
+  async getAcmeProviderId(): Promise<string | null> {
+    if (this.cachedAcmeProviderId) {
+      return this.cachedAcmeProviderId;
+    }
+
+    if (config.stalwart.acmeProviderId) {
+      this.cachedAcmeProviderId = config.stalwart.acmeProviderId;
+      return this.cachedAcmeProviderId;
+    }
+
+    try {
+      const responses = await this.dispatch([
+        [
+          'x:AcmeProvider/get',
+          { accountId: this.accountId },
+          'c_get_acme_prov',
+        ],
+      ]);
+
+      const list: any[] = responses[0]?.[1]?.list || [];
+      if (list.length > 0) {
+        // Priority 1: Match account 3299314325 (account ID from user setup)
+        const byAccount = list.find((p: any) =>
+          p.id === '3299314325' ||
+          (typeof p.description === 'string' && p.description.includes('3299314325')) ||
+          (typeof p.accountUri === 'string' && p.accountUri.includes('3299314325'))
+        );
+        if (byAccount) {
+          this.cachedAcmeProviderId = byAccount.id;
+          return this.cachedAcmeProviderId;
+        }
+
+        // Priority 2: Match Let's Encrypt directory
+        const byDirectory = list.find((p: any) =>
+          typeof p.directory === 'string' && p.directory.includes('acme-v02.api.letsencrypt.org')
+        );
+        if (byDirectory) {
+          this.cachedAcmeProviderId = byDirectory.id;
+          return this.cachedAcmeProviderId;
+        }
+
+        // Priority 3: First available provider
+        this.cachedAcmeProviderId = list[0].id;
+        return this.cachedAcmeProviderId;
+      }
+
+      // If no provider exists on Stalwart, attempt to create default Let's Encrypt ACME provider
+      const adminEmail = config.smtp.user || 'admin@toowix.com';
+      const createResponses = await this.dispatch([
+        [
+          'x:AcmeProvider/set',
+          {
+            accountId: this.accountId,
+            create: {
+              acme_le: {
+                directory: 'https://acme-v02.api.letsencrypt.org/directory',
+                contact: { [`mailto:${adminEmail}`]: true },
+              },
+            },
+          },
+          'c_create_acme_prov',
+        ],
+      ]);
+
+      const createdId = createResponses[0]?.[1]?.created?.acme_le?.id;
+      if (createdId) {
+        this.cachedAcmeProviderId = createdId;
+        return this.cachedAcmeProviderId;
+      }
+    } catch {
+      // In case dispatch fails (e.g. mock test or offline network), return null
+    }
+
+    return null;
+  }
+
   // --- Domain Methods ---
 
   /**
-   * Creates a domain on Stalwart.
+   * Creates a domain on Stalwart with Manual DKIM management and ACME TLS certificate management.
    */
-  async createDomain(domainName: string, description?: string): Promise<{ id: string; name: string }> {
+  async createDomain(
+    domainName: string,
+    description?: string,
+    options?: { acmeProviderId?: string }
+  ): Promise<{ id: string; name: string }> {
     const normalized = domainName.trim().toLowerCase();
     const tempId = 'dom_new';
+
+    const acmeProviderId = options?.acmeProviderId ?? (await this.getAcmeProviderId());
+
+    const domainPayload: any = {
+      name: normalized,
+      description: description || null,
+      isEnabled: true,
+      dkimManagement: {
+        '@type': 'Manual',
+      },
+    };
+
+    if (acmeProviderId) {
+      domainPayload.certificateManagement = {
+        '@type': 'Automatic',
+        acmeProviderId,
+      };
+    }
 
     const responses = await this.dispatch([
       [
@@ -107,11 +231,7 @@ export class StalwartClient {
         {
           accountId: this.accountId,
           create: {
-            [tempId]: {
-              name: normalized,
-              description: description || null,
-              isEnabled: true,
-            },
+            [tempId]: domainPayload,
           },
         },
         'c_create_dom',
@@ -151,7 +271,59 @@ export class StalwartClient {
       createdAt: d.createdAt,
       description: d.description,
       dnsZoneFile: d.dnsZoneFile,
+      dkimManagement: d.dkimManagement,
+      certificateManagement: d.certificateManagement,
     }));
+  }
+
+  /**
+   * Retrieves a single domain by its Stalwart ID (efficient single lookup
+   * used by the domain-activation orchestrator instead of listing all).
+   */
+  async getDomain(domainId: string): Promise<StalwartDomain | null> {
+    const responses = await this.dispatch([
+      ['x:Domain/get', { accountId: this.accountId, ids: [domainId] }, 'c_get_dom'],
+    ]);
+    const list = responses[0]?.[1]?.list || [];
+    const d = list[0];
+    if (!d) return null;
+    return {
+      id: d.id,
+      name: d.name,
+      isEnabled: d.isEnabled,
+      createdAt: d.createdAt,
+      description: d.description,
+      dnsZoneFile: d.dnsZoneFile,
+      dkimManagement: d.dkimManagement,
+      certificateManagement: d.certificateManagement,
+    };
+  }
+
+  /**
+   * Returns the active DKIM signatures (selector + public key) for a domain.
+   * Stalwart auto-generates these at domain creation (see
+   * docs/STALWART_API_NOTES.md §7) — normally one RSA + one Ed25519 entry.
+   * `x:DkimSignature/get` has no server-side domainId filter, so this fetches
+   * the full list and filters client-side, mirroring the existing pattern in
+   * deleteDomain() below. Private key material is never returned by Stalwart
+   * over this API (redacted server-side), so there is nothing to leak here.
+   */
+  async getActiveDkimKeys(domainId: string): Promise<StalwartDkimKey[]> {
+    const responses = await this.dispatch([
+      ['x:DkimSignature/get', { accountId: this.accountId, ids: null }, 'c_get_dkim_active'],
+    ]);
+    const list = responses[0]?.[1]?.list || [];
+    return list
+      .filter((k: any) => k.domainId === domainId && k.stage === 'active')
+      .map((k: any) => ({
+        id: k.id,
+        domainId: k.domainId,
+        selector: k.selector,
+        algorithm: k['@type'],
+        publicKey: k.publicKey,
+        stage: k.stage,
+        createdAt: k.createdAt,
+      }));
   }
 
   /**

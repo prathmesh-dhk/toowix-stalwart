@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -46,7 +46,11 @@ export interface LoginResponse {
   hasRecoveryEmail?: boolean;
   maskedRecoveryEmail?: string | null;
   defaultMethod?: 'totp' | 'email';
+  hasEmail2Fa?: boolean;
   maskedEmail?: string | null;
+  isRecoveryEmail?: boolean;
+  hasBackupCodes?: boolean;
+  remainingBackupCodes?: number;
   user: UserContext;
 }
 
@@ -78,12 +82,12 @@ export const api = {
     }),
 
   send2FaLoginOtp: (tempToken: string) =>
-    request<{ success: boolean; message: string; maskedRecoveryEmail: string; expiresMinutes: number }>('/api/auth/2fa/send-otp', {
+    request<{ success: boolean; message: string; maskedRecoveryEmail?: string; maskedEmail?: string; isRecoveryEmail?: boolean; expiresMinutes: number }>('/api/auth/2fa/send-otp', {
       method: 'POST',
       body: JSON.stringify({ tempToken }),
     }),
 
-  verify2Fa: (tempToken: string, code: string, rememberMe?: boolean, method: 'totp' | 'email' = 'totp') =>
+  verify2Fa: (tempToken: string, code: string, rememberMe?: boolean, method: 'totp' | 'email' | 'backup_code' = 'totp') =>
     request<{ token: string; user: UserContext }>('/api/auth/2fa/verify', {
       method: 'POST',
       body: JSON.stringify({ tempToken, code, rememberMe, method }),
@@ -95,7 +99,7 @@ export const api = {
     }),
 
   confirm2Fa: (code: string) =>
-    request<{ success: boolean; message: string }>('/api/auth/2fa/confirm-setup', {
+    request<{ success: boolean; message: string; backupCodes?: string[] }>('/api/auth/2fa/confirm-setup', {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
@@ -120,6 +124,7 @@ export const api = {
       hasTotp?: boolean;
       hasSecurityQuestions: boolean;
       securityQuestions: string[];
+      hasBackupCodes?: boolean;
     }>('/api/auth/forgot-password/initiate', {
       method: 'POST',
       body: JSON.stringify({ email }),
@@ -139,6 +144,12 @@ export const api = {
 
   verifyForgotPasswordTotp: (email: string, code: string) =>
     request<{ success: boolean; resetToken: string; message: string }>('/api/auth/forgot-password/verify-totp', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
+
+  verifyForgotPasswordBackupCode: (email: string, code: string) =>
+    request<{ success: boolean; resetToken: string; message: string }>('/api/auth/forgot-password/verify-backup-code', {
       method: 'POST',
       body: JSON.stringify({ email, code }),
     }),
@@ -234,8 +245,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ newPassword }),
     }),
+  suspendMailbox: (mailboxId: string) =>
+    request<{ message: string; mailbox: MailboxItem }>(`/api/mailboxes/${mailboxId}/suspend`, { method: 'POST' }),
+  reactivateMailbox: (mailboxId: string) =>
+    request<{ message: string; mailbox: MailboxItem }>(`/api/mailboxes/${mailboxId}/reactivate`, { method: 'POST' }),
   deleteMailbox: (mailboxId: string) =>
     request<{ message: string }>(`/api/mailboxes/${mailboxId}`, { method: 'DELETE' }),
+  getStorageUsage: (domainId?: string) => {
+    const q = domainId ? `?domainId=${encodeURIComponent(domainId)}` : '';
+    return request<TenantStorageResponse>(`/api/tenants/me/storage${q}`);
+  },
 
   // Audit Logs & System Status
   getAuditLogs: (params?: { limit?: number; offset?: number; tenantId?: string; action?: string }) => {
@@ -441,7 +460,14 @@ export const api = {
     }),
 
   update2FaMode: (mode: 'totp' | 'email' | 'disabled') =>
-    request<{ success: boolean; message: string; twoFactorEnabled: boolean; twoFactorMethod: 'totp' | 'email' | null }>('/api/auth/security/2fa/mode', {
+    request<{
+      success: boolean;
+      message: string;
+      twoFactorEnabled: boolean;
+      twoFactorMethod: 'totp' | 'email' | null;
+      backupCodes?: string[];
+      remainingBackupCodes?: number;
+    }>('/api/auth/security/2fa/mode', {
       method: 'POST',
       body: JSON.stringify({ mode }),
     }),
@@ -452,9 +478,19 @@ export const api = {
     }),
 
   confirmTotp2Fa: (code: string) =>
-    request<{ success: boolean; message: string }>('/api/auth/2fa/confirm-setup', {
+    request<{ success: boolean; message: string; backupCodes?: string[] }>('/api/auth/2fa/confirm-setup', {
       method: 'POST',
       body: JSON.stringify({ code }),
+    }),
+
+  regenerateBackupCodes: () =>
+    request<{
+      success: boolean;
+      message: string;
+      backupCodes: string[];
+      remainingBackupCodes: number;
+    }>('/api/auth/security/2fa/backup-codes/regenerate', {
+      method: 'POST',
     }),
 };
 

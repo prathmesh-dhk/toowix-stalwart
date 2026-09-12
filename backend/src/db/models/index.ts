@@ -1,5 +1,6 @@
 export * from './Tenant';
 export * from './Domain';
+export * from './DomainDnsCredential';
 export * from './AdminUser';
 export * from './Mailbox';
 export * from './RegistrationApplication';

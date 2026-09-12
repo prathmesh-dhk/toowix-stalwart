@@ -132,9 +132,17 @@ describe('TenantAdminLoginView Component', () => {
     const form = screen.getByRole('button', { name: /^sign in$/i }).closest('form')!;
     fireEvent.submit(form);
 
-    // 2FA challenge screen appears
+    // 2FA challenge screen appears - Step 1: Select Method
     expect(await screen.findByText(/two-factor authentication/i)).toBeInTheDocument();
-    expect(screen.getByText('Authenticator code', { exact: true })).toBeInTheDocument();
+    expect(screen.getByText(/Choose a verification method to complete sign in/i)).toBeInTheDocument();
+    expect(screen.getByText('Authenticator app')).toBeInTheDocument();
+
+    // Click Continue to proceed to OTP entry
+    const continueBtn = screen.getByRole('button', { name: /continue/i });
+    fireEvent.click(continueBtn);
+
+    // Step 2: Verify Code
+    expect(await screen.findByText('Authenticator code', { exact: true })).toBeInTheDocument();
 
     // Fill 6 digits
     const inputs = screen.getAllByRole('textbox');
@@ -155,6 +163,73 @@ describe('TenantAdminLoginView Component', () => {
           email: 'admin@acme.com',
           role: 'TENANT_ADMIN',
           tenantId: 'tenant-acme-id',
+        })
+      );
+    });
+  });
+
+  it('allows bypassing 2FA with emergency backup code via "Use backup code"', async () => {
+    vi.mocked(api.tenantAdminLogin).mockResolvedValueOnce({
+      requires2FA: true,
+      tempToken: 'tenant-temp-2fa-token-backup',
+      hasBackupCodes: true,
+      remainingBackupCodes: 10,
+      user: {
+        id: 'tenant-admin-1',
+        email: 'admin@acme.com',
+        role: 'TENANT_ADMIN',
+        tenantId: 'tenant-acme-id',
+        twoFactorEnabled: true,
+      },
+    });
+
+    vi.mocked(api.verify2Fa).mockResolvedValueOnce({
+      token: 'valid-session-backup-token',
+      user: {
+        id: 'tenant-admin-1',
+        email: 'admin@acme.com',
+        role: 'TENANT_ADMIN',
+        tenantId: 'tenant-acme-id',
+        twoFactorEnabled: true,
+      },
+    });
+
+    render(
+      <TenantAdminLoginView
+        onSuccess={onSuccess}
+        onGoToRegister={onGoToRegister}
+        onForgotPassword={onForgotPassword}
+      />
+    );
+
+    await userEvent.type(screen.getByPlaceholderText(/admin@company\.com/i), 'admin@acme.com');
+    await userEvent.type(screen.getByLabelText('Password', { exact: true }), 'TenantAdminPass123!');
+
+    fireEvent.submit(screen.getByRole('button', { name: /^sign in$/i }).closest('form')!);
+
+    // In 2FA selection screen, click "Use backup code"
+    const useBackupCodeBtn = await screen.findByRole('button', { name: /use backup code/i });
+    expect(useBackupCodeBtn).toBeInTheDocument();
+    fireEvent.click(useBackupCodeBtn);
+
+    // Emergency backup code screen rendered
+    expect(await screen.findByText(/Emergency backup code/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('XXXX-XXXX')).toBeInTheDocument();
+
+    // Enter backup code
+    const codeInput = screen.getByPlaceholderText('XXXX-XXXX');
+    await userEvent.type(codeInput, 'ABCD-1234');
+
+    const verifyBtn = screen.getByRole('button', { name: /verify and sign in/i });
+    fireEvent.click(verifyBtn);
+
+    await waitFor(() => {
+      expect(api.verify2Fa).toHaveBeenCalledWith('tenant-temp-2fa-token-backup', 'ABCD-1234', false, 'backup_code');
+      expect(onSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'tenant-admin-1',
+          email: 'admin@acme.com',
+          role: 'TENANT_ADMIN',
         })
       );
     });

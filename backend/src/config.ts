@@ -13,7 +13,8 @@ export const config = {
     url: process.env.STALWART_URL || 'https://127.0.0.1:443',
     user: process.env.STALWART_USER || 'toowix-service@toowix.test',
     password: process.env.STALWART_PASSWORD || 'ToowixServiceSecret2026!Secure',
-    accountId: process.env.STALWART_ACCOUNT_ID || 'b'
+    accountId: process.env.STALWART_ACCOUNT_ID || 'b',
+    acmeProviderId: process.env.STALWART_ACME_PROVIDER_ID || '',
   },
   tenantAdminUrl: process.env.TENANT_ADMIN_URL || 'http://localhost:5174',
   smtp: {

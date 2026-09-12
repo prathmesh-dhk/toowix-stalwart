@@ -2,6 +2,28 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export type DomainStatus = 'active' | 'suspended';
 
+export type DnsActivationStatus =
+  | 'not_started'
+  | 'activating'
+  | 'active'
+  | 'conflict'
+  | 'activation_failed';
+
+export interface IGeneratedDnsRecord {
+  type: 'MX' | 'TXT' | 'CNAME';
+  name: string;
+  value: string;
+  priority?: number | null;
+  ttl?: number;
+  purpose: string;
+}
+
+export interface IDnsConflictRecord {
+  type: string;
+  name: string;
+  foundValue: string;
+}
+
 export interface IDomain extends Document {
   tenantId: Types.ObjectId;
   domainName: string;
@@ -10,9 +32,43 @@ export interface IDomain extends Document {
   mailboxLimit: number;
   employeeCount: number;
   isPrimary?: boolean;
+
+  // Domain DNS-activation lifecycle (GoDaddy + Stalwart provisioning).
+  // Orthogonal to `status` above, which governs mail-service suspension only.
+  dnsStatus: DnsActivationStatus;
+  dnsRecords?: IGeneratedDnsRecord[];
+  dnsConflicts?: IDnsConflictRecord[];
+  dkimSelector?: string | null;
+  dkimPublicKey?: string | null;
+  dnsVerificationStartedAt?: Date | null;
+  dnsLastCheckedAt?: Date | null;
+  dnsVerifiedAt?: Date | null;
+  activatedAt?: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 }
+
+const GeneratedDnsRecordSchema = new Schema<IGeneratedDnsRecord>(
+  {
+    type: { type: String, enum: ['MX', 'TXT', 'CNAME'], required: true },
+    name: { type: String, required: true },
+    value: { type: String, required: true },
+    priority: { type: Number, default: null },
+    ttl: { type: Number, default: 3600 },
+    purpose: { type: String, required: true },
+  },
+  { _id: false }
+);
+
+const DnsConflictRecordSchema = new Schema<IDnsConflictRecord>(
+  {
+    type: { type: String, required: true },
+    name: { type: String, required: true },
+    foundValue: { type: String, required: true },
+  },
+  { _id: false }
+);
 
 const DomainSchema = new Schema<IDomain>(
   {
@@ -53,6 +109,44 @@ const DomainSchema = new Schema<IDomain>(
     isPrimary: {
       type: Boolean,
       default: false,
+    },
+    dnsStatus: {
+      type: String,
+      enum: ['not_started', 'activating', 'active', 'conflict', 'activation_failed'],
+      default: 'not_started',
+      index: true,
+    },
+    dnsRecords: {
+      type: [GeneratedDnsRecordSchema],
+      default: undefined,
+    },
+    dnsConflicts: {
+      type: [DnsConflictRecordSchema],
+      default: undefined,
+    },
+    dkimSelector: {
+      type: String,
+      default: null,
+    },
+    dkimPublicKey: {
+      type: String,
+      default: null,
+    },
+    dnsVerificationStartedAt: {
+      type: Date,
+      default: null,
+    },
+    dnsLastCheckedAt: {
+      type: Date,
+      default: null,
+    },
+    dnsVerifiedAt: {
+      type: Date,
+      default: null,
+    },
+    activatedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

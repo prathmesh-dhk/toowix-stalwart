@@ -12,6 +12,7 @@ import {
   EyeOff,
   Loader2,
   AlertCircle,
+  KeyRound,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 
@@ -22,7 +23,7 @@ interface ForgotPasswordViewProps {
   initialEmail?: string;
 }
 
-export type RecoveryMode = 'current_otp' | 'recovery_otp' | 'totp' | 'questions';
+export type RecoveryMode = 'current_otp' | 'recovery_otp' | 'totp' | 'questions' | 'backup_code';
 
 export function maskEmailPreview(email: string): string {
   if (!email || !email.includes('@')) return '';
@@ -64,10 +65,12 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   const [hasTotp, setHasTotp] = useState(false);
   const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
   const [questions, setQuestions] = useState<string[]>([]);
+  const [hasBackupCodes, setHasBackupCodes] = useState(false);
 
-  // Selected recovery mode: 1. current_otp, 2. recovery_otp, 3. totp, 4. questions
+  // Selected recovery mode: 1. current_otp, 2. recovery_otp, 3. totp, 4. questions, 5. backup_code
   const [recoveryMode, setRecoveryMode] = useState<RecoveryMode>('current_otp');
-  const [recoveryStep, setRecoveryStep] = useState<'select' | 'verify'>('select');
+  const [recoveryStep, setRecoveryStep] = useState<'select' | 'verify'>('verify');
+  const [backupCode, setBackupCode] = useState('');
 
   // OTP State (shared for current email, recovery email, and totp)
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
@@ -103,7 +106,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
   // Focus first digit when entering verify step
   useEffect(() => {
-    if (stage === 2 && recoveryStep === 'verify' && recoveryMode !== 'questions') {
+    if (stage === 2 && recoveryStep === 'verify' && recoveryMode !== 'questions' && recoveryMode !== 'backup_code') {
       setTimeout(() => {
         digitRefs.current[0]?.focus();
       }, 100);
@@ -141,15 +144,26 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
     digitRefs.current[nextIndex]?.focus();
   };
 
-  // Reset digit inputs when switching modes
-  const handleSwitchMode = (mode: RecoveryMode) => {
-    setRecoveryMode(mode);
+  // Switch mode directly and proceed to verification
+  const handleSelectMode = async (mode: RecoveryMode) => {
     setError(null);
+    setRecoveryMode(mode);
     setDigits(['', '', '', '', '', '']);
+    setRecoveryStep('verify');
+
+    if (mode === 'current_otp') {
+      await handleSendOtp('current');
+    } else if (mode === 'recovery_otp') {
+      await handleSendOtp('recovery');
+    } else if (mode === 'questions') {
+      setAnswers({});
+    } else if (mode === 'backup_code') {
+      setBackupCode('');
+    }
   };
 
   // =========================================================================
-  // STAGE 1: Check Account & Fetch Available Modes
+  // STAGE 1: Check Account & Directly Open Email Verification Method
   // =========================================================================
   const handleStage1Submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,12 +184,22 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       setHasTotp(!!res.hasTotp);
       setHasSecurityQuestions(!!(res.securityQuestions && res.securityQuestions.length === 3));
       setQuestions(res.securityQuestions || []);
+      setHasBackupCodes(!!res.hasBackupCodes);
 
-      // Default to 1. OTP on current email
+      // Directly open email method without the mode of recovery screen
       setRecoveryMode('current_otp');
       setDigits(['', '', '', '', '', '']);
-      setRecoveryStep('select');
+      setRecoveryStep('verify');
       setStage(2);
+
+      // Automatically dispatch verification code to email
+      try {
+        await api.sendForgotPasswordOtp(email.trim(), 'current');
+        setOtpCooldown(60);
+        setOtpSentTarget('current');
+      } catch (otpErr: any) {
+        setError(otpErr.message || 'Failed to dispatch verification code to email.');
+      }
     } catch (err: any) {
       setError(err.message || 'No active administrator account was found for this email address.');
     } finally {
@@ -202,43 +226,6 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       return false;
     } finally {
       setSendingOtp(false);
-    }
-  };
-
-  // =========================================================================
-  // STAGE 2: Next button click from mode selection
-  // =========================================================================
-  const handleProceedToVerification = async () => {
-    setError(null);
-    if (recoveryMode === 'current_otp') {
-      const sent = await handleSendOtp('current');
-      if (sent) {
-        setDigits(['', '', '', '', '', '']);
-        setRecoveryStep('verify');
-      }
-    } else if (recoveryMode === 'recovery_otp') {
-      if (!hasRecoveryEmail) {
-        setError('Recovery email is not configured for this account.');
-        return;
-      }
-      const sent = await handleSendOtp('recovery');
-      if (sent) {
-        setDigits(['', '', '', '', '', '']);
-        setRecoveryStep('verify');
-      }
-    } else if (recoveryMode === 'totp') {
-      if (!hasTotp) {
-        setError('Authenticator app is not enabled for this account.');
-        return;
-      }
-      setDigits(['', '', '', '', '', '']);
-      setRecoveryStep('verify');
-    } else if (recoveryMode === 'questions') {
-      if (!hasSecurityQuestions) {
-        setError('Security questions are not configured for this account.');
-        return;
-      }
-      setRecoveryStep('verify');
     }
   };
 
@@ -316,6 +303,31 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       setStage(3);
     } catch (err: any) {
       setError(err.message || 'One or more security answers are incorrect.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // =========================================================================
+  // STAGE 2: Verify Emergency Backup Code
+  // =========================================================================
+  const handleVerifyBackupCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = backupCode.trim();
+    if (!code) {
+      setError('Please enter your emergency backup code.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await api.verifyForgotPasswordBackupCode(email.trim(), code);
+      setResetToken(res.resetToken);
+      setStage(3);
+    } catch (err: any) {
+      setError(err.message || 'Invalid or already used backup code.');
     } finally {
       setLoading(false);
     }
@@ -482,7 +494,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                 </form>
               </section>
             )}            {/* ==================================================== */}
-            {/* STAGE 2: 4 Modes of Recovery                         */}
+            {/* STAGE 2: Verification with "Try another way"         */}
             {/* ==================================================== */}
             {stage === 2 && (
               <section className="step-content" id="stage-2">
@@ -500,7 +512,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                         type="button"
                         onClick={() => {
                           setStage(1);
-                          setRecoveryStep('select');
+                          setRecoveryStep('verify');
                           setError(null);
                         }}
                         className="text-indigo-600 hover:underline font-medium text-[11px] shrink-0 cursor-pointer border-none bg-transparent"
@@ -511,137 +523,135 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
                     <div className="mb-4">
                       <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 2 of 3</span>
-                      <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Modes of recovery</h2>
-                      <p className="text-slate-500 text-xs mt-1">Select how you would like to verify your identity:</p>
+                      <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Try another way</h2>
+                      <p className="text-slate-500 text-xs mt-1">Select an alternative method to verify your identity:</p>
                     </div>
 
-                    {/* 4 Interactive Modes Selection Grid (without green badges) */}
-                    <div className="grid grid-cols-2 gap-2 mb-5">
-                      {/* Mode 1: OTP on current email */}
-                      <button
-                        type="button"
-                        onClick={() => handleSwitchMode('current_otp')}
-                        className={`p-3 text-left rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                          recoveryMode === 'current_otp'
-                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm'
-                            : 'bg-white border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'current_otp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                            <Mail size={14} />
+                    {/* Vertical List of Available Recovery Options */}
+                    <div className="space-y-2.5 mb-5">
+                      {/* Primary Email (if user currently switched away from it) */}
+                      {recoveryMode !== 'current_otp' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectMode('current_otp')}
+                          className="w-full p-3.5 text-left rounded-xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex items-center justify-between group cursor-pointer shadow-sm"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                              <Mail size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">Primary email</div>
+                              <div className="text-[11px] text-slate-500 truncate">{maskedCurrentEmail || maskEmailPreview(email)}</div>
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">1. Current Email</div>
-                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">{maskedCurrentEmail || maskEmailPreview(email)}</div>
-                        </div>
-                      </button>
+                          <ArrowRight size={15} className="text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                        </button>
+                      )}
 
-                      {/* Mode 2: OTP on recovery email */}
-                      <button
-                        type="button"
-                        disabled={!hasRecoveryEmail}
-                        onClick={() => handleSwitchMode('recovery_otp')}
-                        className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
-                          !hasRecoveryEmail
-                            ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                            : recoveryMode === 'recovery_otp'
-                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
-                            : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'recovery_otp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                            <ShieldAlert size={14} />
+                      {/* Authenticator app */}
+                      {hasTotp && recoveryMode !== 'totp' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectMode('totp')}
+                          className="w-full p-3.5 text-left rounded-xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex items-center justify-between group cursor-pointer shadow-sm"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                              <Smartphone size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">Authenticator app</div>
+                              <div className="text-[11px] text-slate-500 truncate">Google Authenticator, Authy, or compatible app</div>
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">2. Recovery Email</div>
-                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                            {hasRecoveryEmail ? maskedRecoveryEmail : 'Not configured'}
-                          </div>
-                        </div>
-                      </button>
+                          <ArrowRight size={15} className="text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                        </button>
+                      )}
 
-                      {/* Mode 3: Authenticator app OTP */}
-                      <button
-                        type="button"
-                        disabled={!hasTotp}
-                        onClick={() => handleSwitchMode('totp')}
-                        className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
-                          !hasTotp
-                            ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                            : recoveryMode === 'totp'
-                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
-                            : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'totp' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                            <Smartphone size={14} />
+                      {/* Recovery email */}
+                      {hasRecoveryEmail && recoveryMode !== 'recovery_otp' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectMode('recovery_otp')}
+                          className="w-full p-3.5 text-left rounded-xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex items-center justify-between group cursor-pointer shadow-sm"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                              <ShieldAlert size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">Recovery email</div>
+                              <div className="text-[11px] text-slate-500 truncate">{maskedRecoveryEmail}</div>
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">3. Authenticator OTP</div>
-                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                            {hasTotp ? 'Google / Authy' : 'Not enabled'}
-                          </div>
-                        </div>
-                      </button>
+                          <ArrowRight size={15} className="text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                        </button>
+                      )}
 
-                      {/* Mode 4: Recovery questions */}
-                      <button
-                        type="button"
-                        disabled={!hasSecurityQuestions}
-                        onClick={() => handleSwitchMode('questions')}
-                        className={`p-3 text-left rounded-xl border transition-all flex flex-col justify-between ${
-                          !hasSecurityQuestions
-                            ? 'opacity-40 bg-slate-50 border-slate-200 cursor-not-allowed'
-                            : recoveryMode === 'questions'
-                            ? 'bg-indigo-50/80 border-indigo-600 ring-2 ring-indigo-600/20 shadow-sm cursor-pointer'
-                            : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${recoveryMode === 'questions' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                            <HelpCircle size={14} />
+                      {/* Security questions */}
+                      {hasSecurityQuestions && recoveryMode !== 'questions' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectMode('questions')}
+                          className="w-full p-3.5 text-left rounded-xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex items-center justify-between group cursor-pointer shadow-sm"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                              <HelpCircle size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">Security questions</div>
+                              <div className="text-[11px] text-slate-500 truncate">Answer 3 configured security questions</div>
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">4. Questions</div>
-                          <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                            {hasSecurityQuestions ? '3 Questions' : 'Not configured'}
+                          <ArrowRight size={15} className="text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                        </button>
+                      )}
+
+                      {/* Backup code */}
+                      {hasBackupCodes && recoveryMode !== 'backup_code' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectMode('backup_code')}
+                          className="w-full p-3.5 text-left rounded-xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex items-center justify-between group cursor-pointer shadow-sm"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                              <KeyRound size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">Backup code</div>
+                              <div className="text-[11px] text-slate-500 truncate">Use an 8-character single-use emergency backup code</div>
+                            </div>
                           </div>
+                          <ArrowRight size={15} className="text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                        </button>
+                      )}
+
+                      {/* No alternative options fallback */}
+                      {!hasTotp && !hasRecoveryEmail && !hasSecurityQuestions && !hasBackupCodes && recoveryMode === 'current_otp' && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                          <p className="text-xs text-slate-600 font-medium">No alternative recovery methods available</p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            No secondary email, authenticator app, questions, or backup codes were configured for this account.
+                          </p>
                         </div>
-                      </button>
+                      )}
                     </div>
 
-                    {/* Step 2A: Next Button to advance to verification */}
-                    <div className="pt-2">
-                      <button
-                        className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
-                        type="button"
-                        onClick={handleProceedToVerification}
-                        disabled={sendingOtp}
-                      >
-                        <span>{sendingOtp ? 'Sending code...' : 'Next'}</span>
-                        <ArrowRight size={16} />
-                      </button>
-                    </div>
-
-                    <div className="text-center pt-3">
+                    {/* Back to verification */}
+                    <div className="text-center pt-2">
                       <button
                         className="text-xs text-slate-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent transition-colors"
                         onClick={() => {
-                          setStage(1);
-                          setRecoveryStep('select');
+                          setRecoveryStep('verify');
                           setError(null);
                         }}
                         type="button"
                       >
                         <ArrowLeft size={14} />
-                        <span>Use a different email</span>
+                        <span>Back to verification</span>
                       </button>
                     </div>
                   </>
@@ -657,12 +667,14 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                         {recoveryMode === 'recovery_otp' && 'Verify recovery code'}
                         {recoveryMode === 'totp' && 'Authenticator verification'}
                         {recoveryMode === 'questions' && 'Security questions'}
+                        {recoveryMode === 'backup_code' && 'Verify backup code'}
                       </h2>
                       <p className="text-slate-500 text-xs mt-1">
                         {recoveryMode === 'current_otp' && `Enter the 6-digit verification code sent to ${maskedCurrentEmail || maskEmailPreview(email)}.`}
                         {recoveryMode === 'recovery_otp' && `Enter the 6-digit verification code sent to ${maskedRecoveryEmail}.`}
                         {recoveryMode === 'totp' && 'Enter the 6-digit code from your authenticator app.'}
                         {recoveryMode === 'questions' && 'Answer your security questions to verify your identity.'}
+                        {recoveryMode === 'backup_code' && 'Enter an 8-character single-use emergency backup code.'}
                       </p>
                     </div>
 
@@ -842,7 +854,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                       <form className="space-y-3.5" onSubmit={handleVerifyQuestions}>
                         {questions.length === 0 ? (
                           <div className="text-xs text-slate-500 py-3 text-center">
-                            No security questions are configured for this account. Please select an alternate recovery mode.
+                            No security questions are configured for this account. Please try another way.
                           </div>
                         ) : (
                           questions.map((q, idx) => (
@@ -881,18 +893,73 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                       </form>
                     )}
 
-                    {/* Back to mode selection */}
-                    <div className="mt-5 pt-3 border-t border-slate-100 text-center">
+                    {/* MODE 5: Emergency Backup Code */}
+                    {recoveryMode === 'backup_code' && (
+                      <form className="space-y-4" onSubmit={handleVerifyBackupCode}>
+                        <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-start gap-2.5 text-xs text-slate-700">
+                          <KeyRound size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                          <span>Enter one of your single-use emergency backup codes. Each code can only be used once.</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-2 text-center" htmlFor="backup-code">
+                            Emergency backup code
+                          </label>
+                          <input
+                            id="backup-code"
+                            type="text"
+                            autoComplete="off"
+                            spellCheck={false}
+                            placeholder="XXXX-XXXX"
+                            value={backupCode}
+                            onChange={(e) => {
+                              setBackupCode(e.target.value.toUpperCase());
+                              setError(null);
+                            }}
+                            maxLength={16}
+                            className="w-full h-11 text-center font-mono font-bold text-base tracking-widest uppercase rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"
+                          />
+                        </div>
+
+                        <button
+                          className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
+                          type="submit"
+                          disabled={loading || !backupCode.trim()}
+                        >
+                          {loading ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <>
+                              <span>Verify Backup Code</span>
+                              <ArrowRight size={16} />
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    )}
+
+                    {/* Try another way & Change email actions */}
+                    <div className="mt-5 pt-3 border-t border-slate-100 flex flex-col items-center gap-2 text-center">
                       <button
-                        className="text-xs text-slate-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 cursor-pointer border-none bg-transparent transition-colors"
+                        className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold inline-flex items-center gap-1 cursor-pointer border-none bg-transparent hover:underline transition-colors"
                         onClick={() => {
                           setRecoveryStep('select');
                           setError(null);
                         }}
                         type="button"
                       >
-                        <ArrowLeft size={14} />
-                        <span>Choose another recovery method</span>
+                        Try another way
+                      </button>
+                      <button
+                        className="text-[11px] text-slate-400 hover:text-slate-600 inline-flex items-center gap-1 cursor-pointer border-none bg-transparent transition-colors"
+                        onClick={() => {
+                          setStage(1);
+                          setRecoveryStep('verify');
+                          setError(null);
+                        }}
+                        type="button"
+                      >
+                        ← Use a different email
                       </button>
                     </div>
                   </>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserContext } from '../types';
-import { Mail, LogOut, ShieldCheck, ShieldAlert, Building2, ExternalLink, X, QrCode, CheckCircle2, Laptop } from 'lucide-react';
+import { Mail, LogOut, ShieldCheck, ShieldAlert, Building2, ExternalLink, X, QrCode, CheckCircle2, Laptop, Copy, Check, Printer } from 'lucide-react';
 import { api } from '../api';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { ActiveSessionsModal } from './modals/ActiveSessionsModal';
@@ -19,6 +19,8 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [setupBackupCodes, setSetupBackupCodes] = useState<string[]>([]);
+  const [copiedCodes, setCopiedCodes] = useState(false);
 
   const handleOpen2FaSetup = async () => {
     setShow2FaModal(true);
@@ -45,16 +47,22 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
     setLoading(true);
     setError(null);
     try {
-      await api.confirm2Fa(totpCode);
+      const res = await api.confirm2Fa(totpCode);
       setSuccess(true);
+      if (res.backupCodes && res.backupCodes.length > 0) {
+        setSetupBackupCodes(res.backupCodes);
+      }
       if (onUserUpdated) {
         onUserUpdated({ ...user, twoFactorEnabled: true });
       }
-      setTimeout(() => {
-        setShow2FaModal(false);
-        setSetupData(null);
-        setTotpCode('');
-      }, 1500);
+      if (!res.backupCodes || res.backupCodes.length === 0) {
+        setTimeout(() => {
+          setShow2FaModal(false);
+          setSetupData(null);
+          setTotpCode('');
+          setSuccess(false);
+        }, 1500);
+      }
     } catch (err: any) {
       setError(err.message || 'Verification failed. The code is invalid or has expired.');
     } finally {
@@ -62,11 +70,110 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
     }
   };
 
+  const handlePrintBackupCodes = () => {
+    if (!setupBackupCodes.length) return;
+    try {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        window.print();
+        return;
+      }
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Toowix Mail - Emergency Backup Codes</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                padding: 40px;
+                color: #0f172a;
+                max-width: 480px;
+                margin: 0 auto;
+              }
+              .header {
+                border-bottom: 2px solid #e2e8f0;
+                padding-bottom: 16px;
+                margin-bottom: 20px;
+              }
+              h1 {
+                font-size: 20px;
+                margin: 0 0 6px 0;
+                color: #0f172a;
+              }
+              p {
+                font-size: 13px;
+                color: #64748b;
+                margin: 0;
+                line-height: 1.5;
+              }
+              .alert {
+                background: #fffbeb;
+                border: 1px solid #fde68a;
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-size: 12px;
+                color: #92400e;
+                margin: 16px 0 20px 0;
+              }
+              .codes-block {
+                background: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 18px 24px;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 15px;
+                line-height: 1.9;
+                text-align: center;
+                font-weight: 700;
+                letter-spacing: 1.5px;
+              }
+              .code-row {
+                padding: 1px 0;
+              }
+              .footer {
+                margin-top: 24px;
+                font-size: 11px;
+                color: #94a3b8;
+                text-align: center;
+                border-top: 1px solid #f1f5f9;
+                padding-top: 12px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Toowix Mail - Emergency Backup Codes</h1>
+              <p>Keep these 10 single-use codes in a safe place. Each code can only be used once to bypass two-factor authentication.</p>
+            </div>
+            <div class="alert">
+              Important: Each code can only be used once. If you regenerate new codes, all previous codes will stop working.
+            </div>
+            <div class="codes-block">
+              ${setupBackupCodes.map((code) => `
+                <div class="code-row">${code}</div>
+              `).join('')}
+            </div>
+            <div class="footer">
+              Generated on ${new Date().toLocaleDateString()} &bull; Toowix Account Security
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    } catch {
+      window.print();
+    }
+  };
+
   return (
     <>
       <header className="navbar">
         <div className="brand">
-          <img src={toowixLogo} alt="Toowix" className="brand-icon object-contain" />
+          <img src={toowixLogo} alt="Toowix" className="w-8 h-8 brand-icon object-contain" />
           <span>TOOWIX <span style={{ color: 'var(--primary-light)', fontWeight: 400 }}>MAIL</span></span>
         </div>
 
@@ -248,12 +355,82 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
             )}
 
             {success ? (
-              <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                <CheckCircle2 size={48} color="#10b981" style={{ margin: '0 auto 12px' }} />
-                <h4 style={{ margin: '0 0 6px', fontSize: '1.1rem', color: '#10b981' }}>Two-factor authentication enabled</h4>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: '#a1a1aa' }}>
-                  Your account is now protected. You will be prompted for a verification code when signing in.
+              <div style={{ padding: '16px 0' }}>
+                <CheckCircle2 size={40} color="#10b981" style={{ margin: '0 auto 10px', display: 'block' }} />
+                <h4 style={{ margin: '0 0 6px', fontSize: '1.05rem', color: '#10b981', textAlign: 'center' }}>Two-factor authentication enabled</h4>
+                <p style={{ margin: '0 0 16px', fontSize: '0.825rem', color: '#a1a1aa', textAlign: 'center' }}>
+                  {setupBackupCodes.length > 0
+                    ? 'Save your 10 emergency backup codes. A copy has also been sent to your email.'
+                    : 'Your account is now protected. You will be prompted for a verification code when signing in.'}
                 </p>
+
+                {setupBackupCodes.length > 0 && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div
+                      style={{
+                        background: '#18181b',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        border: '1px solid #27272a',
+                        fontFamily: 'monospace',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        letterSpacing: '0.1em',
+                        textAlign: 'center',
+                        color: '#a5b4fc',
+                        userSelect: 'all',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}
+                    >
+                      {setupBackupCodes.map((code, idx) => (
+                        <div key={idx}>
+                          {code}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(setupBackupCodes.join('\n'));
+                          setCopiedCodes(true);
+                          setTimeout(() => setCopiedCodes(false), 2000);
+                        }}
+                        className="btn btn-secondary"
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      >
+                        {copiedCodes ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
+                        <span>{copiedCodes ? 'Copied' : 'Copy all'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePrintBackupCodes}
+                        className="btn btn-secondary"
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0 14px' }}
+                      >
+                        <Printer size={14} />
+                        <span>Print</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShow2FaModal(false);
+                          setSetupData(null);
+                          setTotpCode('');
+                          setSuccess(false);
+                          setSetupBackupCodes([]);
+                        }}
+                        className="btn btn-primary"
+                        style={{ flex: 1 }}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : loading && !setupData ? (
               <div style={{ textAlign: 'center', padding: '40px 0', color: '#a1a1aa' }}>

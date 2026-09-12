@@ -10,6 +10,8 @@ export interface ISystemSettings extends Document {
   messageSizeMb?: number;
   maxMailboxDepth?: number;
   maxMailboxNameLength?: number;
+  dnsActivationMaxHours?: number;
+  dnsSweepIntervalMinutes?: number;
   updatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -59,6 +61,16 @@ const SystemSettingsSchema = new Schema<ISystemSettings>(
     maxMailboxNameLength: {
       type: Number,
       default: 255,
+      min: 1,
+    },
+    dnsActivationMaxHours: {
+      type: Number,
+      default: 48,
+      min: 1,
+    },
+    dnsSweepIntervalMinutes: {
+      type: Number,
+      default: 15,
       min: 1,
     },
     updatedBy: {

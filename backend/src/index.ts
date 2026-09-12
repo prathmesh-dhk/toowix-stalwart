@@ -2,6 +2,7 @@ import { app } from './app';
 import { config } from './config';
 import { connectDatabase } from './db/connection';
 import { seedAll } from './db/seed';
+import * as dnsPropagationSweepJob from './jobs/dns-propagation-sweep.job';
 
 let memoryServer: any = null;
 
@@ -45,6 +46,8 @@ async function startServer() {
     // Seed initial Super Admin and System Settings if not present
     await seedAll();
 
+    dnsPropagationSweepJob.start();
+
     const server = app.listen(config.port, () => {
       console.log(`[Server] Toowix Mail Backend listening on http://localhost:${config.port}`);
       console.log(`[Server] Stalwart Engine target: ${config.stalwart.url}`);
@@ -53,6 +56,7 @@ async function startServer() {
 
     const shutdown = async () => {
       console.log('\n[Server] Shutting down gracefully...');
+      dnsPropagationSweepJob.stop();
       server.close();
       if (memoryServer) {
         await memoryServer.stop();

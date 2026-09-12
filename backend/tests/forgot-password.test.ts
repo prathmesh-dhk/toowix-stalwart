@@ -276,5 +276,64 @@ describe('Forgot Password & Registration Security Options', () => {
       expect(successRes.body.success).toBe(true);
       expect(successRes.body.resetToken).toBeTruthy();
     });
+
+    it('should verify emergency backup code and issue a resetToken', async () => {
+      const plainCode = 'ABCD-1234';
+      const normalized = 'ABCD1234';
+      const codeHash = hashSecurityAnswer(normalized);
+
+      await AdminUserModel.updateOne(
+        { email: testUserEmail },
+        {
+          backupCodes: [
+            { codeHash, used: false },
+            { codeHash: hashSecurityAnswer('EFGH5678'), used: true, usedAt: new Date() },
+          ],
+        }
+      );
+
+      // Verify initiate returns hasBackupCodes: true
+      const initRes = await request(app)
+        .post('/api/auth/forgot-password/initiate')
+        .send({ email: testUserEmail });
+      expect(initRes.status).toBe(200);
+      expect(initRes.body.hasBackupCodes).toBe(true);
+
+      // Invalid backup code rejected
+      const failRes = await request(app)
+        .post('/api/auth/forgot-password/verify-backup-code')
+        .send({ email: testUserEmail, code: 'WRONG-CODE' });
+      expect(failRes.status).toBe(400);
+      expect(failRes.body.error).toBe('INVALID_BACKUP_CODE');
+
+      // Already used backup code rejected
+      const usedRes = await request(app)
+        .post('/api/auth/forgot-password/verify-backup-code')
+        .send({ email: testUserEmail, code: 'EFGH-5678' });
+      expect(usedRes.status).toBe(400);
+      expect(usedRes.body.error).toBe('INVALID_BACKUP_CODE');
+
+      // Valid unused backup code accepted
+      const successRes = await request(app)
+        .post('/api/auth/forgot-password/verify-backup-code')
+        .send({ email: testUserEmail, code: plainCode });
+
+      expect(successRes.status).toBe(200);
+      expect(successRes.body.success).toBe(true);
+      expect(successRes.body.resetToken).toBeTruthy();
+
+      // Ensure code marked as used
+      const updatedUser = await AdminUserModel.findOne({ email: testUserEmail });
+      const matched = updatedUser?.backupCodes?.find((b) => b.codeHash === codeHash);
+      expect(matched?.used).toBe(true);
+
+      // Subsequent attempt with same code fails
+      const repeatRes = await request(app)
+        .post('/api/auth/forgot-password/verify-backup-code')
+        .send({ email: testUserEmail, code: plainCode });
+      expect(repeatRes.status).toBe(400);
+      expect(repeatRes.body.error).toBe('INVALID_BACKUP_CODE');
+    });
   });
 });
+

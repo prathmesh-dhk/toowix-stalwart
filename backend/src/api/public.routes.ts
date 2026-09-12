@@ -22,6 +22,7 @@ import {
   verifyContactEmailVerificationToken,
   generateTotpSetupToken,
   verifyTotpSetupToken,
+  generateBackupCodes,
 } from '../auth/service';
 
 export const publicRouter = Router();
@@ -503,7 +504,7 @@ publicRouter.post('/register-tenant', registrationRateLimiter(), async (req: Req
 
   const normalizedDomain = requestedDomain.trim().toLowerCase();
   const normalizedEmail = contactEmail.trim().toLowerCase();
-  const normalizedRecoveryEmail = recoveryEmail ? recoveryEmail.trim().toLowerCase() : normalizedEmail;
+  const normalizedRecoveryEmail = recoveryEmail ? recoveryEmail.trim().toLowerCase() : null;
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
 
   // 1. Check if domain is already actively provisioned
@@ -809,6 +810,9 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
   // Use the verified registration password hash, or hash the provided password if no registration application exists
   const passwordHash = application?.passwordHash || (await hashPassword(password));
 
+  // Generate 10 emergency backup codes
+  const { plainCodes, hashedCodes } = generateBackupCodes(10);
+
   // Create Tenant Admin User with mandatory 2FA enabled and recovery profile
   const adminUser = await AdminUserModel.create({
     email: normalizedEmail,
@@ -817,10 +821,22 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
     tenantId: tenant._id,
     status: 'active',
     twoFactorEnabled: true,
+    twoFactorMethod: 'totp',
     twoFactorSecret: totpSecret,
-    recoveryEmail: application?.recoveryEmail || tokenDoc.contactEmail || normalizedEmail,
+    backupCodes: hashedCodes,
+    recoveryEmail: application?.recoveryEmail || null,
     securityQuestions: application?.securityQuestions || [],
   });
+
+  try {
+    await emailService.sendBackupCodesEmail({
+      to: adminUser.email,
+      recipientName: adminUser.name || adminUser.email,
+      backupCodes: plainCodes,
+    });
+  } catch (err) {
+    console.error('Failed to send backup codes email during tenant activation:', err);
+  }
 
   // Transition tenant to active if pending setup
   if (tenant.status === 'approved_pending_setup') {
@@ -865,6 +881,7 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
     success: true,
     message: 'Tenant successfully activated with two-factor authentication enabled! Welcome to Toowix Mail Platform.',
     token: authToken,
+    backupCodes: plainCodes,
     user: {
       id: adminUser._id.toString(),
       email: adminUser.email,

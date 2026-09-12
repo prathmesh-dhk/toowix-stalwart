@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SecuritySettingsView } from '../../src/components/SecuritySettingsView';
 import { api } from '../../src/api';
@@ -75,7 +75,7 @@ describe('SecuritySettingsView Component', () => {
     });
   });
 
-  it('allows initiating Authenticator App setup with QR code and confirmation code', async () => {
+  it('allows initiating Authenticator App setup in a 2-step popup modal with QR code and confirmation code', async () => {
     const user = userEvent.setup();
     vi.mocked(api.setupTotp2Fa).mockResolvedValue({
       secret: 'JBSWY3DPEHPK3PXP',
@@ -92,19 +92,32 @@ describe('SecuritySettingsView Component', () => {
       expect(screen.getByText('Reconfigure App')).toBeInTheDocument();
     });
 
+    // Open Authenticator Modal
     await user.click(screen.getByText('Reconfigure App'));
 
     expect(api.setupTotp2Fa).toHaveBeenCalled();
 
+    // Step 1: Scan QR Code
     await waitFor(() => {
-      expect(screen.getByText('Configure Authenticator App')).toBeInTheDocument();
+      expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+      expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
       expect(screen.getByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument();
+    });
+
+    // Advance to Step 2
+    const nextBtn = screen.getByText(/Next: Enter Code/i);
+    await user.click(nextBtn);
+
+    // Step 2: Verify Code
+    await waitFor(() => {
+      expect(screen.getByText('Verify Code')).toBeInTheDocument();
+      expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
     });
 
     const codeInput = screen.getByPlaceholderText('000000');
     await user.type(codeInput, '654321');
 
-    const confirmBtn = screen.getByText('Confirm & Activate TOTP');
+    const confirmBtn = screen.getByRole('button', { name: /Verify & Activate/i });
     await user.click(confirmBtn);
 
     expect(api.confirmTotp2Fa).toHaveBeenCalledWith('654321');
@@ -113,7 +126,7 @@ describe('SecuritySettingsView Component', () => {
     });
   });
 
-  it('allows adding and verifying a new recovery email via 6-digit OTP', async () => {
+  it('allows adding and verifying a new recovery email via 2-step popup modal and 6-digit OTP', async () => {
     const user = userEvent.setup();
     vi.mocked(api.getSecuritySettings).mockResolvedValue({
       ...initialSettings,
@@ -132,26 +145,39 @@ describe('SecuritySettingsView Component', () => {
 
     render(<SecuritySettingsView user={mockUser} />);
 
+    // Page initially shows clean empty state
     await waitFor(() => {
+      expect(screen.getByText('No recovery email configured')).toBeInTheDocument();
+      expect(screen.getByText('Add Recovery Email')).toBeInTheDocument();
+    });
+
+    // Open Recovery Email Modal
+    await user.click(screen.getByText('Add Recovery Email'));
+
+    // Step 1: Enter Email
+    await waitFor(() => {
+      expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('e.g. backup@gmail.com')).toBeInTheDocument();
     });
 
     const emailInput = screen.getByPlaceholderText('e.g. backup@gmail.com');
     await user.type(emailInput, 'new-recovery@gmail.com');
 
-    const sendBtn = screen.getByText('Send Verification Code');
-    await user.click(sendBtn);
+    const continueBtn = screen.getByRole('button', { name: /Continue/i });
+    await user.click(continueBtn);
 
     expect(api.sendRecoveryEmailOtp).toHaveBeenCalledWith('new-recovery@gmail.com');
 
+    // Step 2: Verify OTP in Modal
     await waitFor(() => {
+      expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('123456')).toBeInTheDocument();
     });
 
     const otpInput = screen.getByPlaceholderText('123456');
     await user.type(otpInput, '123456');
 
-    const verifyBtn = screen.getByText('Verify & Save Email');
+    const verifyBtn = screen.getByRole('button', { name: /Verify & Save/i });
     await user.click(verifyBtn);
 
     expect(api.verifyRecoveryEmailOtp).toHaveBeenCalledWith('123456');
@@ -162,7 +188,7 @@ describe('SecuritySettingsView Component', () => {
     });
   });
 
-  it('allows removing an existing recovery email', async () => {
+  it('allows removing an existing recovery email with confirmation dialog', async () => {
     const user = userEvent.setup();
     vi.mocked(api.removeRecoveryEmail).mockResolvedValue({
       success: true,
@@ -188,7 +214,7 @@ describe('SecuritySettingsView Component', () => {
     });
   });
 
-  it('prompts confirmation before disabling 2FA', async () => {
+  it('prompts confirmation modal before disabling 2FA', async () => {
     const user = userEvent.setup();
     vi.mocked(api.update2FaMode).mockResolvedValue({
       success: true,
@@ -205,7 +231,7 @@ describe('SecuritySettingsView Component', () => {
 
     await user.click(screen.getByText('Disable 2FA'));
 
-    expect(screen.getByText('Are you sure you want to disable 2FA?')).toBeInTheDocument();
+    expect(screen.getByText('Disable 2FA?')).toBeInTheDocument();
 
     await user.click(screen.getByText('Yes, Disable 2FA'));
 

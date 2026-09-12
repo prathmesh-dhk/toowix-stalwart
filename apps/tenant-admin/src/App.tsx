@@ -83,6 +83,11 @@ export const App: React.FC = () => {
     } catch {
       // ignore
     } finally {
+      try {
+        sessionStorage.removeItem('toowix_dismissed_2fa_banner');
+      } catch {
+        // ignore
+      }
       clearStoredToken();
       setCurrentUser(null);
     }

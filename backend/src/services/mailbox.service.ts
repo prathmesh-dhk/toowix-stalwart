@@ -432,4 +432,135 @@ export class MailboxService {
       success: true,
     });
   }
+
+  /**
+   * Suspend a specific mailbox:
+   * 1. Check parent tenant is active (if suspended, block).
+   * 2. Set account permissions in Stalwart to empty set (freezes authentication/sending).
+   * 3. Set status: 'suspended' in MongoDB.
+   * 4. Log audit event.
+   */
+  static async suspendMailbox(
+    mailboxId: string,
+    tenantId?: string,
+    actorId?: string,
+    actorRole = 'TENANT_ADMIN'
+  ): Promise<MailboxRecord> {
+    const mailbox = await this.getMailboxById(mailboxId, tenantId);
+    if (!mailbox) {
+      throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+    }
+
+    const tenant = await TenantModel.findById(mailbox.tenantId);
+    if (tenant?.status === 'suspended') {
+      throw {
+        status: 403,
+        code: 'TENANT_SUSPENDED',
+        message: 'Tenant is suspended; mailbox operations are blocked',
+      };
+    }
+
+    if (mailbox.stalwartAccountId) {
+      try {
+        await stalwartClient.updateAccountStatus(mailbox.stalwartAccountId, true);
+      } catch (err: any) {
+        console.warn(`[MailboxService] Stalwart account suspend warning for ${mailbox.stalwartAccountId}:`, err.message);
+      }
+    }
+
+    const updatedDoc = await MailboxModel.findByIdAndUpdate(
+      mailbox.id,
+      { status: 'suspended' },
+      { returnDocument: 'after' }
+    );
+
+    await logAudit({
+      actorId,
+      actorRole,
+      tenantId: mailbox.tenantId,
+      action: 'MAILBOX_SUSPENDED',
+      resource: 'MAILBOX',
+      resourceId: mailbox.id,
+      metadata: { address: mailbox.address },
+      success: true,
+    });
+
+    return {
+      id: updatedDoc!._id.toString(),
+      tenantId: updatedDoc!.tenantId.toString(),
+      domainId: updatedDoc!.domainId.toString(),
+      localPart: updatedDoc!.localPart,
+      address: updatedDoc!.address,
+      stalwartAccountId: updatedDoc!.stalwartAccountId || null,
+      status: updatedDoc!.status,
+      createdAt: updatedDoc!.createdAt.toISOString(),
+      updatedAt: updatedDoc!.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Reactivate a suspended mailbox:
+   * 1. Check parent tenant is active (if suspended, block).
+   * 2. Restore account permissions in Stalwart.
+   * 3. Set status: 'active' in MongoDB.
+   * 4. Log audit event.
+   */
+  static async reactivateMailbox(
+    mailboxId: string,
+    tenantId?: string,
+    actorId?: string,
+    actorRole = 'TENANT_ADMIN'
+  ): Promise<MailboxRecord> {
+    const mailbox = await this.getMailboxById(mailboxId, tenantId);
+    if (!mailbox) {
+      throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+    }
+
+    const tenant = await TenantModel.findById(mailbox.tenantId);
+    if (tenant?.status === 'suspended') {
+      throw {
+        status: 403,
+        code: 'TENANT_SUSPENDED',
+        message: 'Tenant is suspended; mailbox operations are blocked',
+      };
+    }
+
+    if (mailbox.stalwartAccountId) {
+      try {
+        await stalwartClient.updateAccountStatus(mailbox.stalwartAccountId, false);
+      } catch (err: any) {
+        console.warn(`[MailboxService] Stalwart account reactivate warning for ${mailbox.stalwartAccountId}:`, err.message);
+      }
+    }
+
+    const updatedDoc = await MailboxModel.findByIdAndUpdate(
+      mailbox.id,
+      { status: 'active' },
+      { returnDocument: 'after' }
+    );
+
+    await logAudit({
+      actorId,
+      actorRole,
+      tenantId: mailbox.tenantId,
+      action: 'MAILBOX_REACTIVATED',
+      resource: 'MAILBOX',
+      resourceId: mailbox.id,
+      metadata: { address: mailbox.address },
+      success: true,
+    });
+
+    return {
+      id: updatedDoc!._id.toString(),
+      tenantId: updatedDoc!.tenantId.toString(),
+      domainId: updatedDoc!.domainId.toString(),
+      localPart: updatedDoc!.localPart,
+      address: updatedDoc!.address,
+      stalwartAccountId: updatedDoc!.stalwartAccountId || null,
+      status: updatedDoc!.status,
+      createdAt: updatedDoc!.createdAt.toISOString(),
+      updatedAt: updatedDoc!.updatedAt.toISOString(),
+    };
+  }
 }
+

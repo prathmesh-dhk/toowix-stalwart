@@ -9,6 +9,7 @@ import {
   generateTotpSecret,
   generateTotpQrCode,
   verifyTotpCode,
+  generateBackupCodes,
   hashPassword,
   generatePasswordResetToken,
   verifyPasswordResetToken,
@@ -35,9 +36,9 @@ const loginSchema = z.object({
 
 const verify2FaSchema = z.object({
   tempToken: z.string().min(1, '2FA temporary session token is required'),
-  code: z.string().length(6, 'Verification code must be exactly 6 digits'),
+  code: z.string().min(6, 'Verification code must be at least 6 characters').max(32, 'Verification code is too long'),
   rememberMe: z.boolean().optional(),
-  method: z.enum(['totp', 'email']).optional().default('totp'),
+  method: z.enum(['totp', 'email', 'backup_code']).optional().default('totp'),
 });
 
 const confirm2FaSchema = z.object({
@@ -89,7 +90,11 @@ authRouter.post('/super-admin/login', loginRateLimiter(), async (req: Request, r
       hasRecoveryEmail: (result as any).hasRecoveryEmail || false,
       maskedRecoveryEmail: (result as any).maskedRecoveryEmail || null,
       defaultMethod: (result as any).defaultMethod || 'totp',
+      hasEmail2Fa: (result as any).hasEmail2Fa ?? true,
       maskedEmail: (result as any).maskedEmail || null,
+      isRecoveryEmail: (result as any).isRecoveryEmail || false,
+      hasBackupCodes: (result as any).hasBackupCodes ?? false,
+      remainingBackupCodes: (result as any).remainingBackupCodes ?? 0,
       user: {
         id: result.user.id,
         email: result.user.email,
@@ -130,7 +135,11 @@ authRouter.post('/tenant-admin/login', loginRateLimiter(), async (req: Request, 
       hasRecoveryEmail: (result as any).hasRecoveryEmail || false,
       maskedRecoveryEmail: (result as any).maskedRecoveryEmail || null,
       defaultMethod: (result as any).defaultMethod || 'totp',
+      hasEmail2Fa: (result as any).hasEmail2Fa ?? true,
       maskedEmail: (result as any).maskedEmail || null,
+      isRecoveryEmail: (result as any).isRecoveryEmail || false,
+      hasBackupCodes: (result as any).hasBackupCodes ?? false,
+      remainingBackupCodes: (result as any).remainingBackupCodes ?? 0,
       user: {
         id: result.user.id,
         email: result.user.email,
@@ -167,7 +176,9 @@ authRouter.post('/2fa/send-otp', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
   }
 
-  const destinationEmail = user.twoFactorMethod === 'email' ? user.email : (user.recoveryEmail || user.email);
+  const hasDistinctRecovery = !!(user.recoveryEmail && user.recoveryEmail.trim().toLowerCase() !== user.email.trim().toLowerCase());
+  const destinationEmail = (user.twoFactorMethod === 'email' || !hasDistinctRecovery) ? user.email : (user.recoveryEmail || user.email);
+  const isRecoveryEmail = hasDistinctRecovery && user.twoFactorMethod !== 'email';
   const otpCode = crypto.randomInt(100000, 999999).toString();
   const codeHash = hashSecurityAnswer(otpCode);
 
@@ -187,9 +198,10 @@ authRouter.post('/2fa/send-otp', async (req: Request, res: Response) => {
 
   return res.status(200).json({
     success: true,
-    message: user.twoFactorMethod === 'email' ? 'Verification code sent to account email' : 'Verification code sent to recovery email',
+    message: isRecoveryEmail ? 'Verification code sent to recovery email' : 'Verification code sent to email',
     maskedRecoveryEmail: maskEmail(destinationEmail),
     maskedEmail: maskEmail(destinationEmail),
+    isRecoveryEmail,
     expiresMinutes: 10,
   });
 });
@@ -255,9 +267,21 @@ authRouter.post('/2fa/confirm-setup', requireAuth, async (req: Request, res: Res
     return res.status(400).json({ error: 'INVALID_CODE', message: 'Verification code does not match. Try again.' });
   }
 
+  const { plainCodes, hashedCodes } = generateBackupCodes(10);
   dbUser.twoFactorEnabled = true;
   dbUser.twoFactorMethod = 'totp';
+  dbUser.backupCodes = hashedCodes as any;
   await dbUser.save();
+
+  try {
+    await emailService.sendBackupCodesEmail({
+      to: dbUser.email,
+      recipientName: dbUser.name || dbUser.email,
+      backupCodes: plainCodes,
+    });
+  } catch (err) {
+    console.error('Failed to dispatch backup codes email on TOTP confirmation:', err);
+  }
 
   await AuditLogModel.create({
     actorId: dbUser._id,
@@ -274,6 +298,7 @@ authRouter.post('/2fa/confirm-setup', requireAuth, async (req: Request, res: Res
   return res.status(200).json({
     success: true,
     message: 'Two-factor authentication successfully enabled.',
+    backupCodes: plainCodes,
   });
 });
 
@@ -401,6 +426,11 @@ const forgotPasswordVerifyQuestionsSchema = z.object({
     .length(3, 'Exactly 3 security question answers are required'),
 });
 
+const forgotPasswordVerifyBackupCodeSchema = z.object({
+  email: z.string().email('Valid email address is required'),
+  code: z.string().min(6, 'Backup code must be at least 6 characters').max(32, 'Backup code is too long'),
+});
+
 const forgotPasswordResetSchema = z.object({
   resetToken: z.string().min(1, 'Reset token is required'),
   newPassword: z.string().min(8, 'New password must be at least 8 characters long'),
@@ -460,6 +490,7 @@ authRouter.post('/forgot-password/initiate', async (req: Request, res: Response)
   const hasTotp = !!(user.twoFactorEnabled && user.twoFactorSecret);
   const hasSecurityQuestions = !!(user.securityQuestions && user.securityQuestions.length === 3);
   const securityQuestions = user.securityQuestions ? user.securityQuestions.map((q) => q.question) : [];
+  const hasBackupCodes = !!(user.backupCodes && user.backupCodes.some((b) => !b.used));
 
   return res.status(200).json({
     email: user.email,
@@ -470,6 +501,7 @@ authRouter.post('/forgot-password/initiate', async (req: Request, res: Response)
     hasTotp,
     hasSecurityQuestions,
     securityQuestions,
+    hasBackupCodes,
   });
 });
 
@@ -772,6 +804,67 @@ authRouter.post('/forgot-password/verify-questions', async (req: Request, res: R
   });
 });
 
+// D. Verify Emergency Backup Code for Forgot Password
+authRouter.post('/forgot-password/verify-backup-code', async (req: Request, res: Response) => {
+  const parseResult = forgotPasswordVerifyBackupCodeSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
+  }
+
+  const { email, code } = parseResult.data;
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await AdminUserModel.findOne({ email: normalizedEmail });
+
+  if (!user || user.status !== 'active') {
+    return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User not found' });
+  }
+
+  const normalizedCode = code.replace(/[-\s]/g, '').toUpperCase();
+  const hashedCode = hashSecurityAnswer(normalizedCode);
+  const backupItem = (user.backupCodes || []).find((b) => b.codeHash === hashedCode && !b.used);
+
+  if (!backupItem) {
+    return res.status(400).json({
+      error: 'INVALID_BACKUP_CODE',
+      message: 'Invalid or already used backup code. Please enter an unused emergency code.',
+    });
+  }
+
+  // Mark the code as used
+  backupItem.used = true;
+  backupItem.usedAt = new Date();
+
+  // Issue reset token valid for 15 minutes
+  const resetToken = generatePasswordResetToken(user._id.toString(), user.email);
+  const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+  user.passwordResetOtp = null;
+  user.passwordResetToken = {
+    tokenHash: resetTokenHash,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+  };
+  await user.save();
+
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  await AuditLogModel.create({
+    actorRole: user.role,
+    actorEmail: user.email,
+    actorIp: clientIp,
+    tenantId: user.tenantId,
+    action: 'PASSWORD_RESET_BACKUP_CODE_VERIFIED',
+    resource: 'ADMIN_USER',
+    resourceId: user._id.toString(),
+    status: 'SUCCESS',
+    timestamp: new Date(),
+  });
+
+  return res.status(200).json({
+    success: true,
+    resetToken,
+    message: 'Emergency backup code verified. You can now set your new password.',
+  });
+});
+
 // E. Reset Password using resetToken
 authRouter.post('/forgot-password/reset', async (req: Request, res: Response) => {
   const parseResult = forgotPasswordResetSchema.safeParse(req.body);
@@ -867,12 +960,22 @@ authRouter.get('/security/settings', requireAuth, async (req: Request, res: Resp
     return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
   }
 
+  const recoveryEmail =
+    user.recoveryEmail && user.recoveryEmail.toLowerCase() !== user.email.toLowerCase()
+      ? user.recoveryEmail
+      : null;
+
+  const remainingBackupCodes = user.backupCodes
+    ? user.backupCodes.filter((c: any) => !c.used).length
+    : 0;
+
   return res.status(200).json({
     email: user.email,
-    recoveryEmail: user.recoveryEmail || null,
+    recoveryEmail,
     twoFactorEnabled: user.twoFactorEnabled,
     twoFactorMethod: user.twoFactorMethod || (user.twoFactorEnabled ? 'totp' : null),
     hasTotpConfigured: !!user.twoFactorSecret,
+    remainingBackupCodes,
   });
 });
 
@@ -1051,6 +1154,23 @@ authRouter.post('/security/2fa/mode', requireAuth, async (req: Request, res: Res
     user.twoFactorMethod = undefined;
   }
 
+  let backupCodes: string[] | undefined;
+  if (user.twoFactorEnabled && (!user.backupCodes || user.backupCodes.length === 0)) {
+    const generated = generateBackupCodes(10);
+    user.backupCodes = generated.hashedCodes as any;
+    backupCodes = generated.plainCodes;
+
+    try {
+      await emailService.sendBackupCodesEmail({
+        to: user.email,
+        recipientName: user.name || user.email,
+        backupCodes: generated.plainCodes,
+      });
+    } catch (err) {
+      console.error('Failed to send backup codes email during 2FA mode switch:', err);
+    }
+  }
+
   await user.save();
 
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
@@ -1067,11 +1187,64 @@ authRouter.post('/security/2fa/mode', requireAuth, async (req: Request, res: Res
     timestamp: new Date(),
   });
 
+  const remainingBackupCodes = user.backupCodes
+    ? user.backupCodes.filter((c: any) => !c.used).length
+    : 0;
+
   return res.status(200).json({
     success: true,
     message: `Two-factor authentication updated to: ${mode}`,
     twoFactorEnabled: user.twoFactorEnabled,
     twoFactorMethod: user.twoFactorMethod || null,
+    backupCodes,
+    remainingBackupCodes,
+  });
+});
+
+// 8.6 Regenerate 2FA Backup Codes
+authRouter.post('/security/2fa/backup-codes/regenerate', requireAuth, async (req: Request, res: Response) => {
+  const adminUser = req.adminUser!;
+  const user = await AdminUserModel.findById(adminUser.id);
+  if (!user) {
+    return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User account not found' });
+  }
+
+  if (!user.twoFactorEnabled) {
+    return res.status(400).json({ error: '2FA_NOT_ENABLED', message: 'Two-factor authentication must be enabled to regenerate backup codes.' });
+  }
+
+  const generated = generateBackupCodes(10);
+  user.backupCodes = generated.hashedCodes as any;
+  await user.save();
+
+  try {
+    await emailService.sendBackupCodesEmail({
+      to: user.email,
+      recipientName: user.name || user.email,
+      backupCodes: generated.plainCodes,
+    });
+  } catch (err) {
+    console.error('Failed to send backup codes email during regeneration:', err);
+  }
+
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  await AuditLogModel.create({
+    actorId: user._id,
+    actorRole: user.role,
+    actorEmail: user.email,
+    tenantId: user.tenantId,
+    action: 'ADMIN_BACKUP_CODES_REGENERATED',
+    resource: 'ADMIN_USER',
+    resourceId: user._id.toString(),
+    status: 'SUCCESS',
+    timestamp: new Date(),
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'New backup codes generated and emailed successfully.',
+    backupCodes: generated.plainCodes,
+    remainingBackupCodes: generated.plainCodes.length,
   });
 });
 

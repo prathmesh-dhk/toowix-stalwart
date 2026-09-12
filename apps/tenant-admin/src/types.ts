@@ -126,4 +126,31 @@ export interface SecuritySettings {
   twoFactorEnabled: boolean;
   twoFactorMethod: 'totp' | 'email' | null;
   hasTotpConfigured: boolean;
+  remainingBackupCodes?: number;
 }
+
+export interface MailboxStorageItem {
+  id: string;
+  address: string;
+  localPart: string;
+  domainId: string;
+  domainName: string;
+  storageBytes: number;
+  storageFormatted: string;
+  percentage: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface TenantStorageSummary {
+  totalStorageBytes: number;
+  totalStorageFormatted: string;
+  mailboxCount: number;
+  mailboxesWithData: number;
+}
+
+export interface TenantStorageResponse {
+  summary: TenantStorageSummary;
+  mailboxes: MailboxStorageItem[];
+}
+

@@ -8,8 +8,6 @@ import { TenantModel } from '../db/models/Tenant';
 import { DomainModel } from '../db/models/Domain';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { ActivationTokenModel } from '../db/models/ActivationToken';
-import { stalwartClient } from '../stalwart/client';
-import { StalwartDomainExistsError } from '../stalwart/errors';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
 
@@ -96,36 +94,7 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
     });
   }
 
-  // 1. Provision the domain on Stalwart mail server
-  let stalwartDomainId: string | null = null;
-  try {
-    const created = await stalwartClient.createDomain(
-      application.requestedDomain,
-      `Tenant: ${application.companyName}`
-    );
-    stalwartDomainId = created.id;
-  } catch (err: any) {
-    if (err instanceof StalwartDomainExistsError) {
-      // Domain already exists in Stalwart, query for its ID
-      try {
-        const domains = await stalwartClient.listDomains();
-        const existing = domains.find(
-          (d) => d.name.toLowerCase() === application.requestedDomain.toLowerCase()
-        );
-        stalwartDomainId = existing ? existing.id : null;
-      } catch {
-        stalwartDomainId = null;
-      }
-    } else {
-      console.error('[Stalwart Domain Creation Error]:', err);
-      return res.status(502).json({
-        error: 'STALWART_DOMAIN_PROVISION_FAILED',
-        message: `Failed to provision domain "${application.requestedDomain}" on Stalwart mail server: ${err.message}`,
-      });
-    }
-  }
-
-  // 2. Create the Tenant in 'approved_pending_setup' status
+  // 1. Create the Tenant in 'approved_pending_setup' status
   const tenant = await TenantModel.create({
     name: application.companyName,
     status: 'approved_pending_setup',
@@ -133,12 +102,16 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
     mailboxCount: 0,
   });
 
-  // 3. Create the Domain record tied to this tenant with stalwartDomainId
+  // 2. Create the Domain record tied to this tenant. Stalwart domain
+  // creation and DNS provisioning happen only when a Super Admin explicitly
+  // clicks "Activate Domain" later (see domain-activation.service.ts) — not
+  // at approval time.
   const domain = await DomainModel.create({
     tenantId: tenant._id,
     domainName: application.requestedDomain,
-    stalwartDomainId,
+    stalwartDomainId: null,
     status: 'active',
+    dnsStatus: 'not_started',
   });
 
   // 4. Update application record
@@ -184,7 +157,6 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
     metadata: {
       tenantId: tenant._id.toString(),
       domainId: domain._id.toString(),
-      stalwartDomainId,
       companyName: tenant.name,
       domainName: domain.domainName,
       contactEmail: application.contactEmail,
@@ -198,8 +170,8 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
   return res.status(200).json({
     success: true,
     message: emailResult.success
-      ? `Application approved! Domain "${domain.domainName}" was provisioned in Stalwart and activation email sent to ${application.contactEmail}.`
-      : `Application approved! Domain "${domain.domainName}" was provisioned in Stalwart. (Note: Email delivery failed: ${emailResult.error})`,
+      ? `Application approved! Activation email sent to ${application.contactEmail}. Domain "${domain.domainName}" still needs "Activate Domain" to provision mail service and DNS.`
+      : `Application approved, but email delivery failed: ${emailResult.error}. Domain "${domain.domainName}" still needs "Activate Domain" to provision mail service and DNS.`,
     activationLink,
     emailSent: emailResult.success,
     emailError: emailResult.error,
@@ -208,7 +180,7 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
       name: tenant.name,
       status: tenant.status,
       domain: domain.domainName,
-      stalwartDomainId,
+      dnsStatus: domain.dnsStatus,
       contactEmail: application.contactEmail,
     },
   });

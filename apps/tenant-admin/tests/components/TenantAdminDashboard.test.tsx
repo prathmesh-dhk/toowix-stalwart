@@ -12,9 +12,18 @@ vi.mock('../../src/api', () => ({
     getAuditLogs: vi.fn(),
     createMailbox: vi.fn(),
     resetMailboxPassword: vi.fn(),
+    suspendMailbox: vi.fn(),
+    reactivateMailbox: vi.fn(),
     deleteMailbox: vi.fn(),
     listTenantDomains: vi.fn(),
     createTenantDomain: vi.fn(),
+    getSecuritySettings: vi.fn(),
+    getStorageUsage: vi.fn().mockResolvedValue({
+      summary: { totalStorageBytes: 1048576, totalStorageFormatted: '1.0 MB', mailboxCount: 1, mailboxesWithData: 1 },
+      mailboxes: [
+        { id: 'mb-1', address: 'user@acmecorp.com', localPart: 'user', domainId: 'dom-1', domainName: 'acmecorp.com', storageBytes: 1048576, storageFormatted: '1.0 MB', percentage: 100, status: 'active', createdAt: '2026-09-01T00:00:00Z' }
+      ]
+    }),
   },
   clearStoredToken: vi.fn(),
 }));
@@ -93,6 +102,14 @@ describe('TenantAdminDashboard Component', () => {
     });
 
     vi.mocked(api.getAuditLogs).mockResolvedValue({ logs: [], limit: 50, offset: 0 });
+    vi.mocked(api.getSecuritySettings).mockResolvedValue({
+      email: 'admin@acmecorp.com',
+      recoveryEmail: null,
+      twoFactorEnabled: false,
+      twoFactorMethod: null,
+      remainingBackupCodes: 0,
+    } as any);
+    sessionStorage.clear();
   });
 
   it('renders tenant overview with domain, quota stats, and mailbox count', async () => {
@@ -100,8 +117,8 @@ describe('TenantAdminDashboard Component', () => {
 
     expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
     expect(screen.getAllByText(/@acmecorp\.com/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/48 available for assignment/i)).toBeInTheDocument();
-    expect(screen.getByText('Operational Health')).toBeInTheDocument();
+    expect(screen.getByText('Domain Summary')).toBeInTheDocument();
+    expect(screen.queryByText('Operational Health')).not.toBeInTheDocument();
   });
 
   it('displays suspended banner when tenant status is suspended', async () => {
@@ -203,12 +220,16 @@ describe('TenantAdminDashboard Component', () => {
     const mailboxesTab = screen.getByText('View all mailboxes');
     fireEvent.click(mailboxesTab);
 
-    // Find delete button for alice@acmecorp.com
-    const deleteButtons = await screen.findAllByRole('button', { name: /^delete$/i });
-    expect(deleteButtons.length).toBeGreaterThan(0);
+    // Find three-dots actions button for alice@acmecorp.com
+    const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
+    expect(actionButtons.length).toBeGreaterThan(0);
 
-    // Click delete on first mailbox
-    fireEvent.click(deleteButtons[0]);
+    // Open three-dots menu
+    fireEvent.click(actionButtons[0]);
+
+    // Click delete mailbox in dropdown
+    const deleteBtn = await screen.findByRole('button', { name: /delete mailbox/i });
+    fireEvent.click(deleteBtn);
 
     // Delete confirmation popup should appear
     const dialog = await screen.findByRole('dialog');
@@ -223,16 +244,139 @@ describe('TenantAdminDashboard Component', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(api.deleteMailbox).not.toHaveBeenCalled();
 
-    // Click delete again and confirm
-    fireEvent.click(deleteButtons[0]);
+    // Click actions and delete again to confirm
+    fireEvent.click(actionButtons[0]);
+    const deleteBtnAgain = await screen.findByRole('button', { name: /delete mailbox/i });
+    fireEvent.click(deleteBtnAgain);
+
     const dialogAgain = await screen.findByRole('dialog');
     expect(dialogAgain).toBeInTheDocument();
 
     const confirmDeleteBtn = within(dialogAgain).getByRole('button', { name: /delete mailbox/i });
+    expect(confirmDeleteBtn).toBeDisabled();
+
+    // Type incorrect email - should still be disabled
+    const confirmInput = within(dialogAgain).getByPlaceholderText('alice@acmecorp.com');
+    fireEvent.change(confirmInput, { target: { value: 'wrong@acmecorp.com' } });
+    expect(confirmDeleteBtn).toBeDisabled();
+
+    // Type exact matching email address
+    fireEvent.change(confirmInput, { target: { value: 'alice@acmecorp.com' } });
+    expect(confirmDeleteBtn).not.toBeDisabled();
+
     fireEvent.click(confirmDeleteBtn);
 
     await waitFor(() => {
       expect(api.deleteMailbox).toHaveBeenCalledWith('mb-1');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('allows suspending an active mailbox via three-dots menu', async () => {
+    vi.mocked(api.suspendMailbox).mockResolvedValue({
+      message: 'Mailbox successfully suspended',
+      mailbox: {
+        id: 'mb-1',
+        tenantId: 'tenant-123',
+        domainId: 'dom-1',
+        localPart: 'alice',
+        address: 'alice@acmecorp.com',
+        stalwartAccountId: 'acc-alice',
+        status: 'suspended',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+      },
+    });
+
+    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    await screen.findByText('Admin Overview');
+
+    const mailboxesTab = screen.getByText('View all mailboxes');
+    fireEvent.click(mailboxesTab);
+
+    // Find three-dots actions button
+    const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
+    fireEvent.click(actionButtons[0]);
+
+    // Click Suspend Mailbox from menu
+    const suspendBtn = await screen.findByRole('button', { name: /suspend mailbox/i });
+    fireEvent.click(suspendBtn);
+
+    // Dialog should appear
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: /suspend mailbox/i })).toBeInTheDocument();
+    expect(within(dialog).getByText(/alice@acmecorp\.com/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/temporary access restriction/i)).toBeInTheDocument();
+
+    // Confirm suspend
+    const confirmSuspendBtn = within(dialog).getByRole('button', { name: /suspend mailbox/i });
+    fireEvent.click(confirmSuspendBtn);
+
+    await waitFor(() => {
+      expect(api.suspendMailbox).toHaveBeenCalledWith('mb-1');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('allows reactivating a suspended mailbox via three-dots menu', async () => {
+    vi.mocked(api.listMyMailboxes).mockResolvedValue({
+      mailboxes: [
+        {
+          id: 'mb-1',
+          tenantId: 'tenant-123',
+          domainId: 'dom-1',
+          localPart: 'alice',
+          address: 'alice@acmecorp.com',
+          stalwartAccountId: 'acc-alice',
+          status: 'suspended',
+          createdAt: '2026-01-02T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+    });
+
+    vi.mocked(api.reactivateMailbox).mockResolvedValue({
+      message: 'Mailbox successfully reactivated',
+      mailbox: {
+        id: 'mb-1',
+        tenantId: 'tenant-123',
+        domainId: 'dom-1',
+        localPart: 'alice',
+        address: 'alice@acmecorp.com',
+        stalwartAccountId: 'acc-alice',
+        status: 'active',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+      },
+    });
+
+    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    await screen.findByText('Admin Overview');
+
+    const mailboxesTab = screen.getByText('View all mailboxes');
+    fireEvent.click(mailboxesTab);
+
+    // Find three-dots actions button
+    const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
+    fireEvent.click(actionButtons[0]);
+
+    // Click Reactivate Mailbox from menu
+    const reactivateBtn = await screen.findByRole('button', { name: /reactivate mailbox/i });
+    fireEvent.click(reactivateBtn);
+
+    // Dialog should appear
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: /reactivate mailbox/i })).toBeInTheDocument();
+    expect(within(dialog).getByText(/alice@acmecorp\.com/i)).toBeInTheDocument();
+
+    // Confirm reactivate
+    const confirmReactivateBtn = within(dialog).getByRole('button', { name: /reactivate mailbox/i });
+    fireEvent.click(confirmReactivateBtn);
+
+    await waitFor(() => {
+      expect(api.reactivateMailbox).toHaveBeenCalledWith('mb-1');
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
@@ -258,6 +402,9 @@ describe('TenantAdminDashboard Component', () => {
 
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add your first domain/i })).toBeInTheDocument();
+    expect(screen.queryByText('Mailbox Allocation')).not.toBeInTheDocument();
+    expect(screen.queryByText('Operational Health')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recently Added Mailboxes')).not.toBeInTheDocument();
   });
 
   it('allows switching domain from top sidebar dropdown and reloads scoped mailboxes', async () => {
@@ -299,6 +446,90 @@ describe('TenantAdminDashboard Component', () => {
     // Verify listMyMailboxes was called with dom-2
     await waitFor(() => {
       expect(api.listMyMailboxes).toHaveBeenCalledWith('dom-2');
+    });
+  });
+
+  describe('2FA Setup Removable Notification', () => {
+    it('renders 2FA setup reminder notification when 2FA is not enabled', async () => {
+      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+
+      expect(await screen.findByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).toBeInTheDocument();
+      expect(screen.getByText(/Enhance account security with Two-Factor Authentication/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Set up 2FA/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Remind me later/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Dismiss 2FA notification/i })).toBeInTheDocument();
+    });
+
+    it('dismisses 2FA reminder when X close button is clicked and records in sessionStorage', async () => {
+      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+
+      const closeBtn = await screen.findByRole('button', { name: /Dismiss 2FA notification/i });
+      fireEvent.click(closeBtn);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
+      });
+      expect(sessionStorage.getItem('toowix_dismissed_2fa_banner')).toBe('true');
+    });
+
+    it('dismisses 2FA reminder when Remind me later button is clicked', async () => {
+      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+
+      const remindBtn = await screen.findByRole('button', { name: /Remind me later/i });
+      fireEvent.click(remindBtn);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
+      });
+      expect(sessionStorage.getItem('toowix_dismissed_2fa_banner')).toBe('true');
+    });
+
+    it('clicking Set up 2FA switches navigation to the Account Security view', async () => {
+      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+
+      const setupBtn = await screen.findByRole('button', { name: /Set up 2FA/i });
+      fireEvent.click(setupBtn);
+
+      // Verify that security view has opened
+      await waitFor(() => {
+        expect(screen.getByText('Account Security')).toBeInTheDocument();
+      });
+      // And the reminder banner itself is hidden while viewing the security tab
+      expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
+    });
+
+    it('does not render 2FA setup notification when user has 2FA enabled', async () => {
+      vi.mocked(api.getSecuritySettings).mockResolvedValue({
+        email: 'admin@acmecorp.com',
+        twoFactorEnabled: true,
+        twoFactorMethod: 'totp',
+      } as any);
+
+      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: true }} onLogout={onLogout} />);
+
+      expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
+    });
+
+    it('does not render 2FA setup notification when already dismissed in sessionStorage', async () => {
+      sessionStorage.setItem('toowix_dismissed_2fa_banner', 'true');
+
+      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+
+      expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
+    });
+
+    it('clicking Storage in the sidebar switches navigation to the Storage view', async () => {
+      render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+
+      const storageNavBtn = await screen.findByRole('button', { name: /Storage/i });
+      fireEvent.click(storageNavBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Total Storage Used')).toBeInTheDocument();
+        expect(screen.getByText('Average per Mailbox')).toBeInTheDocument();
+      });
     });
   });
 });

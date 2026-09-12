@@ -8,6 +8,12 @@ export interface ISecurityQuestionItem {
   answerHash: string;
 }
 
+export interface IBackupCodeItem {
+  codeHash: string;
+  used: boolean;
+  usedAt?: Date | null;
+}
+
 export interface IAdminUser extends Document {
   email: string;
   name?: string | null;
@@ -18,6 +24,7 @@ export interface IAdminUser extends Document {
   twoFactorEnabled: boolean;
   twoFactorMethod?: 'totp' | 'email';
   twoFactorSecret?: string | null;
+  backupCodes?: IBackupCodeItem[];
   recoveryEmail?: string | null;
   recoveryEmailOtp?: {
     email: string;
@@ -106,6 +113,14 @@ const AdminUserSchema = new Schema(
       type: String,
       default: null,
     },
+    backupCodes: [
+      {
+        codeHash: { type: String, required: true },
+        used: { type: Boolean, default: false },
+        usedAt: { type: Date, default: null },
+        _id: false,
+      },
+    ],
     recoveryEmail: {
       type: String,
       default: null,

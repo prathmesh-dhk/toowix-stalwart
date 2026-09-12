@@ -33,31 +33,22 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
     };
   }, [isOpen]);
 
-  // If no domains exist yet, show a CTA pill button
+  // If no domains exist yet, show a clean, crisp action button
   if (domains.length === 0) {
     return (
       <div className="mb-4">
         <button
           type="button"
           onClick={onOpenAddDomain}
-          className="w-full flex items-center justify-between p-2.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 transition-all group cursor-pointer shadow-xs"
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 text-slate-800 transition-colors cursor-pointer text-xs font-medium group shadow-2xs"
           id="btn-add-first-domain-sidebar"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-              <Plus className="w-4 h-4" />
-            </div>
-            <div className="flex flex-col text-left min-w-0">
-              <span className="text-xs font-semibold text-slate-900 group-hover:text-indigo-700 truncate">
-                Add Your Domain
-              </span>
-              <span className="text-[11px] text-indigo-600/80 font-medium truncate">
-                Configure mailboxes
-              </span>
-            </div>
+          <div className="flex items-center gap-2 min-w-0">
+            <Plus className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span className="font-semibold text-slate-800 truncate text-xs">Add Your Domain</span>
           </div>
-          <span className="text-xs font-medium text-indigo-600 bg-white px-2 py-0.5 rounded-full border border-indigo-200 shrink-0">
-            + Setup
+          <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-full shrink-0">
+            Setup
           </span>
         </button>
       </div>

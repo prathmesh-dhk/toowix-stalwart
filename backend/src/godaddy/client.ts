@@ -1,0 +1,166 @@
+import https from 'https';
+import { GoDaddyDomainInfo, GoDaddyDnsRecord } from './types';
+import {
+  GoDaddyError,
+  GoDaddyUnavailableError,
+  GoDaddyAuthError,
+  GoDaddyDomainNotManagedError,
+} from './errors';
+
+const GODADDY_API_BASE = 'https://api.godaddy.com';
+
+export class GoDaddyClient {
+  /**
+   * Low-level dispatch mirroring backend/src/stalwart/client.ts's `dispatch`
+   * shape/conventions (raw Node https, explicit status-code handling, typed
+   * errors) so the two third-party integrations in this codebase read the
+   * same way.
+   */
+  private async request(
+    method: 'GET' | 'PATCH',
+    path: string,
+    apiKey: string,
+    apiSecret: string,
+    body?: unknown
+  ): Promise<{ status: number; json: any }> {
+    const payload = body !== undefined ? JSON.stringify(body) : undefined;
+    const url = new URL(`${GODADDY_API_BASE}${path}`);
+
+    return new Promise((resolve, reject) => {
+      const req = https.request(
+        url,
+        {
+          method,
+          timeout: 10000,
+          headers: {
+            'Authorization': `sso-key ${apiKey}:${apiSecret}`,
+            'Content-Type': 'application/json',
+            ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+          },
+        },
+        (res) => {
+          let body = '';
+          res.on('data', (chunk) => (body += chunk));
+          res.on('end', () => {
+            const status = res.statusCode || 0;
+            if (status >= 500) {
+              return reject(new GoDaddyUnavailableError(`GoDaddy server error: HTTP ${status}`, body));
+            }
+            let json: any = null;
+            if (body) {
+              try {
+                json = JSON.parse(body);
+              } catch {
+                // GoDaddy returns an empty body on some successful PATCH calls; non-JSON is only an error on non-2xx.
+                if (status >= 400) {
+                  return reject(new GoDaddyError(`Invalid JSON response from GoDaddy: HTTP ${status}`, 'PROTOCOL_ERROR', body));
+                }
+              }
+            }
+            resolve({ status, json });
+          });
+        }
+      );
+
+      req.on('error', (err) => {
+        reject(new GoDaddyUnavailableError(`Unable to reach GoDaddy API: ${err.message}`));
+      });
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new GoDaddyUnavailableError('GoDaddy API request timed out'));
+      });
+
+      if (payload) req.write(payload);
+      req.end();
+    });
+  }
+
+  /**
+   * Confirms the supplied credential is valid AND actually manages the given
+   * domain, before Toowix ever stores it. Throws GoDaddyAuthError for bad
+   * credentials, GoDaddyDomainNotManagedError if the credential is valid but
+   * this domain isn't in that GoDaddy account.
+   */
+  async verifyCredential(apiKey: string, apiSecret: string, domain: string): Promise<GoDaddyDomainInfo> {
+    const normalized = domain.trim().toLowerCase();
+    const { status, json } = await this.request('GET', `/v1/domains/${encodeURIComponent(normalized)}`, apiKey, apiSecret);
+
+    if (status === 401 || status === 403) {
+      throw new GoDaddyAuthError(undefined, json);
+    }
+    if (status === 404) {
+      throw new GoDaddyDomainNotManagedError(normalized, json);
+    }
+    if (status >= 400) {
+      throw new GoDaddyError(`GoDaddy rejected the credential check: HTTP ${status}`, 'GODADDY_VERIFY_FAILED', json);
+    }
+
+    return {
+      domain: json?.domain || normalized,
+      domainId: json?.domainId,
+      status: json?.status,
+    };
+  }
+
+  /**
+   * Lists existing DNS records of one type+name (e.g. MX/@ or TXT/@) so the
+   * activation orchestrator can detect a conflict before creating anything.
+   * GoDaddy returns 404 when no records of that type/name exist yet — this
+   * is treated as "no conflict", not an error.
+   */
+  async listDnsRecords(
+    apiKey: string,
+    apiSecret: string,
+    domain: string,
+    type: string,
+    name: string
+  ): Promise<GoDaddyDnsRecord[]> {
+    const normalized = domain.trim().toLowerCase();
+    const { status, json } = await this.request(
+      'GET',
+      `/v1/domains/${encodeURIComponent(normalized)}/records/${type}/${encodeURIComponent(name)}`,
+      apiKey,
+      apiSecret
+    );
+
+    if (status === 404) return [];
+    if (status === 401 || status === 403) {
+      throw new GoDaddyAuthError(undefined, json);
+    }
+    if (status >= 400) {
+      throw new GoDaddyError(`Failed to list DNS records: HTTP ${status}`, 'GODADDY_LIST_FAILED', json);
+    }
+    return Array.isArray(json) ? json : [];
+  }
+
+  /**
+   * Additively creates DNS records (GoDaddy's PATCH /records appends rather
+   * than replacing existing records of the same type/name — this is the
+   * behavior the "never overwrite a conflicting record" requirement needs;
+   * conflicts must be checked with listDnsRecords() BEFORE calling this).
+   */
+  async createDnsRecords(
+    apiKey: string,
+    apiSecret: string,
+    domain: string,
+    records: GoDaddyDnsRecord[]
+  ): Promise<void> {
+    const normalized = domain.trim().toLowerCase();
+    const { status, json } = await this.request(
+      'PATCH',
+      `/v1/domains/${encodeURIComponent(normalized)}/records`,
+      apiKey,
+      apiSecret,
+      records
+    );
+
+    if (status === 401 || status === 403) {
+      throw new GoDaddyAuthError(undefined, json);
+    }
+    if (status >= 400) {
+      throw new GoDaddyError(`Failed to create DNS records: HTTP ${status}`, 'GODADDY_CREATE_FAILED', json);
+    }
+  }
+}
+
+export const goDaddyClient = new GoDaddyClient();

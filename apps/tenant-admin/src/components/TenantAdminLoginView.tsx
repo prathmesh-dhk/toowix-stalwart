@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api, setStoredToken } from '../api';
 import { UserContext } from '../types';
+import { maskEmailPreview } from './ForgotPasswordView';
 import toowixLogo from '../assets/toowix-logo.svg';
 import {
   AlertCircle,
@@ -11,6 +12,9 @@ import {
   Mail,
   Clock,
   CheckCircle2,
+  ArrowRight,
+  ArrowLeft,
+  KeyRound,
 } from 'lucide-react';
 
 interface TenantAdminLoginViewProps {
@@ -36,8 +40,14 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
 
   // Step 2: 2FA State
   const [tempToken, setTempToken] = useState<string | null>(null);
+  const [twoFactorStep, setTwoFactorStep] = useState<'select' | 'verify' | 'backup_code'>('select');
   const [hasRecoveryEmail, setHasRecoveryEmail] = useState(false);
+  const [hasEmail2Fa, setHasEmail2Fa] = useState(false);
+  const [hasBackupCodes, setHasBackupCodes] = useState(false);
+  const [backupCodeInput, setBackupCodeInput] = useState('');
   const [maskedRecoveryEmail, setMaskedRecoveryEmail] = useState<string | null>(null);
+  const [maskedEmail, setMaskedEmail] = useState<string | null>(null);
+  const [isRecoveryEmail, setIsRecoveryEmail] = useState(false);
   const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'email'>('totp');
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
@@ -48,6 +58,15 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleLoginSuccess = (loggedInUser: UserContext) => {
+    try {
+      sessionStorage.removeItem('toowix_dismissed_2fa_banner');
+    } catch {
+      // ignore
+    }
+    onSuccess(loggedInUser);
+  };
 
   // Email OTP resend timer
   useEffect(() => {
@@ -104,9 +123,15 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
 
       if (res.requires2FA && res.tempToken) {
         setTempToken(res.tempToken);
+        setTwoFactorStep('select');
         setHasRecoveryEmail(!!res.hasRecoveryEmail);
+        setHasEmail2Fa(res.hasEmail2Fa ?? true);
+        setHasBackupCodes(res.hasBackupCodes ?? false);
+        setBackupCodeInput('');
         setMaskedRecoveryEmail(res.maskedRecoveryEmail || null);
-        setTwoFactorMethod('totp');
+        setMaskedEmail(res.maskedEmail || res.maskedRecoveryEmail || (email ? maskEmailPreview(email) : null));
+        setIsRecoveryEmail(!!res.isRecoveryEmail);
+        setTwoFactorMethod(res.defaultMethod === 'email' ? 'email' : 'totp');
         setDigits(['', '', '', '', '', '']);
         setEmailOtpSent(false);
       } else if (res.token) {
@@ -116,7 +141,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
           localStorage.removeItem('toowix_tenant_remember_email');
         }
         setStoredToken(res.token);
-        onSuccess(res.user);
+        handleLoginSuccess(res.user);
       }
     } catch (err: any) {
       setError(err.message || 'Invalid email or password.');
@@ -125,13 +150,34 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
     }
   };
 
-  // Step 2: Send OTP to recovery email
+  // Step 2A: Proceed from Method Selection to Verification Step
+  const handleProceedToVerify = async () => {
+    setError(null);
+    setDigits(['', '', '', '', '', '']);
+    if (twoFactorMethod === 'email' && !emailOtpSent) {
+      await handleSendEmailOtp();
+    }
+    setTwoFactorStep('verify');
+  };
+
+  // Focus first digit when entering verify step
+  useEffect(() => {
+    if (tempToken && twoFactorStep === 'verify') {
+      setTimeout(() => {
+        digitRefs.current[0]?.focus();
+      }, 100);
+    }
+  }, [tempToken, twoFactorStep]);
+
+  // Step 2: Send OTP to email
   const handleSendEmailOtp = async () => {
     if (!tempToken) return;
     setError(null);
     setSendingEmailOtp(true);
     try {
-      await api.send2FaLoginOtp(tempToken);
+      const res = await api.send2FaLoginOtp(tempToken);
+      if (res.maskedEmail) setMaskedEmail(res.maskedEmail);
+      if (res.isRecoveryEmail !== undefined) setIsRecoveryEmail(res.isRecoveryEmail);
       setEmailOtpSent(true);
       setEmailOtpCooldown(60);
     } catch (err: any) {
@@ -166,7 +212,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
         localStorage.removeItem('toowix_tenant_remember_email');
       }
       setStoredToken(res.token);
-      onSuccess(res.user);
+      handleLoginSuccess(res.user);
     } catch (err: any) {
       setError(err.message || 'Invalid verification code. Please try again.');
     } finally {
@@ -174,12 +220,50 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
     }
   };
 
+  // Step 2: Bypass with emergency backup code
+  const handleBackupCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tempToken) {
+      setError('Session expired. Please sign in again.');
+      return;
+    }
+
+    const cleanCode = backupCodeInput.trim();
+    if (!cleanCode) {
+      setError('Please enter your emergency backup code.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await api.verify2Fa(tempToken, cleanCode, rememberMe, 'backup_code');
+      if (rememberMe) {
+        localStorage.setItem('toowix_tenant_remember_email', email.trim().toLowerCase());
+      } else {
+        localStorage.removeItem('toowix_tenant_remember_email');
+      }
+      setStoredToken(res.token);
+      handleLoginSuccess(res.user);
+    } catch (err: any) {
+      setError(err.message || 'Invalid or previously used backup code. Please check and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBackToLogin = () => {
     setTempToken(null);
+    setTwoFactorStep('select');
     setDigits(['', '', '', '', '', '']);
+    setBackupCodeInput('');
     setEmailOtpSent(false);
     setError(null);
   };
+
+  const displayTargetEmail = maskedEmail || maskedRecoveryEmail || (email ? maskEmailPreview(email) : '');
+  const emailDestinationLabel = isRecoveryEmail ? 'recovery email' : 'email';
 
   return (
     <div className="font-sans antialiased text-slate-800 bg-slate-50 min-h-screen relative overflow-x-hidden flex flex-col justify-between selection:bg-indigo-100 selection:text-indigo-900">
@@ -345,167 +429,365 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                 /* STEP 2: Two-Factor Verification                      */
                 /* ==================================================== */
                 <>
-                  <div className="mb-6 flex flex-col items-start">
-                    <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-3.5 shadow-sm">
-                      <ShieldCheck className="w-5 h-5" />
-                    </div>
-                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Two-factor authentication</h2>
-                    <p className="text-sm text-slate-500 mt-1">Choose a verification method to complete sign in.</p>
-                  </div>
-
-                  {/* 2FA Method Selector */}
-                  <div className="space-y-3 mb-5" data-purpose="method-selector">
-                    {/* Method 1: TOTP */}
-                    <div
-                      className={`cursor-pointer p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 relative ${twoFactorMethod === 'totp'
-                          ? 'border-2 border-indigo-600 bg-indigo-50/80 shadow-sm'
-                          : 'border border-slate-200/80 bg-white/70 hover:bg-white hover:border-slate-300'
-                        }`}
-                      onClick={() => {
-                        setTwoFactorMethod('totp');
-                        setDigits(['', '', '', '', '', '']);
-                        setError(null);
-                      }}
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-600 flex-shrink-0 mt-0.5">
-                        <Smartphone className="w-4 h-4" />
-                      </div>
-                      <div className="flex-grow min-w-0 pr-6">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-xs font-bold text-slate-900">Authenticator app</span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700">Recommended</span>
+                  {twoFactorStep === 'select' ? (
+                    /* ==================================================== */
+                    /* STEP 2A: Select 2FA Method                           */
+                    /* ==================================================== */
+                    <>
+                      <div className="mb-6 flex flex-col items-start">
+                        <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-3.5 shadow-sm">
+                          <ShieldCheck className="w-5 h-5" />
                         </div>
-                        <p className="text-xs text-slate-500 leading-relaxed">Enter the 6-digit code from your authenticator app.</p>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 1 of 2</span>
+                        <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Two-factor authentication</h2>
+                        <p className="text-sm text-slate-500 mt-1">Choose a verification method to complete sign in.</p>
                       </div>
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center absolute right-3.5 top-4 bg-white ${twoFactorMethod === 'totp' ? 'border-2 border-indigo-600' : 'border-slate-300'}`}>
-                        {twoFactorMethod === 'totp' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
-                      </div>
-                    </div>
 
-                    {/* Method 2: Email OTP */}
-                    {hasRecoveryEmail && (
-                      <div
-                        className={`cursor-pointer p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 relative ${twoFactorMethod === 'email'
-                            ? 'border-2 border-indigo-600 bg-indigo-50/80 shadow-sm'
-                            : 'border border-slate-200/80 bg-white/70 hover:bg-white hover:border-slate-300'
+                      {/* 2FA Method Selector */}
+                      <div className="space-y-3 mb-6" data-purpose="method-selector">
+                        {/* Method 1: TOTP */}
+                        <div
+                          className={`cursor-pointer p-4 rounded-2xl transition-all duration-200 flex items-start gap-3.5 relative ${
+                            twoFactorMethod === 'totp'
+                              ? 'border-2 border-indigo-600 bg-indigo-50/80 shadow-sm'
+                              : 'border border-slate-200/80 bg-white/70 hover:bg-white hover:border-slate-300'
                           }`}
-                        onClick={() => {
-                          setTwoFactorMethod('email');
-                          setDigits(['', '', '', '', '', '']);
-                          setError(null);
-                          if (!emailOtpSent) {
-                            handleSendEmailOtp();
-                          }
-                        }}
-                      >
-                        <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 flex-shrink-0 mt-0.5">
-                          <Mail className="w-4 h-4" />
-                        </div>
-                        <div className="flex-grow min-w-0 pr-6">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-xs font-bold text-slate-800">Email verification code</span>
+                          onClick={() => {
+                            setTwoFactorMethod('totp');
+                            setError(null);
+                          }}
+                        >
+                          <div className="w-9 h-9 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-600 flex-shrink-0 mt-0.5">
+                            <Smartphone className="w-4 h-4" />
                           </div>
-                          <p className="text-xs text-slate-500 leading-relaxed">
-                            Send a temporary 6-digit code to your recovery email ({maskedRecoveryEmail || 'configured recovery'}).
+                          <div className="flex-grow min-w-0 pr-6">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-xs font-bold text-slate-900">Authenticator app</span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700">Recommended</span>
+                            </div>
+                            <p className="text-xs text-slate-500 leading-relaxed">Enter the 6-digit code from your authenticator app.</p>
+                          </div>
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center absolute right-3.5 top-4.5 bg-white ${twoFactorMethod === 'totp' ? 'border-2 border-indigo-600' : 'border-slate-300'}`}>
+                            {twoFactorMethod === 'totp' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
+                          </div>
+                        </div>
+
+                        {/* Method 2: Email OTP */}
+                        {(hasRecoveryEmail || hasEmail2Fa) && (
+                          <div
+                            className={`cursor-pointer p-4 rounded-2xl transition-all duration-200 flex items-start gap-3.5 relative ${
+                              twoFactorMethod === 'email'
+                                ? 'border-2 border-indigo-600 bg-indigo-50/80 shadow-sm'
+                                : 'border border-slate-200/80 bg-white/70 hover:bg-white hover:border-slate-300'
+                            }`}
+                            onClick={() => {
+                              setTwoFactorMethod('email');
+                              setError(null);
+                            }}
+                          >
+                            <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 flex-shrink-0 mt-0.5">
+                              <Mail className="w-4 h-4" />
+                            </div>
+                            <div className="flex-grow min-w-0 pr-6">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-xs font-bold text-slate-800">Email verification code</span>
+                              </div>
+                              <p className="text-xs text-slate-500 leading-relaxed">
+                                Send a temporary 6-digit code to your {emailDestinationLabel}{displayTargetEmail ? ` (${displayTargetEmail})` : ''}.
+                              </p>
+                            </div>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center absolute right-3.5 top-4.5 bg-white ${twoFactorMethod === 'email' ? 'border-2 border-indigo-600' : 'border-slate-300'}`}>
+                              {twoFactorMethod === 'email' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Continue to Verification Button */}
+                      <div className="pt-1">
+                        <button
+                          className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
+                          type="button"
+                          onClick={handleProceedToVerify}
+                          disabled={sendingEmailOtp}
+                        >
+                          <span>{sendingEmailOtp ? 'Sending code...' : 'Continue'}</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Use Backup Code Option */}
+                      <div className="pt-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTwoFactorStep('backup_code');
+                            setBackupCodeInput('');
+                            setError(null);
+                          }}
+                          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium hover:underline cursor-pointer inline-flex items-center gap-1.5"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Use backup code</span>
+                        </button>
+                      </div>
+
+                      {/* Back to sign-in */}
+                      <div className="text-center pt-2 space-y-2.5">
+                        <div>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            onClick={handleBackToLogin}
+                          >
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                            <span>Back to sign in</span>
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Encrypted connection</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : twoFactorStep === 'backup_code' ? (
+                    /* ==================================================== */
+                    /* STEP 2C: Emergency Backup Code                       */
+                    /* ==================================================== */
+                    <>
+                      <div className="mb-6 flex flex-col items-start">
+                        <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-3.5 shadow-sm">
+                          <KeyRound className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Emergency Access</span>
+                        <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">Emergency backup code</h2>
+                        <p className="text-sm text-slate-500 mt-1">Enter one of your single-use backup codes to sign in.</p>
+                      </div>
+
+                      <form className="space-y-4" onSubmit={handleBackupCodeSubmit}>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-slate-700 block" htmlFor="backupCodeInput">
+                            Backup code
+                          </label>
+                          <input
+                            id="backupCodeInput"
+                            type="text"
+                            autoFocus
+                            placeholder="XXXX-XXXX"
+                            value={backupCodeInput}
+                            onChange={(e) => setBackupCodeInput(e.target.value)}
+                            className="w-full h-11 px-4 bg-slate-50/90 border border-slate-200/80 rounded-xl text-base font-mono tracking-widest uppercase text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-center"
+                          />
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            8 characters (e.g. ABCD-EFGH). Each code can only be used once.
                           </p>
                         </div>
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center absolute right-3.5 top-4 bg-white ${twoFactorMethod === 'email' ? 'border-2 border-indigo-600' : 'border-slate-300'}`}>
-                          {twoFactorMethod === 'email' && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
 
-                  {/* 2FA Code Input Form */}
-                  <form className="space-y-4" onSubmit={handle2FaSubmit}>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-semibold text-slate-700">
-                          {twoFactorMethod === 'totp' ? 'Authenticator code' : 'Email verification code'}
-                        </label>
-                        {twoFactorMethod !== 'totp' && (
+                        {/* Trust Device Checkbox */}
+                        <div className="pt-1">
+                          <label className="flex items-center gap-2 cursor-pointer select-none text-[13px] text-slate-600">
+                            <input
+                              checked={rememberMe}
+                              onChange={(e) => setRememberMe(e.target.checked)}
+                              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30"
+                              type="checkbox"
+                            />
+                            <span className="text-xs text-slate-600">Remember this device for 30 days</span>
+                          </label>
+                        </div>
+
+                        {/* Primary CTA Button */}
+                        <div className="pt-2">
+                          <button
+                            className="btn btn-primary btn-lg w-full"
+                            id="submitBackupCodeBtn"
+                            type="submit"
+                            disabled={loading || !backupCodeInput.trim()}
+                          >
+                            <span>{loading ? 'Verifying...' : 'Verify and sign in'}</span>
+                          </button>
+                        </div>
+
+                        {/* Navigation back */}
+                        <div className="text-center pt-2 space-y-2">
+                          <div>
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              onClick={() => {
+                                setTwoFactorStep('select');
+                                setBackupCodeInput('');
+                                setError(null);
+                              }}
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                              <span>Back to standard verification</span>
+                            </button>
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              className="text-xs text-slate-400 hover:text-slate-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              onClick={handleBackToLogin}
+                            >
+                              <span>Back to sign in</span>
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 pt-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Encrypted connection</span>
+                          </div>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    /* ==================================================== */
+                    /* STEP 2B: Enter OTP / Code Verification               */
+                    /* ==================================================== */
+                    <>
+                      <div className="mb-6 flex flex-col items-start">
+                        <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-3.5 shadow-sm">
+                          <ShieldCheck className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block">Step 2 of 2</span>
+                        <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">
+                          {twoFactorMethod === 'totp' ? 'Authenticator verification' : 'Verify email code'}
+                        </h2>
+                        <p className="text-sm text-slate-500 mt-1">
+                          {twoFactorMethod === 'totp'
+                            ? 'Enter the 6-digit code from your authenticator app.'
+                            : `Enter the 6-digit verification code sent to ${displayTargetEmail || `your ${emailDestinationLabel}`}.`}
+                        </p>
+                      </div>
+
+                      {/* Email Destination & Resend Header */}
+                      {twoFactorMethod === 'email' && (
+                        <div className="mb-4 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                          <div className="flex items-center gap-2 truncate">
+                            <Mail className="w-4 h-4 text-indigo-600 shrink-0" />
+                            <span className="truncate">
+                              Sent to: <strong className="text-slate-900 font-semibold">{displayTargetEmail || emailDestinationLabel}</strong>
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={handleSendEmailOtp}
                             disabled={sendingEmailOtp || emailOtpCooldown > 0}
-                            className="text-[11px] text-indigo-600 font-medium hover:underline disabled:opacity-50"
+                            className="text-[11px] text-indigo-600 font-semibold hover:underline disabled:opacity-50 shrink-0 cursor-pointer"
                           >
                             {sendingEmailOtp ? 'Sending...' : emailOtpCooldown > 0 ? `Resend (${emailOtpCooldown}s)` : 'Resend code'}
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
-                      {/* 6-digit individual inputs */}
-                      <div className="grid grid-cols-6 gap-2 sm:gap-2.5" onPaste={handleDigitPaste}>
-                        {digits.map((digit, idx) => (
-                          <input
-                            key={idx}
-                            ref={(el) => (digitRefs.current[idx] = el)}
-                            className="w-full h-12 text-center text-lg font-bold tabular-nums text-slate-900 bg-slate-50/90 border border-slate-200/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
-                            inputMode="numeric"
-                            maxLength={1}
-                            type="text"
-                            value={digit}
-                            onChange={(e) => handleDigitChange(idx, e.target.value)}
-                            onKeyDown={(e) => handleDigitKeyDown(idx, e)}
-                          />
-                        ))}
-                      </div>
+                      {/* 2FA Code Input Form */}
+                      <form className="space-y-4" onSubmit={handle2FaSubmit}>
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-700 block">
+                            {twoFactorMethod === 'totp' ? 'Authenticator code' : 'Email verification code'}
+                          </label>
 
-                      <div className="pt-1">
-                        <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
-                          <span>
-                            {twoFactorMethod === 'totp'
-                              ? 'Enter the 6-digit code from your authenticator app.'
-                              : `Check your recovery email (${maskedRecoveryEmail || 'recovery address'}) for the code.`}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
+                          {/* 6-digit individual inputs */}
+                          <div className="grid grid-cols-6 gap-2 sm:gap-2.5" onPaste={handleDigitPaste}>
+                            {digits.map((digit, idx) => (
+                              <input
+                                key={idx}
+                                ref={(el) => (digitRefs.current[idx] = el)}
+                                className="w-full h-12 text-center text-lg font-bold tabular-nums text-slate-900 bg-slate-50/90 border border-slate-200/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+                                inputMode="numeric"
+                                maxLength={1}
+                                type="text"
+                                value={digit}
+                                onChange={(e) => handleDigitChange(idx, e.target.value)}
+                                onKeyDown={(e) => handleDigitKeyDown(idx, e)}
+                              />
+                            ))}
+                          </div>
 
-                    {/* Trust Device Checkbox */}
-                    <div className="pt-1">
-                      <label className="flex items-center gap-2 cursor-pointer select-none text-[13px] text-slate-600">
-                        <input
-                          checked={rememberMe}
-                          onChange={(e) => setRememberMe(e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30"
-                          type="checkbox"
-                        />
-                        <span className="text-xs text-slate-600">Remember this device for 30 days</span>
-                      </label>
-                    </div>
+                          <div className="pt-1">
+                            <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                              <span>
+                                {twoFactorMethod === 'totp'
+                                  ? 'Codes refresh every 30 seconds.'
+                                  : 'Codes expire after 10 minutes.'}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
 
-                    {/* Primary CTA Button */}
-                    <div className="pt-2">
-                      <button
-                        className="btn btn-primary btn-lg w-full"
-                        id="submit2FABtn"
-                        type="submit"
-                        disabled={loading}
-                      >
-                        <span>{loading ? 'Verifying...' : 'Verify and sign in'}</span>
-                      </button>
-                    </div>
+                        {/* Trust Device Checkbox */}
+                        <div className="pt-1">
+                          <label className="flex items-center gap-2 cursor-pointer select-none text-[13px] text-slate-600">
+                            <input
+                              checked={rememberMe}
+                              onChange={(e) => setRememberMe(e.target.checked)}
+                              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30"
+                              type="checkbox"
+                            />
+                            <span className="text-xs text-slate-600">Remember this device for 30 days</span>
+                          </label>
+                        </div>
 
-                    {/* Back to sign-in */}
-                    <div className="text-center pt-2 space-y-2.5">
-                      <div>
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors inline-flex items-center gap-1"
-                          onClick={handleBackToLogin}
-                        >
-                          ← Back to sign in
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Encrypted connection</span>
-                      </div>
-                    </div>
-                  </form>
+                        {/* Primary CTA Button */}
+                        <div className="pt-2">
+                          <button
+                            className="btn btn-primary btn-lg w-full"
+                            id="submit2FABtn"
+                            type="submit"
+                            disabled={loading || digits.join('').length !== 6}
+                          >
+                            <span>{loading ? 'Verifying...' : 'Verify and sign in'}</span>
+                          </button>
+                        </div>
+
+                        {/* Navigation back */}
+                        <div className="text-center pt-2 space-y-2">
+                          <div>
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                              onClick={() => {
+                                setTwoFactorStep('backup_code');
+                                setBackupCodeInput('');
+                                setError(null);
+                              }}
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span>Use backup code</span>
+                            </button>
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              onClick={() => {
+                                setTwoFactorStep('select');
+                                setDigits(['', '', '', '', '', '']);
+                                setError(null);
+                              }}
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                              <span>Choose a different method</span>
+                            </button>
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              className="text-xs text-slate-400 hover:text-slate-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              onClick={handleBackToLogin}
+                            >
+                              <span>Back to sign in</span>
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 pt-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Encrypted connection</span>
+                          </div>
+                        </div>
+                      </form>
+                    </>
+                  )}
                 </>
               )}
             </div>

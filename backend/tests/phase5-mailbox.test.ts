@@ -44,6 +44,7 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
     }));
 
     vi.spyOn(stalwartClient, 'updateAccountPassword').mockResolvedValue();
+    vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue();
     vi.spyOn(stalwartClient, 'deleteAccount').mockResolvedValue();
 
     vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([
@@ -585,6 +586,86 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
 
       const tenantB = await TenantModel.findById(tenantBId);
       expect(tenantB?.mailboxCount).toBe(1);
+    });
+  });
+
+  // =========================================================================
+  // 7b. Mailbox Suspension & Reactivation (POST /api/mailboxes/:id/suspend, reactivate)
+  // =========================================================================
+  describe('Mailbox Suspension & Reactivation', () => {
+    let mailboxId: string;
+
+    beforeEach(async () => {
+      const res = await request(app)
+        .post('/api/tenants/me/mailboxes')
+        .set('Authorization', `Bearer ${tenantAdminAToken}`)
+        .send({ localPart: 'bruce', password: 'Password2026!Secure' });
+      mailboxId = res.body.id;
+    });
+
+    it('should suspend an active mailbox and update Stalwart account status', async () => {
+      const updateStatusSpy = vi.spyOn(stalwartClient, 'updateAccountStatus');
+
+      const res = await request(app)
+        .post(`/api/mailboxes/${mailboxId}/suspend`)
+        .set('Authorization', `Bearer ${tenantAdminAToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.mailbox.status).toBe('suspended');
+      expect(updateStatusSpy).toHaveBeenCalledWith(expect.any(String), true);
+
+      // Verify DB status
+      const doc = await MailboxModel.findById(mailboxId);
+      expect(doc?.status).toBe('suspended');
+
+      // Verify audit log
+      const audit = await AuditLogModel.findOne({ action: 'MAILBOX_SUSPENDED' });
+      expect(audit).not.toBeNull();
+      expect(audit?.tenantId.toString()).toBe(tenantAId);
+    });
+
+    it('should reactivate a suspended mailbox and restore Stalwart permissions', async () => {
+      // First suspend
+      await request(app)
+        .post(`/api/mailboxes/${mailboxId}/suspend`)
+        .set('Authorization', `Bearer ${tenantAdminAToken}`);
+
+      const updateStatusSpy = vi.spyOn(stalwartClient, 'updateAccountStatus');
+
+      // Then reactivate
+      const res = await request(app)
+        .post(`/api/mailboxes/${mailboxId}/reactivate`)
+        .set('Authorization', `Bearer ${tenantAdminAToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.mailbox.status).toBe('active');
+      expect(updateStatusSpy).toHaveBeenCalledWith(expect.any(String), false);
+
+      const doc = await MailboxModel.findById(mailboxId);
+      expect(doc?.status).toBe('active');
+
+      const audit = await AuditLogModel.findOne({ action: 'MAILBOX_REACTIVATED' });
+      expect(audit).not.toBeNull();
+    });
+
+    it('should reject suspension attempt by another tenant admin', async () => {
+      const res = await request(app)
+        .post(`/api/mailboxes/${mailboxId}/suspend`)
+        .set('Authorization', `Bearer ${tenantAdminBToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('MAILBOX_NOT_FOUND');
+    });
+
+    it('should block suspension if tenant is suspended', async () => {
+      await TenantModel.findByIdAndUpdate(tenantAId, { status: 'suspended' });
+
+      const res = await request(app)
+        .post(`/api/mailboxes/${mailboxId}/suspend`)
+        .set('Authorization', `Bearer ${tenantAdminAToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('TENANT_SUSPENDED');
     });
   });
 
