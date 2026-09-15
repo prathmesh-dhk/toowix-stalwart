@@ -5,7 +5,7 @@ import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
 import { ActiveDevicesView } from './ActiveDevicesView';
-import { SecuritySettingsView } from './SecuritySettingsView';
+import { SecurityView } from './SecurityView';
 import { StorageView } from './StorageView';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
@@ -685,7 +685,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   }`}
                   strokeWidth={1.75}
                 />
-                <span className="truncate">Account Security</span>
+                <span className="truncate">Security</span>
               </div>
             </button>
 
@@ -1507,10 +1507,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           )}
 
           {/* ===================================================================== */}
-          {/* VIEW: ACCOUNT SECURITY (2FA & RECOVERY EMAIL)                         */}
+          {/* VIEW: SECURITY (ACCOUNT, BLOCKED IPS, ALLOWED IPS)                     */}
           {/* ===================================================================== */}
           {activeNav === 'security' && (
-            <SecuritySettingsView user={user} on2FaStatusChange={(enabled) => setIs2FaEnabled(enabled)} />
+            <SecurityView user={user} on2FaStatusChange={(enabled) => setIs2FaEnabled(enabled)} />
           )}
 
           {/* ===================================================================== */}
