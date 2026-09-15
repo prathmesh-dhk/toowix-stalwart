@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ShieldCheck,
   Search,
   CheckCircle2,
   AlertTriangle,
@@ -11,8 +10,8 @@ import {
   Check,
   Globe,
   Clock,
-  Info,
   X,
+  ShieldCheck,
 } from 'lucide-react';
 import { api } from '../api';
 import { AllowedIpItem } from '../types';
@@ -65,7 +64,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
   useEffect(() => {
     if (initialPrefillIp) {
       setInputAddress(initialPrefillIp);
-      setInputReason('Whitelisted from Blocked IPs');
+      setInputReason('Office IP');
       setShowAddModal(true);
       if (onClearPrefillIp) onClearPrefillIp();
     }
@@ -82,9 +81,9 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
     try {
       await api.addAllowedIp({
         address: cleanAddress,
-        reason: inputReason.trim() || 'Whitelisted by administrator',
+        reason: inputReason.trim() || 'Allowed IP',
       });
-      setSuccessMsg(`IP ${cleanAddress} added to allowlist successfully.`);
+      setSuccessMsg(`IP ${cleanAddress} added to allowed list.`);
       setShowAddModal(false);
       setInputAddress('');
       setInputReason('');
@@ -104,7 +103,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
     setSuccessMsg(null);
     try {
       await api.removeAllowedIp(deletingTarget.id);
-      setSuccessMsg(`IP ${deletingTarget.address} removed from allowlist.`);
+      setSuccessMsg(`IP ${deletingTarget.address} removed from allowed list.`);
       setDeletingTarget(null);
       await fetchAllowedIps();
     } catch (err: any) {
@@ -129,50 +128,43 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
     <div className="flex flex-col gap-6">
       {/* Toast Notifications */}
       {successMsg && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between text-sm animate-in fade-in duration-200">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
             <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             <span>{successMsg}</span>
           </div>
-          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800">
+          <button
+            onClick={() => setSuccessMsg(null)}
+            className="text-emerald-600 hover:text-emerald-800 cursor-pointer"
+          >
             <X size={16} />
           </button>
         </div>
       )}
 
       {error && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center justify-between text-sm animate-in fade-in duration-200">
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
             <AlertTriangle size={18} className="text-rose-600 shrink-0" />
             <span>{error}</span>
           </div>
-          <button onClick={() => setError(null)} className="text-rose-600 hover:text-rose-800">
+          <button
+            onClick={() => setError(null)}
+            className="text-rose-600 hover:text-rose-800 cursor-pointer"
+          >
             <X size={16} />
           </button>
         </div>
       )}
 
-      {/* EDUCATIONAL INFO CARD */}
-      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-5 flex items-start gap-3.5 text-indigo-950">
-        <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-        <div className="flex flex-col gap-1 text-xs">
-          <span className="font-semibold text-indigo-900 text-sm">
-            Allowed IPs (Firewall Whitelist)
-          </span>
-          <p className="text-indigo-800/90 leading-relaxed">
-            IP addresses and CIDR subnets listed here bypass Stalwart’s automated rate-limiting, connection throttling, and brute-force ban rules. Add your static office IPs, VPN gateways, or internal mail servers to guarantee they never experience connectivity lockouts.
-          </p>
-        </div>
-      </div>
-
       {/* HEADER CONTROLS */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">
-            Whitelisted Addresses ({allowedList.length})
+            Allowed IPs ({allowedList.length})
           </h3>
-          <p className="text-xs text-slate-500">
-            Connections from these addresses will always be accepted without restriction.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Trusted IP addresses and subnets that will never be blocked.
           </p>
         </div>
 
@@ -191,7 +183,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
             className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <Plus size={15} />
-            <span>Add Whitelisted IP</span>
+            <span>Add IP</span>
           </button>
         </div>
       </div>
@@ -213,32 +205,32 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
 
           <span className="text-xs text-slate-500">
             Showing <strong className="text-slate-700">{filteredList.length}</strong> of{' '}
-            <strong className="text-slate-700">{allowedList.length}</strong> whitelisted addresses
+            <strong className="text-slate-700">{allowedList.length}</strong>
           </span>
         </div>
 
         {loading ? (
           <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-2">
-            <RefreshCw size={24} className="animate-spin text-indigo-600" />
-            <span className="text-xs font-medium text-slate-600">Loading allowed IPs from Stalwart...</span>
+            <RefreshCw size={22} className="animate-spin text-indigo-600" />
+            <span className="text-xs font-medium text-slate-500">Loading allowed IPs...</span>
           </div>
         ) : filteredList.length === 0 ? (
           <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-3">
             <Globe size={32} className="text-slate-300" />
             <div className="flex flex-col gap-1 items-center">
-              <span className="text-sm font-semibold text-slate-700">No whitelisted IP addresses</span>
+              <span className="text-sm font-semibold text-slate-700">No allowed IPs</span>
               <span className="text-xs text-slate-500 max-w-md">
                 {searchQuery
-                  ? 'No whitelisted addresses match your filter.'
-                  : 'You haven’t added any IP addresses to the whitelist yet. Whitelisting your office network ensures uninterrupted email access.'}
+                  ? 'No allowed IP addresses match your filter.'
+                  : 'Add your office static IP or VPN to make sure it is never blocked.'}
               </span>
             </div>
             {!searchQuery && (
               <button
                 onClick={() => setShowAddModal(true)}
-                className="mt-2 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                className="mt-1 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
               >
-                + Add Office IP to Whitelist
+                + Add Allowed IP
               </button>
             )}
           </div>
@@ -247,10 +239,10 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase tracking-wider font-semibold">
                 <tr>
-                  <th className="px-5 py-3">IP Address / Subnet (CIDR)</th>
-                  <th className="px-5 py-3">Label / Description</th>
-                  <th className="px-5 py-3">Added Date</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3">IP Address / Subnet</th>
+                  <th className="px-5 py-3">Description</th>
+                  <th className="px-5 py-3">Added</th>
+                  <th className="px-5 py-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -261,7 +253,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
                     <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-5 py-3.5 font-mono text-slate-900 font-medium">
                         <div className="flex items-center gap-2">
-                          <span className="text-indigo-900">{item.address}</span>
+                          <span className="text-slate-900">{item.address}</span>
                           <button
                             onClick={() => copyToClipboard(item.address)}
                             className="text-slate-400 hover:text-slate-600 transition-colors p-1"
@@ -279,7 +271,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
                       <td className="px-5 py-3.5">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/60">
                           <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
-                          <span>{item.reason || 'Whitelisted'}</span>
+                          <span>{item.reason || 'Allowed'}</span>
                         </span>
                       </td>
 
@@ -292,8 +284,6 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
                                   month: 'short',
                                   day: 'numeric',
                                   year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
                                 })
                               : 'System Record'}
                           </span>
@@ -323,47 +313,40 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4">
           <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-slate-200 p-6 flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <ShieldCheck size={18} className="text-emerald-600" />
-                <span>Whitelist an IP Address or CIDR</span>
-              </h3>
+              <h3 className="text-sm font-semibold text-slate-900">Add Allowed IP</h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p className="text-xs text-slate-500">
-              Whitelisting exempts the address from rate limits, connection caps, and automatic brute-force banning.
-            </p>
-
-            <form onSubmit={handleAddAllowedIp} className="flex flex-col gap-4 mt-2">
+            <form onSubmit={handleAddAllowedIp} className="flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  IP Address or CIDR Notation <span className="text-rose-500">*</span>
+                  IP Address or Subnet <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. 203.0.113.15 or 198.51.100.0/24"
+                  placeholder="e.g. 198.51.100.1 or 198.51.100.0/24"
                   value={inputAddress}
                   onChange={(e) => setInputAddress(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   required
                 />
                 <span className="text-[11px] text-slate-400 mt-1 block">
-                  Accepts individual IPv4/IPv6 addresses or CIDR network blocks.
+                  Single IP (e.g. 192.0.2.1) or CIDR subnet (e.g. 192.0.2.0/24)
                 </span>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Description / Purpose
+                  Description <span className="text-slate-400 font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Headquarters Office, Branch VPN, Monitoring"
+                  placeholder="e.g. Office, VPN"
                   value={inputReason}
                   onChange={(e) => setInputReason(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -384,7 +367,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   {submittingAdd && <RefreshCw size={12} className="animate-spin" />}
-                  <span>Add to Whitelist</span>
+                  <span>Add IP</span>
                 </button>
               </div>
             </form>
@@ -401,16 +384,12 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
                 <AlertTriangle size={20} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-900">Remove from Whitelist?</h3>
+                <h3 className="text-sm font-semibold text-slate-900">Remove Allowed IP?</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Are you sure you want to remove <strong className="font-mono text-slate-800">{deletingTarget.address}</strong>?
                 </p>
               </div>
             </div>
-
-            <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
-              After removal, this address will no longer be exempt from rate limits or automated brute-force protection.
-            </p>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
@@ -427,7 +406,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
                 className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
                 {deletingId === deletingTarget.id && <RefreshCw size={12} className="animate-spin" />}
-                <span>Confirm Remove</span>
+                <span>Remove</span>
               </button>
             </div>
           </div>

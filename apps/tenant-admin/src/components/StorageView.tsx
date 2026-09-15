@@ -190,7 +190,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ activeDomain }) => {
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            Managed via Stalwart mail storage
+            Active mailbox storage
           </p>
         </div>
 

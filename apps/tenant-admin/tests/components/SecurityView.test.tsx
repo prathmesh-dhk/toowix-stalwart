@@ -66,7 +66,7 @@ describe('SecurityView Component', () => {
   it('renders sub-tab buttons and defaults to Account Security', async () => {
     render(<SecurityView user={mockUser} />);
 
-    expect(screen.getByText('Security & Firewall Settings')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Security' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Account Security/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Blocked IPs/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Allowed IPs/i })).toBeInTheDocument();
@@ -84,7 +84,7 @@ describe('SecurityView Component', () => {
     await user.click(blockedTabBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('Check & Unblock IP Address')).toBeInTheDocument();
+      expect(screen.getByText('Check Blocked IP')).toBeInTheDocument();
       expect(screen.getByPlaceholderText(/Enter IP address/i)).toBeInTheDocument();
     });
   });
@@ -97,7 +97,7 @@ describe('SecurityView Component', () => {
     await user.click(allowedTabBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('Allowed IPs (Firewall Whitelist)')).toBeInTheDocument();
+      expect(screen.getByText(/Allowed IPs \(1\)/i)).toBeInTheDocument();
       expect(screen.getByText('198.51.100.0/24')).toBeInTheDocument();
       expect(screen.getByText('Branch Office')).toBeInTheDocument();
     });
@@ -125,7 +125,7 @@ describe('BlockedIpsView Component', () => {
 
     render(<BlockedIpsView />);
 
-    expect(screen.getByText('Check & Unblock IP Address')).toBeInTheDocument();
+    expect(screen.getByText('Check Blocked IP')).toBeInTheDocument();
 
     const searchInput = screen.getByPlaceholderText(/Enter IP address/i);
     await user.type(searchInput, '192.0.2.42');
@@ -134,12 +134,12 @@ describe('BlockedIpsView Component', () => {
     await user.click(checkBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('CURRENTLY BLOCKED')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Unblock IP Now/i })).toBeInTheDocument();
+      expect(screen.getByText('Blocked')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Unblock IP/i })).toBeInTheDocument();
     });
   });
 
-  it('triggers automated unblock when Unblock IP Now is clicked', async () => {
+  it('triggers automated unblock when Unblock IP is clicked', async () => {
     const user = userEvent.setup();
     vi.mocked(api.checkIpStatus).mockResolvedValue({
       ip: '192.0.2.42',
@@ -155,7 +155,7 @@ describe('BlockedIpsView Component', () => {
     vi.mocked(api.unblockIp).mockResolvedValue({
       success: true,
       unblockedCount: 1,
-      message: 'IP address 192.0.2.42 has been unblocked and Stalwart firewall rules reloaded.',
+      message: 'IP address 192.0.2.42 has been unblocked.',
     });
 
     render(<BlockedIpsView />);
@@ -167,16 +167,16 @@ describe('BlockedIpsView Component', () => {
     await user.click(checkBtn);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Unblock IP Now/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Unblock IP/i })).toBeInTheDocument();
     });
 
-    const unblockBtn = screen.getByRole('button', { name: /Unblock IP Now/i });
+    const unblockBtn = screen.getByRole('button', { name: /Unblock IP/i });
     await user.click(unblockBtn);
 
     await waitFor(() => {
       expect(api.unblockIp).toHaveBeenCalledWith({ id: 'blk-42', address: '192.0.2.42' });
-      expect(screen.getByText(/unblocked and Stalwart firewall rules reloaded/i)).toBeInTheDocument();
-      expect(screen.getByText('NOT BLOCKED')).toBeInTheDocument();
+      expect(screen.getByText(/has been unblocked/i)).toBeInTheDocument();
+      expect(screen.getByText('Not Blocked')).toBeInTheDocument();
     });
   });
 });
@@ -197,11 +197,11 @@ describe('AllowedIpsView Component', () => {
     });
   });
 
-  it('allows adding an IP to whitelist', async () => {
+  it('allows adding an IP to allowed list', async () => {
     const user = userEvent.setup();
     vi.mocked(api.addAllowedIp).mockResolvedValue({
       success: true,
-      message: 'Whitelisted successfully',
+      message: 'Added successfully',
       item: {
         id: 'alw-new',
         address: '203.0.113.100',
@@ -216,21 +216,21 @@ describe('AllowedIpsView Component', () => {
       expect(screen.getByText('10.50.0.1')).toBeInTheDocument();
     });
 
-    const openAddBtn = screen.getByRole('button', { name: /Add Whitelisted IP/i });
+    const openAddBtn = screen.getAllByRole('button', { name: /Add IP/i })[0];
     await user.click(openAddBtn);
 
-    expect(screen.getByText('Whitelist an IP Address or CIDR')).toBeInTheDocument();
+    expect(screen.getByText('Add Allowed IP')).toBeInTheDocument();
 
-    const ipInput = screen.getByPlaceholderText(/e\.g\. 203\.0\.113\.15/i);
+    const ipInput = screen.getByPlaceholderText(/e\.g\. 198\.51\.100\.1/i);
     await user.type(ipInput, '203.0.113.100');
 
-    const submitBtn = screen.getByRole('button', { name: /^Add to Whitelist$/i });
+    const submitBtn = screen.getAllByRole('button', { name: /Add IP/i }).find((b) => b.getAttribute('type') === 'submit')!;
     await user.click(submitBtn);
 
     await waitFor(() => {
       expect(api.addAllowedIp).toHaveBeenCalledWith({
         address: '203.0.113.100',
-        reason: 'Whitelisted by administrator',
+        reason: 'Allowed IP',
       });
     });
   });

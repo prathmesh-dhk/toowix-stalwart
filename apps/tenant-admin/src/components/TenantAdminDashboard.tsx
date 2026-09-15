@@ -9,6 +9,7 @@ import { SecurityView } from './SecurityView';
 import { StorageView } from './StorageView';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
+import { DomainDnsStatusModal } from './DomainDnsStatusModal';
 import {
   Loader2,
   LogOut,
@@ -50,6 +51,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [domains, setDomains] = useState<DomainItem[]>([]);
   const [activeDomain, setActiveDomain] = useState<DomainItem | null>(null);
   const [showDomainModal, setShowDomainModal] = useState(false);
+  const [showDnsStatusModal, setShowDnsStatusModal] = useState(false);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
@@ -572,6 +574,18 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             onSelectDomain={handleSelectDomain}
             onOpenAddDomain={() => setShowDomainModal(true)}
           />
+
+          {activeDomain && (
+            <button
+              type="button"
+              onClick={() => setShowDnsStatusModal(true)}
+              className="w-full flex items-center gap-2 px-3 py-2 mb-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 transition-colors cursor-pointer text-xs font-medium"
+              id="btn-view-dns-setup"
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span>View DNS Setup</span>
+            </button>
+          )}
 
           {/* Main Navigation Group */}
           <div className="flex flex-col gap-0.5">
@@ -2063,6 +2077,15 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
         isOpen={showDomainModal}
         onClose={() => setShowDomainModal(false)}
         onDomainAdded={handleDomainAdded}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL: DNS SETUP STATUS (RECORDS + MANUAL ZONE FILE)                      */}
+      {/* ========================================================================= */}
+      <DomainDnsStatusModal
+        domain={activeDomain}
+        isOpen={showDnsStatusModal}
+        onClose={() => setShowDnsStatusModal(false)}
       />
     </div>
   );

@@ -30,10 +30,10 @@ export const SecurityView: React.FC<SecurityViewProps> = ({
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
           <Shield className="w-6 h-6 text-indigo-600" />
-          <span>Security & Firewall Settings</span>
+          <span>Security</span>
         </h1>
         <p className="text-xs text-slate-500">
-          Manage administrator account authentication, Stalwart firewall IP bans, and trusted IP whitelisting.
+          Manage account security, blocked IPs, and trusted networks.
         </p>
       </div>
 
@@ -75,7 +75,7 @@ export const SecurityView: React.FC<SecurityViewProps> = ({
           id="tab-allowed-ips"
         >
           <ShieldCheck size={14} className={activeSubTab === 'allowed-ips' ? 'text-emerald-600' : 'text-slate-400'} />
-          <span>Allowed IPs (Whitelist)</span>
+          <span>Allowed IPs</span>
         </button>
       </div>
 
