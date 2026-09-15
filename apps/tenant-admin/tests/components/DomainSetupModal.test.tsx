@@ -141,4 +141,45 @@ describe('DomainSetupModal Component', () => {
     });
     expect(await screen.findByText(/Hostinger connected and verified/i)).toBeInTheDocument();
   });
+
+  it('switches to Cloudflare and connects with a single API token', async () => {
+    const onClose = vi.fn();
+    const onDomainAdded = vi.fn();
+
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-new-3',
+        domainName: 'thirdbrand.dev',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+    vi.mocked(api.connectDnsProviderCredential).mockResolvedValueOnce({
+      success: true,
+      verifiedProviderDomain: 'thirdbrand.dev',
+      connectedAt: new Date().toISOString(),
+    });
+
+    render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
+
+    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'thirdbrand.dev');
+    await userEvent.click(screen.getByRole('button', { name: /create domain/i }));
+
+    expect(await screen.findByText('Connect DNS Provider')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^cloudflare$/i }));
+
+    await userEvent.type(screen.getByLabelText(/Cloudflare API Token/i), 'cf-tok');
+    await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
+
+    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith('dom-new-3', {
+      provider: 'cloudflare',
+      token: 'cf-tok',
+    });
+    expect(await screen.findByText(/Cloudflare connected and verified/i)).toBeInTheDocument();
+  });
 });

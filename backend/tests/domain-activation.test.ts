@@ -7,6 +7,7 @@ import { stalwartClient } from '../src/stalwart/client';
 import { goDaddyClient } from '../src/godaddy/client';
 import { GoDaddyDomainNotManagedError, GoDaddyAuthError } from '../src/godaddy/errors';
 import { hostingerClient } from '../src/hostinger/client';
+import { cloudflareClient } from '../src/cloudflare/client';
 import {
   connectDnsProviderCredential,
   activateDomain,
@@ -258,6 +259,25 @@ describe('domain-activation.service', () => {
 
       expect(createSpy).toHaveBeenCalledTimes(1);
       expect(createSpy.mock.calls[0][0]).toBe('hostinger-tok');
+      expect(result.dnsStatus).toBe('active');
+    });
+  });
+
+  describe('activateDomain (Cloudflare provider)', () => {
+    it('dispatches conflict-check and record creation through the Cloudflare client', async () => {
+      vi.spyOn(cloudflareClient, 'verifyCredential').mockResolvedValue({ domain: 'acme.com' });
+      await connectDnsProviderCredential(domainId, tenantId, 'cloudflare', { token: 'cloudflare-tok' }, actor);
+
+      vi.spyOn(stalwartClient, 'createDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com' });
+      vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue(DKIM_KEYS);
+      vi.spyOn(cloudflareClient, 'listDnsRecords').mockResolvedValue([]);
+      const createSpy = vi.spyOn(cloudflareClient, 'createDnsRecords').mockResolvedValue(undefined);
+      mockDnsVerificationSuccess();
+
+      const result = await activateDomain(domainId, actor);
+
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(createSpy.mock.calls[0][0]).toBe('cloudflare-tok');
       expect(result.dnsStatus).toBe('active');
     });
   });

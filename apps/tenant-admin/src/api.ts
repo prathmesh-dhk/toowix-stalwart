@@ -224,7 +224,10 @@ export const api = {
 
   connectDnsProviderCredential: (
     domainId: string,
-    credential: { provider: 'godaddy'; apiKey: string; apiSecret: string } | { provider: 'hostinger'; token: string }
+    credential:
+      | { provider: 'godaddy'; apiKey: string; apiSecret: string }
+      | { provider: 'hostinger'; token: string }
+      | { provider: 'cloudflare'; token: string }
   ) =>
     request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string }>(
       `/api/tenants/me/domains/${domainId}/dns-provider-credential`,

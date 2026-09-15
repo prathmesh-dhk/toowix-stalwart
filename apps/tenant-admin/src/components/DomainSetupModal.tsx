@@ -28,6 +28,14 @@ const EMPLOYEE_TIERS = [
   { value: 100, label: '100 Employees', desc: 'Full-scale enterprise', badge: 'Enterprise' },
 ] as const;
 
+type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
+
+const PROVIDER_LABEL: Record<DnsProvider, string> = {
+  godaddy: 'GoDaddy',
+  hostinger: 'Hostinger',
+  cloudflare: 'Cloudflare',
+};
+
 export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   isOpen,
   onClose,
@@ -41,10 +49,11 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
   // Success state after domain creation (unprovisioned) + DNS provider connect step
   const [createdDomain, setCreatedDomain] = useState<DomainItem | null>(null);
-  const [provider, setProvider] = useState<'godaddy' | 'hostinger'>('godaddy');
+  const [provider, setProvider] = useState<DnsProvider>('godaddy');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
-  const [hostingerToken, setHostingerToken] = useState('');
+  // Shared single-token field for Hostinger and Cloudflare (both use a bearer token, unlike GoDaddy's key+secret pair)
+  const [token, setToken] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
 
@@ -90,11 +99,11 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       const credential =
         provider === 'godaddy'
           ? { provider: 'godaddy' as const, apiKey: apiKey.trim(), apiSecret: apiSecret.trim() }
-          : { provider: 'hostinger' as const, token: hostingerToken.trim() };
+          : { provider, token: token.trim() };
       await api.connectDnsProviderCredential(createdDomain.id, credential);
       setConnected(true);
     } catch (err: any) {
-      setError(err.message || `Could not verify this ${provider === 'godaddy' ? 'GoDaddy' : 'Hostinger'} credential against the domain.`);
+      setError(err.message || `Could not verify this ${PROVIDER_LABEL[provider]} credential against the domain.`);
     } finally {
       setConnecting(false);
     }
@@ -113,7 +122,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setProvider('godaddy');
     setApiKey('');
     setApiSecret('');
-    setHostingerToken('');
+    setToken('');
     setConnected(false);
     onClose();
   };
@@ -307,36 +316,30 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <div className="p-3.5 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span className="text-xs font-medium text-emerald-800">
-                  {provider === 'godaddy' ? 'GoDaddy' : 'Hostinger'} connected and verified for this domain. A Super
-                  Admin can now activate it.
+                  {PROVIDER_LABEL[provider]} connected and verified for this domain. A Super Admin can now activate
+                  it.
                 </span>
               </div>
             ) : (
               <>
                 {/* Provider selector */}
                 <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => setProvider('godaddy')}
-                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      provider === 'godaddy' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    GoDaddy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setProvider('hostinger')}
-                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      provider === 'hostinger' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    Hostinger
-                  </button>
+                  {(['godaddy', 'hostinger', 'cloudflare'] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setProvider(p)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        provider === p ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      {PROVIDER_LABEL[p]}
+                    </button>
+                  ))}
                 </div>
 
                 <form onSubmit={handleConnectProvider} className="flex flex-col gap-3.5">
-                  {provider === 'godaddy' ? (
+                  {provider === 'godaddy' && (
                     <>
                       <p className="text-[11px] text-slate-500 leading-relaxed">
                         Generate a Personal Access Token / API key+secret for this domain at{' '}
@@ -375,7 +378,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         />
                       </div>
                     </>
-                  ) : (
+                  )}
+
+                  {provider === 'hostinger' && (
                     <>
                       <p className="text-[11px] text-slate-500 leading-relaxed">
                         Generate an API token in hPanel at <span className="font-mono">hostinger.com</span> (Profile
@@ -383,7 +388,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         verifies it manages this domain, then discards it once activation succeeds.
                       </p>
                       <div className="flex flex-col gap-1.5">
-                        <label htmlFor="input-hostinger-token" className="text-xs font-semibold text-slate-800">
+                        <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-800">
                           Hostinger API Token <span className="text-rose-500">*</span>
                         </label>
                         <div className="relative">
@@ -391,23 +396,52 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                             <KeyRound className="w-4 h-4" />
                           </div>
                           <input
-                            id="input-hostinger-token"
+                            id="input-provider-token"
                             type="password"
                             required
-                            value={hostingerToken}
-                            onChange={(e) => setHostingerToken(e.target.value)}
+                            value={token}
+                            onChange={(e) => setToken(e.target.value)}
                             className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
                           />
                         </div>
                       </div>
                     </>
                   )}
+
+                  {provider === 'cloudflare' && (
+                    <>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Generate an API Token at <span className="font-mono">dash.cloudflare.com</span> (My Profile
+                        &rarr; API Tokens &rarr; Create Token &rarr; "Edit zone DNS" template), scoped to this
+                        domain's zone only. Toowix verifies it manages this domain, then discards it once activation
+                        succeeds.
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-800">
+                          Cloudflare API Token <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <KeyRound className="w-4 h-4" />
+                          </div>
+                          <input
+                            id="input-provider-token"
+                            type="password"
+                            required
+                            value={token}
+                            onChange={(e) => setToken(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
                   <div className="flex justify-end">
                     <button
                       type="submit"
                       disabled={
-                        connecting ||
-                        (provider === 'godaddy' ? !apiKey.trim() || !apiSecret.trim() : !hostingerToken.trim())
+                        connecting || (provider === 'godaddy' ? !apiKey.trim() || !apiSecret.trim() : !token.trim())
                       }
                       className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >

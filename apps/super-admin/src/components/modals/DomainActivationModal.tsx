@@ -132,9 +132,9 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
           {dnsStatus === 'not_started' && !loading && (
             <p className="text-xs text-slate-600 leading-relaxed">
               This domain has not been activated yet. Clicking <strong>Activate Domain</strong> will create it in
-              Stalwart, fetch its real DKIM keys, publish MX/SPF/DKIM/DMARC records via the tenant's connected
-              GoDaddy account, and verify public DNS. Requires the Tenant Admin to have already connected a GoDaddy
-              credential for this domain.
+              Stalwart, fetch its real DKIM keys, publish MX/SPF/DKIM/DMARC records via the tenant's connected DNS
+              provider (GoDaddy, Hostinger, or Cloudflare), and verify public DNS. Requires the Tenant Admin to
+              have already connected a DNS provider credential for this domain.
             </p>
           )}
 

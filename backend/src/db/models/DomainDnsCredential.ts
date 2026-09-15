@@ -1,12 +1,12 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type DnsProviderName = 'godaddy' | 'hostinger';
+export type DnsProviderName = 'godaddy' | 'hostinger' | 'cloudflare';
 
 /**
  * Tenant-supplied DNS provider credential for one domain's DNS activation.
  * Provider-agnostic: `credentialEncrypted` holds an encrypted JSON blob
  * whose shape depends on `provider` (e.g. GoDaddy needs {apiKey, apiSecret},
- * Hostinger needs {token}) — see backend/src/dns-providers/dispatch.ts.
+ * Hostinger/Cloudflare need {token}) — see backend/src/dns-providers/dispatch.ts.
  * Kept in its own collection (never embedded on Domain) so it never rides
  * along with normal Domain reads/dashboards, and so a successful activation
  * can simply delete the whole document rather than scrub fields in place.
@@ -44,7 +44,7 @@ const DomainDnsCredentialSchema = new Schema<IDomainDnsCredential>(
     },
     provider: {
       type: String,
-      enum: ['godaddy', 'hostinger'],
+      enum: ['godaddy', 'hostinger', 'cloudflare'],
       required: true,
     },
     credentialEncrypted: {

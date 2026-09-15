@@ -10,6 +10,7 @@ import { AuditLogModel } from '../db/models/AuditLog';
 import { connectDnsProviderCredential, DomainActivationError } from '../services/domain-activation.service';
 import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/errors';
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
+import { CloudflareAuthError, CloudflareDomainNotManagedError } from '../cloudflare/errors';
 import { stalwartClient } from '../stalwart/client';
 import { securityIpService, isValidIpOrCidr } from '../services/security-ip.service';
 
@@ -247,6 +248,10 @@ const dnsProviderCredentialSchema = z.discriminatedUnion('provider', [
     provider: z.literal('hostinger'),
     token: z.string().min(1, 'Hostinger API token is required'),
   }),
+  z.object({
+    provider: z.literal('cloudflare'),
+    token: z.string().min(1, 'Cloudflare API token is required'),
+  }),
 ]);
 
 tenantMeRouter.post(
@@ -282,9 +287,13 @@ tenantMeRouter.post(
       );
       res.status(200).json({ success: true, ...result });
     } catch (err: any) {
-      if (err instanceof GoDaddyAuthError || err instanceof HostingerAuthError) {
+      if (err instanceof GoDaddyAuthError || err instanceof HostingerAuthError || err instanceof CloudflareAuthError) {
         res.status(401).json({ error: 'DNS_PROVIDER_AUTH_ERROR', message: err.message });
-      } else if (err instanceof GoDaddyDomainNotManagedError || err instanceof HostingerDomainNotManagedError) {
+      } else if (
+        err instanceof GoDaddyDomainNotManagedError ||
+        err instanceof HostingerDomainNotManagedError ||
+        err instanceof CloudflareDomainNotManagedError
+      ) {
         res.status(422).json({ error: 'DNS_PROVIDER_DOMAIN_NOT_MANAGED', message: err.message });
       } else if (err instanceof DomainActivationError) {
         res.status(err.statusCode).json({ error: err.code, message: err.message });

@@ -1,15 +1,17 @@
 import { goDaddyClient } from '../godaddy/client';
 import { hostingerClient } from '../hostinger/client';
+import { cloudflareClient } from '../cloudflare/client';
 import { DnsProviderName } from '../db/models/DomainDnsCredential';
 
 /**
  * Thin dispatch-by-provider layer so domain-activation.service.ts doesn't
  * need to know each provider's native call shape (GoDaddy: key+secret pair;
- * Hostinger: single bearer token). Each provider's own client
- * (backend/src/godaddy/, backend/src/hostinger/) keeps its real, native
- * method signatures — this module just picks the right one and adapts the
- * credential shape, so adding a new provider means adding one branch here
- * plus its own client module, not touching the orchestrator.
+ * Hostinger/Cloudflare: single bearer token). Each provider's own client
+ * (backend/src/godaddy/, backend/src/hostinger/, backend/src/cloudflare/)
+ * keeps its real, native method signatures — this module just picks the
+ * right one and adapts the credential shape, so adding a new provider means
+ * adding one branch here plus its own client module, not touching the
+ * orchestrator.
  */
 
 export type ProviderCredential = { apiKey: string; apiSecret: string } | { token: string };
@@ -23,7 +25,7 @@ export interface GenericDnsRecord {
 }
 
 export function isKnownProvider(value: string): value is DnsProviderName {
-  return value === 'godaddy' || value === 'hostinger';
+  return value === 'godaddy' || value === 'hostinger' || value === 'cloudflare';
 }
 
 export async function verifyProviderCredential(
@@ -36,6 +38,9 @@ export async function verifyProviderCredential(
   }
   if (provider === 'hostinger' && 'token' in credential) {
     return hostingerClient.verifyCredential(credential.token, domain);
+  }
+  if (provider === 'cloudflare' && 'token' in credential) {
+    return cloudflareClient.verifyCredential(credential.token, domain);
   }
   throw new Error(`Unsupported DNS provider or credential shape: ${provider}`);
 }
@@ -52,6 +57,9 @@ export async function listProviderDnsRecords(
   }
   if (provider === 'hostinger' && 'token' in credential) {
     return hostingerClient.listDnsRecords(credential.token, domain, type, name);
+  }
+  if (provider === 'cloudflare' && 'token' in credential) {
+    return cloudflareClient.listDnsRecords(credential.token, domain, type, name);
   }
   throw new Error(`Unsupported DNS provider or credential shape: ${provider}`);
 }
@@ -73,6 +81,10 @@ export async function createProviderDnsRecords(
   }
   if (provider === 'hostinger' && 'token' in credential) {
     await hostingerClient.createDnsRecords(credential.token, domain, records);
+    return;
+  }
+  if (provider === 'cloudflare' && 'token' in credential) {
+    await cloudflareClient.createDnsRecords(credential.token, domain, records);
     return;
   }
   throw new Error(`Unsupported DNS provider or credential shape: ${provider}`);
