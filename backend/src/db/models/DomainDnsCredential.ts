@@ -1,7 +1,12 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
+export type DnsProviderName = 'godaddy' | 'hostinger';
+
 /**
- * Tenant-supplied GoDaddy API credential for one domain's DNS activation.
+ * Tenant-supplied DNS provider credential for one domain's DNS activation.
+ * Provider-agnostic: `credentialEncrypted` holds an encrypted JSON blob
+ * whose shape depends on `provider` (e.g. GoDaddy needs {apiKey, apiSecret},
+ * Hostinger needs {token}) — see backend/src/dns-providers/dispatch.ts.
  * Kept in its own collection (never embedded on Domain) so it never rides
  * along with normal Domain reads/dashboards, and so a successful activation
  * can simply delete the whole document rather than scrub fields in place.
@@ -11,9 +16,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface IDomainDnsCredential extends Document {
   domainId: Types.ObjectId;
   tenantId: Types.ObjectId;
-  godaddyApiKeyEncrypted: string;
-  godaddyApiSecretEncrypted: string;
-  verifiedGoDaddyDomain: string;
+  provider: DnsProviderName;
+  credentialEncrypted: string;
+  verifiedProviderDomain: string;
   connectedAt: Date;
   connectedBy: Types.ObjectId;
   lastUsedAt?: Date | null;
@@ -37,17 +42,17 @@ const DomainDnsCredentialSchema = new Schema<IDomainDnsCredential>(
       required: true,
       index: true,
     },
-    godaddyApiKeyEncrypted: {
+    provider: {
+      type: String,
+      enum: ['godaddy', 'hostinger'],
+      required: true,
+    },
+    credentialEncrypted: {
       type: String,
       required: true,
       select: false,
     },
-    godaddyApiSecretEncrypted: {
-      type: String,
-      required: true,
-      select: false,
-    },
-    verifiedGoDaddyDomain: {
+    verifiedProviderDomain: {
       type: String,
       required: true,
     },

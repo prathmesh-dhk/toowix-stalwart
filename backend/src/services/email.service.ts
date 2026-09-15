@@ -45,6 +45,94 @@ export interface EmailDispatchResult {
   error?: string;
 }
 
+/**
+ * Shared HTML shell for all transactional Toowix emails.
+ * Built using table-based email layouts and inline styles for robust rendering across
+ * Apple Mail, Gmail (Web & Mobile), Outlook (Windows, Mac, Web), and modern clients.
+ */
+function renderEmailShell(params: {
+  title: string;
+  previewText?: string;
+  contentHtml: string;
+}): string {
+  const { title, previewText, contentHtml } = params;
+  const currentYear = new Date().getFullYear();
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>${title}</title>
+  <style type="text/css">
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    body { margin: 0; padding: 0; width: 100% !important; height: 100% !important; background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    @media only screen and (max-width: 600px) {
+      .email-shell-td { padding: 16px 8px !important; }
+      .email-card-td { padding: 24px 20px !important; border-radius: 8px !important; }
+      .email-code-text { font-size: 26px !important; letter-spacing: 4px !important; }
+      .backup-grid-col { display: block !important; width: 100% !important; box-sizing: border-box !important; margin-bottom: 8px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F8FAFC; color: #334155; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  ${
+    previewText
+      ? `<div style="display: none; max-height: 0px; overflow: hidden; font-size: 1px; line-height: 1px; color: #F8FAFC; opacity: 0;">
+    ${previewText}
+  </div>`
+      : ''
+  }
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F8FAFC; table-layout: fixed;">
+    <tr>
+      <td align="center" class="email-shell-td" style="padding: 40px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 560px; margin: 0 auto; text-align: left;">
+          <!-- Card Container -->
+          <tr>
+            <td class="email-card-td" style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 36px 32px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);">
+              <!-- Brand Header -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="background-color: #4F46E5; width: 34px; height: 34px; border-radius: 8px; text-align: center; vertical-align: middle;">
+                          <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; font-weight: 700; color: #FFFFFF; line-height: 34px; display: block;">&#9993;</span>
+                        </td>
+                        <td style="padding-left: 10px; vertical-align: middle;">
+                          <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 19px; font-weight: 700; color: #0F172A; letter-spacing: -0.4px;">toowix</span>
+                          <span style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: #4F46E5; background-color: #EEF2FF; border: 1px solid #E0E7FF; padding: 2px 7px; border-radius: 4px; margin-left: 6px; vertical-align: middle;">Mail Platform</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Main Content -->
+              ${contentHtml}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 12px; text-align: center; font-size: 12px; line-height: 1.6; color: #94A3B8;">
+              <p style="margin: 0 0 4px 0;">This is an automated operational message from Toowix Mail Platform.</p>
+              <p style="margin: 0;">&copy; ${currentYear} Toowix. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 export class EmailService {
   private transporter: Transporter | null = null;
 
@@ -87,177 +175,66 @@ export class EmailService {
   private buildActivationEmailHtml(params: TenantActivationEmailParams): string {
     const { companyName, applicantName, domainName, activationLink, expiresHours = 48 } = params;
 
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Activate your Toowix Mail Platform account</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #0b1120;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: #e2e8f0;
-    }
-    .container {
-      max-width: 600px;
-      margin: 40px auto;
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    }
-    .header {
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-      padding: 32px;
-      text-align: center;
-      border-bottom: 1px solid #1e293b;
-    }
-    .logo-text {
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      color: #38bdf8;
-      margin: 0;
-    }
-    .logo-sub {
-      font-size: 13px;
-      color: #94a3b8;
-      margin-top: 4px;
-    }
-    .content {
-      padding: 32px;
-    }
-    h1 {
-      font-size: 20px;
-      color: #f8fafc;
-      margin-top: 0;
-      margin-bottom: 16px;
-    }
-    p {
-      font-size: 15px;
-      line-height: 1.6;
-      color: #cbd5e1;
-      margin-top: 0;
-      margin-bottom: 20px;
-    }
-    .info-card {
-      background: #1e293b;
-      border-left: 4px solid #38bdf8;
-      border-radius: 6px;
-      padding: 16px;
-      margin-bottom: 28px;
-    }
-    .info-row {
-      display: flex;
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
-    .info-row:last-child {
-      margin-bottom: 0;
-    }
-    .info-label {
-      color: #94a3b8;
-      width: 140px;
-      font-weight: 500;
-    }
-    .info-val {
-      color: #f1f5f9;
-      font-weight: 600;
-    }
-    .btn-container {
-      text-align: center;
-      margin: 32px 0;
-    }
-    .btn {
-      display: inline-block;
-      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-      color: #ffffff !important;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 15px;
-      padding: 14px 32px;
-      border-radius: 8px;
-      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
-    }
-    .notice {
-      background: rgba(234, 179, 8, 0.1);
-      border: 1px solid rgba(234, 179, 8, 0.2);
-      border-radius: 6px;
-      padding: 14px;
-      font-size: 13px;
-      color: #facc15;
-      line-height: 1.5;
-      margin-bottom: 24px;
-    }
-    .link-fallback {
-      font-size: 12px;
-      color: #64748b;
-      word-break: break-all;
-      background: #090d16;
-      padding: 12px;
-      border-radius: 6px;
-      border: 1px solid #1e293b;
-    }
-    .footer {
-      padding: 24px 32px;
-      text-align: center;
-      border-top: 1px solid #1e293b;
-      font-size: 12px;
-      color: #64748b;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="logo-text">TOOWIX MAIL PLATFORM</div>
-      <div class="logo-sub">Enterprise Multi-Tenant Mail Infrastructure</div>
-    </div>
-    <div class="content">
-      <h1>Application Approved!</h1>
-      <p>Hello <strong>${applicantName}</strong>,</p>
-      <p>Great news! Your organization's registration application for <strong>${companyName}</strong> has been reviewed and approved by the platform administrator.</p>
-      
-      <div class="info-card">
-        <div class="info-row">
-          <span class="info-label">Organization:</span>
-          <span class="info-val">${companyName}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Dedicated Domain:</span>
-          <span class="info-val">${domainName}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Contact Email:</span>
-          <span class="info-val">${params.to}</span>
-        </div>
+    const contentHtml = `
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Your organization account is ready</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${applicantName}, your registration application for <strong>${companyName}</strong> on <strong>${domainName}</strong> has been approved. Complete your setup below to activate your administrative portal.
+      </p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 24px;">
+        <tr>
+          <td style="padding: 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding: 4px 0; font-size: 13px; color: #64748B; width: 140px; font-weight: 500;">Organization</td>
+                <td style="padding: 4px 0; font-size: 13px; color: #0F172A; font-weight: 600;">${companyName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-size: 13px; color: #64748B; font-weight: 500;">Dedicated Domain</td>
+                <td style="padding: 4px 0; font-size: 13px; color: #0F172A; font-weight: 600;">${domainName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-size: 13px; color: #64748B; font-weight: 500;">Contact Email</td>
+                <td style="padding: 4px 0; font-size: 13px; color: #0F172A; font-weight: 600;">${params.to}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-size: 13px; color: #64748B; font-weight: 500;">Link Expiry</td>
+                <td style="padding: 4px 0; font-size: 13px; color: #0F172A; font-weight: 600;">${expiresHours} hours</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- CTA Button -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
+        <tr>
+          <td style="border-radius: 6px; background-color: #4F46E5;">
+            <a href="${activationLink}" target="_blank" style="display: inline-block; padding: 13px 28px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; font-weight: 600; color: #FFFFFF; text-decoration: none; border-radius: 6px; background-color: #4F46E5;">
+              Complete Account Setup &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Security Callout -->
+      <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px;">
+        <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #92400E;">
+          <strong>Single-use link:</strong> This setup link expires in <strong>${expiresHours} hours</strong>. You will be prompted to set your administrator password and register mandatory two-factor authentication (2FA).
+        </p>
       </div>
 
-      <p>To finalize your onboarding and activate your Tenant Administrator account, please click the link below to set your password and configure mandatory Two-Factor Authentication (2FA):</p>
-
-      <div class="btn-container">
-        <a href="${activationLink}" class="btn" target="_blank">Activate Your Organization Account</a>
+      <p style="margin: 0 0 6px 0; font-size: 12px; color: #64748B;">If the button above does not work, copy and paste this link into your browser:</p>
+      <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; color: #475569; word-break: break-all; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px;">
+        ${activationLink}
       </div>
+    `;
 
-      <div class="notice">
-        <strong>⚠️ Important Security Note:</strong> This activation link is single-use and will expire in <strong>${expiresHours} hours</strong>. If you did not request this account, please ignore this message.
-      </div>
-
-      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 8px;">If the button above does not work, copy and paste this link into your browser:</p>
-      <div class="link-fallback">${activationLink}</div>
-    </div>
-    <div class="footer">
-      &copy; ${new Date().getFullYear()} Toowix Mail Platform. All rights reserved.
-    </div>
-  </div>
-</body>
-</html>
-    `.trim();
+    return renderEmailShell({
+      title: `Activate your Toowix Mail Platform account — ${companyName}`,
+      previewText: `Your organization account for ${companyName} is ready. Complete setup within ${expiresHours} hours.`,
+      contentHtml,
+    });
   }
 
   /**
@@ -266,26 +243,27 @@ export class EmailService {
   private buildActivationEmailText(params: TenantActivationEmailParams): string {
     const { companyName, applicantName, domainName, activationLink, expiresHours = 48 } = params;
 
-    return `
-TOOWIX MAIL PLATFORM - ACCOUNT ACTIVATION
+    return `TOOWIX MAIL PLATFORM — ACCOUNT ACTIVATION
 
 Hello ${applicantName},
 
-Your application to register ${companyName} on the Toowix Mail Platform has been approved!
+Your registration application for ${companyName} on ${domainName} has been approved.
 
 Organization: ${companyName}
 Dedicated Domain: ${domainName}
 Contact Email: ${params.to}
+Link Expiration: ${expiresHours} hours
 
-To complete your setup and activate your Tenant Administrator account, visit the activation link below:
+Complete your setup by visiting the link below:
 ${activationLink}
 
-IMPORTANT:
-- This single-use link will expire in ${expiresHours} hours.
-- You will be required to create your password and set up 2-Factor Authentication (2FA).
+Important:
+- This single-use link expires in ${expiresHours} hours.
+- You will create your administrator password and configure two-factor authentication (2FA).
 
-If you did not request this, please disregard this email.
-    `.trim();
+If you did not apply for this account, no action is needed; you can safely disregard this message.
+
+— The Toowix Platform Team`.trim();
   }
 
   /**
@@ -343,47 +321,45 @@ If you did not request this, please disregard this email.
    */
   async sendPasswordResetOtpEmail(params: PasswordResetOtpEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const expiresMinutes = params.expiresMinutes || 10;
-    const subject = `Toowix Security: Your Password Reset Code is ${params.otpCode}`;
-    const text = `
+    const subject = `Toowix security code: ${params.otpCode}`;
+    const text = `TOOWIX MAIL PLATFORM — PASSWORD RESET
+
 Hello ${params.recipientName || 'Administrator'},
 
-You requested a password reset for your Toowix Mail Platform administrator account.
+We received a request to reset the password for your Toowix administrator account.
 
-Your single-use 6-digit verification code is:
-
+Your single-use verification code:
 ${params.otpCode}
 
-This code will expire in ${expiresMinutes} minutes. If you did not request a password reset, please secure your account immediately.
+This code expires in ${expiresMinutes} minutes. If you did not request a password reset, you can safely ignore this email; your account credentials have not changed.
 
-— The Toowix Security Team
-    `.trim();
+— The Toowix Security Team`.trim();
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
-  <div style="max-width: 540px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
-    <div style="display: flex; align-items: center; margin-bottom: 24px;">
-      <div style="background: #4f46e5; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">T</div>
-      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
-    </div>
-    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.4rem;">Password Reset Verification</h2>
-    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-      Hello ${params.recipientName || 'Administrator'},<br/>
-      We received a request to reset the password for your Toowix administrator account. Use the one-time security code below to complete your verification:
-    </p>
-    <div style="background: #0f172a; border: 1px solid #4f46e5; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-      <span style="font-family: monospace; font-size: 2.2rem; font-weight: 800; letter-spacing: 8px; color: #818cf8;">${params.otpCode}</span>
-    </div>
-    <p style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.5;">
-      ⚠️ This code expires in <strong>${expiresMinutes} minutes</strong> and can only be used once.<br/>
-      If you did not request this verification code, please ignore this email or contact platform security.
-    </p>
-  </div>
-</body>
-</html>
-    `.trim();
+    const contentHtml = `
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Password reset verification</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${params.recipientName || 'Administrator'}, we received a request to reset the password for your Toowix administrator account. Enter this one-time code to proceed:
+      </p>
+
+      <div style="background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 22px 16px; text-align: center; margin: 24px 0;">
+        <span class="email-code-text" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #0F172A; display: inline-block;">${params.otpCode}</span>
+      </div>
+
+      <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.5; color: #64748B;">
+        This single-use code will expire in <strong>${expiresMinutes} minutes</strong>.
+      </p>
+      <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px 14px;">
+        <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #64748B;">
+          If you did not initiate a password reset, no action is needed. Your existing password remains secure.
+        </p>
+      </div>
+    `;
+
+    const html = renderEmailShell({
+      title: 'Password Reset Verification',
+      previewText: `Your verification code is ${params.otpCode}. Expires in ${expiresMinutes} minutes.`,
+      contentHtml,
+    });
 
     try {
       const transporter = this.getTransporter();
@@ -419,45 +395,39 @@ This code will expire in ${expiresMinutes} minutes. If you did not request a pas
    */
   async sendRecoveryEmailVerificationOtpEmail(params: OtpEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const expiresMinutes = params.expiresMinutes || 10;
-    const subject = `Toowix Verification: Your Recovery Email Verification Code is ${params.otpCode}`;
-    const text = `
+    const subject = `Verify your recovery email: ${params.otpCode}`;
+    const text = `TOOWIX MAIL PLATFORM — EMAIL VERIFICATION
+
 Hello ${params.recipientName || 'Administrator'},
 
-Please use the following 6-digit code to verify your recovery email for your Toowix organization account:
+Use the 6-digit code below to confirm this address as a verified recovery email for your Toowix account:
 
 ${params.otpCode}
 
-This code will expire in ${expiresMinutes} minutes. If you did not initiate this request, you can safely ignore this email.
+This code expires in ${expiresMinutes} minutes. If you did not initiate this request, you can safely ignore this email.
 
-— The Toowix Security Team
-    `.trim();
+— The Toowix Security Team`.trim();
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
-  <div style="max-width: 540px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
-    <div style="display: flex; align-items: center; margin-bottom: 24px;">
-      <div style="background: #10b981; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">T</div>
-      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
-    </div>
-    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.4rem;">Verify Your Recovery Email</h2>
-    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-      Hello ${params.recipientName || 'Administrator'},<br/>
-      We received a request to add this address as a verified recovery email for your Toowix organization registration. Use the one-time code below to confirm:
-    </p>
-    <div style="background: #0f172a; border: 1px solid #10b981; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-      <span style="font-family: monospace; font-size: 2.2rem; font-weight: 800; letter-spacing: 8px; color: #34d399;">${params.otpCode}</span>
-    </div>
-    <p style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.5;">
-      ⚠️ This code expires in <strong>${expiresMinutes} minutes</strong> and can only be used once.<br/>
-      If you did not request this verification code, please ignore this email.
-    </p>
-  </div>
-</body>
-</html>
-    `.trim();
+    const contentHtml = `
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Verify recovery email</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${params.recipientName || 'Administrator'}, use the code below to confirm this address as a verified recovery email for your Toowix organization account:
+      </p>
+
+      <div style="background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 22px 16px; text-align: center; margin: 24px 0;">
+        <span class="email-code-text" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #0F172A; display: inline-block;">${params.otpCode}</span>
+      </div>
+
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #64748B;">
+        This code expires in <strong>${expiresMinutes} minutes</strong> and can only be used once. If you did not initiate this request, you can safely ignore this message.
+      </p>
+    `;
+
+    const html = renderEmailShell({
+      title: 'Verify Your Recovery Email',
+      previewText: `Your recovery email verification code is ${params.otpCode}.`,
+      contentHtml,
+    });
 
     try {
       const transporter = this.getTransporter();
@@ -493,45 +463,39 @@ This code will expire in ${expiresMinutes} minutes. If you did not initiate this
    */
   async sendContactEmailVerificationOtpEmail(params: OtpEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const expiresMinutes = params.expiresMinutes || 10;
-    const subject = `Toowix Verification: Your Contact Email Verification Code is ${params.otpCode}`;
-    const text = `
+    const subject = `Verify your contact email: ${params.otpCode}`;
+    const text = `TOOWIX MAIL PLATFORM — EMAIL VERIFICATION
+
 Hello ${params.recipientName || 'Administrator'},
 
-Please use the following 6-digit code to verify your primary contact email address for your Toowix organization account:
+Use the 6-digit code below to confirm this address as the primary administrative contact for your organization registration:
 
 ${params.otpCode}
 
-This code will expire in ${expiresMinutes} minutes. If you did not initiate this request, you can safely ignore this email.
+This code expires in ${expiresMinutes} minutes. If you did not request this verification, you can safely ignore this email.
 
-— The Toowix Security Team
-    `.trim();
+— The Toowix Security Team`.trim();
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
-  <div style="max-width: 540px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
-    <div style="display: flex; align-items: center; margin-bottom: 24px;">
-      <div style="background: #0284c7; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">T</div>
-      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
-    </div>
-    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.4rem;">Verify Your Contact Email</h2>
-    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-      Hello ${params.recipientName || 'Administrator'},<br/>
-      Please confirm your primary administrative contact email address for organization registration. Use the one-time verification code below:
-    </p>
-    <div style="background: #0f172a; border: 1px solid #0284c7; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-      <span style="font-family: monospace; font-size: 2.2rem; font-weight: 800; letter-spacing: 8px; color: #38bdf8;">${params.otpCode}</span>
-    </div>
-    <p style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.5;">
-      ⚠️ This code expires in <strong>${expiresMinutes} minutes</strong> and can only be used once.<br/>
-      If you did not request this verification code, please ignore this email.
-    </p>
-  </div>
-</body>
-</html>
-    `.trim();
+    const contentHtml = `
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Verify contact email</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${params.recipientName || 'Administrator'}, use the code below to confirm your primary administrative contact email for organization registration:
+      </p>
+
+      <div style="background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 22px 16px; text-align: center; margin: 24px 0;">
+        <span class="email-code-text" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #0F172A; display: inline-block;">${params.otpCode}</span>
+      </div>
+
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #64748B;">
+        This code expires in <strong>${expiresMinutes} minutes</strong> and can only be used once. If you did not submit an organization registration, no action is needed.
+      </p>
+    `;
+
+    const html = renderEmailShell({
+      title: 'Verify Your Contact Email',
+      previewText: `Your contact email verification code is ${params.otpCode}.`,
+      contentHtml,
+    });
 
     try {
       const transporter = this.getTransporter();
@@ -567,47 +531,46 @@ This code will expire in ${expiresMinutes} minutes. If you did not initiate this
    */
   async sendLogin2FaOtpEmail(params: OtpEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const expiresMinutes = params.expiresMinutes || 10;
-    const subject = `Toowix Security: Your 2FA Login Code is ${params.otpCode}`;
-    const text = `
+    const subject = `Your sign-in verification code: ${params.otpCode}`;
+    const text = `TOOWIX MAIL PLATFORM — TWO-FACTOR VERIFICATION
+
 Hello ${params.recipientName || 'Administrator'},
 
-A login attempt requires two-factor security confirmation for your Toowix administrator account.
+A sign-in attempt requires two-factor security confirmation for your Toowix administrator account.
 
-Your single-use 6-digit security code is:
-
+Your single-use sign-in code:
 ${params.otpCode}
 
-This code will expire in ${expiresMinutes} minutes. If you did not attempt to sign in, someone may be attempting to access your account.
+This code expires in ${expiresMinutes} minutes. If you did not attempt to sign in, someone may know your password. Please sign in immediately to update your credentials and review account security.
 
-— The Toowix Security Team
-    `.trim();
+— The Toowix Security Team`.trim();
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
-  <div style="max-width: 540px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
-    <div style="display: flex; align-items: center; margin-bottom: 24px;">
-      <div style="background: #6366f1; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">T</div>
-      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
-    </div>
-    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.4rem;">Two-Factor Login Verification</h2>
-    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-      Hello ${params.recipientName || 'Administrator'},<br/>
-      Use the one-time security code below to complete sign in to your administrator portal:
-    </p>
-    <div style="background: #0f172a; border: 1px solid #6366f1; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
-      <span style="font-family: monospace; font-size: 2.2rem; font-weight: 800; letter-spacing: 8px; color: #a5b4fc;">${params.otpCode}</span>
-    </div>
-    <p style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.5;">
-      ⚠️ This code expires in <strong>${expiresMinutes} minutes</strong> and can only be used once.<br/>
-      If you did not attempt to sign in, please secure your account immediately.
-    </p>
-  </div>
-</body>
-</html>
-    `.trim();
+    const contentHtml = `
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Sign-in verification code</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${params.recipientName || 'Administrator'}, enter the security code below to complete sign-in to your Toowix administrator portal:
+      </p>
+
+      <div style="background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 22px 16px; text-align: center; margin: 24px 0;">
+        <span class="email-code-text" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #0F172A; display: inline-block;">${params.otpCode}</span>
+      </div>
+
+      <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.5; color: #64748B;">
+        This code expires in <strong>${expiresMinutes} minutes</strong> and can only be used once.
+      </p>
+
+      <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 12px 14px;">
+        <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #991B1B;">
+          <strong>Security notice:</strong> If you did not attempt to sign in, someone may know your password. Sign in immediately to change your password and review recent security events.
+        </p>
+      </div>
+    `;
+
+    const html = renderEmailShell({
+      title: 'Two-Factor Login Verification',
+      previewText: `Your sign-in verification code is ${params.otpCode}.`,
+      contentHtml,
+    });
 
     try {
       const transporter = this.getTransporter();
@@ -642,63 +605,78 @@ This code will expire in ${expiresMinutes} minutes. If you did not attempt to si
    * Dispatches emergency 2FA backup codes to the administrator's email.
    */
   async sendBackupCodesEmail(params: BackupCodesEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const subject = 'Toowix Security: Your 2FA Emergency Backup Codes';
+    const subject = 'Your emergency backup codes — Toowix Mail Platform';
     const formattedCodeList = params.backupCodes.map((code, idx) => `  ${idx + 1}. ${code}`).join('\n');
-    const text = `
+    const text = `TOOWIX MAIL PLATFORM — 2FA EMERGENCY BACKUP CODES
+
 Hello ${params.recipientName || 'Administrator'},
 
-Two-factor authentication has been enabled or updated for your Toowix administrator account.
-
-Here are your 10 single-use emergency backup codes. Keep them in a safe place. If you ever lose access to your authenticator app or email verification, each backup code can be used once to sign in.
+Two-factor authentication has been configured for your account. Below are your 10 single-use emergency backup codes. Store them in a secure location (such as a password manager):
 
 ${formattedCodeList}
 
 Important:
-- Each backup code can only be used once.
+- Each code can only be used once to sign in if you lose access to your primary 2FA method.
 - Once used, the code is deactivated.
-- You can regenerate new backup codes at any time from your Security Settings.
+- You can regenerate a new set of codes at any time from your Security Settings, which immediately invalidates all prior codes.
 
-— The Toowix Security Team
-    `.trim();
+If you did not enable two-factor authentication, please contact your platform administrator immediately.
 
-    const codeHtmlItems = params.backupCodes
-      .map(
-        (code) =>
-          `<div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px 14px; font-family: monospace; font-size: 1.05rem; font-weight: 600; color: #a5b4fc; text-align: center; letter-spacing: 1px;">${code}</div>`
-      )
-      .join('');
+— The Toowix Security Team`.trim();
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
-  <div style="max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
-    <div style="display: flex; align-items: center; margin-bottom: 24px;">
-      <div style="background: #6366f1; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">T</div>
-      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
-    </div>
-    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.35rem;">Emergency 2FA Backup Codes</h2>
-    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-      Hello ${params.recipientName || 'Administrator'},<br/>
-      Two-factor authentication has been configured for your account. Below are your <strong>10 emergency backup codes</strong>. Store them in a secure place:
-    </p>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 24px 0;">
-      ${codeHtmlItems}
-    </div>
-    <div style="background: #0f172a; border-left: 4px solid #6366f1; border-radius: 4px; padding: 14px 16px; margin: 20px 0;">
-      <p style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.5; margin: 0;">
-        • Each code can only be used <strong>once</strong> to bypass 2FA.<br/>
-        • If you exhaust these codes or suspect compromise, regenerate them in your <strong>Security Settings</strong>.
+    // 2-column tabular layout for bulletproof email rendering
+    const rows: string[] = [];
+    for (let i = 0; i < params.backupCodes.length; i += 2) {
+      const code1 = params.backupCodes[i];
+      const code2 = params.backupCodes[i + 1];
+      rows.push(`
+        <tr>
+          <td class="backup-grid-col" width="48%" style="padding: 4px 6px;">
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 14px; font-weight: 700; color: #0F172A; text-align: center; letter-spacing: 1px;">
+              ${code1}
+            </div>
+          </td>
+          ${
+            code2
+              ? `<td class="backup-grid-col" width="48%" style="padding: 4px 6px;">
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 14px; font-weight: 700; color: #0F172A; text-align: center; letter-spacing: 1px;">
+              ${code2}
+            </div>
+          </td>`
+              : '<td width="48%"></td>'
+          }
+        </tr>
+      `);
+    }
+
+    const contentHtml = `
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Emergency backup codes</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${params.recipientName || 'Administrator'}, two-factor authentication has been configured for your account. Below are your 10 single-use emergency backup codes. Store them in a secure place, such as a password manager:
       </p>
-    </div>
-    <p style="color: #64748b; font-size: 0.8rem; margin-top: 24px; line-height: 1.4;">
-      If you did not enable two-factor authentication, please contact your platform administrator immediately.
-    </p>
-  </div>
-</body>
-</html>
-    `.trim();
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 16px 0;">
+        ${rows.join('')}
+      </table>
+
+      <div style="background-color: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 8px; padding: 14px 16px; margin: 24px 0 16px 0;">
+        <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; color: #3730A3;">
+          <li style="margin-bottom: 4px;">Each backup code can only be used <strong>once</strong>.</li>
+          <li style="margin-bottom: 4px;">Once used, the code is permanently deactivated.</li>
+          <li>You can regenerate a new set at any time from your <strong>Security Settings</strong>, which immediately invalidates all prior codes.</li>
+        </ul>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; color: #94A3B8; line-height: 1.5;">
+        If you did not configure two-factor authentication, please contact platform security immediately.
+      </p>
+    `;
+
+    const html = renderEmailShell({
+      title: 'Emergency 2FA Backup Codes',
+      previewText: '10 single-use emergency backup codes for your Toowix administrator account.',
+      contentHtml,
+    });
 
     try {
       const transporter = this.getTransporter();
@@ -730,78 +708,102 @@ Important:
   }
 
   /**
-   * Notifies an admin (Tenant Admin and/or Super Admin — caller sends one
-   * per recipient) that a domain's DNS activation stopped: either a
+   * Notifies an admin that a domain's DNS activation stopped: either a
    * pre-existing conflicting record was found, or the propagation retry
-   * window (see SystemSettings.dnsActivationMaxHours) elapsed without the
-   * required records verifying publicly.
+   * window elapsed without the required records verifying publicly.
    */
   async sendDomainActivationFailedEmail(
     params: DomainActivationFailedEmailParams
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const subject =
-      params.reason === 'conflict'
-        ? `Action required: DNS conflict detected for ${params.domainName}`
-        : `Action required: DNS activation timed out for ${params.domainName}`;
+    const isConflict = params.reason === 'conflict';
+    const subject = isConflict
+      ? `Action required: Conflicting DNS records found for ${params.domainName}`
+      : `Action required: DNS verification timed out for ${params.domainName}`;
 
-    const reasonText =
-      params.reason === 'conflict'
-        ? `A conflicting DNS record was found for ${params.domainName} that Toowix will not overwrite automatically:\n\n` +
-          (params.conflictDetails || [])
-            .map((c) => `  - ${c.type} ${c.name}: ${c.foundValue}`)
-            .join('\n')
-        : `The required DNS records for ${params.domainName} were not detected as published within the allowed verification window.`;
+    const reasonSummary = isConflict
+      ? `A pre-existing conflicting DNS record was detected for ${params.domainName} that Toowix will not overwrite automatically.`
+      : `The required DNS records for ${params.domainName} were not detected as published within the allowed verification window.`;
 
-    const text = `
+    const text = `TOOWIX MAIL PLATFORM — DOMAIN ACTIVATION NOTICE
+
 Hello ${params.recipientName || 'Administrator'},
 
-Domain activation for ${params.domainName} has stopped and needs attention.
+Domain verification for ${params.domainName} has stopped and requires attention.
 
-${reasonText}
+${reasonSummary}
+${
+  params.conflictDetails && params.conflictDetails.length
+    ? `\nConflicting Records:\n` +
+      params.conflictDetails.map((c) => `  - ${c.type} ${c.name}: ${c.foundValue}`).join('\n')
+    : ''
+}
 
-Resolve the issue with your DNS provider, then use "Retry / Verify" in the Toowix Admin portal to continue activation. No mail service or existing data has been affected.
+Next steps:
+1. Log in to your DNS provider's management console.
+2. Update or remove the conflicting records listed above.
+3. Return to the Toowix Admin portal and select "Retry / Verify".
 
-— The Toowix Platform Team
-    `.trim();
+Existing mail service and mailbox data on other active domains are unaffected.
+
+— The Toowix Platform Team`.trim();
 
     const conflictHtmlRows = (params.conflictDetails || [])
       .map(
         (c) =>
-          `<tr><td style="padding:6px 10px;border:1px solid #334155;font-family:monospace;">${c.type}</td><td style="padding:6px 10px;border:1px solid #334155;font-family:monospace;">${c.name}</td><td style="padding:6px 10px;border:1px solid #334155;font-family:monospace;">${c.foundValue}</td></tr>`
+          `<tr>
+            <td style="padding: 8px 12px; border-top: 1px solid #E2E8F0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #0F172A; font-weight: 600;">${c.type}</td>
+            <td style="padding: 8px 12px; border-top: 1px solid #E2E8F0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569;">${c.name}</td>
+            <td style="padding: 8px 12px; border-top: 1px solid #E2E8F0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569; word-break: break-all;">${c.foundValue}</td>
+          </tr>`
       )
       .join('');
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; margin: 0; padding: 32px; color: #f8fafc;">
-  <div style="max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 32px; border: 1px solid #334155;">
-    <div style="display: flex; align-items: center; margin-bottom: 24px;">
-      <div style="background: #ef4444; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: #ffffff;">!</div>
-      <span style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin-left: 12px; letter-spacing: 0.5px;">Toowix Mail Platform</span>
-    </div>
-    <h2 style="color: #ffffff; margin-top: 0; font-size: 1.35rem;">Domain activation stopped: ${params.domainName}</h2>
-    <p style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-      Hello ${params.recipientName || 'Administrator'},<br/>
+    const contentHtml = `
+      <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 12px 14px; margin-bottom: 20px;">
+        <span style="font-size: 13px; font-weight: 600; color: #B91C1C; text-transform: uppercase; letter-spacing: 0.5px;">Action Required</span>
+      </div>
+
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Domain verification stopped: ${params.domainName}</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${params.recipientName || 'Administrator'}, ${reasonSummary}
+      </p>
+
       ${
-        params.reason === 'conflict'
-          ? 'A conflicting DNS record was found and Toowix will not overwrite it automatically:'
-          : 'The required DNS records were not detected as published within the allowed verification window.'
+        params.conflictDetails && params.conflictDetails.length
+          ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; background-color: #FFFFFF;">
+              <thead>
+                <tr style="background-color: #F8FAFC;">
+                  <th style="padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B;">Type</th>
+                  <th style="padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B;">Name</th>
+                  <th style="padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B;">Current Detected Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${conflictHtmlRows}
+              </tbody>
+            </table>`
+          : ''
       }
-    </p>
-    ${
-      params.conflictDetails && params.conflictDetails.length
-        ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:0.85rem;color:#cbd5e1;"><thead><tr><th style="padding:6px 10px;border:1px solid #334155;text-align:left;">Type</th><th style="padding:6px 10px;border:1px solid #334155;text-align:left;">Name</th><th style="padding:6px 10px;border:1px solid #334155;text-align:left;">Existing Value</th></tr></thead><tbody>${conflictHtmlRows}</tbody></table>`
-        : ''
-    }
-    <p style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.5;">
-      Resolve the issue with your DNS provider, then use <strong>Retry / Verify</strong> in the Toowix Admin portal to continue activation. No mail service or existing data has been affected.
-    </p>
-  </div>
-</body>
-</html>
-    `.trim();
+
+      <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin: 24px 0 16px 0;">
+        <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #0F172A;">How to resolve this:</p>
+        <ol style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: #475569;">
+          <li>Log in to your DNS provider or domain registrar console.</li>
+          <li>Update or remove conflicting records to match the required mail configuration.</li>
+          <li>Return to the Toowix Admin portal and select <strong>Retry / Verify</strong>.</li>
+        </ol>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; color: #94A3B8; line-height: 1.5;">
+        No active mailbox service or existing messages on other configured domains have been affected.
+      </p>
+    `;
+
+    const html = renderEmailShell({
+      title: `Domain Verification Stopped: ${params.domainName}`,
+      previewText: `DNS verification for ${params.domainName} requires attention.`,
+      contentHtml,
+    });
 
     try {
       const transporter = this.getTransporter();

@@ -7,7 +7,7 @@ import { api } from '../../src/api';
 vi.mock('../../src/api', () => ({
   api: {
     createTenantDomain: vi.fn(),
-    connectGoDaddyCredential: vi.fn(),
+    connectDnsProviderCredential: vi.fn(),
   },
 }));
 
@@ -31,7 +31,7 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText('100 Seats')).toBeInTheDocument();
   });
 
-  it('creates an unprovisioned domain, then connects GoDaddy before finishing', async () => {
+  it('creates an unprovisioned domain, then connects GoDaddy (default provider) before finishing', async () => {
     const onClose = vi.fn();
     const onDomainAdded = vi.fn();
 
@@ -48,9 +48,9 @@ describe('DomainSetupModal Component', () => {
         isPrimary: false,
       },
     });
-    vi.mocked(api.connectGoDaddyCredential).mockResolvedValueOnce({
+    vi.mocked(api.connectDnsProviderCredential).mockResolvedValueOnce({
       success: true,
-      verifiedGoDaddyDomain: 'newbrand.io',
+      verifiedProviderDomain: 'newbrand.io',
       connectedAt: new Date().toISOString(),
     });
 
@@ -72,15 +72,19 @@ describe('DomainSetupModal Component', () => {
       employeeTier: 25,
     });
 
-    // Step 2: Connect GoDaddy — domain is not yet provisioned
-    expect(await screen.findByText('Connect GoDaddy')).toBeInTheDocument();
+    // Step 2: Connect DNS Provider — domain is not yet provisioned, GoDaddy selected by default
+    expect(await screen.findByText('Connect DNS Provider')).toBeInTheDocument();
     expect(screen.getByText(/not yet activated/i)).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(/GoDaddy API Key/i), 'test-key');
     await userEvent.type(screen.getByLabelText(/GoDaddy API Secret/i), 'test-secret');
     await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
 
-    expect(api.connectGoDaddyCredential).toHaveBeenCalledWith('dom-new-1', 'test-key', 'test-secret');
+    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith('dom-new-1', {
+      provider: 'godaddy',
+      apiKey: 'test-key',
+      apiSecret: 'test-secret',
+    });
     expect(await screen.findByText(/GoDaddy connected and verified/i)).toBeInTheDocument();
 
     // Complete setup
@@ -95,5 +99,46 @@ describe('DomainSetupModal Component', () => {
       })
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('switches to Hostinger and connects with a single API token', async () => {
+    const onClose = vi.fn();
+    const onDomainAdded = vi.fn();
+
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-new-2',
+        domainName: 'otherbrand.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+    vi.mocked(api.connectDnsProviderCredential).mockResolvedValueOnce({
+      success: true,
+      verifiedProviderDomain: 'otherbrand.io',
+      connectedAt: new Date().toISOString(),
+    });
+
+    render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
+
+    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'otherbrand.io');
+    await userEvent.click(screen.getByRole('button', { name: /create domain/i }));
+
+    expect(await screen.findByText('Connect DNS Provider')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^hostinger$/i }));
+
+    await userEvent.type(screen.getByLabelText(/Hostinger API Token/i), 'hostinger-tok');
+    await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
+
+    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith('dom-new-2', {
+      provider: 'hostinger',
+      token: 'hostinger-tok',
+    });
+    expect(await screen.findByText(/Hostinger connected and verified/i)).toBeInTheDocument();
   });
 });

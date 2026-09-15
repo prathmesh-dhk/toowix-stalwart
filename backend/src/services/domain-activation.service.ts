@@ -1,10 +1,15 @@
 import { resolveMx, resolveTxt } from 'dns/promises';
 import { DomainModel, IDomain, IGeneratedDnsRecord, IDnsConflictRecord } from '../db/models/Domain';
 import { TenantModel } from '../db/models/Tenant';
-import { DomainDnsCredentialModel } from '../db/models/DomainDnsCredential';
+import { DomainDnsCredentialModel, DnsProviderName } from '../db/models/DomainDnsCredential';
 import { stalwartClient } from '../stalwart/client';
-import { goDaddyClient } from '../godaddy/client';
-import { GoDaddyDnsRecord } from '../godaddy/types';
+import {
+  ProviderCredential,
+  GenericDnsRecord,
+  verifyProviderCredential,
+  listProviderDnsRecords,
+  createProviderDnsRecords,
+} from '../dns-providers/dispatch';
 import { buildRequiredDnsRecords } from './dns-records.service';
 import { encrypt, decrypt } from '../utils/crypto';
 import { logAudit } from '../audit/service';
@@ -28,24 +33,24 @@ export class DomainActivationError extends Error {
 const TRIAL_DAYS = 30;
 
 /**
- * Verifies a tenant-supplied GoDaddy credential actually manages the domain,
- * then stores it encrypted. Called from the Tenant Admin "Connect GoDaddy"
- * step, before any Super Admin activation attempt is possible.
+ * Verifies a tenant-supplied DNS provider credential actually manages the
+ * domain, then stores it encrypted. Called from the Tenant Admin "Connect
+ * DNS Provider" step, before any Super Admin activation attempt is possible.
  */
-export async function connectGoDaddyCredential(
+export async function connectDnsProviderCredential(
   domainId: string,
   tenantId: string,
-  apiKey: string,
-  apiSecret: string,
+  provider: DnsProviderName,
+  credential: ProviderCredential,
   actor: ActivationActor
-): Promise<{ verifiedGoDaddyDomain: string; connectedAt: Date }> {
+): Promise<{ verifiedProviderDomain: string; connectedAt: Date }> {
   const domain = await DomainModel.findOne({ _id: domainId, tenantId });
   if (!domain) {
     throw new DomainActivationError('Domain not found', 'NOT_FOUND', 404);
   }
 
-  // GoDaddyAuthError / GoDaddyDomainNotManagedError propagate as-is to the route handler.
-  const info = await goDaddyClient.verifyCredential(apiKey, apiSecret, domain.domainName);
+  // Provider-specific auth/not-managed errors propagate as-is to the route handler.
+  const info = await verifyProviderCredential(provider, credential, domain.domainName);
 
   const connectedAt = new Date();
   await DomainDnsCredentialModel.findOneAndUpdate(
@@ -53,9 +58,9 @@ export async function connectGoDaddyCredential(
     {
       domainId: domain._id,
       tenantId: domain.tenantId,
-      godaddyApiKeyEncrypted: encrypt(apiKey),
-      godaddyApiSecretEncrypted: encrypt(apiSecret),
-      verifiedGoDaddyDomain: info.domain,
+      provider,
+      credentialEncrypted: encrypt(JSON.stringify(credential)),
+      verifiedProviderDomain: info.domain,
       connectedAt,
       connectedBy: actor.id,
       revokedAt: null,
@@ -68,34 +73,35 @@ export async function connectGoDaddyCredential(
     actorRole: actor.role,
     actorEmail: actor.email,
     tenantId: String(domain.tenantId),
-    action: 'GODADDY_CREDENTIAL_CONNECTED',
+    action: 'DNS_PROVIDER_CREDENTIAL_CONNECTED',
     resource: 'DOMAIN',
     resourceId: domain._id.toString(),
-    metadata: { domainName: domain.domainName },
+    metadata: { domainName: domain.domainName, provider },
   });
 
-  return { verifiedGoDaddyDomain: info.domain, connectedAt };
+  return { verifiedProviderDomain: info.domain, connectedAt };
 }
 
-function toGoDaddyRecord(r: IGeneratedDnsRecord): GoDaddyDnsRecord {
+function toGenericRecord(r: IGeneratedDnsRecord): GenericDnsRecord {
   return {
     type: r.type,
     name: r.name,
     data: r.value,
     ttl: r.ttl,
-    ...(r.priority != null ? { priority: r.priority } : {}),
+    priority: r.priority,
   };
 }
 
 /**
- * Checks each required record against GoDaddy's existing zone. A record is:
+ * Checks each required record against the provider's existing zone. A
+ * record is:
  * - already present with the exact value we need -> nothing to do (idempotent retry)
  * - absent -> needs creating
  * - present with a DIFFERENT value -> conflict; never overwritten automatically
  */
 async function checkConflictsAndPlan(
-  apiKey: string,
-  apiSecret: string,
+  provider: DnsProviderName,
+  credential: ProviderCredential,
   domainName: string,
   records: IGeneratedDnsRecord[]
 ): Promise<{ conflicts: IDnsConflictRecord[]; toCreate: IGeneratedDnsRecord[] }> {
@@ -103,7 +109,7 @@ async function checkConflictsAndPlan(
   const toCreate: IGeneratedDnsRecord[] = [];
 
   for (const record of records) {
-    const existing = await goDaddyClient.listDnsRecords(apiKey, apiSecret, domainName, record.type, record.name);
+    const existing = await listProviderDnsRecords(provider, credential, domainName, record.type, record.name);
     if (existing.length === 0) {
       toCreate.push(record);
       continue;
@@ -156,22 +162,22 @@ export async function verifyPublicDns(
   return { verified: details.every((d) => d.found), details };
 }
 
-async function loadCredentialOrThrow(domainId: string): Promise<{ apiKey: string; apiSecret: string; docId: string }> {
-  const cred = await DomainDnsCredentialModel.findOne({ domainId }).select(
-    '+godaddyApiKeyEncrypted +godaddyApiSecretEncrypted'
-  );
+async function loadCredentialOrThrow(
+  domainId: string
+): Promise<{ provider: DnsProviderName; credential: ProviderCredential; docId: string }> {
+  const cred = await DomainDnsCredentialModel.findOne({ domainId }).select('+credentialEncrypted');
   if (!cred) {
     throw new DomainActivationError(
-      'No GoDaddy credential is connected for this domain yet. Ask the Tenant Admin to connect GoDaddy first.',
-      'GODADDY_CREDENTIAL_MISSING',
+      'No DNS provider credential is connected for this domain yet. Ask the Tenant Admin to connect one first.',
+      'DNS_PROVIDER_CREDENTIAL_MISSING',
       409
     );
   }
   cred.lastUsedAt = new Date();
   await cred.save();
   return {
-    apiKey: decrypt(cred.godaddyApiKeyEncrypted),
-    apiSecret: decrypt(cred.godaddyApiSecretEncrypted),
+    provider: cred.provider,
+    credential: JSON.parse(decrypt(cred.credentialEncrypted)),
     docId: cred._id.toString(),
   };
 }
@@ -216,14 +222,14 @@ async function finalizeIfVerified(domain: IDomain): Promise<void> {
     }
   }
 
-  // Per requirements: GoDaddy authorization is not retained once activation succeeds.
+  // Per requirements: DNS provider authorization is not retained once activation succeeds.
   await DomainDnsCredentialModel.deleteOne({ domainId: domain._id });
 }
 
 /**
  * The "Activate Domain" action (Super Admin). Provisions/enables the domain
  * in Stalwart, fetches its real DKIM keys, builds+persists the required DNS
- * record set, checks GoDaddy for conflicts, creates the missing records, and
+ * record set, checks the connected DNS provider for conflicts, creates the missing records, and
  * makes an immediate verification attempt. If not yet verifiable, the domain
  * is left in 'activating' for the background sweep to keep polling.
  */
@@ -239,7 +245,7 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     throw new DomainActivationError('Domain activation is already in progress', 'ALREADY_ACTIVATING', 409);
   }
 
-  const { apiKey, apiSecret } = await loadCredentialOrThrow(domain._id.toString());
+  const { provider, credential } = await loadCredentialOrThrow(domain._id.toString());
 
   domain.dnsStatus = 'activating';
   domain.dnsVerificationStartedAt = new Date();
@@ -291,8 +297,8 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
   domain.dkimPublicKey = rsaKey?.publicKey || null;
   await domain.save();
 
-  // 3. Conflict-check against GoDaddy's existing zone before creating anything.
-  const { conflicts, toCreate } = await checkConflictsAndPlan(apiKey, apiSecret, domain.domainName, records);
+  // 3. Conflict-check against the provider's existing zone before creating anything.
+  const { conflicts, toCreate } = await checkConflictsAndPlan(provider, credential, domain.domainName, records);
   if (conflicts.length > 0) {
     domain.dnsStatus = 'conflict';
     domain.dnsConflicts = conflicts;
@@ -316,7 +322,7 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
 
   // 4. Create the (non-conflicting, missing) records.
   if (toCreate.length > 0) {
-    await goDaddyClient.createDnsRecords(apiKey, apiSecret, domain.domainName, toCreate.map(toGoDaddyRecord));
+    await createProviderDnsRecords(provider, credential, domain.domainName, toCreate.map(toGenericRecord));
   }
 
   // 5. Immediate verification attempt; leaves 'activating' for the sweep if not yet visible.
@@ -342,7 +348,7 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     );
   }
 
-  const { apiKey, apiSecret } = await loadCredentialOrThrow(domain._id.toString());
+  const { provider, credential } = await loadCredentialOrThrow(domain._id.toString());
   const records = domain.dnsRecords || [];
 
   await logAudit({
@@ -357,7 +363,7 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
   });
 
   if (domain.dnsStatus === 'conflict') {
-    const { conflicts, toCreate } = await checkConflictsAndPlan(apiKey, apiSecret, domain.domainName, records);
+    const { conflicts, toCreate } = await checkConflictsAndPlan(provider, credential, domain.domainName, records);
     if (conflicts.length > 0) {
       domain.dnsConflicts = conflicts;
       await domain.save();
@@ -368,7 +374,7 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     domain.dnsConflicts = undefined;
     await domain.save();
     if (toCreate.length > 0) {
-      await goDaddyClient.createDnsRecords(apiKey, apiSecret, domain.domainName, toCreate.map(toGoDaddyRecord));
+      await createProviderDnsRecords(provider, credential, domain.domainName, toCreate.map(toGenericRecord));
     }
   }
 

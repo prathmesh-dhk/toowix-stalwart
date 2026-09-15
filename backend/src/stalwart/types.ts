@@ -50,3 +50,19 @@ export interface StalwartDkimKey {
   stage: string;
   createdAt?: string;
 }
+
+export interface StalwartBlockedIp {
+  id: string;
+  address: string;
+  reason?: string | null;
+  createdAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface StalwartAllowedIp {
+  id: string;
+  address: string;
+  reason?: string | null;
+  createdAt?: string | null;
+  expiresAt?: string | null;
+}

@@ -18,6 +18,9 @@ import { metricsService } from './services/metrics.service';
 
 export const app = express();
 
+// Enable trust proxy so Express reads client IP from X-Forwarded-For when deployed behind Nginx / Docker
+app.set('trust proxy', true);
+
 const allowedOrigins = [
   config.frontendOrigin,
   'http://localhost:5173',

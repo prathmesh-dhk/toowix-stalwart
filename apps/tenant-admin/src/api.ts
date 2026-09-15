@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -222,12 +222,15 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  connectGoDaddyCredential: (domainId: string, apiKey: string, apiSecret: string) =>
-    request<{ success: boolean; verifiedGoDaddyDomain: string; connectedAt: string }>(
-      `/api/tenants/me/domains/${domainId}/godaddy-credential`,
+  connectDnsProviderCredential: (
+    domainId: string,
+    credential: { provider: 'godaddy'; apiKey: string; apiSecret: string } | { provider: 'hostinger'; token: string }
+  ) =>
+    request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string }>(
+      `/api/tenants/me/domains/${domainId}/dns-provider-credential`,
       {
         method: 'POST',
-        body: JSON.stringify({ apiKey, apiSecret }),
+        body: JSON.stringify(credential),
       }
     ),
 
@@ -496,6 +499,54 @@ export const api = {
     }>('/api/auth/security/2fa/backup-codes/regenerate', {
       method: 'POST',
     }),
+
+  // ==========================================
+  // SECURITY FIREWALL / IP MANAGEMENT
+  // ==========================================
+
+  checkIpStatus: (ip: string) =>
+    request<IpCheckResult>(`/api/tenants/me/security/check-ip?ip=${encodeURIComponent(ip)}`),
+
+  getBlockedIps: () =>
+    request<{ list: BlockedIpItem[] }>('/api/tenants/me/security/blocked-ips'),
+
+  unblockIp: (params: { id?: string; address?: string }) =>
+    request<{ success: boolean; unblockedCount: number; message: string }>(
+      '/api/tenants/me/security/blocked-ips/unblock',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }
+    ),
+
+  blockIp: (params: { address: string; reason?: string }) =>
+    request<{ success: boolean; message: string; item: BlockedIpItem }>(
+      '/api/tenants/me/security/blocked-ips',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }
+    ),
+
+  getAllowedIps: () =>
+    request<{ list: AllowedIpItem[] }>('/api/tenants/me/security/allowed-ips'),
+
+  addAllowedIp: (params: { address: string; reason?: string }) =>
+    request<{ success: boolean; message: string; item: AllowedIpItem }>(
+      '/api/tenants/me/security/allowed-ips',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }
+    ),
+
+  removeAllowedIp: (id: string) =>
+    request<{ success: boolean; message: string }>(
+      `/api/tenants/me/security/allowed-ips/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+      }
+    ),
 };
 
 

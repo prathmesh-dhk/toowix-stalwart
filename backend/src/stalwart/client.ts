@@ -7,6 +7,8 @@ import {
   CreateAccountInput,
   StalwartCreatedAccount,
   StalwartDkimKey,
+  StalwartBlockedIp,
+  StalwartAllowedIp,
 } from './types';
 import {
   StalwartError,
@@ -751,6 +753,241 @@ export class StalwartClient {
     }
 
     return result;
+  }
+
+  // --- IP Address Management (Blocked & Allowed IPs) ---
+
+  /**
+   * Dispatches an action to reload the in-memory blocked IPs firewall rules.
+   */
+  async reloadBlockedIps(): Promise<void> {
+    const responses = await this.dispatch([
+      [
+        'x:Action/set',
+        {
+          accountId: this.accountId,
+          create: {
+            act_reload: {
+              '@type': 'ReloadBlockedIps',
+            },
+          },
+        },
+        'c_reload_blocked_ips',
+      ],
+    ]);
+
+    const result = responses[0]?.[1];
+    if (result?.notCreated?.act_reload) {
+      const err = result.notCreated.act_reload;
+      throw new StalwartError(
+        `Failed to reload blocked IPs in Stalwart: ${err.description || err.type}`,
+        'RELOAD_BLOCKED_IPS_FAILED',
+        err
+      );
+    }
+  }
+
+  /**
+   * Lists all currently blocked IP addresses.
+   */
+  async listBlockedIps(): Promise<StalwartBlockedIp[]> {
+    const responses = await this.dispatch([
+      ['x:BlockedIp/get', { accountId: this.accountId, ids: null }, 'c_list_blocked_ips'],
+    ]);
+
+    const list = responses[0]?.[1]?.list || [];
+    return list.map((b: any) => ({
+      id: b.id,
+      address: b.address,
+      reason: b.reason,
+      createdAt: b.createdAt,
+      expiresAt: b.expiresAt,
+    }));
+  }
+
+  /**
+   * Automated unblock: Deletes the blocked IP entry from Stalwart AND triggers
+   * the ReloadBlockedIps action in one combined dispatch call.
+   */
+  async unblockIp(id: string): Promise<void> {
+    const responses = await this.dispatch([
+      ['x:BlockedIp/set', { accountId: this.accountId, destroy: [id] }, 'c_del_blocked_ip'],
+      [
+        'x:Action/set',
+        {
+          accountId: this.accountId,
+          create: {
+            act_reload: {
+              '@type': 'ReloadBlockedIps',
+            },
+          },
+        },
+        'c_reload_blocked_ips',
+      ],
+    ]);
+
+    const delResult = responses[0]?.[1];
+    if (delResult?.notDestroyed?.[id]) {
+      const err = delResult.notDestroyed[id];
+      throw new StalwartError(
+        `Failed to delete blocked IP ${id} in Stalwart: ${err.description || err.type}`,
+        'UNBLOCK_IP_FAILED',
+        err
+      );
+    }
+  }
+
+  /**
+   * Blocks an IP address and reloads the firewall cache.
+   */
+  async blockIp(address: string, reason = 'manual'): Promise<StalwartBlockedIp> {
+    const tempId = 'new_block';
+    const responses = await this.dispatch([
+      [
+        'x:BlockedIp/set',
+        {
+          accountId: this.accountId,
+          create: {
+            [tempId]: {
+              address: address.trim(),
+              reason,
+            },
+          },
+        },
+        'c_create_blocked_ip',
+      ],
+      [
+        'x:Action/set',
+        {
+          accountId: this.accountId,
+          create: {
+            act_reload: {
+              '@type': 'ReloadBlockedIps',
+            },
+          },
+        },
+        'c_reload_blocked_ips',
+      ],
+    ]);
+
+    const setResult = responses[0]?.[1];
+    if (setResult?.notCreated?.[tempId]) {
+      const err = setResult.notCreated[tempId];
+      throw new StalwartError(
+        `Failed to block IP ${address} in Stalwart: ${err.description || err.type}`,
+        'BLOCK_IP_FAILED',
+        err
+      );
+    }
+
+    const created = setResult?.created?.[tempId];
+    return {
+      id: created?.id || tempId,
+      address: address.trim(),
+      reason,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Lists all whitelisted/allowed IP addresses.
+   */
+  async listAllowedIps(): Promise<StalwartAllowedIp[]> {
+    const responses = await this.dispatch([
+      ['x:AllowedIp/get', { accountId: this.accountId, ids: null }, 'c_list_allowed_ips'],
+    ]);
+
+    const list = responses[0]?.[1]?.list || [];
+    return list.map((a: any) => ({
+      id: a.id,
+      address: a.address,
+      reason: a.reason,
+      createdAt: a.createdAt,
+      expiresAt: a.expiresAt,
+    }));
+  }
+
+  /**
+   * Adds an IP or CIDR to the allowed (whitelist) list and reloads firewall rules.
+   */
+  async addAllowedIp(address: string, reason?: string): Promise<StalwartAllowedIp> {
+    const tempId = 'new_allow';
+    const payload: any = { address: address.trim() };
+    if (reason) payload.reason = reason.trim();
+
+    const responses = await this.dispatch([
+      [
+        'x:AllowedIp/set',
+        {
+          accountId: this.accountId,
+          create: {
+            [tempId]: payload,
+          },
+        },
+        'c_create_allowed_ip',
+      ],
+      [
+        'x:Action/set',
+        {
+          accountId: this.accountId,
+          create: {
+            act_reload: {
+              '@type': 'ReloadBlockedIps',
+            },
+          },
+        },
+        'c_reload_blocked_ips',
+      ],
+    ]);
+
+    const setResult = responses[0]?.[1];
+    if (setResult?.notCreated?.[tempId]) {
+      const err = setResult.notCreated[tempId];
+      throw new StalwartError(
+        `Failed to whitelist IP ${address} in Stalwart: ${err.description || err.type}`,
+        'ALLOW_IP_FAILED',
+        err
+      );
+    }
+
+    const created = setResult?.created?.[tempId];
+    return {
+      id: created?.id || tempId,
+      address: address.trim(),
+      reason: reason?.trim() || null,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Removes an IP from the allowed (whitelist) list and reloads firewall rules.
+   */
+  async removeAllowedIp(id: string): Promise<void> {
+    const responses = await this.dispatch([
+      ['x:AllowedIp/set', { accountId: this.accountId, destroy: [id] }, 'c_del_allowed_ip'],
+      [
+        'x:Action/set',
+        {
+          accountId: this.accountId,
+          create: {
+            act_reload: {
+              '@type': 'ReloadBlockedIps',
+            },
+          },
+        },
+        'c_reload_blocked_ips',
+      ],
+    ]);
+
+    const delResult = responses[0]?.[1];
+    if (delResult?.notDestroyed?.[id]) {
+      const err = delResult.notDestroyed[id];
+      throw new StalwartError(
+        `Failed to remove allowed IP ${id} in Stalwart: ${err.description || err.type}`,
+        'REMOVE_ALLOWED_IP_FAILED',
+        err
+      );
+    }
   }
 }
 

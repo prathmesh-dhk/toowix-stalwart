@@ -175,3 +175,27 @@ export interface TenantStorageResponse {
   mailboxes: MailboxStorageItem[];
 }
 
+export interface BlockedIpItem {
+  id: string;
+  address: string;
+  reason?: string | null;
+  createdAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface AllowedIpItem {
+  id: string;
+  address: string;
+  reason?: string | null;
+  createdAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface IpCheckResult {
+  ip: string;
+  isBlocked: boolean;
+  blockedEntry: BlockedIpItem | null;
+  isAllowed: boolean;
+  allowedEntry: AllowedIpItem | null;
+}
+

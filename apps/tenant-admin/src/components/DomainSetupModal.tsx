@@ -33,16 +33,18 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   onClose,
   onDomainAdded,
 }) => {
-  const [step, setStep] = useState<'form' | 'godaddy'>('form');
+  const [step, setStep] = useState<'form' | 'provider'>('form');
   const [domainName, setDomainName] = useState('');
   const [selectedTier, setSelectedTier] = useState<number>(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Success state after domain creation (unprovisioned) + GoDaddy connect step
+  // Success state after domain creation (unprovisioned) + DNS provider connect step
   const [createdDomain, setCreatedDomain] = useState<DomainItem | null>(null);
+  const [provider, setProvider] = useState<'godaddy' | 'hostinger'>('godaddy');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [hostingerToken, setHostingerToken] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
 
@@ -71,7 +73,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       });
 
       setCreatedDomain(res.domain);
-      setStep('godaddy');
+      setStep('provider');
     } catch (err: any) {
       setError(err.message || 'Failed to create domain. Please check if it already exists.');
     } finally {
@@ -79,16 +81,20 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     }
   };
 
-  const handleConnectGoDaddy = async (e: React.FormEvent) => {
+  const handleConnectProvider = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createdDomain) return;
     setConnecting(true);
     setError(null);
     try {
-      await api.connectGoDaddyCredential(createdDomain.id, apiKey.trim(), apiSecret.trim());
+      const credential =
+        provider === 'godaddy'
+          ? { provider: 'godaddy' as const, apiKey: apiKey.trim(), apiSecret: apiSecret.trim() }
+          : { provider: 'hostinger' as const, token: hostingerToken.trim() };
+      await api.connectDnsProviderCredential(createdDomain.id, credential);
       setConnected(true);
     } catch (err: any) {
-      setError(err.message || 'Could not verify this GoDaddy credential against the domain.');
+      setError(err.message || `Could not verify this ${provider === 'godaddy' ? 'GoDaddy' : 'Hostinger'} credential against the domain.`);
     } finally {
       setConnecting(false);
     }
@@ -104,8 +110,10 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setSelectedTier(10);
     setError(null);
     setCreatedDomain(null);
+    setProvider('godaddy');
     setApiKey('');
     setApiSecret('');
+    setHostingerToken('');
     setConnected(false);
     onClose();
   };
@@ -130,7 +138,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-slate-900">
-                  {step === 'form' ? 'Add New Domain' : 'Connect GoDaddy'}
+                  {step === 'form' ? 'Add New Domain' : 'Connect DNS Provider'}
                 </h3>
                 <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200/60">
                   {step === 'form' ? 'Step 1 of 2' : 'Step 2 of 2'}
@@ -139,13 +147,13 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <p className="text-xs text-slate-500 mt-0.5">
                 {step === 'form'
                   ? 'Connect an authoritative domain and allocate employee mailbox seats.'
-                  : `Connect GoDaddy for ${createdDomain?.domainName} so a Super Admin can activate mail service.`}
+                  : `Connect a DNS provider for ${createdDomain?.domainName} so a Super Admin can activate mail service.`}
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={step === 'godaddy' ? handleFinish : onClose}
+            onClick={step === 'provider' ? handleFinish : onClose}
             className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             aria-label="Close"
           >
@@ -276,8 +284,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
           </form>
         )}
 
-        {/* STEP 2: CONNECT GODADDY */}
-        {step === 'godaddy' && (
+        {/* STEP 2: CONNECT DNS PROVIDER */}
+        {step === 'provider' && (
           <div className="flex flex-col gap-4 animate-in fade-in">
             {/* Banner */}
             <div className="p-3.5 bg-indigo-50 border border-indigo-200/80 rounded-xl flex items-center gap-2.5">
@@ -290,7 +298,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                 </span>
                 <span className="text-[11px] text-indigo-700">
                   Allocated capacity: {createdDomain?.mailboxLimit} mailboxes. A Super Admin still needs to click
-                  "Activate Domain" once GoDaddy is connected below.
+                  "Activate Domain" once a DNS provider is connected below.
                 </span>
               </div>
             </div>
@@ -299,67 +307,125 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <div className="p-3.5 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span className="text-xs font-medium text-emerald-800">
-                  GoDaddy connected and verified for this domain. A Super Admin can now activate it.
+                  {provider === 'godaddy' ? 'GoDaddy' : 'Hostinger'} connected and verified for this domain. A Super
+                  Admin can now activate it.
                 </span>
               </div>
             ) : (
-              <form onSubmit={handleConnectGoDaddy} className="flex flex-col gap-3.5">
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Generate a Personal Access Token / API key+secret for this domain at{' '}
-                  <span className="font-mono">developer.godaddy.com</span>, scoped to DNS management only. Toowix
-                  verifies it manages this domain, then discards it once activation succeeds.
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="input-godaddy-key" className="text-xs font-semibold text-slate-800">
-                    GoDaddy API Key <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <KeyRound className="w-4 h-4" />
-                    </div>
-                    <input
-                      id="input-godaddy-key"
-                      type="text"
-                      required
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="input-godaddy-secret" className="text-xs font-semibold text-slate-800">
-                    GoDaddy API Secret <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="input-godaddy-secret"
-                    type="password"
-                    required
-                    value={apiSecret}
-                    onChange={(e) => setApiSecret(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
-                  />
-                </div>
-                <div className="flex justify-end">
+              <>
+                {/* Provider selector */}
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
                   <button
-                    type="submit"
-                    disabled={connecting || !apiKey.trim() || !apiSecret.trim()}
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    type="button"
+                    onClick={() => setProvider('godaddy')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      provider === 'godaddy' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                    }`}
                   >
-                    {connecting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Verifying...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Verify & Connect</span>
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                      </>
-                    )}
+                    GoDaddy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProvider('hostinger')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      provider === 'hostinger' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Hostinger
                   </button>
                 </div>
-              </form>
+
+                <form onSubmit={handleConnectProvider} className="flex flex-col gap-3.5">
+                  {provider === 'godaddy' ? (
+                    <>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Generate a Personal Access Token / API key+secret for this domain at{' '}
+                        <span className="font-mono">developer.godaddy.com</span>, scoped to DNS management only.
+                        Toowix verifies it manages this domain, then discards it once activation succeeds.
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-godaddy-key" className="text-xs font-semibold text-slate-800">
+                          GoDaddy API Key <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <KeyRound className="w-4 h-4" />
+                          </div>
+                          <input
+                            id="input-godaddy-key"
+                            type="text"
+                            required
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-godaddy-secret" className="text-xs font-semibold text-slate-800">
+                          GoDaddy API Secret <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          id="input-godaddy-secret"
+                          type="password"
+                          required
+                          value={apiSecret}
+                          onChange={(e) => setApiSecret(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Generate an API token in hPanel at <span className="font-mono">hostinger.com</span> (Profile
+                        &rarr; Business &amp; Dev Tools &rarr; API Access), scoped to DNS management only. Toowix
+                        verifies it manages this domain, then discards it once activation succeeds.
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-hostinger-token" className="text-xs font-semibold text-slate-800">
+                          Hostinger API Token <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <KeyRound className="w-4 h-4" />
+                          </div>
+                          <input
+                            id="input-hostinger-token"
+                            type="password"
+                            required
+                            value={hostingerToken}
+                            onChange={(e) => setHostingerToken(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={
+                        connecting ||
+                        (provider === 'godaddy' ? !apiKey.trim() || !apiSecret.trim() : !hostingerToken.trim())
+                      }
+                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {connecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Verifying...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Verify & Connect</span>
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </>
             )}
 
             {/* Step 2 Finish Button */}

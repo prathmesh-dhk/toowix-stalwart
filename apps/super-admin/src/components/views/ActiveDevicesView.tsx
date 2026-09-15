@@ -224,7 +224,7 @@ export const ActiveDevicesView: React.FC = () => {
             </div>
             <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Active Now ({currentSession?.ipAddress || '127.0.0.1'})
+              Active Now ({currentSession?.ipAddress || '127.0.0.1'}{currentSession?.location ? ` • ${currentSession.location}` : ''})
             </span>
           </div>
           <div className="h-10 w-10 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600">
