@@ -1,67 +1,30 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
-  ShieldAlert,
   Search,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
   Unlock,
   Shield,
-  Plus,
+  ShieldAlert,
   X,
-  Copy,
-  Check,
-  Globe,
-  Clock,
+  Info,
   ExternalLink,
 } from 'lucide-react';
 import { api } from '../api';
-import { BlockedIpItem, IpCheckResult } from '../types';
+import { IpCheckResult } from '../types';
 
 interface BlockedIpsViewProps {
   onSwitchToAllowed?: (prefillIp?: string) => void;
 }
 
 export const BlockedIpsView: React.FC<BlockedIpsViewProps> = ({ onSwitchToAllowed }) => {
-  const [blockedList, setBlockedList] = useState<BlockedIpItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  // Diagnostic Check states
   const [checkIpInput, setCheckIpInput] = useState('');
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<IpCheckResult | null>(null);
-
-  // Unblock action loading state (holds id or 'diagnostic')
-  const [unblockingId, setUnblockingId] = useState<string | null>(null);
-
-  // Manual Block modal state
-  const [showBlockModal, setShowBlockModal] = useState(false);
-  const [modalIp, setModalIp] = useState('');
-  const [modalReason, setModalReason] = useState('manual');
-  const [submittingBlock, setSubmittingBlock] = useState(false);
-
-  // Copied IP state
-  const [copiedIp, setCopiedIp] = useState<string | null>(null);
-
-  const fetchBlockedIps = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getBlockedIps();
-      setBlockedList(res.list || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load blocked IPs');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchBlockedIps();
-  }, [fetchBlockedIps]);
+  const [unblocking, setUnblocking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const handleDiagnosticCheck = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -81,69 +44,42 @@ export const BlockedIpsView: React.FC<BlockedIpsViewProps> = ({ onSwitchToAllowe
     }
   };
 
-  const handleUseMyIp = () => {
-    // Fill with client's IP from current device if available or prompt
+  const handleUseLocalIp = () => {
     setCheckIpInput('127.0.0.1');
     setCheckResult(null);
   };
 
-  const handleUnblock = async (id?: string, address?: string) => {
-    setUnblockingId(id || address || 'diagnostic');
+  const handleUnblock = async () => {
+    if (!checkResult) return;
+
+    setUnblocking(true);
     setError(null);
     setSuccessMsg(null);
     try {
-      const res = await api.unblockIp({ id, address });
-      setSuccessMsg(res.message || 'IP address unblocked and Stalwart firewall reloaded successfully.');
+      const res = await api.unblockIp({
+        id: checkResult.blockedEntry?.id,
+        address: checkResult.ip,
+      });
 
-      // Clear diagnostic state if we unblocked that address
-      if (checkResult && (checkResult.blockedEntry?.id === id || checkResult.ip === address)) {
-        setCheckResult({
-          ...checkResult,
-          isBlocked: false,
-          blockedEntry: null,
-        });
-      }
+      setSuccessMsg(
+        res.message || `IP address ${checkResult.ip} has been unblocked and Stalwart firewall rules reloaded.`
+      );
 
-      await fetchBlockedIps();
+      // Update state to unblocked
+      setCheckResult({
+        ...checkResult,
+        isBlocked: false,
+        blockedEntry: null,
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to unblock IP');
     } finally {
-      setUnblockingId(null);
+      setUnblocking(false);
     }
   };
-
-  const handleManualBlock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!modalIp.trim()) return;
-
-    setSubmittingBlock(true);
-    setError(null);
-    try {
-      await api.blockIp({ address: modalIp.trim(), reason: modalReason });
-      setSuccessMsg(`IP ${modalIp.trim()} blocked successfully.`);
-      setShowBlockModal(false);
-      setModalIp('');
-      await fetchBlockedIps();
-    } catch (err: any) {
-      setError(err.message || 'Failed to block IP address');
-    } finally {
-      setSubmittingBlock(false);
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIp(text);
-    setTimeout(() => setCopiedIp(null), 2000);
-  };
-
-  const filteredList = blockedList.filter((item) =>
-    item.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.reason && item.reason.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 max-w-4xl">
       {/* Toast Notifications */}
       {successMsg && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between text-sm animate-in fade-in duration-200">
@@ -151,7 +87,7 @@ export const BlockedIpsView: React.FC<BlockedIpsViewProps> = ({ onSwitchToAllowe
             <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             <span>{successMsg}</span>
           </div>
-          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800">
+          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800 cursor-pointer">
             <X size={16} />
           </button>
         </div>
@@ -163,30 +99,37 @@ export const BlockedIpsView: React.FC<BlockedIpsViewProps> = ({ onSwitchToAllowe
             <AlertTriangle size={18} className="text-rose-600 shrink-0" />
             <span>{error}</span>
           </div>
-          <button onClick={() => setError(null)} className="text-rose-600 hover:text-rose-800">
+          <button onClick={() => setError(null)} className="text-rose-600 hover:text-rose-800 cursor-pointer">
             <X size={16} />
           </button>
         </div>
       )}
 
-      {/* TOP SECTION: Diagnostic IP Status Checker */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs flex flex-col gap-4">
+      {/* SEARCH & DIAGNOSTIC CARD */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 shadow-xs flex flex-col gap-6">
         <div>
-          <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-            <Search size={18} className="text-indigo-600" />
-            <span>IP Block Diagnostic & Automated Unblocker</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Search any IP address to instantly verify if Stalwart’s firewall has blocked it due to repeated login failures, rate-limiting, or security triggers.
-          </p>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+              <Search size={20} />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">
+                Check & Unblock IP Address
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Search an IP address to see if it is currently banned by Stalwart’s firewall and unblock it immediately.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={handleDiagnosticCheck} className="flex flex-col sm:flex-row items-center gap-3">
-          <div className="relative flex-1 w-full">
+        {/* Search Input Form */}
+        <form onSubmit={handleDiagnosticCheck} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder="e.g. 203.0.113.42 or 198.51.100.15"
+              placeholder="Enter IP address (e.g. 203.0.113.42 or 198.51.100.15)"
               value={checkIpInput}
               onChange={(e) => {
                 setCheckIpInput(e.target.value);
@@ -196,8 +139,8 @@ export const BlockedIpsView: React.FC<BlockedIpsViewProps> = ({ onSwitchToAllowe
             />
             <button
               type="button"
-              onClick={handleUseMyIp}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 px-2 py-1 rounded transition-colors"
+              onClick={handleUseLocalIp}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 px-2 py-1 rounded transition-colors cursor-pointer"
             >
               Fill 127.0.0.1
             </button>
@@ -206,67 +149,76 @@ export const BlockedIpsView: React.FC<BlockedIpsViewProps> = ({ onSwitchToAllowe
           <button
             type="submit"
             disabled={checking || !checkIpInput.trim()}
-            className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-xs"
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-xs"
           >
-            {checking ? <RefreshCw size={16} className="animate-spin" /> : <ShieldAlert size={16} />}
-            <span>Check IP Status</span>
+            {checking ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
+            <span>Check IP</span>
           </button>
         </form>
 
-        {/* Diagnostic Result Card */}
+        {/* Diagnostic Result */}
         {checkResult && (
           <div
-            className={`p-4 rounded-xl border transition-all ${
+            className={`p-5 rounded-xl border transition-all ${
               checkResult.isBlocked
-                ? 'bg-rose-50/80 border-rose-200 text-rose-900'
-                : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
             }`}
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+              <div className="flex items-start gap-3.5">
                 {checkResult.isBlocked ? (
-                  <div className="p-2 bg-rose-100 rounded-lg text-rose-600 shrink-0 mt-0.5">
-                    <ShieldAlert size={20} />
+                  <div className="p-2.5 bg-rose-100 rounded-xl text-rose-600 shrink-0 mt-0.5">
+                    <ShieldAlert size={22} />
                   </div>
                 ) : (
-                  <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600 shrink-0 mt-0.5">
-                    <CheckCircle2 size={20} />
+                  <div className="p-2.5 bg-emerald-100 rounded-xl text-emerald-600 shrink-0 mt-0.5">
+                    <CheckCircle2 size={22} />
                   </div>
                 )}
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-bold">{checkResult.ip}</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-sm font-bold tracking-tight text-slate-900">
+                      {checkResult.ip}
+                    </span>
                     <span
-                      className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-semibold inline-flex items-center gap-1.5 ${
                         checkResult.isBlocked
-                          ? 'bg-rose-200/70 text-rose-800'
-                          : 'bg-emerald-200/70 text-emerald-800'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                       }`}
                     >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          checkResult.isBlocked ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'
+                        }`}
+                      ></span>
                       {checkResult.isBlocked ? 'CURRENTLY BLOCKED' : 'NOT BLOCKED'}
                     </span>
                     {checkResult.isAllowed && (
-                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-800">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-800 border border-blue-200">
                         WHITELISTED
                       </span>
                     )}
                   </div>
-                  <p className="text-xs mt-1 opacity-90">
+
+                  <p className="text-xs mt-1.5 text-slate-600 leading-relaxed">
                     {checkResult.isBlocked
-                      ? `Reason: ${checkResult.blockedEntry?.reason || 'Automatic brute-force trigger'}. Connections from this address to mail ports (SMTP/IMAP) are rejected.`
-                      : 'This IP address has clean standing and is not restricted by Stalwart’s firewall.'}
+                      ? `This IP address is blocked on Stalwart (${checkResult.blockedEntry?.reason || 'Auto-ban trigger'}). Inbound requests and mail authentication from this address are dropped.`
+                      : 'This IP address has clean standing and is not restricted by Stalwart’s firewall rules.'}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
                 {checkResult.isBlocked && (
                   <button
-                    onClick={() => handleUnblock(checkResult.blockedEntry?.id, checkResult.ip)}
-                    disabled={unblockingId === (checkResult.blockedEntry?.id || checkResult.ip)}
+                    onClick={handleUnblock}
+                    disabled={unblocking}
                     className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 cursor-pointer transition-colors"
                   >
-                    {unblockingId === (checkResult.blockedEntry?.id || checkResult.ip) ? (
+                    {unblocking ? (
                       <RefreshCw size={14} className="animate-spin" />
                     ) : (
                       <Unlock size={14} />
@@ -290,246 +242,29 @@ export const BlockedIpsView: React.FC<BlockedIpsViewProps> = ({ onSwitchToAllowe
         )}
       </div>
 
-      {/* SUMMARY STATS & ACTION CONTROLS */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900">
-            Active Blocked IPs ({blockedList.length})
-          </h3>
-          <p className="text-xs text-slate-500">
-            Automated firewall rules. Unblocking an address immediately removes it from Stalwart and reloads the live firewall cache.
+      {/* GUIDANCE & BEST PRACTICES */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4.5 flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+            <Info size={14} className="text-indigo-600" />
+            <span>Why do IPs get blocked?</span>
+          </span>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Stalwart automatically bans IP addresses that exceed failed authentication thresholds (e.g. incorrect email passwords entered repeatedly in Outlook or Apple Mail) to prevent brute-force attacks.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 self-end sm:self-center">
-          <button
-            onClick={fetchBlockedIps}
-            disabled={loading}
-            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 shadow-xs transition-colors cursor-pointer"
-            title="Refresh list"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
-
-          <button
-            onClick={() => setShowBlockModal(true)}
-            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-          >
-            <Plus size={14} />
-            <span>Block IP Address</span>
-          </button>
-        </div>
-      </div>
-
-      {/* BLOCKED IPS LIST TABLE */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        {/* Table Search Header */}
-        <div className="p-3.5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            <input
-              type="text"
-              placeholder="Filter by IP address or reason..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-md text-xs text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
-            />
-          </div>
-
-          <span className="text-xs text-slate-500">
-            Showing <strong className="text-slate-700">{filteredList.length}</strong> of{' '}
-            <strong className="text-slate-700">{blockedList.length}</strong> blocked addresses
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4.5 flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+            <Shield size={14} className="text-emerald-600" />
+            <span>How to prevent accidental blocks</span>
           </span>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            If your office or branch uses a static public IP address or VPN, add it to the{' '}
+            <strong className="text-slate-700">Allowed IPs</strong> tab. Whitelisted addresses are exempt from rate limits and auto-banning.
+          </p>
         </div>
-
-        {loading ? (
-          <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-2">
-            <RefreshCw size={24} className="animate-spin text-indigo-600" />
-            <span className="text-xs font-medium text-slate-600">Retrieving firewall rules from Stalwart...</span>
-          </div>
-        ) : filteredList.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-2">
-            <Globe size={32} className="text-slate-300" />
-            <span className="text-sm font-semibold text-slate-700">No blocked IP addresses</span>
-            <span className="text-xs text-slate-500 max-w-md">
-              {searchQuery
-                ? 'No blocked IP addresses match your filter.'
-                : 'There are currently no active IP bans on this Stalwart mail server. Any automated bans from brute-force authentication will appear here.'}
-            </span>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase tracking-wider font-semibold">
-                <tr>
-                  <th className="px-5 py-3">IP Address / Network</th>
-                  <th className="px-5 py-3">Trigger / Reason</th>
-                  <th className="px-5 py-3">Blocked Since</th>
-                  <th className="px-5 py-3">Expiry</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredList.map((item) => {
-                  const isUnblocking = unblockingId === item.id;
-                  const isCopied = copiedIp === item.address;
-
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-5 py-3.5 font-mono text-slate-900 font-medium">
-                        <div className="flex items-center gap-2">
-                          <span>{item.address}</span>
-                          <button
-                            onClick={() => copyToClipboard(item.address)}
-                            className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-                            title="Copy IP"
-                          >
-                            {isCopied ? (
-                              <Check size={12} className="text-emerald-600" />
-                            ) : (
-                              <Copy size={12} />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200/60">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                          <span>{item.reason || 'Auto-ban (Security trigger)'}</span>
-                        </span>
-                      </td>
-
-                      <td className="px-5 py-3.5 text-slate-500">
-                        <div className="flex items-center gap-1.5">
-                          <Clock size={12} className="text-slate-400" />
-                          <span>
-                            {item.createdAt
-                              ? new Date(item.createdAt).toLocaleDateString(undefined, {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : 'System Record'}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-3.5 text-slate-500">
-                        {item.expiresAt ? (
-                          <span>{new Date(item.expiresAt).toLocaleDateString()}</span>
-                        ) : (
-                          <span className="text-slate-400 italic">Permanent until unblocked</span>
-                        )}
-                      </td>
-
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {onSwitchToAllowed && (
-                            <button
-                              onClick={() => onSwitchToAllowed(item.address)}
-                              className="px-2.5 py-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200/80 rounded-md font-medium text-[11px] transition-colors cursor-pointer"
-                              title="Add to Whitelist"
-                            >
-                              Whitelist
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => handleUnblock(item.id, item.address)}
-                            disabled={isUnblocking}
-                            className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md font-medium text-[11px] transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-                          >
-                            {isUnblocking ? (
-                              <RefreshCw size={12} className="animate-spin" />
-                            ) : (
-                              <Unlock size={12} />
-                            )}
-                            <span>Unblock</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
-
-      {/* MODAL: MANUAL BLOCK IP */}
-      {showBlockModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4">
-          <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-slate-200 p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <ShieldAlert size={18} className="text-rose-600" />
-                <span>Manually Block an IP Address</span>
-              </h3>
-              <button
-                onClick={() => setShowBlockModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              Connections from this IP or network subnet will be immediately dropped by Stalwart.
-            </p>
-
-            <form onSubmit={handleManualBlock} className="flex flex-col gap-4 mt-2">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  IP Address or CIDR Subnet <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 203.0.113.88 or 198.51.100.0/24"
-                  value={modalIp}
-                  onChange={(e) => setModalIp(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Reason / Trigger
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Suspicious unauthorized activity"
-                  value={modalReason}
-                  onChange={(e) => setModalReason(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowBlockModal(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingBlock || !modalIp.trim()}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  {submittingBlock && <RefreshCw size={12} className="animate-spin" />}
-                  <span>Block Address</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

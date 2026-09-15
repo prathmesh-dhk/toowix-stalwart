@@ -76,7 +76,7 @@ describe('SecurityView Component', () => {
     });
   });
 
-  it('switches to Blocked IPs sub-tab and displays blocked IP entries', async () => {
+  it('switches to Blocked IPs sub-tab and displays search diagnostic card', async () => {
     const user = userEvent.setup();
     render(<SecurityView user={mockUser} />);
 
@@ -84,8 +84,8 @@ describe('SecurityView Component', () => {
     await user.click(blockedTabBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('IP Block Diagnostic & Automated Unblocker')).toBeInTheDocument();
-      expect(screen.getByText('203.0.113.55')).toBeInTheDocument();
+      expect(screen.getByText('Check & Unblock IP Address')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Enter IP address/i)).toBeInTheDocument();
     });
   });
 
@@ -107,17 +107,6 @@ describe('SecurityView Component', () => {
 describe('BlockedIpsView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.getBlockedIps).mockResolvedValue({
-      list: [
-        {
-          id: 'blk-42',
-          address: '192.0.2.42',
-          reason: 'brute-force auto-ban',
-          createdAt: '2026-09-15T09:00:00Z',
-          expiresAt: null,
-        },
-      ],
-    });
   });
 
   it('performs diagnostic search and displays Unblock button when IP is blocked', async () => {
@@ -136,14 +125,12 @@ describe('BlockedIpsView Component', () => {
 
     render(<BlockedIpsView />);
 
-    await waitFor(() => {
-      expect(screen.getByText('192.0.2.42')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Check & Unblock IP Address')).toBeInTheDocument();
 
-    const searchInput = screen.getByPlaceholderText(/e\.g\. 203\.0\.113\.42/i);
+    const searchInput = screen.getByPlaceholderText(/Enter IP address/i);
     await user.type(searchInput, '192.0.2.42');
 
-    const checkBtn = screen.getByRole('button', { name: /Check IP Status/i });
+    const checkBtn = screen.getByRole('button', { name: /Check IP/i });
     await user.click(checkBtn);
 
     await waitFor(() => {
@@ -152,26 +139,44 @@ describe('BlockedIpsView Component', () => {
     });
   });
 
-  it('triggers automated unblock when Unblock button is clicked in table', async () => {
+  it('triggers automated unblock when Unblock IP Now is clicked', async () => {
     const user = userEvent.setup();
+    vi.mocked(api.checkIpStatus).mockResolvedValue({
+      ip: '192.0.2.42',
+      isBlocked: true,
+      blockedEntry: {
+        id: 'blk-42',
+        address: '192.0.2.42',
+        reason: 'brute-force auto-ban',
+      },
+      isAllowed: false,
+      allowedEntry: null,
+    });
     vi.mocked(api.unblockIp).mockResolvedValue({
       success: true,
       unblockedCount: 1,
-      message: 'IP address unblocked and Stalwart firewall reloaded successfully.',
+      message: 'IP address 192.0.2.42 has been unblocked and Stalwart firewall rules reloaded.',
     });
 
     render(<BlockedIpsView />);
 
+    const searchInput = screen.getByPlaceholderText(/Enter IP address/i);
+    await user.type(searchInput, '192.0.2.42');
+
+    const checkBtn = screen.getByRole('button', { name: /Check IP/i });
+    await user.click(checkBtn);
+
     await waitFor(() => {
-      expect(screen.getByText('192.0.2.42')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Unblock IP Now/i })).toBeInTheDocument();
     });
 
-    const unblockBtn = screen.getByRole('button', { name: /^Unblock$/i });
+    const unblockBtn = screen.getByRole('button', { name: /Unblock IP Now/i });
     await user.click(unblockBtn);
 
     await waitFor(() => {
       expect(api.unblockIp).toHaveBeenCalledWith({ id: 'blk-42', address: '192.0.2.42' });
-      expect(screen.getByText(/unblocked and Stalwart firewall reloaded/i)).toBeInTheDocument();
+      expect(screen.getByText(/unblocked and Stalwart firewall rules reloaded/i)).toBeInTheDocument();
+      expect(screen.getByText('NOT BLOCKED')).toBeInTheDocument();
     });
   });
 });
