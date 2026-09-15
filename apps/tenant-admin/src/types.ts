@@ -29,21 +29,42 @@ export interface RegistrationApplication {
   submittedAt?: string;
 }
 
+export type DnsActivationStatus = 'not_started' | 'activating' | 'active' | 'conflict' | 'activation_failed';
+
+export interface GeneratedDnsRecord {
+  type: 'MX' | 'TXT' | 'CNAME';
+  name: string;
+  value: string;
+  priority?: number | null;
+  ttl?: number;
+  purpose: string;
+}
+
+export interface DnsConflictRecord {
+  type: string;
+  name: string;
+  foundValue: string;
+}
+
+export interface DomainDnsStatus {
+  dnsStatus: DnsActivationStatus;
+  dnsRecords: GeneratedDnsRecord[];
+  dnsConflicts: DnsConflictRecord[];
+  dnsVerificationStartedAt?: string | null;
+  dnsVerifiedAt?: string | null;
+  activatedAt?: string | null;
+}
+
 export interface DomainItem {
   id: string;
   domainName: string;
   status: string;
+  dnsStatus?: DnsActivationStatus;
   mailboxLimit: number;
   employeeCount: number;
   mailboxCount: number;
   isPrimary: boolean;
   createdAt?: string;
-  dnsRecords?: Array<{
-    type: string;
-    name: string;
-    value: string;
-    priority?: number;
-  }>;
 }
 
 export interface TenantSummary {

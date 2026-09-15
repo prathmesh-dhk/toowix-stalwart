@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TenantSummary } from '../../types';
+import { TenantSummary, TenantDomainSummary } from '../../types';
 import { api } from '../../api';
 import {
   X,
@@ -10,10 +10,28 @@ import {
   Sliders,
   Trash2,
   Building2,
+  Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
+import { DomainActivationModal } from './DomainActivationModal';
+
+function dnsStatusBadgeProps(dnsStatus?: string): { status: string; label: string } {
+  switch (dnsStatus) {
+    case 'active':
+      return { status: 'active', label: 'Active' };
+    case 'activating':
+      return { status: 'pending', label: 'Activating' };
+    case 'conflict':
+      return { status: 'error', label: 'Conflict' };
+    case 'activation_failed':
+      return { status: 'failed', label: 'Activation Failed' };
+    default:
+      return { status: 'inactive', label: 'Not Started' };
+  }
+}
 
 interface TenantDetailModalProps {
   tenant: TenantSummary | null;
@@ -41,6 +59,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [passwordResetSuccess, setPasswordResetSuccess] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);
+  const [activationDomain, setActivationDomain] = useState<TenantDomainSummary | null>(null);
 
   useEffect(() => {
     if (!isOpen || !tenant) return;
@@ -140,6 +159,49 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                 {tenant.domain?.domainName || 'No domain'}
               </div>
             </div>
+          </div>
+
+          {/* Configured Domains Section */}
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-900">Configured Domains</span>
+              <span className="text-[11px] text-slate-400 tabular-nums">
+                {tenant.domains?.length || (tenant.domain ? 1 : 0)} total
+              </span>
+            </div>
+
+            {(!tenant.domains || tenant.domains.length === 0) && !tenant.domain ? (
+              <div className="p-6 text-center text-xs text-slate-400">No domains configured for this tenant.</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {(tenant.domains || (tenant.domain ? [tenant.domain] : [])).map((dom: TenantDomainSummary) => {
+                  const badge = dnsStatusBadgeProps(dom.dnsStatus);
+                  return (
+                    <div key={dom.id || dom.domainName} className="p-3 flex items-center justify-between text-xs hover:bg-slate-50">
+                      <div className="flex items-center gap-2">
+                        <Globe size={14} className="text-indigo-600" />
+                        <span className="font-semibold text-slate-900">{dom.domainName}</span>
+                        {dom.isPrimary && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                            Primary
+                          </span>
+                        )}
+                        <StatusBadge status={badge.status} label={badge.label} />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] text-slate-500">
+                          {dom.mailboxLimit ? `${dom.mailboxLimit} seats` : 'Active'}
+                        </span>
+                        <Button size="sm" variant="secondary" onClick={() => setActivationDomain(dom)}>
+                          <ShieldCheck size={12} />
+                          <span>{dom.dnsStatus === 'active' ? 'View DNS' : 'Activate'}</span>
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Administrators Section */}
@@ -277,6 +339,13 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
           </Button>
         </div>
       </div>
+
+      <DomainActivationModal
+        tenant={tenant}
+        domain={activationDomain}
+        isOpen={!!activationDomain}
+        onClose={() => setActivationDomain(null)}
+      />
     </div>
   );
 };

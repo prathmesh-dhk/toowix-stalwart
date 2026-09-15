@@ -28,7 +28,11 @@ platformTenantRouter.get('/', async (_req: Request, res: Response) => {
 
     const tenantSummaries = await Promise.all(
       tenants.map(async (t) => {
-        const domain = await DomainModel.findOne({ tenantId: t._id });
+        const allDomains = await DomainModel.find({ tenantId: t._id }).sort({ isPrimary: -1, createdAt: 1 });
+
+        // Stalwart domain creation happens only on explicit "Activate Domain"
+        // (see domain-activation.service.ts) — never eagerly while listing.
+        const primaryDomain = allDomains.find((d) => d.isPrimary) || allDomains[0] || null;
         const adminCount = await AdminUserModel.countDocuments({ tenantId: t._id });
 
         return {
@@ -39,14 +43,24 @@ platformTenantRouter.get('/', async (_req: Request, res: Response) => {
           status: t.status,
           createdAt: t.createdAt.toISOString(),
           updatedAt: t.updatedAt.toISOString(),
-          domain: domain
+          domain: primaryDomain
             ? {
-                id: domain._id.toString(),
-                domainName: domain.domainName,
-                stalwartDomainId: domain.stalwartDomainId || null,
-                status: domain.status,
+                id: primaryDomain._id.toString(),
+                domainName: primaryDomain.domainName,
+                stalwartDomainId: primaryDomain.stalwartDomainId || null,
+                status: primaryDomain.status,
               }
             : null,
+          domains: allDomains.map((d) => ({
+            id: d._id.toString(),
+            domainName: d.domainName,
+            stalwartDomainId: d.stalwartDomainId || null,
+            status: d.status,
+            isPrimary: d.isPrimary,
+            mailboxLimit: d.mailboxLimit,
+            employeeCount: d.employeeCount,
+            dnsStatus: d.dnsStatus,
+          })),
           adminCount,
           availableMailboxes: Math.max(0, t.mailboxLimit - t.mailboxCount),
         };

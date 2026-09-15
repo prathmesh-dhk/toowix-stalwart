@@ -7,6 +7,7 @@ import { api } from '../../src/api';
 vi.mock('../../src/api', () => ({
   api: {
     createTenantDomain: vi.fn(),
+    connectGoDaddyCredential: vi.fn(),
   },
 }));
 
@@ -30,7 +31,7 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText('100 Seats')).toBeInTheDocument();
   });
 
-  it('provisions domain with selected tier and transitions to DNS records screen', async () => {
+  it('creates an unprovisioned domain, then connects GoDaddy before finishing', async () => {
     const onClose = vi.fn();
     const onDomainAdded = vi.fn();
 
@@ -40,27 +41,17 @@ describe('DomainSetupModal Component', () => {
         id: 'dom-new-1',
         domainName: 'newbrand.io',
         status: 'active',
+        dnsStatus: 'not_started',
         mailboxLimit: 25,
         employeeCount: 25,
         mailboxCount: 0,
         isPrimary: false,
       },
-      dnsRecords: [
-        {
-          type: 'MX',
-          name: '@',
-          target: 'mail.newbrand.io',
-          priority: '10',
-          desc: 'Primary Mail Routing Exchange',
-        },
-        {
-          type: 'TXT',
-          name: '@',
-          target: 'v=spf1 mx include:relay.toowix.net ~all',
-          priority: 'TTL 3600',
-          desc: 'Sender Policy Framework (SPF)',
-        },
-      ],
+    });
+    vi.mocked(api.connectGoDaddyCredential).mockResolvedValueOnce({
+      success: true,
+      verifiedGoDaddyDomain: 'newbrand.io',
+      connectedAt: new Date().toISOString(),
     });
 
     render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
@@ -73,7 +64,7 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByText('25 Seats'));
 
     // Submit wizard
-    const submitBtn = screen.getByRole('button', { name: /create & get dns records/i });
+    const submitBtn = screen.getByRole('button', { name: /create domain/i });
     await userEvent.click(submitBtn);
 
     expect(api.createTenantDomain).toHaveBeenCalledWith({
@@ -81,19 +72,26 @@ describe('DomainSetupModal Component', () => {
       employeeTier: 25,
     });
 
-    // Step 2: DNS Records screen
-    expect(await screen.findByText('Domain DNS Configuration')).toBeInTheDocument();
-    expect(screen.getByText('mail.newbrand.io')).toBeInTheDocument();
-    expect(screen.getByText('v=spf1 mx include:relay.toowix.net ~all')).toBeInTheDocument();
+    // Step 2: Connect GoDaddy — domain is not yet provisioned
+    expect(await screen.findByText('Connect GoDaddy')).toBeInTheDocument();
+    expect(screen.getByText(/not yet activated/i)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/GoDaddy API Key/i), 'test-key');
+    await userEvent.type(screen.getByLabelText(/GoDaddy API Secret/i), 'test-secret');
+    await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
+
+    expect(api.connectGoDaddyCredential).toHaveBeenCalledWith('dom-new-1', 'test-key', 'test-secret');
+    expect(await screen.findByText(/GoDaddy connected and verified/i)).toBeInTheDocument();
 
     // Complete setup
-    const completeBtn = screen.getByRole('button', { name: /complete setup & switch to domain/i });
+    const completeBtn = screen.getByRole('button', { name: /^done$/i });
     await userEvent.click(completeBtn);
 
     expect(onDomainAdded).toHaveBeenCalledWith(
       expect.objectContaining({
         domainName: 'newbrand.io',
         mailboxLimit: 25,
+        dnsStatus: 'not_started',
       })
     );
     expect(onClose).toHaveBeenCalled();

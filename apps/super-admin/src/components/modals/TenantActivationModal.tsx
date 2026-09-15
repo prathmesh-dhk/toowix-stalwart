@@ -121,7 +121,7 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
           {!activationResult ? (
             <div className="space-y-3">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Activating this tenant provisions the domain in Stalwart Mail Server and generates a one-time activation link for the tenant administrator.
+                Generates a one-time activation link for the tenant administrator to set their password and enroll 2FA. This does <strong>not</strong> provision mail service — use "Activate Domain" separately to provision Stalwart and DNS once the tenant has connected GoDaddy.
               </p>
 
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
@@ -143,7 +143,7 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-xs font-medium">
                 <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                <span>Tenant activated and provisioned in Stalwart.</span>
+                <span>Tenant admin activation link generated. Mail service still needs "Activate Domain".</span>
               </div>
 
               <div>
@@ -209,7 +209,7 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
               loading={loading}
             >
               <PlayCircle size={15} />
-              <span>Activate & Provision</span>
+              <span>Send Activation Link</span>
             </Button>
           )}
         </div>

@@ -12,6 +12,7 @@ import {
   DriftReport,
   SessionItem,
   PlatformAnalytics,
+  DomainDnsStatus,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -227,6 +228,22 @@ export const api = {
     }),
   deleteTenant: (id: string) =>
     request<{ message: string }>(`/api/platform/tenants/${id}`, { method: 'DELETE' }),
+
+  // Platform Admin - Domain DNS Activation (Stalwart + GoDaddy)
+  activateDomainDns: (tenantId: string, domainId: string) =>
+    request<{ success: boolean } & DomainDnsStatus>(
+      `/api/platform/tenants/${tenantId}/domains/${domainId}/activate`,
+      { method: 'POST' }
+    ),
+
+  retryVerifyDomainDns: (tenantId: string, domainId: string) =>
+    request<{ success: boolean } & DomainDnsStatus>(
+      `/api/platform/tenants/${tenantId}/domains/${domainId}/retry-verify`,
+      { method: 'POST' }
+    ),
+
+  getDomainDnsStatus: (tenantId: string, domainId: string) =>
+    request<DomainDnsStatus>(`/api/platform/tenants/${tenantId}/domains/${domainId}/dns-status`),
 
   // Platform Admin - Tenant Admins
   listTenantAdmins: (tenantId: string) =>

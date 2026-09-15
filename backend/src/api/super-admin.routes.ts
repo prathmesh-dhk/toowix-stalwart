@@ -112,6 +112,7 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
     stalwartDomainId: null,
     status: 'active',
     dnsStatus: 'not_started',
+    isPrimary: true,
   });
 
   // 4. Update application record

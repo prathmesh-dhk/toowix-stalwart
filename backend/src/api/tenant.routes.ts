@@ -94,6 +94,9 @@ tenantMeRouter.get(['/me/domains', '/domains'], async (req: Request, res: Respon
 
   try {
     const domains = await DomainModel.find({ tenantId }).sort({ createdAt: 1 });
+
+    // Stalwart domain creation happens only on explicit "Activate Domain"
+    // (see domain-activation.service.ts) — never eagerly while listing.
     const mailboxCounts = await MailboxModel.aggregate([
       { $match: { tenantId: new mongoose.Types.ObjectId(tenantId) } },
       { $group: { _id: '$domainId', count: { $sum: 1 } } },

@@ -81,7 +81,12 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     expect(res1.body.domain.domainName).toBe('primarybrand.com');
     expect(res1.body.domain.mailboxLimit).toBe(10);
     expect(res1.body.domain.isPrimary).toBe(true);
-    expect(res1.body.dnsRecords.length).toBeGreaterThanOrEqual(4);
+    // Stalwart domain creation and DNS provisioning happen only on explicit
+    // "Activate Domain" (see domain-activation.service.ts), not at add-domain
+    // time — no dnsRecords are returned here, and the domain starts unprovisioned.
+    expect(res1.body.domain.stalwartDomainId).toBeNull();
+    expect(res1.body.domain.dnsStatus).toBe('not_started');
+    expect(res1.body.dnsRecords).toBeUndefined();
 
     // 2. Add second domain with 25 employees (multi-domain)
     const res2 = await request(app)

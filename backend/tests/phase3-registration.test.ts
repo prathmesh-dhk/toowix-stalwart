@@ -14,7 +14,6 @@ import {
 import { hashPassword, generateOidcToken } from '../src/auth/service';
 import { resetRegistrationRateLimitStore } from '../src/api/public.routes';
 import { stalwartClient } from '../src/stalwart/client';
-import { StalwartDomainExistsError, StalwartUnavailableError } from '../src/stalwart/errors';
 
 let mongoServer: MongoMemoryServer;
 
@@ -279,7 +278,13 @@ describe('Phase 3: Public Registration & Super Admin Application Queue', () => {
       expect(res.status).toBe(404);
     });
 
-    it('should approve application: creates Tenant and provisions Domain on Stalwart', async () => {
+    it('should approve application: creates Tenant and Domain WITHOUT touching Stalwart', async () => {
+      // Stalwart domain creation and DNS provisioning now happen only when a
+      // Super Admin explicitly clicks "Activate Domain" (see
+      // domain-activation.service.ts) — never at approval time. Spy to prove
+      // approval never calls it.
+      const createDomainSpy = vi.spyOn(stalwartClient, 'createDomain');
+
       const res = await request(app)
         .post(`/api/super-admin/applications/${pendingAppId}/approve`)
         .set('Authorization', `Bearer ${superAdminToken}`);
@@ -288,7 +293,8 @@ describe('Phase 3: Public Registration & Super Admin Application Queue', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.tenant.status).toBe('approved_pending_setup');
       expect(res.body.tenant.domain).toBe('starkindustries.tech');
-      expect(res.body.tenant.stalwartDomainId).toBe('dom_starkindustries_tech');
+      expect(res.body.tenant.dnsStatus).toBe('not_started');
+      expect(createDomainSpy).not.toHaveBeenCalled();
 
       // Verify application record updated
       const updatedApp = await RegistrationApplicationModel.findById(pendingAppId);
@@ -302,11 +308,14 @@ describe('Phase 3: Public Registration & Super Admin Application Queue', () => {
       expect(tenant?.status).toBe('approved_pending_setup');
       expect(tenant?.mailboxLimit).toBe(50);
 
-      // Verify Domain created in DB in active state with stalwartDomainId
+      // Verify Domain created in DB, active for mail-service purposes but
+      // NOT yet provisioned in Stalwart (dnsStatus 'not_started', no
+      // stalwartDomainId) until explicit activation.
       const domain = await DomainModel.findOne({ domainName: 'starkindustries.tech' });
       expect(domain).not.toBeNull();
       expect(domain?.status).toBe('active');
-      expect(domain?.stalwartDomainId).toBe('dom_starkindustries_tech');
+      expect(domain?.dnsStatus).toBe('not_started');
+      expect(domain?.stalwartDomainId).toBeNull();
       expect(domain?.tenantId.toString()).toBe(tenant?._id.toString());
 
       // Verify audit log
@@ -314,45 +323,6 @@ describe('Phase 3: Public Registration & Super Admin Application Queue', () => {
       expect(audit).not.toBeNull();
       expect(audit?.actorId?.toString()).toBe(superAdminId);
       expect(audit?.tenantId?.toString()).toBe(tenant?._id.toString());
-      expect(audit?.metadata?.stalwartDomainId).toBe('dom_starkindustries_tech');
-    });
-
-    it('should handle existing domain on Stalwart gracefully by reusing domain ID', async () => {
-      vi.spyOn(stalwartClient, 'createDomain').mockRejectedValueOnce(
-        new StalwartDomainExistsError('starkindustries.tech')
-      );
-
-      const res = await request(app)
-        .post(`/api/super-admin/applications/${pendingAppId}/approve`)
-        .set('Authorization', `Bearer ${superAdminToken}`);
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.tenant.stalwartDomainId).toBe('dom_existing');
-
-      const domain = await DomainModel.findOne({ domainName: 'starkindustries.tech' });
-      expect(domain?.stalwartDomainId).toBe('dom_existing');
-    });
-
-    it('should return 502 if Stalwart is unreachable during approval', async () => {
-      vi.spyOn(stalwartClient, 'createDomain').mockRejectedValueOnce(
-        new StalwartUnavailableError('Stalwart server connection timeout')
-      );
-
-      const res = await request(app)
-        .post(`/api/super-admin/applications/${pendingAppId}/approve`)
-        .set('Authorization', `Bearer ${superAdminToken}`);
-
-      expect(res.status).toBe(502);
-      expect(res.body.error).toBe('STALWART_DOMAIN_PROVISION_FAILED');
-
-      // Application should still be PENDING_REVIEW
-      const appDoc = await RegistrationApplicationModel.findById(pendingAppId);
-      expect(appDoc?.status).toBe('PENDING_REVIEW');
-
-      // No tenant or domain should be created
-      const domain = await DomainModel.findOne({ domainName: 'starkindustries.tech' });
-      expect(domain).toBeNull();
     });
 
     it('should reject approving an application that is not PENDING_REVIEW', async () => {

@@ -29,6 +29,43 @@ export interface RegistrationApplication {
   submittedAt?: string;
 }
 
+export type DnsActivationStatus = 'not_started' | 'activating' | 'active' | 'conflict' | 'activation_failed';
+
+export interface GeneratedDnsRecord {
+  type: 'MX' | 'TXT' | 'CNAME';
+  name: string;
+  value: string;
+  priority?: number | null;
+  ttl?: number;
+  purpose: string;
+}
+
+export interface DnsConflictRecord {
+  type: string;
+  name: string;
+  foundValue: string;
+}
+
+export interface DomainDnsStatus {
+  dnsStatus: DnsActivationStatus;
+  dnsRecords: GeneratedDnsRecord[];
+  dnsConflicts: DnsConflictRecord[];
+  dnsVerificationStartedAt?: string | null;
+  dnsVerifiedAt?: string | null;
+  activatedAt?: string | null;
+}
+
+export interface TenantDomainSummary {
+  id: string;
+  domainName: string;
+  stalwartDomainId?: string | null;
+  status: string;
+  isPrimary?: boolean;
+  mailboxLimit?: number;
+  employeeCount?: number;
+  dnsStatus?: DnsActivationStatus;
+}
+
 export interface TenantSummary {
   id: string;
   name: string;
@@ -36,12 +73,8 @@ export interface TenantSummary {
   status: 'active' | 'suspended' | 'approved_pending_setup';
   createdAt: string;
   updatedAt: string;
-  domain: {
-    id: string;
-    domainName: string;
-    stalwartDomainId?: string | null;
-    status: string;
-  } | null;
+  domain: TenantDomainSummary | null;
+  domains?: TenantDomainSummary[];
   mailboxCount: number;
   adminCount: number;
   availableMailboxes?: number;

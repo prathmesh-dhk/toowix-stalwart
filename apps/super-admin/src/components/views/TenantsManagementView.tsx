@@ -59,7 +59,9 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchesName = tenant.name?.toLowerCase().includes(query);
-        const matchesDomain = tenant.domain?.domainName?.toLowerCase().includes(query);
+        const matchesDomain =
+          tenant.domain?.domainName?.toLowerCase().includes(query) ||
+          tenant.domains?.some((d) => d.domainName.toLowerCase().includes(query));
         return matchesName || matchesDomain;
       }
       return true;
@@ -242,7 +244,27 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
 
                       {/* Domain */}
                       <td>
-                        {tenant.domain ? (
+                        {tenant.domains && tenant.domains.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
+                              <Globe size={13} className="text-slate-400" />
+                              <span>{tenant.domain?.domainName || tenant.domains[0].domainName}</span>
+                            </div>
+                            {tenant.domains.length > 1 && (
+                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] font-semibold">
+                                  +{tenant.domains.length - 1} more
+                                </span>
+                                <span
+                                  className="text-slate-400 truncate max-w-[150px]"
+                                  title={tenant.domains.slice(1).map((d) => d.domainName).join(', ')}
+                                >
+                                  {tenant.domains.slice(1).map((d) => d.domainName).join(', ')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : tenant.domain ? (
                           <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
                             <Globe size={13} className="text-slate-400" />
                             <span>{tenant.domain.domainName}</span>

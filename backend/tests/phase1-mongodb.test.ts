@@ -65,8 +65,8 @@ describe('Phase 1: Foundation & MongoDB Data Layer', () => {
     });
   });
 
-  describe('Domain Model & 1-Tenant = 1-Domain Constraint', () => {
-    it('should enforce 1-to-1 relationship between tenant and domain', async () => {
+  describe('Domain Model & Multi-Domain Support', () => {
+    it('should allow multiple domains per tenant and enforce domain creation', async () => {
       const tenant = await TenantModel.create({ name: 'Beta Ltd' });
 
       // First domain succeeds
@@ -76,13 +76,13 @@ describe('Phase 1: Foundation & MongoDB Data Layer', () => {
       });
       expect(domain1.domainName).toBe('beta.com');
 
-      // Second domain for same tenant fails due to unique tenantId index
-      await expect(
-        DomainModel.create({
-          tenantId: tenant._id,
-          domainName: 'beta-alias.com',
-        })
-      ).rejects.toThrow(/duplicate key error/i);
+      // Second domain for same tenant also succeeds under multi-domain architecture
+      const domain2 = await DomainModel.create({
+        tenantId: tenant._id,
+        domainName: 'beta-alias.com',
+      });
+      expect(domain2.domainName).toBe('beta-alias.com');
+      expect(domain2.tenantId.toString()).toBe(tenant._id.toString());
     });
 
     it('should enforce global uniqueness for domain names', async () => {

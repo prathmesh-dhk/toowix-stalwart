@@ -7,7 +7,11 @@ import {
   GoDaddyDomainNotManagedError,
 } from './errors';
 
-const GODADDY_API_BASE = 'https://api.godaddy.com';
+// GoDaddy issues keys scoped to either the production API (api.godaddy.com)
+// or the OTE/test sandbox (api.ote-godaddy.com) — a key from one will be
+// rejected as invalid credentials by the other. Configurable so a key can be
+// validated against OTE during development without touching real DNS.
+const GODADDY_API_BASE = process.env.GODADDY_API_BASE_URL || 'https://api.godaddy.com';
 
 export class GoDaddyClient {
   /**

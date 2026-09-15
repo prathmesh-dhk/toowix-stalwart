@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -215,20 +215,24 @@ export const api = {
   getTenantMe: () => request<{ tenant: TenantSummary }>('/api/tenants/me'),
   listTenantDomains: () => request<{ domains: DomainItem[] }>('/api/tenants/me/domains'),
   createTenantDomain: (body: { domainName: string; employeeTier: number }) =>
-    request<{
-      success: boolean;
-      domain: DomainItem;
-      dnsRecords: Array<{
-        type: string;
-        name: string;
-        target: string;
-        priority: string;
-        desc: string;
-      }>;
-    }>('/api/tenants/me/domains', {
+    // Domain is created unprovisioned (dnsStatus: 'not_started'). Stalwart/DNS
+    // provisioning only happens when a Super Admin clicks "Activate Domain".
+    request<{ success: boolean; domain: DomainItem }>('/api/tenants/me/domains', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  connectGoDaddyCredential: (domainId: string, apiKey: string, apiSecret: string) =>
+    request<{ success: boolean; verifiedGoDaddyDomain: string; connectedAt: string }>(
+      `/api/tenants/me/domains/${domainId}/godaddy-credential`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ apiKey, apiSecret }),
+      }
+    ),
+
+  getDomainDnsStatus: (domainId: string) =>
+    request<DomainDnsStatus>(`/api/tenants/me/domains/${domainId}/dns-status`),
 
   // Mailboxes (Domain Scoped)
   listMyMailboxes: (domainId?: string) => {

@@ -1,6 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { DomainItem } from '../types';
+import { DomainItem, DnsActivationStatus } from '../types';
 import { ChevronsUpDown, Plus, Check } from 'lucide-react';
+
+function dnsStatusPill(dnsStatus?: DnsActivationStatus) {
+  switch (dnsStatus) {
+    case 'active':
+      return { label: 'Active', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    case 'activating':
+      return { label: 'Activating', className: 'bg-amber-50 text-amber-700 border-amber-200' };
+    case 'conflict':
+      return { label: 'Conflict', className: 'bg-rose-50 text-rose-700 border-rose-200' };
+    case 'activation_failed':
+      return { label: 'Failed', className: 'bg-rose-50 text-rose-700 border-rose-200' };
+    default:
+      return { label: 'Not Activated', className: 'bg-slate-100 text-slate-500 border-slate-200' };
+  }
+}
 
 interface DomainSwitcherProps {
   domains: DomainItem[];
@@ -87,6 +102,11 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
               <span className="text-xs font-semibold text-slate-900 truncate leading-tight group-hover:text-indigo-600 transition-colors">
                 {currentDomainName}
               </span>
+              <span
+                className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full border shrink-0 ${dnsStatusPill(activeDomain?.dnsStatus).className}`}
+              >
+                {dnsStatusPill(activeDomain?.dnsStatus).label}
+              </span>
             </div>
             <div className="flex items-center gap-1 mt-0.5">
               <span className="text-[10px] text-slate-500 font-medium leading-none">
@@ -157,6 +177,11 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
                             Primary
                           </span>
                         )}
+                        <span
+                          className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full border shrink-0 ${dnsStatusPill(domain.dnsStatus).className}`}
+                        >
+                          {dnsStatusPill(domain.dnsStatus).label}
+                        </span>
                       </div>
                       <span className="text-[10px] text-slate-400 mt-0.5">
                         {domain.mailboxCount} / {domain.mailboxLimit} seats used
