@@ -50,6 +50,7 @@ export interface DomainDnsStatus {
   dnsStatus: DnsActivationStatus;
   dnsRecords: GeneratedDnsRecord[];
   dnsConflicts: DnsConflictRecord[];
+  dnsZoneFile?: string | null;
   dnsVerificationStartedAt?: string | null;
   dnsVerifiedAt?: string | null;
   activatedAt?: string | null;

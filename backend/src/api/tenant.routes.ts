@@ -325,6 +325,7 @@ tenantMeRouter.get('/me/domains/:domainId/dns-status', async (req: Request, res:
       dnsStatus: domain.dnsStatus,
       dnsRecords: domain.dnsRecords || [],
       dnsConflicts: domain.dnsConflicts || [],
+      dnsZoneFile: domain.dnsZoneFile || null,
       dnsVerificationStartedAt: domain.dnsVerificationStartedAt,
       dnsVerifiedAt: domain.dnsVerifiedAt,
       activatedAt: domain.activatedAt,

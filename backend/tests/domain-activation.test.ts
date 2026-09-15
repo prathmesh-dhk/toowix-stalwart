@@ -31,11 +31,11 @@ const DKIM_KEYS = [
 
 const GODADDY_CRED = { apiKey: 'key', apiSecret: 'secret' } as const;
 
-function mockDnsVerificationSuccess() {
+function mockDnsVerificationSuccess(domainName: string = 'acme.com') {
   vi.mocked(resolveMx).mockResolvedValue([{ exchange: 'mail.toowix.com', priority: 10 }] as any);
   vi.mocked(resolveTxt).mockImplementation(async (fqdn: string) => {
-    if (fqdn === 'acme.com') return [['v=spf1 mx include:_spf.toowix.com ~all']];
-    if (fqdn === '_dmarc.acme.com') return [['v=DMARC1; p=none; rua=mailto:dmarc-reports@acme.com']];
+    if (fqdn === domainName) return [['v=spf1 mx include:_spf.toowix.com ~all']];
+    if (fqdn === `_dmarc.${domainName}`) return [[`v=DMARC1; p=none; rua=mailto:dmarc-reports@${domainName}`]];
     if (fqdn.includes('_domainkey')) {
       const isRsa = fqdn.startsWith('v1-rsa');
       return [[`v=DKIM1; k=${isRsa ? 'rsa' : 'ed25519'}; p=${isRsa ? 'RSA_PUB_KEY' : 'ED25519_PUB_KEY'}`]];
@@ -160,9 +160,15 @@ describe('domain-activation.service', () => {
 
       vi.spyOn(stalwartClient, 'createDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com' });
       vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue(DKIM_KEYS);
+      vi.spyOn(stalwartClient, 'getDomain').mockResolvedValue({
+        id: 'stalwart-dom-1',
+        name: 'acme.com',
+        isEnabled: true,
+        dnsZoneFile: 'acme.com. IN MX 10 mail.toowix.com.\n...',
+      });
     });
 
-    it('throws DNS_PROVIDER_CREDENTIAL_MISSING if no credential is connected yet', async () => {
+    it('activates in manual mode (no DNS provider connected): persists dnsZoneFile, skips provider calls, stays activating if not yet resolvable', async () => {
       const domain = await DomainModel.create({
         tenantId,
         domainName: 'nocred.com',
@@ -170,7 +176,35 @@ describe('domain-activation.service', () => {
         dnsStatus: 'not_started',
         isPrimary: false,
       });
-      await expect(activateDomain(domain._id.toString(), actor)).rejects.toThrow(DomainActivationError);
+      vi.mocked(resolveMx).mockRejectedValue(new Error('ENOTFOUND'));
+      vi.mocked(resolveTxt).mockRejectedValue(new Error('ENOTFOUND'));
+
+      const result = await activateDomain(domain._id.toString(), actor);
+
+      expect(result.dnsStatus).toBe('activating');
+      expect(result.dnsZoneFile).toContain('mail.toowix.com');
+      expect(result.dnsRecords?.length).toBeGreaterThan(0);
+      // No credential exists for this domain at all — nothing to purge, but
+      // also nothing should have errored trying to load one.
+      const cred = await DomainDnsCredentialModel.findOne({ domainId: domain._id });
+      expect(cred).toBeNull();
+    });
+
+    it('activates in manual mode and flips to active immediately if DNS already resolves (e.g. admin pasted the zone file themselves)', async () => {
+      const domain = await DomainModel.create({
+        tenantId,
+        domainName: 'nocred.com',
+        status: 'active',
+        dnsStatus: 'not_started',
+        isPrimary: true,
+      });
+      mockDnsVerificationSuccess('nocred.com');
+
+      const result = await activateDomain(domain._id.toString(), actor);
+
+      expect(result.dnsStatus).toBe('active');
+      const tenant = await TenantModel.findById(tenantId);
+      expect(tenant?.trialStartedAt).toBeTruthy();
     });
 
     it('goes conflict -> stores dnsConflicts -> does not create any records when MX already exists elsewhere', async () => {
@@ -251,6 +285,7 @@ describe('domain-activation.service', () => {
 
       vi.spyOn(stalwartClient, 'createDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com' });
       vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue(DKIM_KEYS);
+      vi.spyOn(stalwartClient, 'getDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com', isEnabled: true, dnsZoneFile: 'zone...' });
       vi.spyOn(hostingerClient, 'listDnsRecords').mockResolvedValue([]);
       const createSpy = vi.spyOn(hostingerClient, 'createDnsRecords').mockResolvedValue(undefined);
       mockDnsVerificationSuccess();
@@ -270,6 +305,7 @@ describe('domain-activation.service', () => {
 
       vi.spyOn(stalwartClient, 'createDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com' });
       vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue(DKIM_KEYS);
+      vi.spyOn(stalwartClient, 'getDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com', isEnabled: true, dnsZoneFile: 'zone...' });
       vi.spyOn(cloudflareClient, 'listDnsRecords').mockResolvedValue([]);
       const createSpy = vi.spyOn(cloudflareClient, 'createDnsRecords').mockResolvedValue(undefined);
       mockDnsVerificationSuccess();
@@ -288,6 +324,7 @@ describe('domain-activation.service', () => {
       await connectDnsProviderCredential(domainId, tenantId, 'godaddy', GODADDY_CRED, { id: adminUserId, email: 'x', role: 'TENANT_ADMIN' });
       vi.spyOn(stalwartClient, 'createDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com' });
       vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue(DKIM_KEYS);
+      vi.spyOn(stalwartClient, 'getDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com', isEnabled: true, dnsZoneFile: 'zone...' });
     });
 
     it('rejects retry from not_started', async () => {

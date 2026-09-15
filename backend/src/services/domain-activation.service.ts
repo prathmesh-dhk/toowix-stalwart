@@ -162,17 +162,17 @@ export async function verifyPublicDns(
   return { verified: details.every((d) => d.found), details };
 }
 
-async function loadCredentialOrThrow(
+/**
+ * Loads and decrypts the connected DNS provider credential for a domain, if
+ * any. Returns null rather than throwing — a domain may legitimately have no
+ * provider connected at all when the admin/tenant intends to configure DNS
+ * manually (see the "Manual Setup" zone-file path in activateDomain below).
+ */
+async function loadCredentialIfAny(
   domainId: string
-): Promise<{ provider: DnsProviderName; credential: ProviderCredential; docId: string }> {
+): Promise<{ provider: DnsProviderName; credential: ProviderCredential; docId: string } | null> {
   const cred = await DomainDnsCredentialModel.findOne({ domainId }).select('+credentialEncrypted');
-  if (!cred) {
-    throw new DomainActivationError(
-      'No DNS provider credential is connected for this domain yet. Ask the Tenant Admin to connect one first.',
-      'DNS_PROVIDER_CREDENTIAL_MISSING',
-      409
-    );
-  }
+  if (!cred) return null;
   cred.lastUsedAt = new Date();
   await cred.save();
   return {
@@ -229,9 +229,13 @@ async function finalizeIfVerified(domain: IDomain): Promise<void> {
 /**
  * The "Activate Domain" action (Super Admin). Provisions/enables the domain
  * in Stalwart, fetches its real DKIM keys, builds+persists the required DNS
- * record set, checks the connected DNS provider for conflicts, creates the missing records, and
- * makes an immediate verification attempt. If not yet verifiable, the domain
- * is left in 'activating' for the background sweep to keep polling.
+ * record set (plus Stalwart's own raw zone file, for manual setup). If a
+ * DNS provider credential is connected, also checks it for conflicts and
+ * auto-publishes the missing records; if none is connected, this is "manual
+ * mode" — the admin/tenant copies the zone file into their own DNS panel
+ * themselves, and the background sweep (or a later Retry/Verify) picks up
+ * once it resolves publicly. Either way, an immediate verification attempt
+ * is made before leaving the domain in 'activating' for the sweep.
  */
 export async function activateDomain(domainId: string, actor: ActivationActor): Promise<IDomain> {
   const domain = await DomainModel.findById(domainId);
@@ -245,7 +249,7 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     throw new DomainActivationError('Domain activation is already in progress', 'ALREADY_ACTIVATING', 409);
   }
 
-  const { provider, credential } = await loadCredentialOrThrow(domain._id.toString());
+  const connected = await loadCredentialIfAny(domain._id.toString());
 
   domain.dnsStatus = 'activating';
   domain.dnsVerificationStartedAt = new Date();
@@ -288,16 +292,38 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     throw new DomainActivationError('Failed to resolve a Stalwart domain ID for activation', 'STALWART_DOMAIN_UNRESOLVED', 502);
   }
 
-  // 2. Fetch real DKIM keys and build the canonical record set.
+  // 2. Fetch real DKIM keys, build the canonical record set, and capture
+  // Stalwart's own raw zone file text for the manual-setup path.
   const dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
   const records = buildRequiredDnsRecords(domain.domainName, dkimKeys);
   domain.dnsRecords = records;
   const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];
   domain.dkimSelector = rsaKey?.selector || null;
   domain.dkimPublicKey = rsaKey?.publicKey || null;
+  const stalwartDomain = await stalwartClient.getDomain(stalwartDomainId);
+  domain.dnsZoneFile = stalwartDomain?.dnsZoneFile || null;
   await domain.save();
 
-  // 3. Conflict-check against the provider's existing zone before creating anything.
+  // 3. If no DNS provider is connected, this is manual mode: the admin/
+  // tenant publishes the zone file themselves. Skip straight to verification.
+  if (!connected) {
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId: String(domain.tenantId),
+      action: 'DOMAIN_ACTIVATION_MANUAL_MODE',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { domainName: domain.domainName },
+    });
+    await finalizeIfVerified(domain);
+    return domain;
+  }
+
+  const { provider, credential } = connected;
+
+  // 4. Conflict-check against the provider's existing zone before creating anything.
   const { conflicts, toCreate } = await checkConflictsAndPlan(provider, credential, domain.domainName, records);
   if (conflicts.length > 0) {
     domain.dnsStatus = 'conflict';
@@ -320,12 +346,12 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     return domain;
   }
 
-  // 4. Create the (non-conflicting, missing) records.
+  // 5. Create the (non-conflicting, missing) records.
   if (toCreate.length > 0) {
     await createProviderDnsRecords(provider, credential, domain.domainName, toCreate.map(toGenericRecord));
   }
 
-  // 5. Immediate verification attempt; leaves 'activating' for the sweep if not yet visible.
+  // 6. Immediate verification attempt; leaves 'activating' for the sweep if not yet visible.
   await finalizeIfVerified(domain);
   return domain;
 }
@@ -348,7 +374,6 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     );
   }
 
-  const { provider, credential } = await loadCredentialOrThrow(domain._id.toString());
   const records = domain.dnsRecords || [];
 
   await logAudit({
@@ -363,6 +388,18 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
   });
 
   if (domain.dnsStatus === 'conflict') {
+    // Only a domain that went through a connected provider can ever reach
+    // 'conflict' (manual mode never calls a provider's list-records API),
+    // so the credential is expected to still be present here.
+    const connected = await loadCredentialIfAny(domain._id.toString());
+    if (!connected) {
+      throw new DomainActivationError(
+        'The DNS provider credential for this domain is no longer connected. Ask the Tenant Admin to reconnect one.',
+        'DNS_PROVIDER_CREDENTIAL_MISSING',
+        409
+      );
+    }
+    const { provider, credential } = connected;
     const { conflicts, toCreate } = await checkConflictsAndPlan(provider, credential, domain.domainName, records);
     if (conflicts.length > 0) {
       domain.dnsConflicts = conflicts;

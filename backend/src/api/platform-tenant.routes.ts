@@ -350,6 +350,7 @@ platformTenantRouter.post('/:id/domains/:domainId/activate', async (req: Request
       dnsStatus: result.dnsStatus,
       dnsRecords: result.dnsRecords || [],
       dnsConflicts: result.dnsConflicts || [],
+      dnsZoneFile: result.dnsZoneFile || null,
     });
   } catch (err: any) {
     if (err instanceof DomainActivationError) {
@@ -382,6 +383,7 @@ platformTenantRouter.post('/:id/domains/:domainId/retry-verify', async (req: Req
       dnsStatus: result.dnsStatus,
       dnsRecords: result.dnsRecords || [],
       dnsConflicts: result.dnsConflicts || [],
+      dnsZoneFile: result.dnsZoneFile || null,
     });
   } catch (err: any) {
     if (err instanceof DomainActivationError) {
@@ -407,6 +409,7 @@ platformTenantRouter.get('/:id/domains/:domainId/dns-status', async (req: Reques
     dnsStatus: domain.dnsStatus,
     dnsRecords: domain.dnsRecords || [],
     dnsConflicts: domain.dnsConflicts || [],
+    dnsZoneFile: domain.dnsZoneFile || null,
     dnsVerificationStartedAt: domain.dnsVerificationStartedAt,
     dnsVerifiedAt: domain.dnsVerifiedAt,
     activatedAt: domain.activatedAt,

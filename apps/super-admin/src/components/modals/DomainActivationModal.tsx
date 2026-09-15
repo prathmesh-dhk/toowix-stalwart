@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { TenantSummary, TenantDomainSummary, DomainDnsStatus } from '../../types';
 import { api } from '../../api';
-import { X, PlayCircle, RefreshCw, AlertTriangle, CheckCircle2, Copy, Check } from 'lucide-react';
+import { X, PlayCircle, RefreshCw, AlertTriangle, CheckCircle2, Copy, Check, FileText, Download } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
@@ -41,6 +41,7 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
   const [actionLoading, setActionLoading] = useState<'activate' | 'retry' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [zoneFileCopied, setZoneFileCopied] = useState(false);
 
   const refresh = async () => {
     if (!tenant || !domain) return;
@@ -101,6 +102,26 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
+  const handleCopyZoneFile = () => {
+    if (!status?.dnsZoneFile) return;
+    navigator.clipboard.writeText(status.dnsZoneFile);
+    setZoneFileCopied(true);
+    setTimeout(() => setZoneFileCopied(false), 2000);
+  };
+
+  const handleExportZoneFile = () => {
+    if (!status?.dnsZoneFile || !domain) return;
+    const blob = new Blob([status.dnsZoneFile], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${domain.domainName}-zone.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const dnsStatus = status?.dnsStatus || domain.dnsStatus || 'not_started';
   const badge = badgeProps(dnsStatus);
   const canActivate = dnsStatus === 'not_started';
@@ -131,10 +152,11 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
 
           {dnsStatus === 'not_started' && !loading && (
             <p className="text-xs text-slate-600 leading-relaxed">
-              This domain has not been activated yet. Clicking <strong>Activate Domain</strong> will create it in
-              Stalwart, fetch its real DKIM keys, publish MX/SPF/DKIM/DMARC records via the tenant's connected DNS
-              provider (GoDaddy, Hostinger, or Cloudflare), and verify public DNS. Requires the Tenant Admin to
-              have already connected a DNS provider credential for this domain.
+              This domain has not been activated yet. Clicking <strong>Activate Domain</strong> creates it in
+              Stalwart, fetches its real DKIM keys, and builds the required MX/SPF/DKIM/DMARC records. If the
+              Tenant Admin has connected a DNS provider (GoDaddy, Hostinger, or Cloudflare), those records are
+              published automatically. If not, Toowix generates a full DNS zone file below that can be configured
+              manually with any DNS provider — no credential connection required.
             </p>
           )}
 
@@ -199,6 +221,40 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {status?.dnsZoneFile && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="field-label flex items-center gap-1.5">
+                  <FileText size={12} />
+                  Manual Setup — Raw DNS Zone File
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleCopyZoneFile}
+                    className="btn-secondary btn-sm text-[11px] inline-flex items-center gap-1"
+                  >
+                    {zoneFileCopied ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                    {zoneFileCopied ? 'Copied' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={handleExportZoneFile}
+                    className="btn-secondary btn-sm text-[11px] inline-flex items-center gap-1"
+                  >
+                    <Download size={11} />
+                    Export .txt
+                  </button>
+                </div>
+              </div>
+              <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-56 overflow-y-auto">
+                {status.dnsZoneFile}
+              </pre>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Paste this directly into your DNS provider's zone import feature, if it supports one — an
+                alternative to configuring the individual records above by hand.
+              </p>
             </div>
           )}
         </div>
