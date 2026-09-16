@@ -64,7 +64,22 @@ export interface TenantDomainSummary {
   isPrimary?: boolean;
   mailboxLimit?: number;
   employeeCount?: number;
+  planId?: string | null;
+  planName?: string | null;
   dnsStatus?: DnsActivationStatus;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  badge?: string | null;
+  description?: string | null;
+  seatCount: number;
+  displayOrder: number;
+  isActive: boolean;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TenantSummary {

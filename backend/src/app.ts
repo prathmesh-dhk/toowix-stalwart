@@ -14,6 +14,7 @@ import { systemRouter } from './api/system.routes';
 import { tenantMeRouter } from './api/tenant.routes';
 import { tenantMailboxRouter, mailboxRouter } from './api/mailbox.routes';
 import { auditRouter } from './api/audit.routes';
+import { plansRouter } from './api/plans.routes';
 import { metricsService } from './services/metrics.service';
 
 export const app = express();
@@ -23,6 +24,9 @@ app.set('trust proxy', true);
 
 const allowedOrigins = [
   config.frontendOrigin,
+  config.tenantAdminUrl,
+  'https://superadmin.toowix.com',
+  'https://admin.toowix.com',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
@@ -54,6 +58,7 @@ app.use('/api/tenants', tenantMeRouter);
 app.use('/api/tenants/me/mailboxes', tenantMailboxRouter);
 app.use('/api/mailboxes', mailboxRouter);
 app.use('/api/audit-logs', auditRouter);
+app.use('/api/plans', plansRouter);
 app.use('/api/system', systemRouter);
 
 // Prometheus Metrics Endpoint

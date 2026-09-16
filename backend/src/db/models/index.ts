@@ -1,4 +1,5 @@
 export * from './Tenant';
+export * from './Plan';
 export * from './Domain';
 export * from './DomainDnsCredential';
 export * from './AdminUser';

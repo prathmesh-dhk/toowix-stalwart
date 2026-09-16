@@ -6,6 +6,7 @@ import { app } from '../src/app';
 import { AdminUserModel } from '../src/db/models/AdminUser';
 import { TenantModel } from '../src/db/models/Tenant';
 import { DomainModel } from '../src/db/models/Domain';
+import { PlanModel } from '../src/db/models/Plan';
 import { MailboxModel } from '../src/db/models/Mailbox';
 import { generateOidcToken } from '../src/auth/service';
 import { stalwartClient } from '../src/stalwart/client';
@@ -14,6 +15,8 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
   let mongod: MongoMemoryServer;
   let tenantId: string;
   let adminToken: string;
+  let plan10Id: string;
+  let plan25Id: string;
 
   beforeAll(async () => {
     mongod = await MongoMemoryServer.create();
@@ -38,6 +41,12 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     await TenantModel.deleteMany({});
     await DomainModel.deleteMany({});
     await MailboxModel.deleteMany({});
+    await PlanModel.deleteMany({});
+
+    const plan10 = await PlanModel.create({ name: 'Team', seatCount: 10, displayOrder: 1, isActive: true });
+    const plan25 = await PlanModel.create({ name: 'Growth', seatCount: 25, displayOrder: 2, isActive: true });
+    plan10Id = plan10._id.toString();
+    plan25Id = plan25._id.toString();
 
     const tenant = await TenantModel.create({
       name: 'Acme Multi-Org',
@@ -73,7 +82,7 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         domainName: 'primarybrand.com',
-        employeeTier: 10,
+        planId: plan10Id,
       });
 
     expect(res1.status).toBe(201);
@@ -94,7 +103,7 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         domainName: 'subsidiary.org',
-        employeeTier: 25,
+        planId: plan25Id,
       });
 
     expect(res2.status).toBe(201);

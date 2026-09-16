@@ -7,6 +7,7 @@ import { TenantSummary } from '../../src/types';
 vi.mock('../../src/api', () => ({
   api: {
     updateMailboxLimit: vi.fn().mockResolvedValue({ success: true }),
+    listPlans: vi.fn().mockResolvedValue({ plans: [] }),
   },
 }));
 

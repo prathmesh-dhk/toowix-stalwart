@@ -10,6 +10,7 @@ import { AuditLogModel } from '../db/models/AuditLog';
 import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
+import { getDefaultPlanSeatCount } from '../services/plan.service';
 
 export const superAdminRouter = Router();
 
@@ -98,7 +99,7 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
   const tenant = await TenantModel.create({
     name: application.companyName,
     status: 'approved_pending_setup',
-    mailboxLimit: 50,
+    mailboxLimit: await getDefaultPlanSeatCount(),
     mailboxCount: 0,
   });
 

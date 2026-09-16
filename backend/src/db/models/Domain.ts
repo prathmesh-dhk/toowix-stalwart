@@ -32,6 +32,12 @@ export interface IDomain extends Document {
   mailboxLimit: number;
   employeeCount: number;
   isPrimary?: boolean;
+  // The seat plan chosen at creation time; mailboxLimit/employeeCount above are
+  // resolved from plan.seatCount server-side and remain the source of truth for
+  // quota enforcement (mailbox.service.ts) — planId/planName are denormalized
+  // for display/audit only, and stay valid even if the Plan is later archived.
+  planId?: Types.ObjectId | null;
+  planName?: string | null;
 
   // Domain DNS-activation lifecycle (GoDaddy + Stalwart provisioning).
   // Orthogonal to `status` above, which governs mail-service suspension only.
@@ -114,6 +120,15 @@ const DomainSchema = new Schema<IDomain>(
     isPrimary: {
       type: Boolean,
       default: false,
+    },
+    planId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Plan',
+      default: null,
+    },
+    planName: {
+      type: String,
+      default: null,
     },
     dnsStatus: {
       type: String,

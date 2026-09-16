@@ -8,6 +8,7 @@ import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { AdminUserModel } from '../db/models/AdminUser';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { emailService } from '../services/email.service';
+import { getDefaultPlanSeatCount } from '../services/plan.service';
 import {
   hashPassword,
   verifyPassword,
@@ -324,7 +325,7 @@ publicRouter.post('/register', registrationRateLimiter(), async (req: Request, r
     name: `${formattedName}'s Organization`,
     contactEmail: normalizedEmail,
     status: 'active',
-    mailboxLimit: 50,
+    mailboxLimit: await getDefaultPlanSeatCount(),
     mailboxCount: 0,
   });
 

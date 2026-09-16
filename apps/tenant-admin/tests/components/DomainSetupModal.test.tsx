@@ -9,13 +9,24 @@ vi.mock('../../src/api', () => ({
     createTenantDomain: vi.fn(),
     connectDnsProviderCredential: vi.fn(),
     getDomainDnsStatus: vi.fn(),
+    listPlans: vi.fn(),
   },
 }));
+
+const MOCK_PLANS = [
+  { id: 'plan-1', name: 'Individual', badge: 'Solo', description: 'Starter / Solo', seatCount: 1, displayOrder: 1, isActive: true, isDefault: false },
+  { id: 'plan-10', name: 'Team', badge: 'Standard', description: 'Standard team tier', seatCount: 10, displayOrder: 2, isActive: true, isDefault: true },
+  { id: 'plan-25', name: 'Growth', badge: 'Growth', description: 'Growing businesses', seatCount: 25, displayOrder: 3, isActive: true, isDefault: false },
+  { id: 'plan-50', name: 'Business', badge: 'Team', description: 'Mid-size organizations', seatCount: 50, displayOrder: 4, isActive: true, isDefault: false },
+  { id: 'plan-75', name: 'Scale', badge: 'Business', description: 'Large departments', seatCount: 75, displayOrder: 5, isActive: true, isDefault: false },
+  { id: 'plan-100', name: 'Enterprise', badge: 'Enterprise', description: 'Full-scale enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false },
+];
 
 describe('DomainSetupModal Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    vi.mocked(api.listPlans).mockResolvedValue({ plans: MOCK_PLANS });
     vi.mocked(api.getDomainDnsStatus).mockResolvedValue({
       dnsStatus: 'not_started',
       dnsRecords: [],
@@ -24,14 +35,14 @@ describe('DomainSetupModal Component', () => {
     });
   });
 
-  it('renders domain input and discrete employee tiers (1, 10, 25, 50, 75, 100)', () => {
+  it('renders domain input and fetched plan tiers (1, 10, 25, 50, 75, 100 seats)', async () => {
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
     expect(screen.getByText('Add New Domain')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/acme-tech\.com/i)).toBeInTheDocument();
 
-    // Verify all 6 discrete employee tiers
-    expect(screen.getByText('1 Seat')).toBeInTheDocument();
+    // Verify all 6 fetched plan tiers render
+    expect(await screen.findByText('1 Seat')).toBeInTheDocument();
     expect(screen.getByText('10 Seats')).toBeInTheDocument();
     expect(screen.getByText('25 Seats')).toBeInTheDocument();
     expect(screen.getByText('50 Seats')).toBeInTheDocument();
@@ -39,7 +50,7 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText('100 Seats')).toBeInTheDocument();
   });
 
-  it('creates an unprovisioned domain, then connects GoDaddy (default provider) before finishing', async () => {
+  it('creates an unprovisioned domain by planId, then connects GoDaddy (default provider) before finishing', async () => {
     const onClose = vi.fn();
     const onDomainAdded = vi.fn();
 
@@ -52,6 +63,8 @@ describe('DomainSetupModal Component', () => {
         dnsStatus: 'not_started',
         mailboxLimit: 25,
         employeeCount: 25,
+        planId: 'plan-25',
+        planName: 'Growth',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -67,12 +80,12 @@ describe('DomainSetupModal Component', () => {
     // Step 1: domain details
     const input = screen.getByPlaceholderText(/acme-tech\.com/i);
     await userEvent.type(input, 'newbrand.io');
-    await userEvent.click(screen.getByText('25 Seats'));
+    await userEvent.click(await screen.findByText('25 Seats'));
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(api.createTenantDomain).toHaveBeenCalledWith({
       domainName: 'newbrand.io',
-      employeeTier: 25,
+      planId: 'plan-25',
     });
 
     // Step 2: choose setup method
@@ -119,6 +132,8 @@ describe('DomainSetupModal Component', () => {
         dnsStatus: 'not_started',
         mailboxLimit: 10,
         employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -131,6 +146,7 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
+    await screen.findByText('10 Seats'); // wait for plans to load (default-selected)
     await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'otherbrand.io');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
@@ -158,6 +174,8 @@ describe('DomainSetupModal Component', () => {
         dnsStatus: 'not_started',
         mailboxLimit: 10,
         employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -170,6 +188,7 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
+    await screen.findByText('10 Seats');
     await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'thirdbrand.dev');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
@@ -197,6 +216,8 @@ describe('DomainSetupModal Component', () => {
         dnsStatus: 'not_started',
         mailboxLimit: 10,
         employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -210,6 +231,7 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
+    await screen.findByText('10 Seats');
     await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'manualbrand.io');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 

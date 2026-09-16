@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { DomainItem, DomainDnsStatus } from '../types';
+import { DomainItem, DomainDnsStatus, Plan } from '../types';
 import {
   Globe,
   Check,
@@ -21,16 +21,6 @@ interface DomainSetupModalProps {
   onClose: () => void;
   onDomainAdded: (domain: DomainItem) => void;
 }
-
-// Strictly the required discrete tiers per user specification
-const EMPLOYEE_TIERS = [
-  { value: 1, label: '1 Employee', desc: 'Starter / Solo', badge: 'Solo' },
-  { value: 10, label: '10 Employees', desc: 'Standard team tier', badge: 'Standard', isDefault: true },
-  { value: 25, label: '25 Employees', desc: 'Growing businesses', badge: 'Growth' },
-  { value: 50, label: '50 Employees', desc: 'Mid-size organizations', badge: 'Team' },
-  { value: 75, label: '75 Employees', desc: 'Large departments', badge: 'Business' },
-  { value: 100, label: '100 Employees', desc: 'Full-scale enterprise', badge: 'Enterprise' },
-] as const;
 
 type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
 type WizardStep = 'domain' | 'method' | 'setup' | 'status';
@@ -57,7 +47,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 }) => {
   const [step, setStep] = useState<WizardStep>('domain');
   const [domainName, setDomainName] = useState('');
-  const [selectedTier, setSelectedTier] = useState<number>(10);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,6 +66,19 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    setPlansLoading(true);
+    api
+      .listPlans()
+      .then((res) => {
+        setPlans(res.plans);
+        setSelectedPlanId((current) => current ?? res.plans[0]?.id ?? null);
+      })
+      .catch((err) => setError(err.message || 'Failed to load available plans.'))
+      .finally(() => setPlansLoading(false));
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const currentIdx = STEP_ORDER.indexOf(step);
@@ -87,6 +92,10 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       setError('Please enter a valid domain name (e.g. acme.com or mail.acme.com).');
       return;
     }
+    if (!selectedPlanId) {
+      setError('Please select a plan.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -96,7 +105,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       // later when a Super Admin clicks "Activate Domain".
       const res = await api.createTenantDomain({
         domainName: cleanDomain,
-        employeeTier: selectedTier,
+        planId: selectedPlanId,
       });
 
       setCreatedDomain(res.domain);
@@ -165,7 +174,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     // Reset state and close
     setStep('domain');
     setDomainName('');
-    setSelectedTier(10);
+    setSelectedPlanId(plans[0]?.id ?? null);
     setError(null);
     setCreatedDomain(null);
     setMethod(null);
@@ -180,7 +189,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     onClose();
   };
 
-  const domainValid = domainName.trim().length > 0;
+  const domainValid = domainName.trim().length > 0 && !!selectedPlanId;
   const setupContinueDisabled = method === 'provider' && !connected;
 
   return (
@@ -313,46 +322,61 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-800">
-                  Employee Tier &amp; Mailbox Quota <span className="text-rose-500">*</span>
+                  Plan &amp; Mailbox Quota <span className="text-rose-500">*</span>
                 </label>
-                <span className="text-[11px] font-medium text-slate-400">Select employee capacity</span>
+                <span className="text-[11px] font-medium text-slate-400">Select a seat tier</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {EMPLOYEE_TIERS.map((tier) => {
-                  const isSelected = selectedTier === tier.value;
-                  return (
-                    <button
-                      key={tier.value}
-                      type="button"
-                      onClick={() => setSelectedTier(tier.value)}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[78px] ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-sm font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-800'}`}>
-                          {tier.value} {tier.value === 1 ? 'Seat' : 'Seats'}
+              {plansLoading && plans.length === 0 ? (
+                <p className="text-xs text-slate-400 py-2">Loading plans…</p>
+              ) : plans.length === 0 ? (
+                <p className="text-xs text-rose-500 py-2">No plans are available right now. Please try again shortly.</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {plans.map((plan) => {
+                    const isSelected = selectedPlanId === plan.id;
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => setSelectedPlanId(plan.id)}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[78px] ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20 shadow-xs'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-sm font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-800'}`}>
+                            {plan.seatCount} {plan.seatCount === 1 ? 'Seat' : 'Seats'}
+                          </span>
+                          {plan.badge && (
+                            <span
+                              className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
+                                isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {plan.badge}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-normal mt-1 truncate">
+                          {plan.description || plan.name}
                         </span>
-                        <span
-                          className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
-                            isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {tier.badge}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 font-normal mt-1 truncate">{tier.desc}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <span className="text-[11px] text-slate-400">
-                This sets the domain limit to create up to{' '}
-                <strong className="text-slate-700 font-semibold">{selectedTier} mailboxes</strong>.
-              </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedPlanId && (
+                <span className="text-[11px] text-slate-400">
+                  This sets the domain limit to create up to{' '}
+                  <strong className="text-slate-700 font-semibold">
+                    {plans.find((p) => p.id === selectedPlanId)?.seatCount ?? 0} mailboxes
+                  </strong>
+                  .
+                </span>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">

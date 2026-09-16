@@ -63,9 +63,22 @@ export interface DomainItem {
   dnsStatus?: DnsActivationStatus;
   mailboxLimit: number;
   employeeCount: number;
+  planId?: string | null;
+  planName?: string | null;
   mailboxCount: number;
   isPrimary: boolean;
   createdAt?: string;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  badge?: string | null;
+  description?: string | null;
+  seatCount: number;
+  displayOrder: number;
+  isActive: boolean;
+  isDefault: boolean;
 }
 
 export interface TenantSummary {

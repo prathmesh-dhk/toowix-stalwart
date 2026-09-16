@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireTenantAdmin } from '../auth/middleware';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainModel } from '../db/models/Domain';
+import { PlanModel } from '../db/models/Plan';
 import { AdminUserModel } from '../db/models/AdminUser';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
@@ -56,6 +57,8 @@ tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => 
         status: d.status,
         mailboxLimit: d.mailboxLimit || 10,
         employeeCount: d.employeeCount || d.mailboxLimit || 10,
+        planId: d.planId ? d.planId.toString() : null,
+        planName: d.planName || null,
         mailboxCount: mbCount,
         isPrimary: !!d.isPrimary,
         createdAt: d.createdAt.toISOString(),
@@ -133,12 +136,7 @@ const addDomainSchema = z.object({
     .string()
     .min(3, 'Domain name is required')
     .regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i, 'Invalid domain format'),
-  employeeTier: z
-    .number()
-    .refine((v) => [1, 10, 25, 50, 75, 100].includes(v), {
-      message: 'Employee tier must be one of: 1, 10, 25, 50, 75, 100',
-    })
-    .default(10),
+  planId: z.string().min(1, 'A plan must be selected'),
 });
 
 tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Response): Promise<void> => {
@@ -154,13 +152,24 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
     return;
   }
 
-  const { domainName, employeeTier } = parseResult.data;
+  const { domainName, planId } = parseResult.data;
   const normalizedDomain = domainName.toLowerCase().trim();
+
+  if (!mongoose.Types.ObjectId.isValid(planId)) {
+    res.status(400).json({ error: 'INVALID_PLAN_ID', message: 'Invalid plan selected' });
+    return;
+  }
 
   try {
     const tenant = await TenantModel.findById(tenantId);
     if (!tenant) {
       res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant record not found' });
+      return;
+    }
+
+    const plan = await PlanModel.findOne({ _id: planId, isActive: true });
+    if (!plan) {
+      res.status(404).json({ error: 'PLAN_NOT_FOUND', message: 'Selected plan is unavailable. Please choose another.' });
       return;
     }
 
@@ -186,8 +195,10 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       stalwartDomainId: null,
       status: 'active',
       dnsStatus: 'not_started',
-      mailboxLimit: employeeTier,
-      employeeCount: employeeTier,
+      mailboxLimit: plan.seatCount,
+      employeeCount: plan.seatCount,
+      planId: plan._id,
+      planName: plan.name,
       isPrimary,
     });
 
@@ -208,8 +219,9 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       status: 'SUCCESS',
       metadata: {
         domainName: normalizedDomain,
-        employeeTier,
-        mailboxLimit: employeeTier,
+        planId: plan._id.toString(),
+        planName: plan.name,
+        mailboxLimit: plan.seatCount,
       },
       timestamp: new Date(),
     });
@@ -224,6 +236,8 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
         dnsStatus: newDomain.dnsStatus,
         mailboxLimit: newDomain.mailboxLimit,
         employeeCount: newDomain.employeeCount,
+        planId: newDomain.planId ? newDomain.planId.toString() : null,
+        planName: newDomain.planName || null,
         mailboxCount: 0,
         isPrimary: newDomain.isPrimary,
         createdAt: newDomain.createdAt.toISOString(),

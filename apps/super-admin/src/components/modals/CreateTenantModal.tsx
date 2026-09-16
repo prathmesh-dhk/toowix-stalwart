@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Building2 } from 'lucide-react';
 import { api } from '../../api';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
-import { QuotaTierSelector } from '../ui/QuotaTierSelector';
+import { QuotaTierSelector, DEFAULT_QUOTA_TIERS, QuotaTier } from '../ui/QuotaTierSelector';
 
 interface CreateTenantModalProps {
   isOpen: boolean;
@@ -21,6 +21,21 @@ export const CreateTenantModal: React.FC<CreateTenantModalProps> = ({
   const [mailboxLimit, setMailboxLimit] = useState(50);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [planTiers, setPlanTiers] = useState<QuotaTier[]>(DEFAULT_QUOTA_TIERS);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    api
+      .listPlans()
+      .then((res) => {
+        if (res.plans.length > 0) {
+          setPlanTiers(res.plans.map((p) => ({ id: p.id, label: `${p.name} (${p.seatCount})`, value: p.seatCount })));
+        }
+      })
+      .catch(() => {
+        // Keep the fallback tiers — the picker should never render empty.
+      });
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -117,6 +132,7 @@ export const CreateTenantModal: React.FC<CreateTenantModalProps> = ({
               value={mailboxLimit}
               minAllowed={1}
               maxAllowed={10000}
+              tiers={planTiers}
               label="Mailbox Quota Limit"
               helperText="Maximum number of active mailboxes allowed."
               onChange={(newLimit) => setMailboxLimit(newLimit)}

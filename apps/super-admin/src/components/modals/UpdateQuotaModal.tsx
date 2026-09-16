@@ -4,7 +4,7 @@ import { api } from '../../api';
 import { TenantSummary } from '../../types';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
-import { QuotaTierSelector } from '../ui/QuotaTierSelector';
+import { QuotaTierSelector, DEFAULT_QUOTA_TIERS, QuotaTier } from '../ui/QuotaTierSelector';
 
 interface UpdateQuotaModalProps {
   isOpen: boolean;
@@ -22,6 +22,7 @@ export const UpdateQuotaModal: React.FC<UpdateQuotaModalProps> = ({
   const [limit, setLimit] = useState<number>(50);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [planTiers, setPlanTiers] = useState<QuotaTier[]>(DEFAULT_QUOTA_TIERS);
 
   useEffect(() => {
     if (tenant) {
@@ -29,6 +30,20 @@ export const UpdateQuotaModal: React.FC<UpdateQuotaModalProps> = ({
       setError(null);
     }
   }, [tenant]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    api
+      .listPlans()
+      .then((res) => {
+        if (res.plans.length > 0) {
+          setPlanTiers(res.plans.map((p) => ({ id: p.id, label: `${p.name} (${p.seatCount})`, value: p.seatCount })));
+        }
+      })
+      .catch(() => {
+        // Keep the fallback tiers — the picker should never render empty.
+      });
+  }, [isOpen]);
 
   if (!isOpen || !tenant) return null;
 
@@ -99,6 +114,7 @@ export const UpdateQuotaModal: React.FC<UpdateQuotaModalProps> = ({
               value={limit}
               minAllowed={minAllowed}
               maxAllowed={10000}
+              tiers={planTiers}
               label="New Mailbox Pool Quota"
               onChange={(newLimit) => setLimit(newLimit)}
               disabled={loading}

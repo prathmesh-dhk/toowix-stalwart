@@ -11,6 +11,7 @@ import {
   DriftReport,
   UserContext,
   PlatformAnalytics,
+  Plan,
 } from '../types';
 import {
   CheckCircle2,
@@ -31,6 +32,7 @@ import {
   Copy,
   Check,
   Printer,
+  Layers,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
@@ -44,6 +46,7 @@ import { SystemOperationsView } from './views/SystemOperationsView';
 import { AuditLogView } from './views/AuditLogView';
 import { ActiveDevicesView } from './views/ActiveDevicesView';
 import { AnalyticsView } from './views/AnalyticsView';
+import { PlansManagementView } from './views/PlansManagementView';
 
 // Modals
 import { ApplicationReviewModal } from './modals/ApplicationReviewModal';
@@ -52,8 +55,9 @@ import { TenantActivationModal } from './modals/TenantActivationModal';
 import { CreateTenantModal } from './modals/CreateTenantModal';
 import { ManageAdminsModal } from './modals/ManageAdminsModal';
 import { UpdateQuotaModal } from './modals/UpdateQuotaModal';
+import { PlanFormModal } from './modals/PlanFormModal';
 
-export type DashboardTab = 'dashboard' | 'applications' | 'tenants' | 'analytics' | 'operations' | 'audit' | 'devices';
+export type DashboardTab = 'dashboard' | 'applications' | 'tenants' | 'plans' | 'analytics' | 'operations' | 'audit' | 'devices';
 
 export interface PlatformAdminDashboardProps {
   user?: UserContext | null;
@@ -129,6 +133,9 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   const [analyticsData, setAnalyticsData] = useState<PlatformAnalytics | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+
   // Modal Triggers
   const [reviewApp, setReviewApp] = useState<RegistrationApplication | null>(null);
   const [detailTenant, setDetailTenant] = useState<TenantSummary | null>(null);
@@ -136,6 +143,8 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [adminTenant, setAdminTenant] = useState<TenantSummary | null>(null);
   const [quotaTenant, setQuotaTenant] = useState<TenantSummary | null>(null);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
 
   // User Initials
   const userInitials = useMemo(() => {
@@ -162,6 +171,18 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       console.error('Failed to load tenants:', err);
     } finally {
       setTenantsLoading(false);
+    }
+  }, []);
+
+  const loadPlans = useCallback(async () => {
+    setPlansLoading(true);
+    try {
+      const res = await api.listAllPlans();
+      setPlans(res.plans || []);
+    } catch (err) {
+      console.error('Failed to load plans:', err);
+    } finally {
+      setPlansLoading(false);
     }
   }, []);
 
@@ -247,6 +268,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   useEffect(() => {
     if (activeTab === 'applications') loadApplications();
     if (activeTab === 'tenants') loadTenantsAndMetrics();
+    if (activeTab === 'plans') loadPlans();
     if (activeTab === 'operations') loadOperationsData();
     if (activeTab === 'audit') loadAuditLogs();
     if (activeTab === 'analytics') loadAnalytics();
@@ -256,7 +278,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       loadApplications();
       loadAnalytics();
     }
-  }, [activeTab, loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs, loadAnalytics]);
+  }, [activeTab, loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs, loadAnalytics, loadPlans]);
 
 
 
@@ -658,6 +680,27 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               </span>
             </button>
 
+            {/* Plans */}
+            <button
+              onClick={() => setActiveTab('plans')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeTab === 'plans'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-plans"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <Layers
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'plans' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Plans</span>
+              </div>
+            </button>
+
             {/* Analytics */}
             <button
               onClick={() => setActiveTab('analytics')}
@@ -865,6 +908,31 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             />
           )}
 
+          {activeTab === 'plans' && (
+            <PlansManagementView
+              plans={plans}
+              loading={plansLoading}
+              onRefresh={loadPlans}
+              onCreatePlan={() => {
+                setEditingPlan(null);
+                setShowPlanModal(true);
+              }}
+              onEditPlan={(plan) => {
+                setEditingPlan(plan);
+                setShowPlanModal(true);
+              }}
+              onToggleActive={async (plan) => {
+                try {
+                  await api.updatePlan(plan.id, { isActive: !plan.isActive });
+                  showAlert('success', `${plan.name} ${plan.isActive ? 'deactivated' : 'activated'}.`);
+                  loadPlans();
+                } catch (err: any) {
+                  showAlert('error', err.message || 'Failed to update plan.');
+                }
+              }}
+            />
+          )}
+
           {activeTab === 'operations' && (
             <SystemOperationsView
               healthDetails={healthDetails}
@@ -952,6 +1020,16 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         onClose={() => setAdminTenant(null)}
         onUpdated={() => {
           loadTenantsAndMetrics();
+        }}
+      />
+
+      <PlanFormModal
+        isOpen={showPlanModal}
+        plan={editingPlan}
+        onClose={() => setShowPlanModal(false)}
+        onSaved={() => {
+          showAlert('success', editingPlan ? 'Plan updated.' : 'Plan created.');
+          loadPlans();
         }}
       />
 

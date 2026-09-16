@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -214,13 +214,15 @@ export const api = {
   // Tenant Admin - Self View & Multi-Domain
   getTenantMe: () => request<{ tenant: TenantSummary }>('/api/tenants/me'),
   listTenantDomains: () => request<{ domains: DomainItem[] }>('/api/tenants/me/domains'),
-  createTenantDomain: (body: { domainName: string; employeeTier: number }) =>
+  createTenantDomain: (body: { domainName: string; planId: string }) =>
     // Domain is created unprovisioned (dnsStatus: 'not_started'). Stalwart/DNS
     // provisioning only happens when a Super Admin clicks "Activate Domain".
     request<{ success: boolean; domain: DomainItem }>('/api/tenants/me/domains', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  listPlans: () => request<{ plans: Plan[] }>('/api/plans'),
 
   connectDnsProviderCredential: (
     domainId: string,

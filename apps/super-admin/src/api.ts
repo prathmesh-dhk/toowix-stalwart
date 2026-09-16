@@ -13,6 +13,7 @@ import {
   SessionItem,
   PlatformAnalytics,
   DomainDnsStatus,
+  Plan,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -209,6 +210,15 @@ export const api = {
       body: JSON.stringify({ mailboxLimit }),
     }),
   getMailLimits: () => request<{ attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number }>('/api/system/mail-limits'),
+
+  // Plans (seat tiers)
+  listPlans: () => request<{ plans: Plan[] }>('/api/plans'),
+  listAllPlans: () => request<{ plans: Plan[] }>('/api/plans/all'),
+  createPlan: (body: { name: string; badge?: string | null; description?: string | null; seatCount: number; displayOrder?: number; isActive?: boolean; isDefault?: boolean }) =>
+    request<{ plan: Plan }>('/api/plans', { method: 'POST', body: JSON.stringify(body) }),
+  updatePlan: (id: string, body: Partial<{ name: string; badge: string | null; description: string | null; seatCount: number; displayOrder: number; isActive: boolean; isDefault: boolean }>) =>
+    request<{ plan: Plan }>(`/api/plans/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deletePlan: (id: string) => request<{ success: boolean }>(`/api/plans/${id}`, { method: 'DELETE' }),
   updateMailLimits: (payload: { attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number }) =>
     request<{ success: boolean; message: string; config: { attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number } }>('/api/system/mail-limits', {
       method: 'POST',
