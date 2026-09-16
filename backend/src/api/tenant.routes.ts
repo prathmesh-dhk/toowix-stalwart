@@ -13,6 +13,10 @@ import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/error
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
 import { CloudflareAuthError, CloudflareDomainNotManagedError } from '../cloudflare/errors';
 import { stalwartClient } from '../stalwart/client';
+import { StalwartDomainExistsError } from '../stalwart/errors';
+import { buildRequiredDnsRecords, buildZoneFileText } from '../services/dns-records.service';
+import { StalwartDkimKey } from '../stalwart/types';
+import { IGeneratedDnsRecord } from '../db/models/Domain';
 import { securityIpService, isValidIpOrCidr } from '../services/security-ip.service';
 
 export const tenantMeRouter = Router();
@@ -183,16 +187,50 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       return;
     }
 
-    // Stalwart domain creation and DNS provisioning happen only when a Super
-    // Admin explicitly clicks "Activate Domain" — never at add-domain time.
-    // See backend/src/services/domain-activation.service.ts.
+    // 1. Provision domain in Stalwart with automatic DKIM, keeping it disabled until Super Admin activation
+    let stalwartDomainId: string | null = null;
+    let dkimKeys: StalwartDkimKey[] = [];
+    try {
+      const created = await stalwartClient.createDomain(normalizedDomain, `Tenant: ${tenant.name}`);
+      stalwartDomainId = created.id;
+    } catch (err: any) {
+      if (err instanceof StalwartDomainExistsError) {
+        const list = await stalwartClient.listDomains();
+        const match = list.find((d) => d.name.toLowerCase() === normalizedDomain);
+        stalwartDomainId = match?.id || null;
+      } else {
+        console.warn(`[Tenant Domain Creation] Stalwart createDomain non-fatal failure: ${err.message}`);
+      }
+    }
+
+    if (stalwartDomainId) {
+      try {
+        // Keep domain disabled on Stalwart so mail routing is suspended until Super Admin activates
+        await stalwartClient.updateDomainStatus(stalwartDomainId, false);
+
+        // Fetch generated DKIM keys (quick retry if Stalwart key generation is in progress)
+        dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
+        if (dkimKeys.length === 0) {
+          await new Promise((r) => setTimeout(r, 600));
+          dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
+        }
+      } catch (err: any) {
+        console.warn(`[Tenant Domain Creation] Stalwart DKIM retrieval warning: ${err.message}`);
+      }
+    }
+
+    // Build canonical DNS records and zone file immediately so tenant can copy and configure their DNS provider
+    const dnsRecords = buildRequiredDnsRecords(normalizedDomain, dkimKeys);
+    const dnsZoneFile = buildZoneFileText(normalizedDomain, dnsRecords);
+    const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];
+
     const domainCount = await DomainModel.countDocuments({ tenantId: tenant._id });
     const isPrimary = domainCount === 0;
 
     const newDomain = await DomainModel.create({
       tenantId: tenant._id,
       domainName: normalizedDomain,
-      stalwartDomainId: null,
+      stalwartDomainId,
       status: 'active',
       dnsStatus: 'not_started',
       mailboxLimit: plan.seatCount,
@@ -200,6 +238,10 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       planId: plan._id,
       planName: plan.name,
       isPrimary,
+      dnsRecords,
+      dnsZoneFile,
+      dkimSelector: rsaKey?.selector || null,
+      dkimPublicKey: rsaKey?.publicKey || null,
     });
 
     // Audit log
@@ -231,7 +273,7 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       domain: {
         id: newDomain._id.toString(),
         domainName: newDomain.domainName,
-        stalwartDomainId: null,
+        stalwartDomainId: newDomain.stalwartDomainId || null,
         status: newDomain.status,
         dnsStatus: newDomain.dnsStatus,
         mailboxLimit: newDomain.mailboxLimit,
@@ -240,6 +282,8 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
         planName: newDomain.planName || null,
         mailboxCount: 0,
         isPrimary: newDomain.isPrimary,
+        dnsRecords: newDomain.dnsRecords || [],
+        dnsZoneFile: newDomain.dnsZoneFile || null,
         createdAt: newDomain.createdAt.toISOString(),
       },
     });

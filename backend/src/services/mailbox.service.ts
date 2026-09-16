@@ -119,6 +119,17 @@ export class MailboxService {
       }
     }
 
+    // 2b. Block mailbox creation if the domain is suspended or not yet activated by Super Admin
+    if (domain.status === 'suspended' || domain.dnsStatus !== 'active') {
+      // Rollback quota
+      await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
+      throw {
+        status: 403,
+        code: 'DOMAIN_NOT_ACTIVATED',
+        message: `Domain '${domain.domainName}' is pending activation by a Super Admin. Mailboxes can only be created once the domain is activated.`,
+      };
+    }
+
     // Check domain-level mailboxLimit if configured
     if (domain.mailboxLimit) {
       const currentDomainCount = await MailboxModel.countDocuments({ domainId: domain._id });

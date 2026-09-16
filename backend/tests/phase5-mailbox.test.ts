@@ -111,6 +111,7 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
       domainName: 'waynecorp.test',
       stalwartDomainId: 'dom-wayne',
       status: 'active',
+      dnsStatus: 'active',
     });
     domainAId = domainA._id.toString();
 
@@ -145,6 +146,7 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
       domainName: 'starkcorp.test',
       stalwartDomainId: 'dom-stark',
       status: 'active',
+      dnsStatus: 'active',
     });
     domainBId = domainB._id.toString();
 
@@ -229,6 +231,21 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('VALIDATION_ERROR');
+    });
+
+    it('should reject creation if domain is not active (pending Super Admin activation)', async () => {
+      await DomainModel.updateOne({ _id: domainAId }, { dnsStatus: 'not_started' });
+
+      const res = await request(app)
+        .post('/api/tenants/me/mailboxes')
+        .set('Authorization', `Bearer ${tenantAdminAToken}`)
+        .send({
+          localPart: 'alfred',
+          password: 'AlfredSecretPass2026!',
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('DOMAIN_NOT_ACTIVATED');
     });
 
     it('should successfully create mailbox, increment mailboxCount, and emit audit log', async () => {

@@ -29,6 +29,8 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     }));
     vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue('stalwart-acc-id');
     vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([]);
+    vi.spyOn(stalwartClient, 'updateDomainStatus').mockResolvedValue();
+    vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue([]);
   });
 
   afterAll(async () => {
@@ -90,12 +92,12 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     expect(res1.body.domain.domainName).toBe('primarybrand.com');
     expect(res1.body.domain.mailboxLimit).toBe(10);
     expect(res1.body.domain.isPrimary).toBe(true);
-    // Stalwart domain creation and DNS provisioning happen only on explicit
-    // "Activate Domain" (see domain-activation.service.ts), not at add-domain
-    // time — no dnsRecords are returned here, and the domain starts unprovisioned.
-    expect(res1.body.domain.stalwartDomainId).toBeNull();
+    // Domain is pre-created in Stalwart (kept disabled) and DNS records/zone file are generated immediately
+    expect(res1.body.domain.stalwartDomainId).toBe('stalwart-dom-primarybrand.com');
     expect(res1.body.domain.dnsStatus).toBe('not_started');
-    expect(res1.body.dnsRecords).toBeUndefined();
+    expect(Array.isArray(res1.body.domain.dnsRecords)).toBe(true);
+    expect(res1.body.domain.dnsRecords.length).toBeGreaterThan(0);
+    expect(res1.body.domain.dnsZoneFile).toContain('primarybrand.com');
 
     // 2. Add second domain with 25 employees (multi-domain)
     const res2 = await request(app)
@@ -139,6 +141,7 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       domainName: 'alpha.io',
       mailboxLimit: 10,
       status: 'active',
+      dnsStatus: 'active',
       isPrimary: true,
     });
 
@@ -147,6 +150,7 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       domainName: 'beta.io',
       mailboxLimit: 10,
       status: 'active',
+      dnsStatus: 'active',
       isPrimary: false,
     });
 
@@ -205,6 +209,7 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       domainName: 'singletier.com',
       mailboxLimit: 1,
       status: 'active',
+      dnsStatus: 'active',
       isPrimary: true,
     });
 

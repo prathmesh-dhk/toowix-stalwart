@@ -273,6 +273,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   };
 
   const handleOpenCreateModal = () => {
+    if (activeDomain && activeDomain.dnsStatus !== 'active') {
+      alert(`Domain '${activeDomain.domainName}' is pending activation by a Super Admin. Mailbox creation will unlock once activated.`);
+      return;
+    }
     setLocalPart('');
     setPassword(generateStrongPassword());
     setModalError(null);
@@ -283,6 +287,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     e.preventDefault();
     if (!activeDomain) {
       setModalError('Please add or select a domain before creating mailboxes.');
+      return;
+    }
+    if (activeDomain.dnsStatus !== 'active') {
+      setModalError(`Domain '${activeDomain.domainName}' is pending activation by a Super Admin. Mailboxes can only be created once activated.`);
       return;
     }
 
@@ -487,6 +495,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const usagePercent = Math.min(100, Math.round((mailboxCount / Math.max(1, mailboxLimit)) * 100));
   const availableCount = Math.max(0, mailboxLimit - mailboxCount);
   const isSuspended = tenant?.status === 'suspended';
+  const isDomainPendingActivation = Boolean(activeDomain && activeDomain.dnsStatus !== 'active');
 
   // Fallback admin email & initials
   const adminEmail = user?.email || (tenant ? `admin@${domainName}` : 'admin@toowix.com');
@@ -782,6 +791,28 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             </div>
           )}
 
+          {isDomainPendingActivation && !isSuspended && domains.length > 0 && (
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex items-start gap-3 text-sky-950">
+              <AlertCircle className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-0.5 text-xs">
+                <span className="font-semibold text-sky-900">
+                  Domain Pending Super Admin Activation
+                </span>
+                <span className="text-sky-700">
+                  Domain <span className="font-medium">@{domainName}</span> is awaiting activation by a Super Admin. You can copy the DNS Zone File now from the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setActiveNav('domains')}
+                    className="underline font-semibold hover:text-sky-900 cursor-pointer"
+                  >
+                    Domains
+                  </button>{' '}
+                  tab; mailbox creation will unlock automatically once activated.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* 2FA Setup Reminder Banner (Removable per login session) */}
           {!is2FaEnabled && !dismissed2FaBanner && activeNav !== 'security' && (
             <div
@@ -862,7 +893,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <Button
-                    disabled={isSuspended || domains.length === 0 || usagePercent >= 100}
+                    disabled={isSuspended || domains.length === 0 || usagePercent >= 100 || isDomainPendingActivation}
+                    title={isDomainPendingActivation ? 'Domain is pending Super Admin activation' : undefined}
                     onClick={handleOpenCreateModal}
                     size="sm"
                     icon={<Plus className="w-4 h-4" />}
@@ -1039,12 +1071,18 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                         <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
                           <Mail className="w-7 h-7 text-slate-300" />
                           <p className="text-xs text-slate-500">No mailboxes created yet.</p>
-                          <button
-                            onClick={handleOpenCreateModal}
-                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
-                          >
-                            + Create your first mailbox
-                          </button>
+                          {isDomainPendingActivation ? (
+                            <p className="text-xs text-amber-600 font-medium">
+                              Mailbox creation will unlock once @{domainName} is activated by a Super Admin.
+                            </p>
+                          ) : (
+                            <button
+                              onClick={handleOpenCreateModal}
+                              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                            >
+                              + Create your first mailbox
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="flex flex-col divide-y divide-slate-100">
@@ -1160,10 +1198,12 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   </p>
                 </div>
                 <button
-                  disabled={isSuspended || usagePercent >= 100}
+                  disabled={isSuspended || usagePercent >= 100 || isDomainPendingActivation}
+                  title={isDomainPendingActivation ? 'Domain is pending Super Admin activation' : undefined}
                   onClick={handleOpenCreateModal}
-                  className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 self-start sm:self-auto ${isSuspended || usagePercent >= 100 ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                  className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 self-start sm:self-auto ${
+                    isSuspended || usagePercent >= 100 || isDomainPendingActivation ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create mailbox</span>

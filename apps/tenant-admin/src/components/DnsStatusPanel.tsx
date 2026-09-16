@@ -97,10 +97,9 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
 
       {dnsStatus === 'not_started' && !loading && (
         <p className="text-xs text-slate-600 leading-relaxed">
-          This domain hasn't been activated yet — a Super Admin needs to click Activate Domain.{' '}
           {connectedProviderLabel
             ? `Once activated, your connected ${connectedProviderLabel} account publishes these records automatically.`
-            : 'Once activated, the DNS zone file will appear here — no credential required.'}
+            : 'Copy the DNS zone file below and add the records to your DNS provider. Mailbox creation will unlock once a Super Admin activates the domain.'}
         </p>
       )}
 

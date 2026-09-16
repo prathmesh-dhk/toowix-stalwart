@@ -44,6 +44,7 @@ export async function createTestDomain(tenantId: Types.ObjectId | string, overri
     isAuthoritative: true,
     verificationStatus: 'verified',
     status: 'active',
+    dnsStatus: overrides.dnsStatus || 'active',
     ...overrides,
   });
 }

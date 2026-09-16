@@ -137,6 +137,7 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       tenantId: tenantA._id,
       domainName: 'alpha.test',
       status: 'active',
+      dnsStatus: 'active',
     });
     domainAId = (domainA._id as any).toString();
 
@@ -170,6 +171,7 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       tenantId: tenantB._id,
       domainName: 'beta.test',
       status: 'active',
+      dnsStatus: 'active',
     });
     domainBId = (domainB._id as any).toString();
 
@@ -494,6 +496,9 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       // -----------------------------------------------------------------------
       // STAGE 7: Tenant Admin Creates Mailboxes & Enforces Quota
       // -----------------------------------------------------------------------
+      // Domain is activated by Super Admin before mailbox creation unlocks
+      await DomainModel.updateOne({ tenantId: newTenantId }, { dnsStatus: 'active' });
+
       const mailboxRes = await request(app)
         .post('/api/tenants/me/mailboxes')
         .set('Authorization', `Bearer ${wayneAdminToken}`)
