@@ -72,32 +72,55 @@ export async function seedSystemSettings(): Promise<void> {
   }
 }
 
+// The confirmed billing design (grill-me interview) is exactly 1/10/25/100
+// seat fixed tiers plus one pay-as-you-go Custom plan — not the wider
+// 1/10/25/50/75/100 set an earlier, pre-billing session originally seeded.
+// Upserted by name (not a single "only if collection is empty" guard) so
+// this corrects an already-seeded dev/staging database on the next boot
+// instead of silently no-op'ing forever once anything exists.
+const DEFAULT_PLANS = [
+  { name: 'Individual', badge: 'Solo', seatCount: 1, displayOrder: 1, isDefault: false, billingMode: 'fixed' as const },
+  { name: 'Team', badge: 'Standard', seatCount: 10, displayOrder: 2, isDefault: true, billingMode: 'fixed' as const },
+  { name: 'Growth', badge: 'Growth', seatCount: 25, displayOrder: 3, isDefault: false, billingMode: 'fixed' as const },
+  { name: 'Enterprise', badge: 'Enterprise', seatCount: 100, displayOrder: 4, isDefault: false, billingMode: 'fixed' as const },
+  { name: 'Custom', badge: 'Pay as you go', seatCount: 99999, displayOrder: 5, isDefault: false, billingMode: 'metered' as const },
+];
+
+// Retired tiers from the earlier, pre-billing seed set — deactivated rather
+// than deleted (Plan deletion is blocked while any Domain still references
+// it; deactivating just hides them from pickers going forward).
+const RETIRED_PLAN_NAMES = ['Business', 'Scale'];
+
 export async function seedDefaultPlans(): Promise<void> {
   try {
-    const existingCount = await PlanModel.countDocuments();
-    if (existingCount > 0) {
-      console.log('[Seed] Plans already exist, skipping default seed.');
-      return;
+    for (const plan of DEFAULT_PLANS) {
+      await PlanModel.findOneAndUpdate(
+        { name: plan.name },
+        {
+          $setOnInsert: {
+            monthlyPriceInPaise: 0,
+            isActive: true,
+          },
+          $set: {
+            badge: plan.badge,
+            seatCount: plan.seatCount,
+            displayOrder: plan.displayOrder,
+            isDefault: plan.isDefault,
+            billingMode: plan.billingMode,
+          },
+        },
+        { upsert: true }
+      );
     }
 
-    // Mirrors the tier values every seat picker across the app used to
-    // hardcode independently. The 50-seat plan is flagged default to match
-    // today's self-registration/application-approval behavior exactly.
-    // All fixed-tier prices seed at 0 paise — a Super Admin sets real ₹
-    // pricing via the Plan CRU before Checkout is usable for that plan.
-    // Custom is the sole 'metered' (pay-as-you-go) plan; seatCount on it is
-    // a technical ceiling only (Domain.mailboxLimit safety cap), never a
-    // pricing input — metered plans bill on actual usage, not seat count.
-    await PlanModel.insertMany([
-      { name: 'Individual', badge: 'Solo', seatCount: 1, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
-      { name: 'Team', badge: 'Standard', seatCount: 10, displayOrder: 2, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
-      { name: 'Growth', badge: 'Growth', seatCount: 25, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
-      { name: 'Business', badge: 'Business', seatCount: 50, displayOrder: 4, isActive: true, isDefault: true, billingMode: 'fixed', monthlyPriceInPaise: 0 },
-      { name: 'Scale', badge: 'Scale', seatCount: 75, displayOrder: 5, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
-      { name: 'Enterprise', badge: 'Enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
-      { name: 'Custom', badge: 'Pay as you go', seatCount: 99999, displayOrder: 7, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 0 },
-    ]);
-    console.log('[Seed] Initialized default Plans (Individual..Enterprise, Custom)');
+    if (DEFAULT_PLANS.some((p) => p.isDefault)) {
+      const defaultNames = DEFAULT_PLANS.filter((p) => p.isDefault).map((p) => p.name);
+      await PlanModel.updateMany({ name: { $nin: defaultNames } }, { $set: { isDefault: false } });
+    }
+
+    await PlanModel.updateMany({ name: { $in: RETIRED_PLAN_NAMES } }, { $set: { isActive: false, isDefault: false } });
+
+    console.log('[Seed] Plans reconciled to the confirmed billing tier set (Individual, Team, Growth, Enterprise, Custom).');
   } catch (err) {
     console.error('[Seed Plans Error]:', err);
     throw err;

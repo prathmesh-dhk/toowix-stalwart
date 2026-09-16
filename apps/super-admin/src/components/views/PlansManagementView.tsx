@@ -61,6 +61,7 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
                 <tr>
                   <th>Plan</th>
                   <th>Seats</th>
+                  <th>Price</th>
                   <th>Display Order</th>
                   <th>Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
@@ -101,8 +102,14 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
                     <td>
                       <div className="flex items-center gap-1.5 text-xs text-slate-700 font-medium tabular-nums">
                         <Users size={13} className="text-slate-400" />
-                        {plan.seatCount}
+                        {plan.billingMode === 'metered' ? `${plan.seatCount} (cap)` : plan.seatCount}
                       </div>
+                    </td>
+                    <td>
+                      <span className="text-xs text-slate-700 font-medium tabular-nums">
+                        ₹{(plan.monthlyPriceInPaise / 100).toLocaleString('en-IN')}
+                        {plan.billingMode === 'metered' ? ' / seat' : ' / mo'}
+                      </span>
                     </td>
                     <td>
                       <span className="text-xs text-slate-500 tabular-nums">{plan.displayOrder}</span>

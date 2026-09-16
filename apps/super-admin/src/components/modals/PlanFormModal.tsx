@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Layers } from 'lucide-react';
 import { api } from '../../api';
-import { Plan } from '../../types';
+import { Plan, PlanBillingMode } from '../../types';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 
@@ -19,6 +19,8 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
   const [seatCount, setSeatCount] = useState(10);
   const [displayOrder, setDisplayOrder] = useState(0);
   const [isDefault, setIsDefault] = useState(false);
+  const [billingMode, setBillingMode] = useState<PlanBillingMode>('fixed');
+  const [monthlyPriceInRupees, setMonthlyPriceInRupees] = useState('0');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +34,8 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
       setSeatCount(plan?.seatCount ?? 10);
       setDisplayOrder(plan?.displayOrder ?? 0);
       setIsDefault(plan?.isDefault ?? false);
+      setBillingMode(plan?.billingMode ?? 'fixed');
+      setMonthlyPriceInRupees(String((plan?.monthlyPriceInPaise ?? 0) / 100));
       setError(null);
     }
   }, [isOpen, plan]);
@@ -42,6 +46,11 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
     e.preventDefault();
     if (!name.trim() || seatCount < 1) {
       setError('Plan name is required and seat count must be at least 1.');
+      return;
+    }
+    const priceInRupees = Number(monthlyPriceInRupees);
+    if (Number.isNaN(priceInRupees) || priceInRupees < 0) {
+      setError('Monthly price must be a valid, non-negative amount.');
       return;
     }
 
@@ -55,6 +64,8 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
         seatCount: Number(seatCount),
         displayOrder: Number(displayOrder),
         isDefault,
+        billingMode,
+        monthlyPriceInPaise: Math.round(priceInRupees * 100),
       };
       if (isEdit && plan) {
         await api.updatePlan(plan.id, body);
@@ -109,10 +120,44 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
               />
             </div>
 
+            <div>
+              <label className="field-label mb-1.5 block">Billing Mode</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBillingMode('fixed')}
+                  className={`p-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer ${
+                    billingMode === 'fixed'
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Fixed
+                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
+                    Flat price for the seat count
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingMode('metered')}
+                  className={`p-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer ${
+                    billingMode === 'metered'
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Pay as you go
+                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
+                    Billed on actual usage
+                  </span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="field-label" htmlFor="planSeatCount">
-                  Seat Count
+                  {billingMode === 'metered' ? 'Seat Cap' : 'Seat Count'}
                 </label>
                 <input
                   id="planSeatCount"
@@ -123,6 +168,11 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
                   onChange={(e) => setSeatCount(parseInt(e.target.value, 10) || 1)}
                   required
                 />
+                {billingMode === 'metered' && (
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    A technical safety ceiling only — pricing is per-mailbox usage, not this number.
+                  </span>
+                )}
               </div>
               <div>
                 <label className="field-label" htmlFor="planDisplayOrder">
@@ -136,6 +186,22 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
                   onChange={(e) => setDisplayOrder(parseInt(e.target.value, 10) || 0)}
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="planPrice">
+                {billingMode === 'metered' ? 'Price per seat / month (₹)' : 'Monthly price (₹)'}
+              </label>
+              <input
+                id="planPrice"
+                type="number"
+                min={0}
+                step="0.01"
+                className="form-input"
+                value={monthlyPriceInRupees}
+                onChange={(e) => setMonthlyPriceInRupees(e.target.value)}
+                required
+              />
             </div>
 
             <div>

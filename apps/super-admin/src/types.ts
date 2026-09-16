@@ -69,6 +69,8 @@ export interface TenantDomainSummary {
   dnsStatus?: DnsActivationStatus;
 }
 
+export type PlanBillingMode = 'fixed' | 'metered';
+
 export interface Plan {
   id: string;
   name: string;
@@ -78,6 +80,8 @@ export interface Plan {
   displayOrder: number;
   isActive: boolean;
   isDefault: boolean;
+  billingMode: PlanBillingMode;
+  monthlyPriceInPaise: number;
   createdAt: string;
   updatedAt: string;
 }

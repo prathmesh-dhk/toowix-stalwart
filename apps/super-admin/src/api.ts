@@ -214,9 +214,9 @@ export const api = {
   // Plans (seat tiers)
   listPlans: () => request<{ plans: Plan[] }>('/api/plans'),
   listAllPlans: () => request<{ plans: Plan[] }>('/api/plans/all'),
-  createPlan: (body: { name: string; badge?: string | null; description?: string | null; seatCount: number; displayOrder?: number; isActive?: boolean; isDefault?: boolean }) =>
+  createPlan: (body: { name: string; badge?: string | null; description?: string | null; seatCount: number; displayOrder?: number; isActive?: boolean; isDefault?: boolean; billingMode?: 'fixed' | 'metered'; monthlyPriceInPaise?: number }) =>
     request<{ plan: Plan }>('/api/plans', { method: 'POST', body: JSON.stringify(body) }),
-  updatePlan: (id: string, body: Partial<{ name: string; badge: string | null; description: string | null; seatCount: number; displayOrder: number; isActive: boolean; isDefault: boolean }>) =>
+  updatePlan: (id: string, body: Partial<{ name: string; badge: string | null; description: string | null; seatCount: number; displayOrder: number; isActive: boolean; isDefault: boolean; billingMode: 'fixed' | 'metered'; monthlyPriceInPaise: number }>) =>
     request<{ plan: Plan }>(`/api/plans/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deletePlan: (id: string) => request<{ success: boolean }>(`/api/plans/${id}`, { method: 'DELETE' }),
   updateMailLimits: (payload: { attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number }) =>

@@ -346,10 +346,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                           }`}
                         >
                           <span className={`text-sm font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-800'}`}>
-                            {plan.seatCount} {plan.seatCount === 1 ? 'Seat' : 'Seats'}
+                            {plan.billingMode === 'metered'
+                              ? plan.name
+                              : `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`}
                           </span>
                           <span className="text-[11px] text-slate-400 mt-1 truncate">
-                            {plan.badge || plan.description || plan.name}
+                            {plan.billingMode === 'metered'
+                              ? plan.badge || 'Pay as you go'
+                              : plan.badge || plan.description || plan.name}
                           </span>
                         </button>
                       );
