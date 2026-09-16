@@ -121,13 +121,20 @@ services:
     image: ghcr.io/bulwarkmail/webmail:latest
     container_name: toowix-prod-webmail
     restart: always
+    command: ["node", "server-proxy.js"]
     ports:
       - "${PORT_WEBMAIL:-8888}:3000"
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
-      JMAP_SERVER_URL: "${STALWART_URL:-http://stalwart:8080}"
+      # Public-facing URL the BROWSER uses for JMAP discovery — must be the
+      # webmail app's own address (same-origin), never Stalwart's internal
+      # Docker hostname. server-proxy.js forwards /jmap/* to Stalwart
+      # server-side; STALWART_URL below stays internal-only for that.
+      JMAP_SERVER_URL: "${WEBMAIL_PUBLIC_URL:-https://webmail.toowix.com}"
+      STALWART_INTERNAL_URL: "${STALWART_URL:-http://stalwart:8080}"
     volumes:
+      - ./bulwark/server-proxy.js:/app/server-proxy.js:ro
       - toowix-prod-bulwark-settings:/app/data/settings
       - toowix-prod-bulwark-admin:/app/data/admin
     depends_on:
