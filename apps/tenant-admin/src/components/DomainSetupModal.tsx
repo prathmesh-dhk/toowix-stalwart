@@ -22,7 +22,7 @@ interface DomainSetupModalProps {
 }
 
 type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
-type WizardStep = 'domain' | 'method' | 'setup' | 'status';
+type WizardStep = 'domain' | 'plan' | 'method' | 'setup' | 'status';
 type SetupMethod = 'provider' | 'manual' | null;
 
 const PROVIDER_LABEL: Record<DnsProvider, string> = {
@@ -31,7 +31,8 @@ const PROVIDER_LABEL: Record<DnsProvider, string> = {
   cloudflare: 'Cloudflare',
 };
 
-const STEP_ORDER: WizardStep[] = ['domain', 'method', 'setup', 'status'];
+const STEP_ORDER: WizardStep[] = ['domain', 'plan', 'method', 'setup', 'status'];
+const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
 const inputClass =
   'w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400';
@@ -83,13 +84,24 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
   const currentIdx = STEP_ORDER.indexOf(step);
 
+  const handleContinueDomainStep = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanDomain = domainName.trim().toLowerCase();
+    if (!cleanDomain || !DOMAIN_REGEX.test(cleanDomain)) {
+      setError('Please enter a valid domain name (e.g. acme.com or mail.acme.com).');
+      return;
+    }
+    setError(null);
+    setStep('plan');
+  };
+
   const handleCreateDomain = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanDomain = domainName.trim().toLowerCase();
 
-    const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
-    if (!cleanDomain || !domainRegex.test(cleanDomain)) {
+    if (!cleanDomain || !DOMAIN_REGEX.test(cleanDomain)) {
       setError('Please enter a valid domain name (e.g. acme.com or mail.acme.com).');
+      setStep('domain');
       return;
     }
     if (!selectedPlanId) {
@@ -209,7 +221,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     onClose();
   };
 
-  const domainValid = domainName.trim().length > 0 && !!selectedPlanId;
+  const domainNameValid = domainName.trim().length > 0;
   const setupContinueDisabled = method === 'provider' && !connected;
 
   let headline: React.ReactNode = null;
@@ -217,6 +229,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   if (step === 'domain') {
     headline = 'Add New Domain';
     subhead = "You'll need to own this domain and be able to manage its DNS.";
+  } else if (step === 'plan') {
+    headline = 'Choose a plan';
+    subhead = 'Sets how many mailboxes this domain can create — you can change it anytime.';
   } else if (step === 'method') {
     headline = 'How do you want to set up DNS?';
     subhead = 'Pick one — you can switch later if it turns out to be the wrong call.';
@@ -278,7 +293,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
             {/* STEP 1: DOMAIN */}
             {step === 'domain' && (
-              <form onSubmit={handleCreateDomain} className="mt-8 flex flex-col gap-8">
+              <form onSubmit={handleContinueDomainStep} className="mt-8 flex flex-col gap-8">
                 <div className="flex flex-col gap-1.5">
                   <input
                     id="input-domain-name"
@@ -295,45 +310,57 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-3">
-                  <span className="text-xs font-semibold text-slate-700">Choose a plan</span>
-
-                  {plansLoading && plans.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-2">Loading plans…</p>
-                  ) : plans.length === 0 ? (
-                    <p className="text-xs text-rose-500 py-2">No plans are available right now. Please try again shortly.</p>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                      {plans.map((plan) => {
-                        const isSelected = selectedPlanId === plan.id;
-                        return (
-                          <button
-                            key={plan.id}
-                            type="button"
-                            onClick={() => setSelectedPlanId(plan.id)}
-                            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[82px] ${
-                              isSelected
-                                ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
-                                : 'border-slate-200 hover:border-slate-300 bg-white'
-                            }`}
-                          >
-                            <span className={`text-sm font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-800'}`}>
-                              {plan.seatCount} {plan.seatCount === 1 ? 'Seat' : 'Seats'}
-                            </span>
-                            <span className="text-[11px] text-slate-400 mt-1 truncate">
-                              {plan.badge || plan.description || plan.name}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div>
+                  <button
+                    type="submit"
+                    disabled={!domainNameValid}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span>Continue</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+              </form>
+            )}
+
+            {/* STEP 2: PLAN */}
+            {step === 'plan' && (
+              <form onSubmit={handleCreateDomain} className="mt-8 flex flex-col gap-8">
+                {plansLoading && plans.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-2">Loading plans…</p>
+                ) : plans.length === 0 ? (
+                  <p className="text-xs text-rose-500 py-2">No plans are available right now. Please try again shortly.</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {plans.map((plan) => {
+                      const isSelected = selectedPlanId === plan.id;
+                      return (
+                        <button
+                          key={plan.id}
+                          type="button"
+                          onClick={() => setSelectedPlanId(plan.id)}
+                          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[82px] ${
+                            isSelected
+                              ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
+                              : 'border-slate-200 hover:border-slate-300 bg-white'
+                          }`}
+                        >
+                          <span className={`text-sm font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-800'}`}>
+                            {plan.seatCount} {plan.seatCount === 1 ? 'Seat' : 'Seats'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 mt-1 truncate">
+                            {plan.badge || plan.description || plan.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <div>
                   <button
                     type="submit"
-                    disabled={loading || !domainValid}
+                    disabled={loading || !selectedPlanId}
                     className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     id="btn-submit-domain-wizard"
                   >
@@ -353,7 +380,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </form>
             )}
 
-            {/* STEP 2: METHOD */}
+            {/* STEP 3: METHOD */}
             {step === 'method' && (
               <div className="mt-8 flex flex-col gap-3">
                 <button
@@ -392,7 +419,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </div>
             )}
 
-            {/* STEP 3: SETUP */}
+            {/* STEP 4: SETUP */}
             {step === 'setup' && (
               <div className="mt-8 flex flex-col gap-6">
                 {method === 'provider' && (
@@ -594,7 +621,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </div>
             )}
 
-            {/* STEP 4: STATUS */}
+            {/* STEP 5: STATUS */}
             {step === 'status' && (
               <div className="mt-8 flex flex-col gap-5">
                 <DnsStatusPanel

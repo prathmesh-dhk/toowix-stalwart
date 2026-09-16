@@ -23,6 +23,14 @@ const MOCK_PLANS = [
   { id: 'plan-100', name: 'Enterprise', badge: 'Enterprise', description: 'Full-scale enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
 ];
 
+/** Types the domain name on step 1 and advances to the plan step. */
+async function enterDomainAndContinue(domain: string) {
+  const input = screen.getByPlaceholderText(/acme-tech\.com/i);
+  await userEvent.type(input, domain);
+  await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+  await screen.findByText('Choose a plan');
+}
+
 describe('DomainSetupModal Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -36,13 +44,16 @@ describe('DomainSetupModal Component', () => {
     });
   });
 
-  it('renders domain input and fetched plan tiers (1, 10, 25, 50, 75, 100 seats)', async () => {
+  it('renders the domain step, then the fetched plan tiers (1, 10, 25, 50, 75, 100 seats) on the next step', async () => {
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
     expect(screen.getByText('Add New Domain')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/acme-tech\.com/i)).toBeInTheDocument();
+    // Plan tiers are not shown until the domain step is completed.
+    expect(screen.queryByText('10 Seats')).not.toBeInTheDocument();
 
-    // Verify all 6 fetched plan tiers render
+    await enterDomainAndContinue('acme-tech.com');
+
     expect(await screen.findByText('1 Seat')).toBeInTheDocument();
     expect(screen.getByText('10 Seats')).toBeInTheDocument();
     expect(screen.getByText('25 Seats')).toBeInTheDocument();
@@ -78,9 +89,10 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
 
-    // Step 1: domain details
-    const input = screen.getByPlaceholderText(/acme-tech\.com/i);
-    await userEvent.type(input, 'newbrand.io');
+    // Step 1: domain name
+    await enterDomainAndContinue('newbrand.io');
+
+    // Step 2: plan
     await userEvent.click(await screen.findByText('25 Seats'));
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
@@ -89,11 +101,11 @@ describe('DomainSetupModal Component', () => {
       planId: 'plan-25',
     });
 
-    // Step 2: choose setup method
+    // Step 3: choose setup method
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
     await userEvent.click(screen.getByText('Connect a DNS Provider'));
 
-    // Step 3: GoDaddy selected by default
+    // Step 4: GoDaddy selected by default
     expect(await screen.findByText(/^Connect GoDaddy$/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/GoDaddy API Key/i), 'test-key');
     await userEvent.type(screen.getByLabelText(/GoDaddy API Secret/i), 'test-secret');
@@ -106,7 +118,7 @@ describe('DomainSetupModal Component', () => {
     });
     expect(await screen.findByText(/GoDaddy connected and verified/i)).toBeInTheDocument();
 
-    // Step 4: status
+    // Step 5: status
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     expect(await screen.findByText('DNS Setup — newbrand.io')).toBeInTheDocument();
 
@@ -147,8 +159,8 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
-    await screen.findByText('10 Seats'); // wait for plans to load (default-selected)
-    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'otherbrand.io');
+    await enterDomainAndContinue('otherbrand.io');
+    await screen.findByText('10 Seats'); // default-selected already
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
@@ -189,8 +201,8 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
+    await enterDomainAndContinue('thirdbrand.dev');
     await screen.findByText('10 Seats');
-    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'thirdbrand.dev');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
@@ -232,8 +244,8 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
+    await enterDomainAndContinue('manualbrand.io');
     await screen.findByText('10 Seats');
-    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'manualbrand.io');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
@@ -272,8 +284,8 @@ describe('DomainSetupModal Component', () => {
 
     render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
 
+    await enterDomainAndContinue('payable.io');
     await screen.findByText('10 Seats');
-    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'payable.io');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
