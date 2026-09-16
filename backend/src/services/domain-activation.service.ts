@@ -401,21 +401,20 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     metadata: { domainName: domain.domainName, previousStatus: domain.dnsStatus },
   });
 
-  if (domain.dnsStatus === 'conflict') {
-    // Only a domain that went through a connected provider can ever reach
-    // 'conflict' (manual mode never calls a provider's list-records API),
-    // so the credential is expected to still be present here.
-    const connected = await loadCredentialIfAny(domain._id.toString());
-    if (!connected) {
-      throw new DomainActivationError(
-        'The DNS provider credential for this domain is no longer connected. Ask the Tenant Admin to reconnect one.',
-        'DNS_PROVIDER_CREDENTIAL_MISSING',
-        409
-      );
-    }
+  const connected = await loadCredentialIfAny(domain._id.toString());
+
+  if (connected) {
+    // Re-check the provider's LIVE zone on every retry, whether we're resuming
+    // from 'conflict' or from 'activating' — a domain can land in 'activating'
+    // with its records never actually created (e.g. createProviderDnsRecords
+    // threw mid-flight) and public-DNS verification alone would then retry
+    // forever without ever re-attempting the create. Re-running the plan finds
+    // exactly what's still missing against the provider's real zone, instead
+    // of trusting our own local dnsStatus to reflect what's actually there.
     const { provider, credential } = connected;
     const { conflicts, toCreate } = await checkConflictsAndPlan(provider, credential, domain.domainName, records);
     if (conflicts.length > 0) {
+      domain.dnsStatus = 'conflict';
       domain.dnsConflicts = conflicts;
       await domain.save();
       await notifyActivationFailure(domain, 'conflict', conflicts);
@@ -427,6 +426,14 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     if (toCreate.length > 0) {
       await createProviderDnsRecords(provider, credential, domain.domainName, toCreate.map(toGenericRecord));
     }
+  } else if (domain.dnsStatus === 'conflict') {
+    // Credential was disconnected after the conflict was recorded — the
+    // provider's zone can't be re-checked without one.
+    throw new DomainActivationError(
+      'The DNS provider credential for this domain is no longer connected. Ask the Tenant Admin to reconnect one.',
+      'DNS_PROVIDER_CREDENTIAL_MISSING',
+      409
+    );
   }
 
   await finalizeIfVerified(domain);
