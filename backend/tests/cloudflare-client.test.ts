@@ -23,12 +23,23 @@ describe('Cloudflare Client (Offline / Mocked)', () => {
 
       const result = await client.verifyCredential('token123', 'ACME.com');
       expect(result).toEqual({ domain: 'acme.com' });
-      expect(mockRequest).toHaveBeenCalledWith('GET', '/zones?name.exact=acme.com', 'token123');
+      expect(mockRequest).toHaveBeenCalledWith('GET', '/zones?name=acme.com', 'token123');
     });
 
     it('throws CloudflareAuthError on 401', async () => {
       (client as any).request = vi.fn().mockResolvedValue({ status: 401, json: { success: false, errors: [] } });
       await expect(client.verifyCredential('bad-token', 'acme.com')).rejects.toThrow(CloudflareAuthError);
+    });
+
+    it('throws CloudflareAuthError on 400 with invalid token format', async () => {
+      (client as any).request = vi.fn().mockResolvedValue({
+        status: 400,
+        json: {
+          success: false,
+          errors: [{ code: 6003, message: 'Invalid request headers', error_chain: [{ code: 6111, message: 'Invalid format for Authorization header' }] }],
+        },
+      });
+      await expect(client.verifyCredential('bad-token-format', 'acme.com')).rejects.toThrow(CloudflareAuthError);
     });
 
     it('throws CloudflareDomainNotManagedError when no zone is found', async () => {
@@ -57,7 +68,7 @@ describe('Cloudflare Client (Offline / Mocked)', () => {
 
       const records = await client.listDnsRecords('token123', 'acme.com', 'MX', '@');
       expect(records).toEqual([{ type: 'MX', name: '@', data: 'mail.otherprovider.com', ttl: 3600, priority: 10 }]);
-      expect(mockRequest).toHaveBeenNthCalledWith(2, 'GET', '/zones/zone123/dns_records?type=MX&name.exact=acme.com', 'token123');
+      expect(mockRequest).toHaveBeenNthCalledWith(2, 'GET', '/zones/zone123/dns_records?type=MX&name=acme.com', 'token123');
     });
 
     it('converts a relative name into an FQDN for the exact-match filter', async () => {
@@ -71,7 +82,7 @@ describe('Cloudflare Client (Offline / Mocked)', () => {
       expect(mockRequest).toHaveBeenNthCalledWith(
         2,
         'GET',
-        '/zones/zone123/dns_records?type=TXT&name.exact=_dmarc.acme.com',
+        '/zones/zone123/dns_records?type=TXT&name=_dmarc.acme.com',
         'token123'
       );
     });

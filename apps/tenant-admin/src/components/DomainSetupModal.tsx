@@ -129,10 +129,15 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setConnecting(true);
     setError(null);
     try {
+      const cleanToken = token
+        .trim()
+        .replace(/^['"]+|['"]+$/g, '')
+        .replace(/^bearer\s+/i, '')
+        .trim();
       const credential =
         provider === 'godaddy'
           ? { provider: 'godaddy' as const, apiKey: apiKey.trim(), apiSecret: apiSecret.trim() }
-          : { provider, token: token.trim() };
+          : { provider, token: cleanToken };
       await api.connectDnsProviderCredential(createdDomain.id, credential);
       setConnected(true);
     } catch (err: any) {
@@ -566,12 +571,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
                       {provider === 'cloudflare' && (
                         <>
-                          <p className="text-[11px] text-slate-500 leading-relaxed">
-                            Generate an API Token at <span className="font-mono">dash.cloudflare.com</span> (My
-                            Profile &rarr; API Tokens &rarr; Create Token &rarr; "Edit zone DNS" template), scoped to
-                            this domain's zone only. Toowix verifies it manages this domain, then discards it once
-                            activation succeeds.
-                          </p>
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col gap-1.5 text-xs text-slate-600 leading-relaxed">
+                            <span className="font-semibold text-slate-800">How to create your Cloudflare API Token:</span>
+                            <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                              <li>Go to <span className="font-mono font-medium">dash.cloudflare.com</span> &rarr; My Profile &rarr; <strong>API Tokens</strong></li>
+                              <li>Click <strong>Create Token</strong> &rarr; use the <strong>Edit zone DNS</strong> template</li>
+                              <li>Under Zone Resources, choose <strong>Include &rarr; Specific zone &rarr; {createdDomain?.domainName}</strong></li>
+                              <li>Confirm permissions: <strong>Zone: DNS: Edit</strong> and <strong>Zone: Zone: Read</strong></li>
+                              <li>Copy the generated 40-character token below (do not use Global API Key)</li>
+                            </ol>
+                          </div>
                           <div className="flex flex-col gap-1.5">
                             <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-800">
                               Cloudflare API Token <span className="text-rose-500">*</span>
@@ -584,11 +593,17 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                                 id="input-provider-token"
                                 type="password"
                                 required
+                                placeholder="Paste 40-character API Token"
                                 value={token}
                                 onChange={(e) => setToken(e.target.value)}
                                 className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all font-mono"
                               />
                             </div>
+                            {/^[a-f0-9]{37}$/i.test(token.trim()) && (
+                              <p className="text-[11px] text-amber-600 font-medium">
+                                ⚠️ That looks like a Cloudflare Global API Key (37 hex chars). Cloudflare requires an <strong>API Token</strong> created via <em>My Profile &rarr; API Tokens &rarr; Create Token &rarr; "Edit zone DNS"</em> template.
+                              </p>
+                            )}
                           </div>
                         </>
                       )}

@@ -24,12 +24,76 @@ import {
 const CLOUDFLARE_API_BASE = process.env.CLOUDFLARE_API_BASE_URL || 'https://api.cloudflare.com/client/v4';
 
 export class CloudflareClient {
+  /**
+   * Cleans user-supplied tokens by removing surrounding quotes, whitespace,
+   * and accidental "Bearer " prefixes.
+   */
+  private sanitizeToken(token: string): string {
+    if (!token) return '';
+    return token
+      .trim()
+      .replace(/^['"]+|['"]+$/g, '')
+      .replace(/^bearer\s+/i, '')
+      .trim();
+  }
+
+  private extractErrorMessage(json: any, fallback: string): string {
+    const cfError = json?.errors?.[0];
+    const subError = cfError?.error_chain?.[0];
+    return subError?.message || cfError?.message || fallback;
+  }
+
+  private isAuthError(status: number, json: any): boolean {
+    if (status === 401 || status === 403) return true;
+    if (status === 400) {
+      const cfError = json?.errors?.[0];
+      const subError = cfError?.error_chain?.[0];
+      const code = cfError?.code;
+      const subCode = subError?.code;
+      const msg = `${cfError?.message || ''} ${subError?.message || ''}`.toLowerCase();
+      return (
+        code === 6003 ||
+        code === 6111 ||
+        code === 9106 ||
+        code === 9107 ||
+        code === 9109 ||
+        code === 10000 ||
+        subCode === 6111 ||
+        msg.includes('authorization') ||
+        msg.includes('token') ||
+        msg.includes('header') ||
+        msg.includes('auth')
+      );
+    }
+    return false;
+  }
+
+  private formatAuthErrorMessage(json: any, token: string): string {
+    const rawMsg = this.extractErrorMessage(json, '');
+    const cleanTok = this.sanitizeToken(token);
+
+    // Common user mistake: pasting a 37-character hexadecimal Global API Key instead of an API Token
+    if (/^[a-f0-9]{37}$/i.test(cleanTok)) {
+      return 'You entered a Global API Key. Cloudflare requires an API Token created with the "Edit zone DNS" template (with Zone:DNS:Edit and Zone:Zone:Read permissions).';
+    }
+
+    if (rawMsg) {
+      if (/permission|requires/i.test(rawMsg)) {
+        return `Cloudflare permission error: ${rawMsg}. Make sure the token has both 'Zone: DNS: Edit' and 'Zone: Zone: Read' permissions.`;
+      }
+      return `Cloudflare authentication error: ${rawMsg}`;
+    }
+
+    return 'Invalid or expired Cloudflare API token. Ensure it has "Zone: DNS: Edit" and "Zone: Zone: Read" permissions for this domain.';
+  }
+
   private async request(
     method: 'GET' | 'POST',
     path: string,
     token: string,
     body?: unknown
   ): Promise<{ status: number; json: any }> {
+    const cleanToken = this.sanitizeToken(token);
     const payload = body !== undefined ? JSON.stringify(body) : undefined;
     const url = new URL(`${CLOUDFLARE_API_BASE}${path}`);
 
@@ -40,7 +104,7 @@ export class CloudflareClient {
           method,
           timeout: 10000,
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${cleanToken}`,
             'Content-Type': 'application/json',
             ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
           },
@@ -83,15 +147,29 @@ export class CloudflareClient {
 
   private async resolveZone(token: string, domain: string): Promise<CloudflareZone> {
     const normalized = domain.trim().toLowerCase();
-    const { status, json } = await this.request('GET', `/zones?name.exact=${encodeURIComponent(normalized)}`, token);
+    const { status, json } = await this.request('GET', `/zones?name=${encodeURIComponent(normalized)}`, token);
 
-    if (status === 401 || status === 403) {
-      throw new CloudflareAuthError(undefined, json);
+    if (this.isAuthError(status, json)) {
+      throw new CloudflareAuthError(this.formatAuthErrorMessage(json, token), json);
     }
     if (status >= 400 || json?.success === false) {
-      throw new CloudflareError(`Failed to look up Cloudflare zone: HTTP ${status}`, 'CLOUDFLARE_ZONE_LOOKUP_FAILED', json);
+      const msg = this.extractErrorMessage(json, `Failed to look up Cloudflare zone: HTTP ${status}`);
+      throw new CloudflareError(msg, 'CLOUDFLARE_ZONE_LOOKUP_FAILED', json);
     }
-    const zone = json?.result?.[0];
+
+    const zones: any[] = Array.isArray(json?.result) ? json.result : [];
+    let zone = zones.find((z) => z.name.toLowerCase() === normalized);
+
+    // If not found and domain might be a subdomain (e.g. mail.domain.com), check apex domain
+    if (!zone && normalized.split('.').length > 2) {
+      const parts = normalized.split('.');
+      const apex = parts.slice(-2).join('.');
+      const apexRes = await this.request('GET', `/zones?name=${encodeURIComponent(apex)}`, token);
+      if (apexRes.status === 200 && Array.isArray(apexRes.json?.result)) {
+        zone = apexRes.json.result.find((z: any) => z.name.toLowerCase() === apex);
+      }
+    }
+
     if (!zone) {
       throw new CloudflareDomainNotManagedError(normalized, json);
     }
@@ -124,15 +202,16 @@ export class CloudflareClient {
 
     const { status, json } = await this.request(
       'GET',
-      `/zones/${zone.id}/dns_records?type=${encodeURIComponent(type)}&name.exact=${encodeURIComponent(fqdn)}`,
+      `/zones/${zone.id}/dns_records?type=${encodeURIComponent(type)}&name=${encodeURIComponent(fqdn)}`,
       token
     );
 
-    if (status === 401 || status === 403) {
-      throw new CloudflareAuthError(undefined, json);
+    if (this.isAuthError(status, json)) {
+      throw new CloudflareAuthError(this.formatAuthErrorMessage(json, token), json);
     }
     if (status >= 400 || json?.success === false) {
-      throw new CloudflareError(`Failed to list DNS records: HTTP ${status}`, 'CLOUDFLARE_LIST_FAILED', json);
+      const msg = this.extractErrorMessage(json, `Failed to list DNS records: HTTP ${status}`);
+      throw new CloudflareError(msg, 'CLOUDFLARE_LIST_FAILED', json);
     }
     const records = Array.isArray(json?.result) ? json.result : [];
     return records.map((r: any) => ({ type, name, data: r.content, ttl: r.ttl, priority: r.priority }));
@@ -140,10 +219,7 @@ export class CloudflareClient {
 
   /**
    * Additively creates DNS records — Cloudflare's create endpoint makes one
-   * brand-new record per call and never touches existing ones, so unlike
-   * GoDaddy/Hostinger there is no overwrite flag to worry about. Conflicts
-   * must still be checked with listDnsRecords() first (this codebase's own
-   * "never overwrite a conflict" rule, not a Cloudflare API requirement).
+   * brand-new record per call and never touches existing ones.
    */
   async createDnsRecords(
     token: string,
@@ -162,11 +238,12 @@ export class CloudflareClient {
         ...(r.type === 'MX' && r.priority != null ? { priority: r.priority } : {}),
       });
 
-      if (status === 401 || status === 403) {
-        throw new CloudflareAuthError(undefined, json);
+      if (this.isAuthError(status, json)) {
+        throw new CloudflareAuthError(this.formatAuthErrorMessage(json, token), json);
       }
       if (status >= 400 || json?.success === false) {
-        throw new CloudflareError(`Failed to create DNS record ${r.type} ${r.name}: HTTP ${status}`, 'CLOUDFLARE_CREATE_FAILED', json);
+        const msg = this.extractErrorMessage(json, `Failed to create DNS record ${r.type} ${r.name}: HTTP ${status}`);
+        throw new CloudflareError(msg, 'CLOUDFLARE_CREATE_FAILED', json);
       }
     }
   }
