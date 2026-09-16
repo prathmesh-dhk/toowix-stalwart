@@ -15,6 +15,10 @@ import {
   IActivationToken,
   AuditLogModel,
   IAuditLog,
+  PlanModel,
+  IPlan,
+  DomainSubscriptionModel,
+  IDomainSubscription,
 } from '../../src/db/models';
 import { hashPassword, generateOidcToken } from '../../src/auth/service';
 
@@ -45,6 +49,41 @@ export async function createTestDomain(tenantId: Types.ObjectId | string, overri
     verificationStatus: 'verified',
     status: 'active',
     dnsStatus: overrides.dnsStatus || 'active',
+    ...overrides,
+  });
+}
+
+export async function createTestPlan(overrides: Partial<IPlan> = {}): Promise<IPlan> {
+  return PlanModel.create({
+    name: overrides.name || uniqueId('Plan'),
+    seatCount: 10,
+    displayOrder: 1,
+    isActive: true,
+    billingMode: 'fixed',
+    monthlyPriceInPaise: 0,
+    ...overrides,
+  });
+}
+
+/**
+ * Seeds an active DomainSubscription so mailbox creation clears the billing
+ * gate in mailbox.service.ts (a domain needs a non-incomplete/canceled/
+ * suspended subscription before its first mailbox). Creates a Plan too if
+ * none is passed — most tests don't care which plan, just that one exists.
+ */
+export async function createTestActiveSubscription(
+  domainId: Types.ObjectId | string,
+  tenantId: Types.ObjectId | string,
+  overrides: Partial<IDomainSubscription> = {}
+): Promise<IDomainSubscription> {
+  const planId = overrides.planId || (await createTestPlan())._id;
+  return DomainSubscriptionModel.create({
+    domainId,
+    tenantId,
+    planId,
+    stripeSubscriptionId: uniqueId('test-sub'),
+    stripeSubscriptionItemId: uniqueId('test-item'),
+    status: 'trialing',
     ...overrides,
   });
 }

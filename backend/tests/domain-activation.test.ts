@@ -203,8 +203,11 @@ describe('domain-activation.service', () => {
       const result = await activateDomain(domain._id.toString(), actor);
 
       expect(result.dnsStatus).toBe('active');
+      // Trial start is no longer triggered by DNS activation — Stripe's own
+      // trial_period_days (set when a Checkout subscription is created) is
+      // the sole authoritative trial clock as of the billing feature.
       const tenant = await TenantModel.findById(tenantId);
-      expect(tenant?.trialStartedAt).toBeTruthy();
+      expect(tenant?.trialStartedAt).toBeFalsy();
     });
 
     it('goes conflict -> stores dnsConflicts -> does not create any records when MX already exists elsewhere', async () => {
@@ -240,10 +243,11 @@ describe('domain-activation.service', () => {
       expect(result.activatedAt).toBeTruthy();
       expect(result.stalwartDomainId).toBe('stalwart-dom-1');
 
-      // Primary domain activating for the first time starts the trial.
+      // Trial start is no longer triggered by DNS activation — see the
+      // manual-mode test above for the full rationale.
       const tenant = await TenantModel.findById(tenantId);
-      expect(tenant?.trialStartedAt).toBeTruthy();
-      expect(tenant?.trialEndsAt).toBeTruthy();
+      expect(tenant?.trialStartedAt).toBeFalsy();
+      expect(tenant?.trialEndsAt).toBeFalsy();
 
       // Credential is purged once activation succeeds.
       const cred = await DomainDnsCredentialModel.findOne({ domainId });

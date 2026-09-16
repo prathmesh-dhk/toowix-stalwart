@@ -38,6 +38,13 @@ export interface DomainActivationFailedEmailParams {
   conflictDetails?: Array<{ type: string; name: string; foundValue: string }>;
 }
 
+export interface BillingGraceStartedEmailParams {
+  to: string;
+  recipientName?: string;
+  domainName: string;
+  gracePeriodEndsAt: Date;
+}
+
 export interface EmailDispatchResult {
   success: boolean;
   activationLink: string;
@@ -818,6 +825,68 @@ Existing mail service and mailbox data on other active domains are unaffected.
       return { success: true, messageId: info.messageId };
     } catch (err: any) {
       console.warn(`[EMAIL DISPATCH: FALLBACK / LOGGED] Domain Activation Failed email to ${params.to}: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async sendBillingGraceStartedEmail(
+    params: BillingGraceStartedEmailParams
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const deadline = params.gracePeriodEndsAt.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+    const subject = `Payment failed for ${params.domainName} — please update your payment method`;
+
+    const text = `TOOWIX MAIL PLATFORM — BILLING NOTICE
+
+Hello ${params.recipientName || 'Administrator'},
+
+We were unable to charge your payment method for ${params.domainName}.
+
+Mail service is unaffected for now — you have until ${deadline} (7 days) to
+update your payment method before service is paused for this domain.
+
+Update your payment method from the Billing tab in Toowix Tenant Admin.
+
+— The Toowix Platform Team`.trim();
+
+    const contentHtml = `
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.6;">
+        Hello ${params.recipientName || 'Administrator'},
+      </p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.6;">
+        We were unable to charge your payment method for <strong>${params.domainName}</strong>.
+      </p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.6;">
+        Mail service is unaffected for now — you have until <strong>${deadline}</strong> (7 days) to update
+        your payment method before service is paused for this domain.
+      </p>
+      <p style="margin: 0; font-size: 13px; color: #64748B; line-height: 1.6;">
+        Update your payment method from the Billing tab in Toowix Tenant Admin.
+      </p>
+    `;
+
+    const html = renderEmailShell({
+      title: `Payment Failed: ${params.domainName}`,
+      previewText: `Update your payment method by ${deadline} to avoid service interruption.`,
+      contentHtml,
+    });
+
+    try {
+      const transporter = this.getTransporter();
+      const info = await transporter.sendMail({
+        from: config.smtp.from,
+        to: params.to,
+        subject,
+        text,
+        html,
+      });
+      console.log(`[EMAIL DISPATCH: SUCCESS] Billing Grace Started -> ${params.to}`);
+      return { success: true, messageId: info.messageId };
+    } catch (err: any) {
+      console.warn(`[EMAIL DISPATCH: FALLBACK / LOGGED] Billing Grace Started email to ${params.to}: ${err.message}`);
       return { success: false, error: err.message };
     }
   }

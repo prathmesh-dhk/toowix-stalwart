@@ -10,6 +10,8 @@ import {
   DomainModel,
   MailboxModel,
   AuditLogModel,
+  PlanModel,
+  DomainSubscriptionModel,
 } from '../src/db/models';
 import { generateOidcToken } from '../src/auth/service';
 import { stalwartClient } from '../src/stalwart/client';
@@ -79,6 +81,10 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
     await AdminUserModel.deleteMany({});
     await MailboxModel.deleteMany({});
     await AuditLogModel.deleteMany({});
+    await PlanModel.deleteMany({});
+    await DomainSubscriptionModel.deleteMany({});
+
+    const testPlan = await PlanModel.create({ name: 'Test Plan', seatCount: 10, displayOrder: 1, isActive: true });
 
     // 1. Super Admin
     const superAdmin = await AdminUserModel.create({
@@ -114,6 +120,14 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
       dnsStatus: 'active',
     });
     domainAId = domainA._id.toString();
+    await DomainSubscriptionModel.create({
+      domainId: domainA._id,
+      tenantId: tenantA._id,
+      planId: testPlan._id,
+      stripeSubscriptionId: 'test-sub-a',
+      stripeSubscriptionItemId: 'test-item-a',
+      status: 'trialing',
+    });
 
     const tenantAdminA = await AdminUserModel.create({
       email: 'bruce@waynecorp.test',
@@ -149,6 +163,14 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
       dnsStatus: 'active',
     });
     domainBId = domainB._id.toString();
+    await DomainSubscriptionModel.create({
+      domainId: domainB._id,
+      tenantId: tenantB._id,
+      planId: testPlan._id,
+      stripeSubscriptionId: 'test-sub-b',
+      stripeSubscriptionItemId: 'test-item-b',
+      status: 'trialing',
+    });
 
     const tenantAdminB = await AdminUserModel.create({
       email: 'tony@starkcorp.test',

@@ -83,15 +83,21 @@ export async function seedDefaultPlans(): Promise<void> {
     // Mirrors the tier values every seat picker across the app used to
     // hardcode independently. The 50-seat plan is flagged default to match
     // today's self-registration/application-approval behavior exactly.
+    // All fixed-tier prices seed at 0 paise — a Super Admin sets real ₹
+    // pricing via the Plan CRU before Checkout is usable for that plan.
+    // Custom is the sole 'metered' (pay-as-you-go) plan; seatCount on it is
+    // a technical ceiling only (Domain.mailboxLimit safety cap), never a
+    // pricing input — metered plans bill on actual usage, not seat count.
     await PlanModel.insertMany([
-      { name: 'Individual', badge: 'Solo', seatCount: 1, displayOrder: 1, isActive: true, isDefault: false },
-      { name: 'Team', badge: 'Standard', seatCount: 10, displayOrder: 2, isActive: true, isDefault: false },
-      { name: 'Growth', badge: 'Growth', seatCount: 25, displayOrder: 3, isActive: true, isDefault: false },
-      { name: 'Business', badge: 'Business', seatCount: 50, displayOrder: 4, isActive: true, isDefault: true },
-      { name: 'Scale', badge: 'Scale', seatCount: 75, displayOrder: 5, isActive: true, isDefault: false },
-      { name: 'Enterprise', badge: 'Enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false },
+      { name: 'Individual', badge: 'Solo', seatCount: 1, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
+      { name: 'Team', badge: 'Standard', seatCount: 10, displayOrder: 2, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
+      { name: 'Growth', badge: 'Growth', seatCount: 25, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
+      { name: 'Business', badge: 'Business', seatCount: 50, displayOrder: 4, isActive: true, isDefault: true, billingMode: 'fixed', monthlyPriceInPaise: 0 },
+      { name: 'Scale', badge: 'Scale', seatCount: 75, displayOrder: 5, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
+      { name: 'Enterprise', badge: 'Enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 0 },
+      { name: 'Custom', badge: 'Pay as you go', seatCount: 99999, displayOrder: 7, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 0 },
     ]);
-    console.log('[Seed] Initialized default Plans (Individual..Enterprise)');
+    console.log('[Seed] Initialized default Plans (Individual..Enterprise, Custom)');
   } catch (err) {
     console.error('[Seed Plans Error]:', err);
     throw err;

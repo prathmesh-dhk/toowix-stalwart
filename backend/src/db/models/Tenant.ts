@@ -17,6 +17,10 @@ export interface ITenant extends Document {
   mailboxCount: number;
   trialStartedAt?: Date | null;
   trialEndsAt?: Date | null;
+  // One Stripe Customer per Tenant — created lazily on first Checkout for
+  // any of the tenant's domains, shared (one payment method) across every
+  // domain's own Subscription. See backend/src/services/billing.service.ts.
+  stripeCustomerId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +75,11 @@ const TenantSchema = new Schema<ITenant>(
     trialEndsAt: {
       type: Date,
       default: null,
+    },
+    stripeCustomerId: {
+      type: String,
+      default: null,
+      index: true,
     },
   },
   {

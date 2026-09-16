@@ -28,4 +28,9 @@ export const config = {
   },
   mailServerIps: process.env.MAIL_SERVER_IPS || '103.13.114.138 103.13.114.227',
   mailHostname: process.env.MAIL_HOSTNAME || 'mail.toowix.com',
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  },
 };

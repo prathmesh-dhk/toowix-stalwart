@@ -16,6 +16,8 @@ import {
   ActivationTokenModel,
   BackupRecordModel,
   AuditLogModel,
+  PlanModel,
+  DomainSubscriptionModel,
 } from '../src/db/models';
 import { generateOidcToken, hashPassword } from '../src/auth/service';
 import { stalwartClient } from '../src/stalwart/client';
@@ -27,6 +29,7 @@ let tempBackupsDir: string;
 describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetration Testing', () => {
   let superAdminToken: string;
   let superAdminId: string;
+  let testPlanId: string;
 
   let tenantAId: string;
   let domainAId: string;
@@ -105,6 +108,11 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
     await ActivationTokenModel.deleteMany({});
     await BackupRecordModel.deleteMany({});
     await AuditLogModel.deleteMany({});
+    await PlanModel.deleteMany({});
+    await DomainSubscriptionModel.deleteMany({});
+
+    const testPlan = await PlanModel.create({ name: 'Test Plan', seatCount: 10, displayOrder: 1, isActive: true });
+    testPlanId = testPlan._id.toString();
 
     // 1. Super Admin
     const superAdmin = await AdminUserModel.create({
@@ -140,6 +148,14 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       dnsStatus: 'active',
     });
     domainAId = (domainA._id as any).toString();
+    await DomainSubscriptionModel.create({
+      domainId: domainA._id,
+      tenantId: tenantA._id,
+      planId: testPlanId,
+      stripeSubscriptionId: 'test-sub-a',
+      stripeSubscriptionItemId: 'test-item-a',
+      status: 'trialing',
+    });
 
     const adminA = await AdminUserModel.create({
       email: 'admin@alpha.test',
@@ -174,6 +190,14 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       dnsStatus: 'active',
     });
     domainBId = (domainB._id as any).toString();
+    await DomainSubscriptionModel.create({
+      domainId: domainB._id,
+      tenantId: tenantB._id,
+      planId: testPlanId,
+      stripeSubscriptionId: 'test-sub-b',
+      stripeSubscriptionItemId: 'test-item-b',
+      status: 'trialing',
+    });
 
     const adminB = await AdminUserModel.create({
       email: 'admin@beta.test',
@@ -498,6 +522,18 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       // -----------------------------------------------------------------------
       // Domain is activated by Super Admin before mailbox creation unlocks
       await DomainModel.updateOne({ tenantId: newTenantId }, { dnsStatus: 'active' });
+
+      // Billing gate: this domain needs an active subscription before its
+      // first mailbox can be created (see mailbox.service.ts).
+      const newDomain = await DomainModel.findOne({ tenantId: newTenantId });
+      await DomainSubscriptionModel.create({
+        domainId: newDomain!._id,
+        tenantId: newTenantId,
+        planId: testPlanId,
+        stripeSubscriptionId: 'test-sub-wayne',
+        stripeSubscriptionItemId: 'test-item-wayne',
+        status: 'trialing',
+      });
 
       const mailboxRes = await request(app)
         .post('/api/tenants/me/mailboxes')

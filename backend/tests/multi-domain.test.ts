@@ -7,6 +7,7 @@ import { AdminUserModel } from '../src/db/models/AdminUser';
 import { TenantModel } from '../src/db/models/Tenant';
 import { DomainModel } from '../src/db/models/Domain';
 import { PlanModel } from '../src/db/models/Plan';
+import { DomainSubscriptionModel } from '../src/db/models/DomainSubscription';
 import { MailboxModel } from '../src/db/models/Mailbox';
 import { generateOidcToken } from '../src/auth/service';
 import { stalwartClient } from '../src/stalwart/client';
@@ -44,6 +45,7 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     await DomainModel.deleteMany({});
     await MailboxModel.deleteMany({});
     await PlanModel.deleteMany({});
+    await DomainSubscriptionModel.deleteMany({});
 
     const plan10 = await PlanModel.create({ name: 'Team', seatCount: 10, displayOrder: 1, isActive: true });
     const plan25 = await PlanModel.create({ name: 'Growth', seatCount: 25, displayOrder: 2, isActive: true });
@@ -154,6 +156,17 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       isPrimary: false,
     });
 
+    for (const d of [d1, d2]) {
+      await DomainSubscriptionModel.create({
+        domainId: d._id,
+        tenantId,
+        planId: plan10Id,
+        stripeSubscriptionId: `test-sub-${d.domainName}`,
+        stripeSubscriptionItemId: `test-item-${d.domainName}`,
+        status: 'trialing',
+      });
+    }
+
     // Create mailbox under d1
     const mb1Res = await request(app)
       .post('/api/tenants/me/mailboxes')
@@ -211,6 +224,14 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       status: 'active',
       dnsStatus: 'active',
       isPrimary: true,
+    });
+    await DomainSubscriptionModel.create({
+      domainId: d._id,
+      tenantId,
+      planId: plan10Id,
+      stripeSubscriptionId: 'test-sub-singletier',
+      stripeSubscriptionItemId: 'test-item-singletier',
+      status: 'trialing',
     });
 
     // 1st mailbox succeeds

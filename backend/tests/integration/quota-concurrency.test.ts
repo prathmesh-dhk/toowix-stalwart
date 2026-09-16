@@ -7,8 +7,9 @@ import {
   createTestTenant,
   createTestDomain,
   createTestTenantAdmin,
+  createTestActiveSubscription,
 } from '../setup/factories';
-import { TenantModel, DomainModel, AdminUserModel, MailboxModel, AuditLogModel } from '../../src/db/models';
+import { TenantModel, DomainModel, AdminUserModel, MailboxModel, AuditLogModel, PlanModel, DomainSubscriptionModel } from '../../src/db/models';
 import { stalwartClient } from '../../src/stalwart/client';
 
 let mongoServer: MongoMemoryServer;
@@ -41,6 +42,8 @@ describe('Concurrency & Quota Integrity: Race-Condition Defense', () => {
     await AdminUserModel.deleteMany({});
     await MailboxModel.deleteMany({});
     await AuditLogModel.deleteMany({});
+    await PlanModel.deleteMany({});
+    await DomainSubscriptionModel.deleteMany({});
     vi.clearAllMocks();
   });
 
@@ -57,6 +60,7 @@ describe('Concurrency & Quota Integrity: Race-Condition Defense', () => {
       domainName: 'concurrency.test',
       stalwartDomainId: 'stalwart-dom-1',
     });
+    await createTestActiveSubscription(domain._id, tenant._id);
 
     const tenantAdmin = await createTestTenantAdmin(tenant._id, {
       email: 'admin@concurrency.test',
@@ -115,10 +119,11 @@ describe('Concurrency & Quota Integrity: Race-Condition Defense', () => {
       status: 'active',
     });
 
-    await createTestDomain(tenant._id, {
+    const rollbackDomain = await createTestDomain(tenant._id, {
       domainName: 'concurrency.test',
       stalwartDomainId: 'stalwart-dom-1',
     });
+    await createTestActiveSubscription(rollbackDomain._id, tenant._id);
 
     const tenantAdmin = await createTestTenantAdmin(tenant._id, {
       email: 'admin@rollback.test',

@@ -18,6 +18,8 @@ function serializePlan(plan: any) {
     displayOrder: plan.displayOrder,
     isActive: plan.isActive,
     isDefault: plan.isDefault,
+    billingMode: plan.billingMode,
+    monthlyPriceInPaise: plan.monthlyPriceInPaise,
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
   };
@@ -43,6 +45,8 @@ const createPlanSchema = z.object({
   displayOrder: z.number().int().optional(),
   isActive: z.boolean().optional(),
   isDefault: z.boolean().optional(),
+  billingMode: z.enum(['fixed', 'metered']).optional(),
+  monthlyPriceInPaise: z.number().int().min(0, 'Price cannot be negative').optional(),
 });
 
 async function unsetOtherDefaults(exceptId?: string) {
@@ -68,6 +72,8 @@ plansRouter.post('/', requireSuperAdmin, async (req: Request, res: Response): Pr
     displayOrder: data.displayOrder ?? 0,
     isActive: data.isActive ?? true,
     isDefault: data.isDefault ?? false,
+    billingMode: data.billingMode ?? 'fixed',
+    monthlyPriceInPaise: data.monthlyPriceInPaise ?? 0,
   });
 
   if (plan.isDefault) {
@@ -114,6 +120,14 @@ plansRouter.patch('/:id', requireSuperAdmin, async (req: Request, res: Response)
   if (data.displayOrder !== undefined) plan.displayOrder = data.displayOrder;
   if (data.isActive !== undefined) plan.isActive = data.isActive;
   if (data.isDefault !== undefined) plan.isDefault = data.isDefault;
+  if (data.billingMode !== undefined) plan.billingMode = data.billingMode;
+  if (data.monthlyPriceInPaise !== undefined) plan.monthlyPriceInPaise = data.monthlyPriceInPaise;
+  // Stripe Price objects are immutable — a price/mode change means the
+  // cached stripePriceId is stale; clear it so the next checkout creates
+  // a fresh Price instead of billing the old amount.
+  if (data.monthlyPriceInPaise !== undefined || data.billingMode !== undefined) {
+    plan.stripePriceId = null;
+  }
 
   await plan.save();
 

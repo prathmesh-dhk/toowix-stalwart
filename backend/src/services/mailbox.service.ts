@@ -5,6 +5,8 @@ import { DomainModel } from '../db/models/Domain';
 import { stalwartClient } from '../stalwart/client';
 import { logAudit } from '../audit/service';
 import { StalwartAccountExistsError, StalwartError } from '../stalwart/errors';
+import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
+import { reportMeteredUsage } from './billing.service';
 
 export interface CreateMailboxInput {
   localPart: string;
@@ -127,6 +129,23 @@ export class MailboxService {
         status: 403,
         code: 'DOMAIN_NOT_ACTIVATED',
         message: `Domain '${domain.domainName}' is pending activation by a Super Admin. Mailboxes can only be created once the domain is activated.`,
+      };
+    }
+
+    // 2c. Billing gate: a domain must have a non-incomplete/canceled/suspended
+    // subscription before its first mailbox can be created. Domain setup and
+    // DNS activation never require this — only actually provisioning a
+    // mailbox does (see backend/src/services/billing.service.ts). 'trialing',
+    // 'active', and 'grace' (7-day full-access window on a failed payment)
+    // all still allow mailbox creation.
+    const subscription = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+    if (!subscription || ['incomplete', 'canceled', 'suspended'].includes(subscription.status)) {
+      // Rollback quota
+      await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
+      throw {
+        status: 402,
+        code: 'PAYMENT_REQUIRED',
+        message: `Add a payment method for domain '${domain.domainName}' before creating mailboxes.`,
       };
     }
 
@@ -261,6 +280,12 @@ export class MailboxService {
       metadata: { address: fullAddress, stalwartAccountId: stalwartAccount.id },
       success: true,
     });
+
+    // Best-effort: update the running peak for metered (Custom-plan) domains.
+    // Never let a Stripe hiccup block mailbox creation itself.
+    reportMeteredUsage(domain._id.toString()).catch((err) =>
+      console.warn(`[MailboxService] reportMeteredUsage failed for domain ${domain._id}:`, err.message)
+    );
 
     return {
       id: mailboxDoc._id.toString(),

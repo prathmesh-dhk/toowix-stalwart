@@ -3,6 +3,7 @@ import { config } from './config';
 import { connectDatabase } from './db/connection';
 import { seedAll } from './db/seed';
 import * as dnsPropagationSweepJob from './jobs/dns-propagation-sweep.job';
+import * as billingGraceSweepJob from './jobs/billing-grace-sweep.job';
 
 let memoryServer: any = null;
 
@@ -47,6 +48,7 @@ async function startServer() {
     await seedAll();
 
     dnsPropagationSweepJob.start();
+    billingGraceSweepJob.start();
 
     const server = app.listen(config.port, () => {
       console.log(`[Server] Toowix Mail Backend listening on http://localhost:${config.port}`);
@@ -57,6 +59,7 @@ async function startServer() {
     const shutdown = async () => {
       console.log('\n[Server] Shutting down gracefully...');
       dnsPropagationSweepJob.stop();
+      billingGraceSweepJob.stop();
       server.close();
       if (memoryServer) {
         await memoryServer.stop();

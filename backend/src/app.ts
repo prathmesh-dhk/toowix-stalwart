@@ -15,6 +15,8 @@ import { tenantMeRouter } from './api/tenant.routes';
 import { tenantMailboxRouter, mailboxRouter } from './api/mailbox.routes';
 import { auditRouter } from './api/audit.routes';
 import { plansRouter } from './api/plans.routes';
+import { tenantBillingRouter } from './api/billing.routes';
+import { stripeWebhookRouter } from './api/stripe-webhook.routes';
 import { metricsService } from './services/metrics.service';
 
 export const app = express();
@@ -45,6 +47,10 @@ app.use(cors({
   credentials: true,
 }));
 
+// Mounted BEFORE express.json() — Stripe webhook signature verification
+// needs the exact raw request body (see stripe-webhook.routes.ts).
+app.use('/api/webhooks/stripe', stripeWebhookRouter);
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(metricsService.middleware());
@@ -56,6 +62,7 @@ app.use('/api/super-admin', superAdminRouter);
 app.use('/api/platform/tenants', platformTenantRouter);
 app.use('/api/tenants', tenantMeRouter);
 app.use('/api/tenants/me/mailboxes', tenantMailboxRouter);
+app.use('/api/tenants/me/billing', tenantBillingRouter);
 app.use('/api/mailboxes', mailboxRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/plans', plansRouter);

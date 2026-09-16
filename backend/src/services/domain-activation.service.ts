@@ -30,8 +30,6 @@ export class DomainActivationError extends Error {
   }
 }
 
-const TRIAL_DAYS = 30;
-
 /**
  * Verifies a tenant-supplied DNS provider credential actually manages the
  * domain, then stores it encrypted. Called from the Tenant Admin "Connect
@@ -223,22 +221,10 @@ async function finalizeIfVerified(domain: IDomain): Promise<void> {
     metadata: { domainName: domain.domainName },
   });
 
-  if (domain.isPrimary) {
-    const tenant = await TenantModel.findById(domain.tenantId);
-    if (tenant && !tenant.trialStartedAt) {
-      tenant.trialStartedAt = new Date();
-      tenant.trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-      await tenant.save();
-      await logAudit({
-        actorRole: 'SYSTEM',
-        action: 'TENANT_TRIAL_STARTED',
-        resource: 'TENANT',
-        resourceId: tenant._id.toString(),
-        tenantId: tenant._id.toString(),
-        metadata: { trialStartedAt: tenant.trialStartedAt, trialEndsAt: tenant.trialEndsAt },
-      });
-    }
-  }
+  // Trial start is no longer triggered here — Stripe's own trial_period_days
+  // (set when a domain's Checkout subscription is created) is the sole
+  // authoritative trial clock as of the billing feature. DNS activation and
+  // payment are deliberately independent gates; see billing.service.ts.
 
   // Per requirements: DNS provider authorization is not retained once activation succeeds.
   await DomainDnsCredentialModel.deleteOne({ domainId: domain._id });
