@@ -88,7 +88,7 @@ export class CloudflareClient {
   }
 
   private async request(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'DELETE',
     path: string,
     token: string,
     body?: unknown
@@ -195,7 +195,7 @@ export class CloudflareClient {
     domain: string,
     type: string,
     name: string
-  ): Promise<Array<{ type: string; name: string; data: string; ttl?: number; priority?: number }>> {
+  ): Promise<Array<{ type: string; name: string; data: string; ttl?: number; priority?: number; id?: string }>> {
     const normalized = domain.trim().toLowerCase();
     const zone = await this.resolveZone(token, normalized);
     const fqdn = this.fqdn(normalized, name);
@@ -214,7 +214,7 @@ export class CloudflareClient {
       throw new CloudflareError(msg, 'CLOUDFLARE_LIST_FAILED', json);
     }
     const records = Array.isArray(json?.result) ? json.result : [];
-    return records.map((r: any) => ({ type, name, data: r.content, ttl: r.ttl, priority: r.priority }));
+    return records.map((r: any) => ({ type, name, data: r.content, ttl: r.ttl, priority: r.priority, id: r.id }));
   }
 
   /**
@@ -245,6 +245,73 @@ export class CloudflareClient {
         const msg = this.extractErrorMessage(json, `Failed to create DNS record ${r.type} ${r.name}: HTTP ${status}`);
         throw new CloudflareError(msg, 'CLOUDFLARE_CREATE_FAILED', json);
       }
+    }
+  }
+
+  private async deleteDnsRecord(token: string, zoneId: string, recordId: string): Promise<void> {
+    const { status, json } = await this.request('DELETE', `/zones/${zoneId}/dns_records/${recordId}`, token);
+    if (this.isAuthError(status, json)) {
+      throw new CloudflareAuthError(this.formatAuthErrorMessage(json, token), json);
+    }
+    if (status >= 400 || json?.success === false) {
+      const msg = this.extractErrorMessage(json, `Failed to delete DNS record: HTTP ${status}`);
+      throw new CloudflareError(msg, 'CLOUDFLARE_DELETE_FAILED', json);
+    }
+  }
+
+  /**
+   * Cloudflare has no atomic "replace this group" endpoint (unlike GoDaddy's
+   * PUT-by-type-name or Hostinger's scoped overwrite) — multiple records can
+   * coexist at the same (type, name), which is normal DNS there, not a
+   * conflict. So this synchronizes the group to the caller's desired final
+   * set by diffing: existing records whose value doesn't match anything in
+   * `records` are deleted one-by-one, and desired values not already present
+   * are created. A desired value already present is left untouched (and
+   * never deleted+recreated), so unrelated records the caller chose to
+   * preserve in `records` survive unless the network call itself fails.
+   */
+  async replaceDnsRecordGroup(
+    token: string,
+    domain: string,
+    type: string,
+    name: string,
+    records: Array<{ data: string; ttl?: number; priority?: number | null }>
+  ): Promise<void> {
+    const normalized = domain.trim().toLowerCase();
+    const zone = await this.resolveZone(token, normalized);
+    const fqdn = this.fqdn(normalized, name);
+
+    const { status, json } = await this.request(
+      'GET',
+      `/zones/${zone.id}/dns_records?type=${encodeURIComponent(type)}&name=${encodeURIComponent(fqdn)}`,
+      token
+    );
+    if (this.isAuthError(status, json)) {
+      throw new CloudflareAuthError(this.formatAuthErrorMessage(json, token), json);
+    }
+    if (status >= 400 || json?.success === false) {
+      const msg = this.extractErrorMessage(json, `Failed to list DNS records: HTTP ${status}`);
+      throw new CloudflareError(msg, 'CLOUDFLARE_LIST_FAILED', json);
+    }
+    const existing: Array<{ id: string; content: string }> = Array.isArray(json?.result) ? json.result : [];
+
+    const normalize = (v: string) => v.trim().replace(/\.$/, '').replace(/\s+/g, ' ').toLowerCase();
+    const desiredValues = new Set(records.map((r) => normalize(r.data)));
+    const existingValues = new Set(existing.map((r) => normalize(r.content)));
+
+    for (const e of existing) {
+      if (!desiredValues.has(normalize(e.content))) {
+        await this.deleteDnsRecord(token, zone.id, e.id);
+      }
+    }
+
+    const toCreate = records.filter((r) => !existingValues.has(normalize(r.data)));
+    if (toCreate.length > 0) {
+      await this.createDnsRecords(
+        token,
+        normalized,
+        toCreate.map((r) => ({ type, name, data: r.data, ttl: r.ttl, priority: r.priority }))
+      );
     }
   }
 }

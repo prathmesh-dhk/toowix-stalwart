@@ -154,6 +154,46 @@ export class HostingerClient {
       throw new HostingerError(`Failed to create DNS records: HTTP ${status}`, 'HOSTINGER_CREATE_FAILED', json);
     }
   }
+
+  /**
+   * Fully replaces the record set at one (type, name) group by sending
+   * `overwrite: true` scoped to just that single group — Hostinger only
+   * deletes/replaces the exact name+type groups present in the payload,
+   * leaving every other group in the zone untouched. The caller passes the
+   * full desired final set (any foreign records to preserve within this
+   * group, plus Toowix's own value) so nothing unrelated is lost.
+   */
+  async replaceDnsRecordGroup(
+    token: string,
+    domain: string,
+    type: string,
+    name: string,
+    records: Array<{ data: string; ttl?: number; priority?: number | null }>
+  ): Promise<void> {
+    const normalized = domain.trim().toLowerCase();
+    const zone = [
+      {
+        name,
+        type,
+        ttl: records[0]?.ttl ?? 3600,
+        records: records.map((r) => ({
+          content: type === 'MX' && r.priority != null ? `${r.priority} ${r.data}` : r.data,
+        })),
+      },
+    ];
+
+    const { status, json } = await this.request('PUT', `/api/dns/v1/zones/${encodeURIComponent(normalized)}`, token, {
+      overwrite: true,
+      zone,
+    });
+
+    if (status === 401 || status === 403) {
+      throw new HostingerAuthError(undefined, json);
+    }
+    if (status >= 400) {
+      throw new HostingerError(`Failed to replace DNS records: HTTP ${status}`, 'HOSTINGER_REPLACE_FAILED', json);
+    }
+  }
 }
 
 function normalizeName(name: string): string {

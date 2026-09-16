@@ -89,3 +89,34 @@ export async function createProviderDnsRecords(
   }
   throw new Error(`Unsupported DNS provider or credential shape: ${provider}`);
 }
+
+/**
+ * Synchronizes one (type, name) group to the caller's desired final record
+ * set — used to resolve a conflict by overwriting rather than stopping.
+ * The caller is responsible for including any foreign records it wants
+ * preserved (e.g. an unrelated google-site-verification TXT living at the
+ * same "@" name as our SPF record) in `records`; anything already present
+ * that ISN'T in that list is removed.
+ */
+export async function replaceProviderDnsRecordGroup(
+  provider: DnsProviderName,
+  credential: ProviderCredential,
+  domain: string,
+  type: string,
+  name: string,
+  records: Array<{ data: string; ttl?: number; priority?: number | null }>
+): Promise<void> {
+  if (provider === 'godaddy' && 'apiKey' in credential) {
+    await goDaddyClient.replaceDnsRecordGroup(credential.apiKey, credential.apiSecret, domain, type, name, records);
+    return;
+  }
+  if (provider === 'hostinger' && 'token' in credential) {
+    await hostingerClient.replaceDnsRecordGroup(credential.token, domain, type, name, records);
+    return;
+  }
+  if (provider === 'cloudflare' && 'token' in credential) {
+    await cloudflareClient.replaceDnsRecordGroup(credential.token, domain, type, name, records);
+    return;
+  }
+  throw new Error(`Unsupported DNS provider or credential shape: ${provider}`);
+}

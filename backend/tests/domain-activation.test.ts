@@ -210,35 +210,60 @@ describe('domain-activation.service', () => {
       expect(tenant?.trialStartedAt).toBeFalsy();
     });
 
-    it('goes conflict -> stores dnsConflicts -> does not create any records when MX already exists elsewhere', async () => {
+    it('overwrites a stale MX record found at the same name instead of stopping in conflict', async () => {
       vi.spyOn(goDaddyClient, 'listDnsRecords').mockImplementation(async (_k, _s, _d, type, name) => {
         if (type === 'MX' && name === '@') {
           return [{ type: 'MX', name: '@', data: 'mail.otherprovider.com', priority: 10 } as any];
         }
         return [];
       });
-      const createSpy = vi.spyOn(goDaddyClient, 'createDnsRecords').mockResolvedValue(undefined);
-
-      const result = await activateDomain(domainId, actor);
-
-      expect(result.dnsStatus).toBe('conflict');
-      expect(result.dnsConflicts?.length).toBeGreaterThan(0);
-      expect(result.dnsConflicts?.[0].foundValue).toBe('mail.otherprovider.com');
-      expect(createSpy).not.toHaveBeenCalled();
-
-      // Credential must NOT be purged on conflict — needed for retry.
-      const cred = await DomainDnsCredentialModel.findOne({ domainId });
-      expect(cred).not.toBeNull();
-    });
-
-    it('creates records and marks active immediately when DNS already resolves correctly', async () => {
-      vi.spyOn(goDaddyClient, 'listDnsRecords').mockResolvedValue([]);
-      const createSpy = vi.spyOn(goDaddyClient, 'createDnsRecords').mockResolvedValue(undefined);
+      const replaceSpy = vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
       mockDnsVerificationSuccess();
 
       const result = await activateDomain(domainId, actor);
 
-      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(result.dnsStatus).not.toBe('conflict');
+      const mxCall = replaceSpy.mock.calls.find((c) => c[3] === 'MX' && c[4] === '@');
+      expect(mxCall).toBeTruthy();
+      // The stale foreign MX value must NOT survive into the final set.
+      expect(mxCall![5]).toEqual([expect.objectContaining({ data: 'mail.toowix.com' })]);
+
+      const cred = await DomainDnsCredentialModel.findOne({ domainId });
+      expect(cred).toBeNull();
+    });
+
+    it('preserves an unrelated TXT record at "@" while overwriting our own stale SPF value there', async () => {
+      vi.spyOn(goDaddyClient, 'listDnsRecords').mockImplementation(async (_k, _s, _d, type, name) => {
+        if (type === 'TXT' && name === '@') {
+          return [
+            { type: 'TXT', name: '@', data: 'v=spf1 mx -all' } as any,
+            { type: 'TXT', name: '@', data: 'google-site-verification=abc123' } as any,
+          ];
+        }
+        return [];
+      });
+      const replaceSpy = vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
+      mockDnsVerificationSuccess();
+
+      await activateDomain(domainId, actor);
+
+      const txtCall = replaceSpy.mock.calls.find((c) => c[3] === 'TXT' && c[4] === '@');
+      expect(txtCall).toBeTruthy();
+      const finalValues = txtCall![5].map((r: any) => r.data);
+      expect(finalValues).toContain('google-site-verification=abc123');
+      expect(finalValues.some((v: string) => v.startsWith('v=spf1'))).toBe(true);
+      expect(finalValues).not.toContain('v=spf1 mx -all'); // the stale value was replaced, not kept
+    });
+
+    it('creates records and marks active immediately when DNS already resolves correctly', async () => {
+      vi.spyOn(goDaddyClient, 'listDnsRecords').mockResolvedValue([]);
+      const replaceSpy = vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
+      mockDnsVerificationSuccess();
+
+      const result = await activateDomain(domainId, actor);
+
+      // MX + SPF-TXT + 2 DKIM-TXT + DMARC-TXT = 5 required records, one replaceDnsRecordGroup call each.
+      expect(replaceSpy).toHaveBeenCalledTimes(5);
       expect(result.dnsStatus).toBe('active');
       expect(result.activatedAt).toBeTruthy();
       expect(result.stalwartDomainId).toBe('stalwart-dom-1');
@@ -256,7 +281,7 @@ describe('domain-activation.service', () => {
 
     it('leaves dnsStatus activating when DNS has not propagated yet', async () => {
       vi.spyOn(goDaddyClient, 'listDnsRecords').mockResolvedValue([]);
-      vi.spyOn(goDaddyClient, 'createDnsRecords').mockResolvedValue(undefined);
+      vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
       vi.mocked(resolveMx).mockRejectedValue(new Error('ENOTFOUND'));
       vi.mocked(resolveTxt).mockRejectedValue(new Error('ENOTFOUND'));
 
@@ -283,7 +308,7 @@ describe('domain-activation.service', () => {
   });
 
   describe('activateDomain (Hostinger provider)', () => {
-    it('dispatches conflict-check and record creation through the Hostinger client', async () => {
+    it('dispatches record sync through the Hostinger client', async () => {
       vi.spyOn(hostingerClient, 'verifyCredential').mockResolvedValue({ domain: 'acme.com' });
       await connectDnsProviderCredential(domainId, tenantId, 'hostinger', { token: 'hostinger-tok' }, actor);
 
@@ -291,19 +316,19 @@ describe('domain-activation.service', () => {
       vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue(DKIM_KEYS);
       vi.spyOn(stalwartClient, 'getDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com', isEnabled: true, dnsZoneFile: 'zone...' });
       vi.spyOn(hostingerClient, 'listDnsRecords').mockResolvedValue([]);
-      const createSpy = vi.spyOn(hostingerClient, 'createDnsRecords').mockResolvedValue(undefined);
+      const replaceSpy = vi.spyOn(hostingerClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
       mockDnsVerificationSuccess();
 
       const result = await activateDomain(domainId, actor);
 
-      expect(createSpy).toHaveBeenCalledTimes(1);
-      expect(createSpy.mock.calls[0][0]).toBe('hostinger-tok');
+      expect(replaceSpy).toHaveBeenCalledTimes(5);
+      expect(replaceSpy.mock.calls[0][0]).toBe('hostinger-tok');
       expect(result.dnsStatus).toBe('active');
     });
   });
 
   describe('activateDomain (Cloudflare provider)', () => {
-    it('dispatches conflict-check and record creation through the Cloudflare client', async () => {
+    it('dispatches record sync through the Cloudflare client', async () => {
       vi.spyOn(cloudflareClient, 'verifyCredential').mockResolvedValue({ domain: 'acme.com' });
       await connectDnsProviderCredential(domainId, tenantId, 'cloudflare', { token: 'cloudflare-tok' }, actor);
 
@@ -311,13 +336,13 @@ describe('domain-activation.service', () => {
       vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue(DKIM_KEYS);
       vi.spyOn(stalwartClient, 'getDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com', isEnabled: true, dnsZoneFile: 'zone...' });
       vi.spyOn(cloudflareClient, 'listDnsRecords').mockResolvedValue([]);
-      const createSpy = vi.spyOn(cloudflareClient, 'createDnsRecords').mockResolvedValue(undefined);
+      const replaceSpy = vi.spyOn(cloudflareClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
       mockDnsVerificationSuccess();
 
       const result = await activateDomain(domainId, actor);
 
-      expect(createSpy).toHaveBeenCalledTimes(1);
-      expect(createSpy.mock.calls[0][0]).toBe('cloudflare-tok');
+      expect(replaceSpy).toHaveBeenCalledTimes(5);
+      expect(replaceSpy.mock.calls[0][0]).toBe('cloudflare-tok');
       expect(result.dnsStatus).toBe('active');
     });
   });
@@ -335,21 +360,28 @@ describe('domain-activation.service', () => {
       await expect(retryVerify(domainId, actor)).rejects.toThrow(DomainActivationError);
     });
 
-    it('re-checks conflicts and proceeds once resolved, then verifies', async () => {
-      // First activation attempt hits a conflict.
-      vi.spyOn(goDaddyClient, 'listDnsRecords').mockResolvedValueOnce([
-        { type: 'MX', name: '@', data: 'mail.otherprovider.com', priority: 10 } as any,
-      ]).mockResolvedValue([]);
-      vi.spyOn(goDaddyClient, 'createDnsRecords').mockResolvedValue(undefined);
+    it('re-syncs against the provider and recovers a domain stuck in activating with records never created', async () => {
+      // First activation attempt: record creation fails mid-flight (mirrors a
+      // real provider error, e.g. a misconfigured API base URL), leaving the
+      // domain stuck in 'activating' with nothing actually published.
+      vi.spyOn(goDaddyClient, 'listDnsRecords').mockResolvedValue([]);
+      vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockRejectedValueOnce(new Error('simulated create failure'));
+      vi.mocked(resolveMx).mockRejectedValue(new Error('ENOTFOUND'));
+      vi.mocked(resolveTxt).mockRejectedValue(new Error('ENOTFOUND'));
 
-      const first = await activateDomain(domainId, actor);
-      expect(first.dnsStatus).toBe('conflict');
+      await expect(activateDomain(domainId, actor)).rejects.toThrow('simulated create failure');
+      const stuck = await DomainModel.findById(domainId);
+      expect(stuck!.dnsStatus).toBe('activating');
 
-      // Customer fixes their DNS; retry now finds no conflicts.
+      // Retry re-syncs against GoDaddy's real zone (still empty) and this
+      // time succeeds, then verification passes.
+      const replaceSpy = vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
       mockDnsVerificationSuccess();
 
-      const second = await retryVerify(domainId, actor);
-      expect(second.dnsStatus).toBe('active');
+      const result = await retryVerify(domainId, actor);
+
+      expect(replaceSpy).toHaveBeenCalled();
+      expect(result.dnsStatus).toBe('active');
     });
   });
 });

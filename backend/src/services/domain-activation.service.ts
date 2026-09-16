@@ -5,10 +5,9 @@ import { DomainDnsCredentialModel, DnsProviderName } from '../db/models/DomainDn
 import { stalwartClient } from '../stalwart/client';
 import {
   ProviderCredential,
-  GenericDnsRecord,
   verifyProviderCredential,
   listProviderDnsRecords,
-  createProviderDnsRecords,
+  replaceProviderDnsRecordGroup,
 } from '../dns-providers/dispatch';
 import { buildRequiredDnsRecords, buildZoneFileText } from './dns-records.service';
 import { encrypt, decrypt } from '../utils/crypto';
@@ -80,48 +79,53 @@ export async function connectDnsProviderCredential(
   return { verifiedProviderDomain: info.domain, connectedAt };
 }
 
-function toGenericRecord(r: IGeneratedDnsRecord): GenericDnsRecord {
-  return {
-    type: r.type,
-    name: r.name,
-    data: r.value,
-    ttl: r.ttl,
-    priority: r.priority,
-  };
+/**
+ * A record found at the same (type, name) as one of ours is only ever worth
+ * preserving alongside our own value when it's clearly serving some other
+ * purpose than the exact thing we manage there. The one name that
+ * legitimately hosts unrelated records is the apex TXT group ("@") — e.g. a
+ * `google-site-verification=...` TXT living next to our SPF record. Every
+ * other name we generate (MX/@, TXT/_dmarc, TXT/<selector>._domainkey) is
+ * fully ours: nothing else should legitimately live there, so any existing
+ * value found there is treated as stale and replaced.
+ */
+function isForeignRecordToPreserve(existingValue: string, record: IGeneratedDnsRecord): boolean {
+  if (record.type === 'TXT' && record.name === '@') {
+    return !/^v=spf1\b/i.test(existingValue.trim());
+  }
+  return false;
 }
 
 /**
- * Checks each required record against the provider's existing zone. A
- * record is:
- * - already present with the exact value we need -> nothing to do (idempotent retry)
- * - absent -> needs creating
- * - present with a DIFFERENT value -> conflict; never overwritten automatically
+ * Ensures each required record is published exactly as needed, creating
+ * what's missing and overwriting whatever's there when it doesn't already
+ * match — DNS activation should never get stuck asking a customer to
+ * manually resolve a conflict themselves. Any existing record at the same
+ * (type, name) that isn't recognizably "ours" (see isForeignRecordToPreserve)
+ * is preserved untouched; only stale records we're the rightful owner of are
+ * replaced. Fully idempotent: re-running against an already-correct zone
+ * makes no calls beyond the read.
  */
-async function checkConflictsAndPlan(
+async function syncProviderDnsRecords(
   provider: DnsProviderName,
   credential: ProviderCredential,
   domainName: string,
   records: IGeneratedDnsRecord[]
-): Promise<{ conflicts: IDnsConflictRecord[]; toCreate: IGeneratedDnsRecord[] }> {
-  const conflicts: IDnsConflictRecord[] = [];
-  const toCreate: IGeneratedDnsRecord[] = [];
-
+): Promise<void> {
   for (const record of records) {
     const existing = await listProviderDnsRecords(provider, credential, domainName, record.type, record.name);
-    if (existing.length === 0) {
-      toCreate.push(record);
-      continue;
-    }
     const alreadyPresent = existing.some((e) => normalizeRecordValue(e.data) === normalizeRecordValue(record.value));
-    if (alreadyPresent) {
-      continue; // nothing to do for this record
+    if (alreadyPresent && existing.every((e) => normalizeRecordValue(e.data) === normalizeRecordValue(record.value) || isForeignRecordToPreserve(e.data, record))) {
+      continue; // nothing to do — our value is present and nothing stale remains
     }
-    for (const e of existing) {
-      conflicts.push({ type: record.type, name: record.name, foundValue: e.data });
-    }
-  }
 
-  return { conflicts, toCreate };
+    const toPreserve = existing.filter((e) => isForeignRecordToPreserve(e.data, record));
+    const finalSet = [
+      ...toPreserve.map((e) => ({ data: e.data, ttl: e.ttl, priority: e.priority })),
+      { data: record.value, ttl: record.ttl, priority: record.priority },
+    ];
+    await replaceProviderDnsRecordGroup(provider, credential, domainName, record.type, record.name, finalSet);
+  }
 }
 
 function normalizeRecordValue(value: string): string {
@@ -337,35 +341,12 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
 
   const { provider, credential } = connected;
 
-  // 4. Conflict-check against the provider's existing zone before creating anything.
-  const { conflicts, toCreate } = await checkConflictsAndPlan(provider, credential, domain.domainName, records);
-  if (conflicts.length > 0) {
-    domain.dnsStatus = 'conflict';
-    domain.dnsConflicts = conflicts;
-    await domain.save();
+  // 4. Create/overwrite the required records directly against the provider's
+  // live zone — any stale value found at a name we own is replaced rather
+  // than leaving activation blocked on the customer to fix it themselves.
+  await syncProviderDnsRecords(provider, credential, domain.domainName, records);
 
-    await logAudit({
-      actorId: actor.id,
-      actorRole: actor.role,
-      actorEmail: actor.email,
-      tenantId: String(domain.tenantId),
-      action: 'DOMAIN_ACTIVATION_CONFLICT',
-      resource: 'DOMAIN',
-      resourceId: domain._id.toString(),
-      metadata: { domainName: domain.domainName, conflicts },
-      success: false,
-    });
-
-    await notifyActivationFailure(domain, 'conflict', conflicts);
-    return domain;
-  }
-
-  // 5. Create the (non-conflicting, missing) records.
-  if (toCreate.length > 0) {
-    await createProviderDnsRecords(provider, credential, domain.domainName, toCreate.map(toGenericRecord));
-  }
-
-  // 6. Immediate verification attempt; leaves 'activating' for the sweep if not yet visible.
+  // 5. Immediate verification attempt; leaves 'activating' for the sweep if not yet visible.
   await finalizeIfVerified(domain);
   return domain;
 }
@@ -404,28 +385,20 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
   const connected = await loadCredentialIfAny(domain._id.toString());
 
   if (connected) {
-    // Re-check the provider's LIVE zone on every retry, whether we're resuming
-    // from 'conflict' or from 'activating' — a domain can land in 'activating'
-    // with its records never actually created (e.g. createProviderDnsRecords
-    // threw mid-flight) and public-DNS verification alone would then retry
-    // forever without ever re-attempting the create. Re-running the plan finds
-    // exactly what's still missing against the provider's real zone, instead
-    // of trusting our own local dnsStatus to reflect what's actually there.
+    // Re-sync against the provider's LIVE zone on every retry, whether we're
+    // resuming from 'conflict' (a state a domain can no longer land in going
+    // forward, but may still be sitting in from before overwrite-on-conflict
+    // shipped) or from 'activating' — a domain can land in 'activating' with
+    // its records never actually created (e.g. a mid-flight provider error)
+    // and public-DNS verification alone would then retry forever without
+    // ever re-attempting the create. Re-running the sync finds exactly
+    // what's still missing or stale against the provider's real zone,
+    // instead of trusting our own local dnsStatus to reflect what's there.
     const { provider, credential } = connected;
-    const { conflicts, toCreate } = await checkConflictsAndPlan(provider, credential, domain.domainName, records);
-    if (conflicts.length > 0) {
-      domain.dnsStatus = 'conflict';
-      domain.dnsConflicts = conflicts;
-      await domain.save();
-      await notifyActivationFailure(domain, 'conflict', conflicts);
-      return domain;
-    }
     domain.dnsStatus = 'activating';
     domain.dnsConflicts = undefined;
     await domain.save();
-    if (toCreate.length > 0) {
-      await createProviderDnsRecords(provider, credential, domain.domainName, toCreate.map(toGenericRecord));
-    }
+    await syncProviderDnsRecords(provider, credential, domain.domainName, records);
   } else if (domain.dnsStatus === 'conflict') {
     // Credential was disconnected after the conflict was recorded — the
     // provider's zone can't be re-checked without one.

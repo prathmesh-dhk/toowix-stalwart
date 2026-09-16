@@ -21,7 +21,7 @@ export class GoDaddyClient {
    * same way.
    */
   private async request(
-    method: 'GET' | 'PATCH',
+    method: 'GET' | 'PATCH' | 'PUT',
     path: string,
     apiKey: string,
     apiSecret: string,
@@ -163,6 +163,40 @@ export class GoDaddyClient {
     }
     if (status >= 400) {
       throw new GoDaddyError(`Failed to create DNS records: HTTP ${status}`, 'GODADDY_CREATE_FAILED', json);
+    }
+  }
+
+  /**
+   * Fully replaces the record set at one (type, name) — GoDaddy's PUT
+   * /records/{type}/{name} endpoint, unlike PATCH /records above, overwrites
+   * the entire group rather than appending. Used to resolve a conflict:
+   * the caller passes the full desired final set (any foreign records the
+   * caller wants preserved at this same type+name, plus Toowix's own value),
+   * so this never silently drops something unrelated living at the same
+   * name (e.g. a google-site-verification TXT record next to our SPF one).
+   */
+  async replaceDnsRecordGroup(
+    apiKey: string,
+    apiSecret: string,
+    domain: string,
+    type: string,
+    name: string,
+    records: Array<{ data: string; ttl?: number; priority?: number | null }>
+  ): Promise<void> {
+    const normalized = domain.trim().toLowerCase();
+    const { status, json } = await this.request(
+      'PUT',
+      `/v1/domains/${encodeURIComponent(normalized)}/records/${type}/${encodeURIComponent(name)}`,
+      apiKey,
+      apiSecret,
+      records.map((r) => ({ data: r.data, ttl: r.ttl ?? 3600, ...(type === 'MX' && r.priority != null ? { priority: r.priority } : {}) }))
+    );
+
+    if (status === 401 || status === 403) {
+      throw new GoDaddyAuthError(undefined, json);
+    }
+    if (status >= 400) {
+      throw new GoDaddyError(`Failed to replace DNS records: HTTP ${status}`, 'GODADDY_REPLACE_FAILED', json);
     }
   }
 }

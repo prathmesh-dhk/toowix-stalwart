@@ -67,7 +67,7 @@ describe('Cloudflare Client (Offline / Mocked)', () => {
       (client as any).request = mockRequest;
 
       const records = await client.listDnsRecords('token123', 'acme.com', 'MX', '@');
-      expect(records).toEqual([{ type: 'MX', name: '@', data: 'mail.otherprovider.com', ttl: 3600, priority: 10 }]);
+      expect(records).toEqual([{ type: 'MX', name: '@', data: 'mail.otherprovider.com', ttl: 3600, priority: 10, id: 'rec1' }]);
       expect(mockRequest).toHaveBeenNthCalledWith(2, 'GET', '/zones/zone123/dns_records?type=MX&name=acme.com', 'token123');
     });
 
