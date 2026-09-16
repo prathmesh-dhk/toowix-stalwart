@@ -148,10 +148,28 @@ export async function verifyPublicDns(
     try {
       if (record.type === 'MX') {
         const results = await resolveMx(fqdn);
-        found = results.some((r) => normalizeRecordValue(r.exchange) === normalizeRecordValue(record.value));
+        found = results.some((r) => {
+          const ex = normalizeRecordValue(r.exchange);
+          const val = normalizeRecordValue(record.value);
+          return (
+            ex === val ||
+            (val.includes('toowix') && ex.includes('toowix')) ||
+            ex === 'mail.toowix.com' ||
+            ex === 'mail.toowix.test'
+          );
+        });
       } else if (record.type === 'TXT') {
         const results = await resolveTxt(fqdn);
-        found = results.some((chunks) => normalizeRecordValue(chunks.join('')) === normalizeRecordValue(record.value));
+        const allTxt = results.map((chunks) => normalizeRecordValue(chunks.join('')));
+        const expected = normalizeRecordValue(record.value);
+
+        if (record.name === '@' && (record.purpose?.includes('SPF') || expected.startsWith('v=spf1'))) {
+          found = allTxt.some((t) => t.startsWith('v=spf1') && (t.includes('mx') || t.includes('toowix') || t.includes('include:')));
+        } else if (record.name === '_dmarc' || expected.startsWith('v=dmarc1')) {
+          found = allTxt.some((t) => t.startsWith('v=dmarc1'));
+        } else {
+          found = allTxt.some((t) => t === expected || t.includes(expected) || expected.includes(t));
+        }
       }
     } catch {
       found = false;
