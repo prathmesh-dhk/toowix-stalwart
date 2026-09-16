@@ -8,7 +8,7 @@ export const config = {
   nodeEnv: process.env.VITEST === 'true' ? 'test' : (process.env.NODE_ENV || 'development'),
   mongodbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/toowix_mail',
   jwtSecret: process.env.JWT_SECRET || 'toowix_default_jwt_secret_dev_only_32_bytes',
-  frontendOrigin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  frontendOrigin: (process.env.FRONTEND_ORIGIN || 'http://localhost:5173').replace(/\/+$/, ''),
   stalwart: {
     url: process.env.STALWART_URL || 'http://127.0.0.1:8080',
     user: process.env.STALWART_USER || 'toowix-service@toowix.test',
@@ -16,7 +16,7 @@ export const config = {
     accountId: process.env.STALWART_ACCOUNT_ID || 'b',
     acmeProviderId: process.env.STALWART_ACME_PROVIDER_ID || '',
   },
-  tenantAdminUrl: process.env.TENANT_ADMIN_URL || 'http://localhost:5174',
+  tenantAdminUrl: (process.env.TENANT_ADMIN_URL || 'http://localhost:5174').replace(/\/+$/, ''),
   smtp: {
     host: process.env.SMTP_HOST || '127.0.0.1',
     port: parseInt(process.env.SMTP_PORT || '2525', 10),
