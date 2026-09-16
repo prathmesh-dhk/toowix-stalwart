@@ -164,7 +164,7 @@ export async function verifyPublicDns(
         const expected = normalizeRecordValue(record.value);
 
         if (record.name === '@' && (record.purpose?.includes('SPF') || expected.startsWith('v=spf1'))) {
-          found = allTxt.some((t) => t.startsWith('v=spf1') && (t.includes('mx') || t.includes('toowix') || t.includes('include:')));
+          found = allTxt.some((t) => t.startsWith('v=spf1') && (t.includes('mx') || t.includes('103.13') || t.includes('toowix') || t.includes('ip4:') || t.includes('include:')));
         } else if (record.name === '_dmarc' || expected.startsWith('v=dmarc1')) {
           found = allTxt.some((t) => t.startsWith('v=dmarc1'));
         } else {
@@ -310,12 +310,20 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     throw new DomainActivationError('Failed to resolve a Stalwart domain ID for activation', 'STALWART_DOMAIN_UNRESOLVED', 502);
   }
 
-  // 2. Fetch real DKIM keys and build the canonical record set. The zone
-  // file for the manual-setup path is rendered from these SAME records
-  // (buildZoneFileText) rather than Stalwart's own raw dnsZoneFile — see
-  // that function's doc comment for why: Stalwart's version can disagree
-  // with what verifyPublicDns() actually checks for.
-  const dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
+  // 2. Ensure Stalwart domain has automatic DKIM enabled so signing keys exist.
+  try {
+    await stalwartClient.ensureAutomaticDkim(stalwartDomainId);
+  } catch {
+    // Non-fatal: Stalwart may already have DKIM configured
+  }
+
+  // Fetch real DKIM keys (retrying briefly if Stalwart key generation is in progress).
+  let dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
+  if (dkimKeys.length === 0) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
+  }
+
   const records = buildRequiredDnsRecords(domain.domainName, dkimKeys);
   domain.dnsRecords = records;
   const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];

@@ -112,12 +112,12 @@ describe.skipIf(!isStalwartOnline)('Phase 5: Stalwart Integration Client (Live S
     }
   });
 
-  it('should fetch a single domain by ID and verify manual DKIM and ACME TLS configuration', async () => {
+  it('should fetch a single domain by ID and verify automatic DKIM and ACME TLS configuration', async () => {
     const domain = await stalwartClient.getDomain(createdDomainId);
     expect(domain).not.toBeNull();
     expect(domain?.name).toBe('phase5-test.test');
     expect(domain?.dnsZoneFile).toBeTruthy();
-    expect((domain as any)?.dkimManagement?.['@type']).toBe('Manual');
+    expect((domain as any)?.dkimManagement?.['@type']).toBe('Automatic');
     expect((domain as any)?.certificateManagement?.['@type']).toBe('Automatic');
   });
 
@@ -160,7 +160,7 @@ describe('Phase 5: Stalwart Client Unit Tests (Offline / Mocked)', () => {
     expect(domains[1].name).toBe('acme.com');
   });
 
-  it('should create domain with manual DKIM and ACME TLS certificate management', async () => {
+  it('should create domain with automatic DKIM and ACME TLS certificate management', async () => {
     client.setAcmeProviderId('mock-acme-prov-1');
     const mockDispatch = vi.fn().mockResolvedValue([
       [
@@ -189,7 +189,11 @@ describe('Phase 5: Stalwart Client Unit Tests (Offline / Mocked)', () => {
               description: 'Test Org',
               isEnabled: true,
               dkimManagement: {
-                '@type': 'Manual',
+                '@type': 'Automatic',
+                algorithms: {
+                  Dkim1Ed25519Sha256: true,
+                  Dkim1RsaSha256: true,
+                },
               },
               certificateManagement: {
                 '@type': 'Automatic',

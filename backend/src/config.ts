@@ -26,4 +26,6 @@ export const config = {
     password: process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || '"Toowix Mail Platform" <noreply@toowix.com>',
   },
+  mailServerIps: process.env.MAIL_SERVER_IPS || '103.13.114.138 103.13.114.227',
+  mailHostname: process.env.MAIL_HOSTNAME || 'mail.toowix.com',
 };

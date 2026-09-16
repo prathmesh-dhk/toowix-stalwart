@@ -216,7 +216,8 @@ export class StalwartClient {
       description: description || null,
       isEnabled: true,
       dkimManagement: {
-        '@type': 'Manual',
+        '@type': 'Automatic',
+        algorithms: { Dkim1Ed25519Sha256: true, Dkim1RsaSha256: true },
       },
     };
 
@@ -351,6 +352,35 @@ export class StalwartClient {
     if (result?.notUpdated?.[domainId]) {
       const err = result.notUpdated[domainId];
       throw new StalwartError(`Failed to update domain status in Stalwart: ${err.description || err.type}`, 'DOMAIN_UPDATE_FAILED', err);
+    }
+  }
+
+  /**
+   * Ensures a domain has Automatic DKIM management configured so RSA and Ed25519 keys exist.
+   */
+  async ensureAutomaticDkim(domainId: string): Promise<void> {
+    const responses = await this.dispatch([
+      [
+        'x:Domain/set',
+        {
+          accountId: this.accountId,
+          update: {
+            [domainId]: {
+              dkimManagement: {
+                '@type': 'Automatic',
+                algorithms: { Dkim1Ed25519Sha256: true, Dkim1RsaSha256: true },
+              },
+            },
+          },
+        },
+        'c_ensure_auto_dkim',
+      ],
+    ]);
+
+    const result = responses[0]?.[1];
+    if (result?.notUpdated?.[domainId]) {
+      const err = result.notUpdated[domainId];
+      throw new StalwartError(`Failed to update DKIM management in Stalwart: ${err.description || err.type}`, 'DOMAIN_UPDATE_FAILED', err);
     }
   }
 

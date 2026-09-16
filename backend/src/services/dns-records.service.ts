@@ -1,3 +1,4 @@
+import { config } from '../config';
 import { StalwartDkimKey, StalwartDkimAlgorithm } from '../stalwart/types';
 import { IGeneratedDnsRecord } from '../db/models/Domain';
 
@@ -22,11 +23,17 @@ const DKIM_ALGORITHM_LABEL: Record<StalwartDkimAlgorithm, string> = {
 
 export function buildRequiredDnsRecords(domainName: string, dkimKeys: StalwartDkimKey[]): IGeneratedDnsRecord[] {
   const records: IGeneratedDnsRecord[] = [];
+  const mailHost = config.mailHostname || 'mail.toowix.com';
+  const ips = (config.mailServerIps || '103.13.114.138 103.13.114.227')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((ip) => `ip4:${ip}`)
+    .join(' ');
 
   records.push({
     type: 'MX',
     name: '@',
-    value: 'mail.toowix.com',
+    value: mailHost,
     priority: 10,
     ttl: 3600,
     purpose: 'Primary Mail Routing Exchange',
@@ -35,7 +42,7 @@ export function buildRequiredDnsRecords(domainName: string, dkimKeys: StalwartDk
   records.push({
     type: 'TXT',
     name: '@',
-    value: 'v=spf1 mx include:_spf.toowix.com ~all',
+    value: `v=spf1 mx ${ips} ~all`,
     ttl: 3600,
     purpose: 'Sender Policy Framework (SPF)',
   });

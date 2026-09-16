@@ -29,7 +29,9 @@ describe('dns-records.service — buildRequiredDnsRecords', () => {
     expect(mx).toMatchObject({ name: '@', value: 'mail.toowix.com', priority: 10 });
 
     const spf = records.find((r) => r.type === 'TXT' && r.name === '@');
-    expect(spf?.value).toBe('v=spf1 mx include:_spf.toowix.com ~all');
+    expect(spf?.value).toContain('v=spf1 mx');
+    expect(spf?.value).toContain('ip4:103.13.114.138');
+    expect(spf?.value).toContain('~all');
 
     const rsaDkim = records.find((r) => r.name === 'v1-rsa-20260907._domainkey');
     expect(rsaDkim?.value).toBe('v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...RSA_KEY');
