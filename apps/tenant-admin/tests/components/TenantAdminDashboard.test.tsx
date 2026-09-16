@@ -92,6 +92,7 @@ describe('TenantAdminDashboard Component', () => {
           id: 'dom-1',
           domainName: 'acmecorp.com',
           status: 'active',
+          dnsStatus: 'active',
           mailboxLimit: 50,
           employeeCount: 50,
           mailboxCount: 2,

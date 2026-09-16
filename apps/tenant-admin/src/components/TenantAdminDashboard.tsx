@@ -7,6 +7,7 @@ import { StatusBadge } from './ui/StatusBadge';
 import { ActiveDevicesView } from './ActiveDevicesView';
 import { SecurityView } from './SecurityView';
 import { StorageView } from './StorageView';
+import { BillingView } from './BillingView';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
 import { DomainDnsStatusModal } from './DomainDnsStatusModal';
@@ -16,6 +17,7 @@ import {
   LayoutDashboard,
   Mail,
   HardDrive,
+  CreditCard,
   FileText,
   Shield,
   Laptop,
@@ -54,7 +56,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [showDnsStatusModal, setShowDnsStatusModal] = useState(false);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
@@ -661,6 +663,27 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   strokeWidth={1.75}
                 />
                 <span className="truncate">Storage</span>
+              </div>
+            </button>
+
+            {/* Billing */}
+            <button
+              onClick={() => setActiveNav('billing')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'billing'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-billing"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <CreditCard
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'billing' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Billing</span>
               </div>
             </button>
           </div>
@@ -1572,6 +1595,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           {/* ===================================================================== */}
           {activeNav === 'storage' && (
             <StorageView activeDomain={activeDomain} />
+          )}
+
+          {/* ===================================================================== */}
+          {/* VIEW: BILLING (per-domain Stripe subscription)                        */}
+          {/* ===================================================================== */}
+          {activeNav === 'billing' && (
+            <BillingView activeDomain={activeDomain} />
           )}
 
           {/* ===================================================================== */}

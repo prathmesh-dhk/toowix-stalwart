@@ -10,16 +10,17 @@ vi.mock('../../src/api', () => ({
     connectDnsProviderCredential: vi.fn(),
     getDomainDnsStatus: vi.fn(),
     listPlans: vi.fn(),
+    startDomainCheckout: vi.fn(),
   },
 }));
 
 const MOCK_PLANS = [
-  { id: 'plan-1', name: 'Individual', badge: 'Solo', description: 'Starter / Solo', seatCount: 1, displayOrder: 1, isActive: true, isDefault: false },
-  { id: 'plan-10', name: 'Team', badge: 'Standard', description: 'Standard team tier', seatCount: 10, displayOrder: 2, isActive: true, isDefault: true },
-  { id: 'plan-25', name: 'Growth', badge: 'Growth', description: 'Growing businesses', seatCount: 25, displayOrder: 3, isActive: true, isDefault: false },
-  { id: 'plan-50', name: 'Business', badge: 'Team', description: 'Mid-size organizations', seatCount: 50, displayOrder: 4, isActive: true, isDefault: false },
-  { id: 'plan-75', name: 'Scale', badge: 'Business', description: 'Large departments', seatCount: 75, displayOrder: 5, isActive: true, isDefault: false },
-  { id: 'plan-100', name: 'Enterprise', badge: 'Enterprise', description: 'Full-scale enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false },
+  { id: 'plan-1', name: 'Individual', badge: 'Solo', description: 'Starter / Solo', seatCount: 1, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
+  { id: 'plan-10', name: 'Team', badge: 'Standard', description: 'Standard team tier', seatCount: 10, displayOrder: 2, isActive: true, isDefault: true, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
+  { id: 'plan-25', name: 'Growth', badge: 'Growth', description: 'Growing businesses', seatCount: 25, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
+  { id: 'plan-50', name: 'Business', badge: 'Team', description: 'Mid-size organizations', seatCount: 50, displayOrder: 4, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
+  { id: 'plan-75', name: 'Scale', badge: 'Business', description: 'Large departments', seatCount: 75, displayOrder: 5, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
+  { id: 'plan-100', name: 'Enterprise', badge: 'Enterprise', description: 'Full-scale enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
 ];
 
 describe('DomainSetupModal Component', () => {
@@ -246,5 +247,49 @@ describe('DomainSetupModal Component', () => {
     expect(await screen.findByText('DNS Setup — manualbrand.io')).toBeInTheDocument();
     expect(await screen.findByText('DNS Zone File')).toBeInTheDocument();
     expect(screen.getByText(/manualbrand\.io\. IN MX 10 mail\.toowix\.com\./)).toBeInTheDocument();
+  });
+
+  it('offers a skippable "Add Payment Method" card on the status step that never blocks finishing', async () => {
+    const onDomainAdded = vi.fn();
+    const onClose = vi.fn();
+
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-new-5',
+        domainName: 'payable.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+    vi.mocked(api.startDomainCheckout).mockResolvedValue({ url: 'https://checkout.stripe.com/pay/test' });
+
+    render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
+
+    await screen.findByText('10 Seats');
+    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'payable.io');
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Manual DNS Setup'));
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(await screen.findByText('DNS Setup — payable.io')).toBeInTheDocument();
+    expect(screen.getByText('Add a payment method')).toBeInTheDocument();
+
+    // Skipping does not block finishing the wizard.
+    await userEvent.click(screen.getByRole('button', { name: /skip for now/i }));
+    expect(screen.queryByText('Add a payment method')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^done$/i }));
+    expect(onDomainAdded).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    expect(api.startDomainCheckout).not.toHaveBeenCalled();
   });
 });

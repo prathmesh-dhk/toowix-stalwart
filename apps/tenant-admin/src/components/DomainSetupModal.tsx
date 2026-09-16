@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Zap,
   FileText,
+  CreditCard,
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
 
@@ -65,6 +66,10 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [dnsStatus, setDnsStatus] = useState<DomainDnsStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [paymentCardDismissed, setPaymentCardDismissed] = useState(false);
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -166,6 +171,19 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     refreshDnsStatus();
   };
 
+  const handleStartCheckout = async () => {
+    if (!createdDomain) return;
+    setStartingCheckout(true);
+    setCheckoutError(null);
+    try {
+      const res = await api.startDomainCheckout(createdDomain.id);
+      window.location.href = res.url;
+    } catch (err: any) {
+      setCheckoutError(err.message || 'Failed to start checkout.');
+      setStartingCheckout(false);
+    }
+  };
+
   const goBack = () => {
     if (currentIdx > 0) {
       setStep(STEP_ORDER[currentIdx - 1]);
@@ -191,6 +209,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setConnected(false);
     setDnsStatus(null);
     setStatusError(null);
+    setPaymentCardDismissed(false);
+    setCheckoutError(null);
     onClose();
   };
 
@@ -688,6 +708,50 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               onRefresh={refreshDnsStatus}
               connectedProviderLabel={method === 'provider' && connected ? PROVIDER_LABEL[provider] : null}
             />
+
+            {!paymentCardDismissed && (
+              <div className="p-3.5 bg-indigo-50 border border-indigo-200/80 rounded-xl">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-semibold text-indigo-950 block">Add a payment method</span>
+                    <span className="text-[11px] text-indigo-700 leading-relaxed block mt-1">
+                      Get 1 month free, then billed monthly for this domain's plan. You can skip this and add it
+                      later — mailboxes just can't be created on this domain until you do.
+                    </span>
+                    {checkoutError && <span className="text-[11px] text-rose-600 block mt-1.5">{checkoutError}</span>}
+                    <div className="flex items-center gap-2 mt-2.5">
+                      <button
+                        type="button"
+                        onClick={handleStartCheckout}
+                        disabled={startingCheckout}
+                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-[11px] font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {startingCheckout ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Redirecting...</span>
+                          </>
+                        ) : (
+                          <span>Add Payment Method</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentCardDismissed(true)}
+                        disabled={startingCheckout}
+                        className="px-3 py-1.5 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Skip for now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
               <button
                 type="button"

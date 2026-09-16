@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, InvoiceItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -223,6 +223,28 @@ export const api = {
     }),
 
   listPlans: () => request<{ plans: Plan[] }>('/api/plans'),
+
+  // Billing (Stripe — one Subscription per Domain, see backend/src/services/billing.service.ts)
+  getBillingConfig: () => request<{ publishableKey: string }>('/api/tenants/me/billing/config'),
+  startDomainCheckout: (domainId: string) =>
+    request<{ url: string }>(`/api/tenants/me/billing/domains/${domainId}/checkout`, { method: 'POST' }),
+  getDomainBillingStatus: (domainId: string) =>
+    request<DomainBillingStatus>(`/api/tenants/me/billing/domains/${domainId}`),
+  listBillingInvoices: () => request<{ invoices: InvoiceItem[] }>('/api/tenants/me/billing/invoices'),
+  createPaymentMethodSetupIntent: (domainId: string) =>
+    request<{ clientSecret: string }>(`/api/tenants/me/billing/domains/${domainId}/setup-intent`, { method: 'POST' }),
+  upgradeDomainPlan: (domainId: string, planId: string) =>
+    request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/upgrade`, {
+      method: 'POST',
+      body: JSON.stringify({ planId }),
+    }),
+  downgradeDomainPlan: (domainId: string, planId: string) =>
+    request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/downgrade`, {
+      method: 'POST',
+      body: JSON.stringify({ planId }),
+    }),
+  cancelDomainSubscription: (domainId: string) =>
+    request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/cancel`, { method: 'POST' }),
 
   connectDnsProviderCredential: (
     domainId: string,

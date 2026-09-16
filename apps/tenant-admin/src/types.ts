@@ -70,6 +70,8 @@ export interface DomainItem {
   createdAt?: string;
 }
 
+export type PlanBillingMode = 'fixed' | 'metered';
+
 export interface Plan {
   id: string;
   name: string;
@@ -79,6 +81,43 @@ export interface Plan {
   displayOrder: number;
   isActive: boolean;
   isDefault: boolean;
+  billingMode: PlanBillingMode;
+  monthlyPriceInPaise: number;
+}
+
+export type DomainSubscriptionStatus =
+  | 'incomplete'
+  | 'trialing'
+  | 'active'
+  | 'past_due'
+  | 'grace'
+  | 'suspended'
+  | 'canceled';
+
+export interface DomainSubscription {
+  status: DomainSubscriptionStatus;
+  planId: string;
+  currentPeriodEnd?: string | null;
+  trialEnd?: string | null;
+  gracePeriodEndsAt?: string | null;
+  cancelAtPeriodEnd: boolean;
+  pendingDowngradePlanId?: string | null;
+}
+
+export interface DomainBillingStatus {
+  domainId: string;
+  domainName: string;
+  subscription: DomainSubscription | null;
+}
+
+export interface InvoiceItem {
+  id: string;
+  status: string | null;
+  amountPaid: number;
+  currency: string;
+  createdAt: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdf: string | null;
 }
 
 export interface TenantSummary {
