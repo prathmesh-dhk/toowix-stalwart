@@ -10,7 +10,7 @@ import {
   listProviderDnsRecords,
   createProviderDnsRecords,
 } from '../dns-providers/dispatch';
-import { buildRequiredDnsRecords } from './dns-records.service';
+import { buildRequiredDnsRecords, buildZoneFileText } from './dns-records.service';
 import { encrypt, decrypt } from '../utils/crypto';
 import { logAudit } from '../audit/service';
 import { emailService } from './email.service';
@@ -292,16 +292,18 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     throw new DomainActivationError('Failed to resolve a Stalwart domain ID for activation', 'STALWART_DOMAIN_UNRESOLVED', 502);
   }
 
-  // 2. Fetch real DKIM keys, build the canonical record set, and capture
-  // Stalwart's own raw zone file text for the manual-setup path.
+  // 2. Fetch real DKIM keys and build the canonical record set. The zone
+  // file for the manual-setup path is rendered from these SAME records
+  // (buildZoneFileText) rather than Stalwart's own raw dnsZoneFile — see
+  // that function's doc comment for why: Stalwart's version can disagree
+  // with what verifyPublicDns() actually checks for.
   const dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
   const records = buildRequiredDnsRecords(domain.domainName, dkimKeys);
   domain.dnsRecords = records;
   const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];
   domain.dkimSelector = rsaKey?.selector || null;
   domain.dkimPublicKey = rsaKey?.publicKey || null;
-  const stalwartDomain = await stalwartClient.getDomain(stalwartDomainId);
-  domain.dnsZoneFile = stalwartDomain?.dnsZoneFile || null;
+  domain.dnsZoneFile = buildZoneFileText(domain.domainName, records);
   await domain.save();
 
   // 3. If no DNS provider is connected, this is manual mode: the admin/
