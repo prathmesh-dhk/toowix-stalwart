@@ -384,4 +384,69 @@ describe('domain-activation.service', () => {
       expect(result.dnsStatus).toBe('active');
     });
   });
+
+  describe('connectDnsProviderCredential with live record verification', () => {
+    it('verifies records in provider zone and completes credential connection', async () => {
+      vi.spyOn(goDaddyClient, 'verifyCredential').mockResolvedValue({ domain: 'acme.com', domainId: 1, status: 'ACTIVE' });
+      vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
+
+      // Set up required DNS records on domain
+      await DomainModel.updateOne(
+        { _id: domainId },
+        {
+          dnsRecords: [
+            { type: 'MX', name: '@', value: 'mail.toowix.com', priority: 10, ttl: 3600, purpose: 'Mail routing' },
+            { type: 'TXT', name: '@', value: 'v=spf1 mx ~all', ttl: 3600, purpose: 'SPF' },
+          ],
+        }
+      );
+
+      // Provider returns matching live records upon verification
+      vi.spyOn(goDaddyClient, 'listDnsRecords').mockImplementation(async (_k, _s, _d, type, name) => {
+        if (type === 'MX' && name === '@') return [{ type: 'MX', name: '@', data: 'mail.toowix.com', ttl: 3600, priority: 10 }];
+        if (type === 'TXT' && name === '@') return [{ type: 'TXT', name: '@', data: 'v=spf1 mx ~all', ttl: 3600 }];
+        return [];
+      });
+
+      const result = await connectDnsProviderCredential(domainId, tenantId, 'godaddy', GODADDY_CRED, {
+        id: adminUserId,
+        email: 'owner@acme.com',
+        role: 'TENANT_ADMIN',
+      });
+
+      expect(result.verifiedInProvider).toBe(true);
+      expect(result.recordsSynced).toBe(2);
+
+      const cred = await DomainDnsCredentialModel.findOne({ domainId });
+      expect(cred).not.toBeNull();
+    });
+
+    it('rejects if provider zone does not contain the required records after sync', async () => {
+      vi.spyOn(goDaddyClient, 'verifyCredential').mockResolvedValue({ domain: 'acme.com', domainId: 1, status: 'ACTIVE' });
+      vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
+
+      await DomainModel.updateOne(
+        { _id: domainId },
+        {
+          dnsRecords: [
+            { type: 'MX', name: '@', value: 'mail.toowix.com', priority: 10, ttl: 3600, purpose: 'Mail routing' },
+          ],
+        }
+      );
+
+      // Provider returns empty list even after replace (e.g. provider silently dropped record)
+      vi.spyOn(goDaddyClient, 'listDnsRecords').mockResolvedValue([]);
+
+      await expect(
+        connectDnsProviderCredential(domainId, tenantId, 'godaddy', GODADDY_CRED, {
+          id: adminUserId,
+          email: 'owner@acme.com',
+          role: 'TENANT_ADMIN',
+        })
+      ).rejects.toMatchObject({
+        code: 'PROVIDER_RECORDS_NOT_VERIFIED',
+        statusCode: 422,
+      });
+    });
+  });
 });

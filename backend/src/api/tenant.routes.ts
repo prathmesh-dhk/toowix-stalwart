@@ -9,6 +9,7 @@ import { AdminUserModel } from '../db/models/AdminUser';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { connectDnsProviderCredential, DomainActivationError } from '../services/domain-activation.service';
+import { requestDomainDeletion, getDomainDeletionRequest, DomainDeletionError } from '../services/domain-deletion.service';
 import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/errors';
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
 import { CloudflareAuthError, CloudflareDomainNotManagedError } from '../cloudflare/errors';
@@ -391,6 +392,80 @@ tenantMeRouter.get('/me/domains/:domainId/dns-status', async (req: Request, res:
   } catch (err: any) {
     console.error('[Tenant Domain DNS Status Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve domain DNS status.' });
+  }
+});
+
+// ==========================================
+// DOMAIN DELETION REQUESTS (/api/tenants/me/domains/:domainId/deletion-request)
+// ==========================================
+tenantMeRouter.post('/me/domains/:domainId/deletion-request', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+
+  const actor = {
+    id: req.adminUser!.id,
+    email: req.adminUser!.email,
+    role: req.adminUser!.role,
+  };
+
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+
+  try {
+    const deletionRequest = await requestDomainDeletion(req.params.domainId, tenantId, actor, reason);
+    res.status(201).json({
+      success: true,
+      message: `Domain deletion requested for ${deletionRequest.domainName}. Pending Super Admin review.`,
+      request: {
+        id: deletionRequest._id.toString(),
+        domainId: deletionRequest.domainId.toString(),
+        domainName: deletionRequest.domainName,
+        status: deletionRequest.status,
+        reason: deletionRequest.reason,
+        createdAt: deletionRequest.createdAt.toISOString(),
+      },
+    });
+  } catch (err: any) {
+    if (err instanceof DomainDeletionError) {
+      res.status(err.statusCode).json({ error: err.code, message: err.message });
+      return;
+    }
+    console.error('[Domain Deletion Request Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to submit domain deletion request.' });
+  }
+});
+
+tenantMeRouter.get('/me/domains/:domainId/deletion-request', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+
+  try {
+    const deletionRequest = await getDomainDeletionRequest(req.params.domainId, tenantId);
+    if (!deletionRequest) {
+      res.status(200).json({ request: null });
+      return;
+    }
+
+    res.status(200).json({
+      request: {
+        id: deletionRequest._id.toString(),
+        domainId: deletionRequest.domainId.toString(),
+        domainName: deletionRequest.domainName,
+        status: deletionRequest.status,
+        reason: deletionRequest.reason,
+        rejectionReason: deletionRequest.rejectionReason,
+        reviewedAt: deletionRequest.reviewedAt ? deletionRequest.reviewedAt.toISOString() : null,
+        createdAt: deletionRequest.createdAt.toISOString(),
+      },
+    });
+  } catch (err: any) {
+    console.error('[Get Domain Deletion Request Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve domain deletion request.' });
   }
 });
 

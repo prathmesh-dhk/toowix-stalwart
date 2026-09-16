@@ -11,6 +11,12 @@ import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
 import { getDefaultPlanSeatCount } from '../services/plan.service';
+import {
+  listDomainDeletionRequests,
+  approveDomainDeletion,
+  rejectDomainDeletion,
+  DomainDeletionError,
+} from '../services/domain-deletion.service';
 
 export const superAdminRouter = Router();
 
@@ -237,13 +243,88 @@ superAdminRouter.post('/applications/:id/reject', async (req: Request, res: Resp
     timestamp: new Date(),
   });
 
-  return res.status(200).json({
-    success: true,
-    message: 'Application rejected.',
-    application: {
-      id: application._id.toString(),
-      status: application.status,
-      rejectionReason: application.rejectionReason,
-    },
+    return res.status(200).json({
+      success: true,
+      message: 'Application rejected.',
+      application: {
+        id: application._id.toString(),
+        status: application.status,
+        rejectionReason: application.rejectionReason,
+      },
+    });
   });
+
+// ==========================================
+// DOMAIN DELETION REQUESTS (SUPER ADMIN QUEUE)
+// ==========================================
+
+// 1. List Domain Deletion Requests
+superAdminRouter.get('/domain-deletion-requests', async (req: Request, res: Response) => {
+  const status = req.query.status as string;
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+  const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : 0;
+
+  try {
+    const result = await listDomainDeletionRequests({ status, limit, skip });
+    return res.status(200).json(result);
+  } catch (err: any) {
+    console.error('[List Domain Deletion Requests Error]:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to list domain deletion requests.' });
+  }
+});
+
+// 2. Approve Domain Deletion Request
+superAdminRouter.post('/domain-deletion-requests/:id/approve', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed deletion request ID' });
+  }
+
+  const reviewer = {
+    id: req.adminUser!.id,
+    email: req.adminUser!.email,
+    role: req.adminUser!.role,
+  };
+
+  try {
+    const result = await approveDomainDeletion(req.params.id, reviewer);
+    return res.status(200).json({
+      success: true,
+      message: `Domain ${result.domainName} and all linked subscriptions/credentials have been permanently deleted.`,
+    });
+  } catch (err: any) {
+    if (err instanceof DomainDeletionError) {
+      return res.status(err.statusCode).json({ error: err.code, message: err.message });
+    }
+    console.error('[Approve Domain Deletion Error]:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to approve domain deletion.' });
+  }
+});
+
+// 3. Reject Domain Deletion Request
+superAdminRouter.post('/domain-deletion-requests/:id/reject', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed deletion request ID' });
+  }
+
+  const reviewer = {
+    id: req.adminUser!.id,
+    email: req.adminUser!.email,
+    role: req.adminUser!.role,
+  };
+
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+
+  try {
+    const result = await rejectDomainDeletion(req.params.id, reviewer, reason);
+    return res.status(200).json({
+      success: true,
+      message: `Domain deletion request for ${result.domainName} has been rejected.`,
+    });
+  } catch (err: any) {
+    if (err instanceof DomainDeletionError) {
+      return res.status(err.statusCode).json({ error: err.code, message: err.message });
+    }
+    console.error('[Reject Domain Deletion Error]:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to reject domain deletion.' });
+  }
 });

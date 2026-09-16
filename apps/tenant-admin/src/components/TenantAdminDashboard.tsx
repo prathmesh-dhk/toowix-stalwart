@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
-import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext } from '../types';
+import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDeletionRequestItem } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
@@ -11,6 +11,7 @@ import { BillingView } from './BillingView';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
 import { DomainDnsStatusModal } from './DomainDnsStatusModal';
+import { DomainDeletionModal } from './DomainDeletionModal';
 import {
   Loader2,
   LogOut,
@@ -54,6 +55,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [activeDomain, setActiveDomain] = useState<DomainItem | null>(null);
   const [showDomainModal, setShowDomainModal] = useState(false);
   const [showDnsStatusModal, setShowDnsStatusModal] = useState(false);
+  const [showDomainDeletionModal, setShowDomainDeletionModal] = useState(false);
+  const [deletionRequest, setDeletionRequest] = useState<DomainDeletionRequestItem | null>(null);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
@@ -231,17 +234,31 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
       setActiveDomain(currentDomain);
 
-      // Load mailboxes for active domain
+      // Load mailboxes and deletion request for active domain
       if (currentDomain) {
-        const mailboxesRes = await api.listMyMailboxes(currentDomain.id);
+        const [mailboxesRes, deletionRes] = await Promise.all([
+          api.listMyMailboxes(currentDomain.id).catch(() => ({ mailboxes: [] })),
+          api.getDomainDeletionRequest(currentDomain.id).catch(() => ({ request: null })),
+        ]);
         setMailboxes(mailboxesRes.mailboxes || []);
+        setDeletionRequest(deletionRes.request);
       } else {
         setMailboxes([]);
+        setDeletionRequest(null);
       }
     } catch (err) {
       console.error('Failed to load tenant data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDeletionRequest = async (domainId: string) => {
+    try {
+      const res = await api.getDomainDeletionRequest(domainId);
+      setDeletionRequest(res.request);
+    } catch {
+      setDeletionRequest(null);
     }
   };
 
@@ -262,6 +279,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
 
   const handleSelectDomain = async (domain: DomainItem) => {
     setActiveDomain(domain);
+    loadDeletionRequest(domain.id);
     try {
       const res = await api.listMyMailboxes(domain.id);
       setMailboxes(res.mailboxes || []);
@@ -1579,6 +1597,67 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                   ))}
                 </div>
               </div>
+
+              {/* Danger Zone: Domain Deletion */}
+              <div className="bg-white border border-rose-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
+                <div className="flex items-center justify-between pb-3 border-b border-rose-100">
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="w-5 h-5 text-rose-600" />
+                    <h3 className="text-sm font-semibold text-rose-950">Danger Zone</h3>
+                  </div>
+                  {deletionRequest?.status === 'pending' && (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                      Deletion Request Pending Review
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex flex-col gap-1 max-w-xl">
+                    <span className="text-xs font-semibold text-slate-900">
+                      Delete Domain {domainName}
+                    </span>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Permanently request removal of this domain. All associated configurations, DNS records, and active Stripe subscriptions will be cancelled upon Super Admin approval.
+                    </p>
+                    {activeDomain.mailboxCount > 0 ? (
+                      <p className="text-xs text-rose-600 font-medium mt-1 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>Remove all mailboxes first (current: {activeDomain.mailboxCount} {activeDomain.mailboxCount === 1 ? 'mailbox' : 'mailboxes'})</span>
+                      </p>
+                    ) : deletionRequest?.status === 'pending' ? (
+                      <p className="text-xs text-amber-700 mt-1">
+                        A deletion request submitted on {new Date(deletionRequest.createdAt).toLocaleDateString()} is awaiting Super Admin approval.
+                      </p>
+                    ) : deletionRequest?.status === 'rejected' ? (
+                      <p className="text-xs text-slate-600 mt-1">
+                        Previous deletion request was rejected{deletionRequest.rejectionReason ? `: "${deletionRequest.rejectionReason}"` : ''}. You may submit a new request.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="shrink-0">
+                    <button
+                      type="button"
+                      disabled={activeDomain.mailboxCount > 0 || deletionRequest?.status === 'pending'}
+                      onClick={() => setShowDomainDeletionModal(true)}
+                      title={
+                        activeDomain.mailboxCount > 0
+                          ? 'Remove all mailboxes first'
+                          : deletionRequest?.status === 'pending'
+                          ? 'Deletion request already pending review'
+                          : undefined
+                      }
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-rose-600 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer"
+                      id="btn-delete-domain"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{deletionRequest?.status === 'pending' ? 'Deletion Requested' : 'Delete Domain'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </section>
             )
           )}
@@ -2156,6 +2235,24 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
         domain={activeDomain}
         isOpen={showDnsStatusModal}
         onClose={() => setShowDnsStatusModal(false)}
+        onDomainUpdated={() => {
+          loadTenantData(activeDomain?.id);
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL: DOMAIN DELETION CONFIRMATION & REQUEST FLOW                         */}
+      {/* ========================================================================= */}
+      <DomainDeletionModal
+        domain={activeDomain}
+        isOpen={showDomainDeletionModal}
+        onClose={() => setShowDomainDeletionModal(false)}
+        onRequestSubmitted={() => {
+          if (activeDomain) {
+            loadDeletionRequest(activeDomain.id);
+            loadTenantData();
+          }
+        }}
       />
     </div>
   );

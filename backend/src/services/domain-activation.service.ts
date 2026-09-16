@@ -30,9 +30,37 @@ export class DomainActivationError extends Error {
 }
 
 /**
- * Verifies a tenant-supplied DNS provider credential actually manages the
- * domain, then stores it encrypted. Called from the Tenant Admin "Connect
- * DNS Provider" step, before any Super Admin activation attempt is possible.
+ * Actively checks the DNS provider's live zone to verify that every required record
+ * (MX, SPF, DKIM, DMARC) is actually present and matching expected values.
+ */
+export async function verifyRecordsInProviderZone(
+  provider: DnsProviderName,
+  credential: ProviderCredential,
+  domainName: string,
+  records: IGeneratedDnsRecord[]
+): Promise<{ verified: boolean; missingRecords: IGeneratedDnsRecord[] }> {
+  const missing: IGeneratedDnsRecord[] = [];
+  for (const record of records) {
+    try {
+      const existing = await listProviderDnsRecords(provider, credential, domainName, record.type, record.name);
+      const isPresent = existing.some((e) => normalizeRecordValue(e.data) === normalizeRecordValue(record.value));
+      if (!isPresent) {
+        missing.push(record);
+      }
+    } catch {
+      missing.push(record);
+    }
+  }
+  return {
+    verified: missing.length === 0,
+    missingRecords: missing,
+  };
+}
+
+/**
+ * Verifies a tenant-supplied DNS provider credential, publishes authoritative DNS records,
+ * actively verifies that the records were created in the provider's live zone, then stores
+ * the credential encrypted.
  */
 export async function connectDnsProviderCredential(
   domainId: string,
@@ -40,7 +68,12 @@ export async function connectDnsProviderCredential(
   provider: DnsProviderName,
   credential: ProviderCredential,
   actor: ActivationActor
-): Promise<{ verifiedProviderDomain: string; connectedAt: Date }> {
+): Promise<{
+  verifiedProviderDomain: string;
+  connectedAt: Date;
+  verifiedInProvider: boolean;
+  recordsSynced: number;
+}> {
   const domain = await DomainModel.findOne({ _id: domainId, tenantId });
   if (!domain) {
     throw new DomainActivationError('Domain not found', 'NOT_FOUND', 404);
@@ -48,6 +81,27 @@ export async function connectDnsProviderCredential(
 
   // Provider-specific auth/not-managed errors propagate as-is to the route handler.
   const info = await verifyProviderCredential(provider, credential, domain.domainName);
+
+  // If the domain has records generated (from creation or activation), publish & verify them in provider
+  const records = domain.dnsRecords && domain.dnsRecords.length > 0 ? domain.dnsRecords : [];
+  let verifiedInProvider = false;
+
+  if (records.length > 0) {
+    // 1. Sync / publish records to provider zone
+    await syncProviderDnsRecords(provider, credential, domain.domainName, records);
+
+    // 2. Actively verify that the records were created in the provider's zone
+    const check = await verifyRecordsInProviderZone(provider, credential, domain.domainName, records);
+    if (!check.verified) {
+      const missingSummary = check.missingRecords.map((r) => `${r.type} ${r.name}`).join(', ');
+      throw new DomainActivationError(
+        `Failed to verify that records were created in ${provider} DNS zone for ${domain.domainName}. Missing: ${missingSummary}`,
+        'PROVIDER_RECORDS_NOT_VERIFIED',
+        422
+      );
+    }
+    verifiedInProvider = true;
+  }
 
   const connectedAt = new Date();
   await DomainDnsCredentialModel.findOneAndUpdate(
@@ -65,6 +119,16 @@ export async function connectDnsProviderCredential(
     { upsert: true, setDefaultsOnInsert: true }
   );
 
+  // If the domain was already activated by a Super Admin (dnsStatus === 'activating'),
+  // re-trigger public verification so attaching a provider can complete activation immediately.
+  if (domain.dnsStatus === 'activating' && records.length > 0) {
+    try {
+      await finalizeIfVerified(domain);
+    } catch {
+      // Best effort public verification, background sweep will continue
+    }
+  }
+
   await logAudit({
     actorId: actor.id,
     actorRole: actor.role,
@@ -73,10 +137,15 @@ export async function connectDnsProviderCredential(
     action: 'DNS_PROVIDER_CREDENTIAL_CONNECTED',
     resource: 'DOMAIN',
     resourceId: domain._id.toString(),
-    metadata: { domainName: domain.domainName, provider },
+    metadata: { domainName: domain.domainName, provider, verifiedInProvider },
   });
 
-  return { verifiedProviderDomain: info.domain, connectedAt };
+  return {
+    verifiedProviderDomain: info.domain,
+    connectedAt,
+    verifiedInProvider,
+    recordsSynced: records.length,
+  };
 }
 
 /**
@@ -142,6 +211,9 @@ export async function verifyPublicDns(
   domainName: string,
   records: IGeneratedDnsRecord[]
 ): Promise<{ verified: boolean; details: Array<{ type: string; name: string; found: boolean }> }> {
+  if (!records || records.length === 0) {
+    return { verified: false, details: [] };
+  }
   const details: Array<{ type: string; name: string; found: boolean }> = [];
 
   for (const record of records) {

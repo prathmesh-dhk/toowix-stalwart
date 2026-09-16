@@ -161,6 +161,12 @@ export class ToowixStripeClient {
     return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: cancel });
   }
 
+  /** Immediately cancels a subscription on Stripe. */
+  async cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+    const stripe = getStripe();
+    return stripe.subscriptions.cancel(subscriptionId);
+  }
+
   /** Reports the running peak mailbox count for the period (see DomainSubscription.peakMailboxCountThisPeriod doc). */
   async reportMeteredUsage(eventName: string, stripeCustomerId: string, peakValue: number): Promise<void> {
     const stripe = getStripe();

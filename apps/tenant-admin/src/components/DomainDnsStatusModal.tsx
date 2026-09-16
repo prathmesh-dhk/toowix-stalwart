@@ -1,19 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { DomainItem, DomainDnsStatus } from '../types';
 import { api } from '../api';
-import { X } from 'lucide-react';
+import { X, Key, ChevronDown, ChevronUp } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
+import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
 
 interface DomainDnsStatusModalProps {
   domain: DomainItem | null;
   isOpen: boolean;
   onClose: () => void;
+  onDomainUpdated?: () => void;
 }
 
-export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({ domain, isOpen, onClose }) => {
+export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({
+  domain,
+  isOpen,
+  onClose,
+  onDomainUpdated,
+}) => {
   const [status, setStatus] = useState<DomainDnsStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showProviderForm, setShowProviderForm] = useState(false);
 
   const refresh = async () => {
     if (!domain) return;
@@ -22,6 +30,7 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({ doma
     try {
       const res = await api.getDomainDnsStatus(domain.id);
       setStatus(res);
+      onDomainUpdated?.();
     } catch (err: any) {
       setError(err.message || 'Failed to load DNS status.');
     } finally {
@@ -33,6 +42,7 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({ doma
     if (isOpen && domain) {
       setStatus(null);
       setError(null);
+      setShowProviderForm(false);
       refresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,7 +65,7 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({ doma
           <div>
             <h3 className="text-base font-semibold text-slate-900">DNS Setup — {domain.domainName}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              View DNS zone records to configure with any DNS provider.
+              View DNS zone records or connect your DNS provider to configure records automatically.
             </p>
           </div>
           <button
@@ -68,7 +78,53 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({ doma
           </button>
         </div>
 
-        <DnsStatusPanel domainName={domain.domainName} status={status} loading={loading} error={error} onRefresh={refresh} />
+        <DnsStatusPanel
+          domainName={domain.domainName}
+          status={status}
+          loading={loading}
+          error={error}
+          onRefresh={refresh}
+        />
+
+        {/* Connect DNS Provider Section */}
+        <div className="border border-indigo-100 rounded-xl overflow-hidden bg-indigo-50/30">
+          <button
+            type="button"
+            onClick={() => setShowProviderForm((prev) => !prev)}
+            className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-indigo-50/60 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                <Key className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <span className="text-xs font-semibold text-slate-900 block">
+                  Connect DNS Provider
+                </span>
+                <span className="text-[11px] text-slate-500 block">
+                  Auto-publish and verify records on GoDaddy, Hostinger, or Cloudflare
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-indigo-600">
+              <span>{showProviderForm ? 'Hide' : 'Configure'}</span>
+              {showProviderForm ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </div>
+          </button>
+
+          {showProviderForm && (
+            <div className="p-4 bg-white border-t border-indigo-100 animate-in fade-in duration-150">
+              <DnsProviderCredentialForm
+                domainId={domain.id}
+                domainName={domain.domainName}
+                compact
+                onSuccess={() => {
+                  refresh();
+                }}
+              />
+            </div>
+          )}
+        </div>
 
         <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
           <button

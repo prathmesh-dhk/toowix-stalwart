@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, InvoiceItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, InvoiceItem, DomainDeletionRequestItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -253,7 +253,7 @@ export const api = {
       | { provider: 'hostinger'; token: string }
       | { provider: 'cloudflare'; token: string }
   ) =>
-    request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string }>(
+    request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string; verifiedInProvider?: boolean; recordsSynced?: number }>(
       `/api/tenants/me/domains/${domainId}/dns-provider-credential`,
       {
         method: 'POST',
@@ -263,6 +263,20 @@ export const api = {
 
   getDomainDnsStatus: (domainId: string) =>
     request<DomainDnsStatus>(`/api/tenants/me/domains/${domainId}/dns-status`),
+
+  requestDomainDeletion: (domainId: string, reason?: string) =>
+    request<{ success: boolean; message: string; request: DomainDeletionRequestItem }>(
+      `/api/tenants/me/domains/${domainId}/deletion-request`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }
+    ),
+
+  getDomainDeletionRequest: (domainId: string) =>
+    request<{ request: DomainDeletionRequestItem | null }>(
+      `/api/tenants/me/domains/${domainId}/deletion-request`
+    ),
 
   // Mailboxes (Domain Scoped)
   listMyMailboxes: (domainId?: string) => {
