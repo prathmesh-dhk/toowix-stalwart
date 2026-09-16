@@ -40,7 +40,6 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<'activate' | 'retry' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [zoneFileCopied, setZoneFileCopied] = useState(false);
 
   const refresh = async () => {
@@ -94,12 +93,6 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
     } finally {
       setActionLoading(null);
     }
-  };
-
-  const handleCopy = (value: string, idx: number) => {
-    navigator.clipboard.writeText(value);
-    setCopiedIndex(idx);
-    setTimeout(() => setCopiedIndex(null), 2000);
   };
 
   const handleCopyZoneFile = () => {
@@ -199,31 +192,6 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
               <span>Domain is fully active. Mail service is live and the tenant's trial has started.</span>
             </div>
           )}
-
-          {status && status.dnsRecords.length > 0 && (
-            <div>
-              <label className="field-label mb-1.5">Required DNS Records</label>
-              <div className="space-y-1.5">
-                {status.dnsRecords.map((r, i) => (
-                  <div key={i} className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500">{r.type} · {r.name}{r.priority != null ? ` · priority ${r.priority}` : ''}</span>
-                      <button
-                        onClick={() => handleCopy(r.value, i)}
-                        className="btn-secondary btn-sm text-[11px] inline-flex items-center gap-1"
-                      >
-                        {copiedIndex === i ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
-                        {copiedIndex === i ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                    <div className="font-mono text-[11px] text-slate-700 mt-1 break-all">{r.value}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{r.purpose}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {status?.dnsZoneFile && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -252,8 +220,7 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
                 {status.dnsZoneFile}
               </pre>
               <p className="text-[10px] text-slate-400 mt-1">
-                Paste this directly into your DNS provider's zone import feature, if it supports one — an
-                alternative to configuring the individual records above by hand.
+                Paste this directly into your DNS provider's zone file or import feature — or add the records into your DNS provider.
               </p>
             </div>
           )}
