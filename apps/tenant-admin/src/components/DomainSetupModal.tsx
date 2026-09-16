@@ -634,7 +634,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                 <div className="flex flex-col gap-2.5">
                   {[
                     'Works with any DNS provider — GoDaddy, Namecheap, Route 53, your own nameservers',
-                    'Copy records one by one, or paste the whole zone file at once',
+                    'Download or copy the full zone file to import with your DNS provider',
                     'We check public DNS automatically and activate as soon as it resolves',
                   ].map((line) => (
                     <div key={line} className="flex items-center gap-2.5 text-[11px] text-slate-600">

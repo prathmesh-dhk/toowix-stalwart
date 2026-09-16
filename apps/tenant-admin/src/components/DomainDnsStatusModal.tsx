@@ -55,7 +55,7 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({ doma
           <div>
             <h3 className="text-base font-semibold text-slate-900">DNS Setup — {domain.domainName}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              View required records and manually configure DNS with any provider.
+              View DNS zone records to configure with any DNS provider.
             </p>
           </div>
           <button

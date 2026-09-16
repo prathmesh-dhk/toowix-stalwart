@@ -206,7 +206,7 @@ describe('DomainSetupModal Component', () => {
     expect(await screen.findByText(/Cloudflare connected and verified/i)).toBeInTheDocument();
   });
 
-  it('supports the manual DNS setup path with no credential, showing records and zone file', async () => {
+  it('supports the manual DNS setup path with no credential, showing zone file', async () => {
     vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
       success: true,
       domain: {
@@ -244,7 +244,7 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('DNS Setup — manualbrand.io')).toBeInTheDocument();
-    expect(await screen.findByText('Required Records')).toBeInTheDocument();
-    expect(screen.getByText('Zone File')).toBeInTheDocument();
+    expect(await screen.findByText('DNS Zone File')).toBeInTheDocument();
+    expect(screen.getByText(/manualbrand\.io\. IN MX 10 mail\.toowix\.com\./)).toBeInTheDocument();
   });
 });
