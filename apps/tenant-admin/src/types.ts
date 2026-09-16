@@ -32,12 +32,18 @@ export interface RegistrationApplication {
 export type DnsActivationStatus = 'not_started' | 'activating' | 'active' | 'conflict' | 'activation_failed';
 
 export interface GeneratedDnsRecord {
-  type: 'MX' | 'TXT' | 'CNAME';
+  type: 'MX' | 'TXT' | 'CNAME' | 'SRV' | 'CAA';
   name: string;
   value: string;
   priority?: number | null;
   ttl?: number;
   purpose: string;
+  // SRV-specific
+  weight?: number | null;
+  port?: number | null;
+  // CAA-specific
+  flags?: number | null;
+  tag?: string | null;
 }
 
 export interface DnsConflictRecord {

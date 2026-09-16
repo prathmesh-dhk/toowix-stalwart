@@ -67,7 +67,7 @@ describe('GoDaddy Client (Offline / Mocked)', () => {
       const mockRequest = vi.fn().mockResolvedValue({ status: 200, json: null });
       (client as any).request = mockRequest;
 
-      const records = [{ type: 'TXT' as const, name: '@', data: 'v=spf1 mx ~all' }];
+      const records = [{ type: 'TXT' as const, name: '@', data: 'v=spf1 mx ~all', ttl: 3600 }];
       await expect(client.createDnsRecords('key', 'secret', 'acme.com', records)).resolves.not.toThrow();
       expect(mockRequest).toHaveBeenCalledWith('PATCH', '/v1/domains/acme.com/records', 'key', 'secret', records);
     });

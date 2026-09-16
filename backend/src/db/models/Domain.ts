@@ -10,12 +10,18 @@ export type DnsActivationStatus =
   | 'activation_failed';
 
 export interface IGeneratedDnsRecord {
-  type: 'MX' | 'TXT' | 'CNAME';
+  type: 'MX' | 'TXT' | 'CNAME' | 'SRV' | 'CAA';
   name: string;
   value: string;
   priority?: number | null;
   ttl?: number;
   purpose: string;
+  // SRV-specific fields
+  weight?: number | null;
+  port?: number | null;
+  // CAA-specific fields
+  flags?: number | null;
+  tag?: string | null;
 }
 
 export interface IDnsConflictRecord {
@@ -62,12 +68,18 @@ export interface IDomain extends Document {
 
 const GeneratedDnsRecordSchema = new Schema<IGeneratedDnsRecord>(
   {
-    type: { type: String, enum: ['MX', 'TXT', 'CNAME'], required: true },
+    type: { type: String, enum: ['MX', 'TXT', 'CNAME', 'SRV', 'CAA'], required: true },
     name: { type: String, required: true },
     value: { type: String, required: true },
     priority: { type: Number, default: null },
     ttl: { type: Number, default: 3600 },
     purpose: { type: String, required: true },
+    // SRV-specific
+    weight: { type: Number, default: null },
+    port: { type: Number, default: null },
+    // CAA-specific
+    flags: { type: Number, default: null },
+    tag: { type: String, default: null },
   },
   { _id: false }
 );

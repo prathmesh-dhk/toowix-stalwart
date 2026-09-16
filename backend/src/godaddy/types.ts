@@ -12,4 +12,12 @@ export interface GoDaddyDnsRecord {
   data: string;
   ttl?: number;
   priority?: number;
+  // SRV-specific (GoDaddy requires these for SRV type)
+  weight?: number;
+  port?: number;
+  service?: string;
+  protocol?: string;
+  // CAA-specific (GoDaddy requires these for CAA type)
+  flags?: number;
+  tag?: string;
 }

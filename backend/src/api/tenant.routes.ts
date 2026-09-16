@@ -15,7 +15,7 @@ import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger
 import { CloudflareAuthError, CloudflareDomainNotManagedError } from '../cloudflare/errors';
 import { stalwartClient } from '../stalwart/client';
 import { StalwartDomainExistsError } from '../stalwart/errors';
-import { buildRequiredDnsRecords, buildZoneFileText } from '../services/dns-records.service';
+import { buildRequiredDnsRecords, buildFullDnsRecords, buildZoneFileText } from '../services/dns-records.service';
 import { StalwartDkimKey } from '../stalwart/types';
 import { IGeneratedDnsRecord } from '../db/models/Domain';
 import { securityIpService, isValidIpOrCidr } from '../services/security-ip.service';
@@ -221,7 +221,17 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
     }
 
     // Build canonical DNS records and zone file immediately so tenant can copy and configure their DNS provider
-    const dnsRecords = buildRequiredDnsRecords(normalizedDomain, dkimKeys);
+    // Fetch Stalwart zone file if domain was created there, to include all record types
+    let stalwartZoneFileRaw: string | null = null;
+    if (stalwartDomainId) {
+      try {
+        const stalwartDom = await stalwartClient.getDomain(stalwartDomainId);
+        stalwartZoneFileRaw = stalwartDom?.dnsZoneFile || null;
+      } catch {
+        // Non-fatal: zone file may not be available yet
+      }
+    }
+    const dnsRecords = buildFullDnsRecords(normalizedDomain, dkimKeys, stalwartZoneFileRaw);
     const dnsZoneFile = buildZoneFileText(normalizedDomain, dnsRecords);
     const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];
 

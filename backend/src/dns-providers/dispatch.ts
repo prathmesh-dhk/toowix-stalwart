@@ -22,6 +22,12 @@ export interface GenericDnsRecord {
   data: string;
   ttl?: number;
   priority?: number | null;
+  // SRV-specific
+  weight?: number | null;
+  port?: number | null;
+  // CAA-specific
+  flags?: number | null;
+  tag?: string | null;
 }
 
 export function isKnownProvider(value: string): value is DnsProviderName {
@@ -75,7 +81,17 @@ export async function createProviderDnsRecords(
       credential.apiKey,
       credential.apiSecret,
       domain,
-      records.map((r) => ({ type: r.type as any, name: r.name, data: r.data, ttl: r.ttl, ...(r.priority != null ? { priority: r.priority } : {}) }))
+      records.map((r) => ({
+        type: r.type as any,
+        name: r.name,
+        data: r.data,
+        ttl: r.ttl,
+        ...(r.priority != null ? { priority: r.priority } : {}),
+        ...(r.weight != null ? { weight: r.weight } : {}),
+        ...(r.port != null ? { port: r.port } : {}),
+        ...(r.flags != null ? { flags: r.flags } : {}),
+        ...(r.tag ? { tag: r.tag } : {}),
+      }))
     );
     return;
   }
@@ -104,7 +120,7 @@ export async function replaceProviderDnsRecordGroup(
   domain: string,
   type: string,
   name: string,
-  records: Array<{ data: string; ttl?: number; priority?: number | null }>
+  records: Array<{ data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }>
 ): Promise<void> {
   if (provider === 'godaddy' && 'apiKey' in credential) {
     await goDaddyClient.replaceDnsRecordGroup(credential.apiKey, credential.apiSecret, domain, type, name, records);

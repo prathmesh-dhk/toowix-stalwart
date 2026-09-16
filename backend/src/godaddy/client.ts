@@ -155,7 +155,15 @@ export class GoDaddyClient {
       `/v1/domains/${encodeURIComponent(normalized)}/records`,
       apiKey,
       apiSecret,
-      records
+      records.map((r) => ({
+        type: r.type,
+        name: r.name,
+        data: r.data,
+        ttl: r.ttl ?? 3600,
+        ...(r.priority != null ? { priority: r.priority } : {}),
+        ...(r.type === 'SRV' ? { weight: r.weight ?? 1, port: r.port ?? 0, service: r.service, protocol: r.protocol } : {}),
+        ...(r.type === 'CAA' ? { flags: r.flags ?? 0, tag: r.tag ?? 'issue' } : {}),
+      }))
     );
 
     if (status === 401 || status === 403) {
@@ -181,7 +189,7 @@ export class GoDaddyClient {
     domain: string,
     type: string,
     name: string,
-    records: Array<{ data: string; ttl?: number; priority?: number | null }>
+    records: Array<{ data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }>
   ): Promise<void> {
     const normalized = domain.trim().toLowerCase();
     const { status, json } = await this.request(
@@ -189,7 +197,13 @@ export class GoDaddyClient {
       `/v1/domains/${encodeURIComponent(normalized)}/records/${type}/${encodeURIComponent(name)}`,
       apiKey,
       apiSecret,
-      records.map((r) => ({ data: r.data, ttl: r.ttl ?? 3600, ...(type === 'MX' && r.priority != null ? { priority: r.priority } : {}) }))
+      records.map((r) => ({
+        data: r.data,
+        ttl: r.ttl ?? 3600,
+        ...(type === 'MX' && r.priority != null ? { priority: r.priority } : {}),
+        ...(type === 'SRV' ? { priority: r.priority ?? 0, weight: r.weight ?? 1, port: r.port ?? 0 } : {}),
+        ...(type === 'CAA' ? { flags: r.flags ?? 0, tag: r.tag ?? 'issue' } : {}),
+      }))
     );
 
     if (status === 401 || status === 403) {

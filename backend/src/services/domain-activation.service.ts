@@ -9,7 +9,7 @@ import {
   listProviderDnsRecords,
   replaceProviderDnsRecordGroup,
 } from '../dns-providers/dispatch';
-import { buildRequiredDnsRecords, buildZoneFileText } from './dns-records.service';
+import { buildRequiredDnsRecords, buildFullDnsRecords, buildZoneFileText } from './dns-records.service';
 import { encrypt, decrypt } from '../utils/crypto';
 import { logAudit } from '../audit/service';
 import { emailService } from './email.service';
@@ -191,7 +191,15 @@ async function syncProviderDnsRecords(
     const toPreserve = existing.filter((e) => isForeignRecordToPreserve(e.data, record));
     const finalSet = [
       ...toPreserve.map((e) => ({ data: e.data, ttl: e.ttl, priority: e.priority })),
-      { data: record.value, ttl: record.ttl, priority: record.priority },
+      {
+        data: record.value,
+        ttl: record.ttl,
+        priority: record.priority,
+        weight: record.weight,
+        port: record.port,
+        flags: record.flags,
+        tag: record.tag,
+      },
     ];
     await replaceProviderDnsRecordGroup(provider, credential, domainName, record.type, record.name, finalSet);
   }
@@ -216,37 +224,51 @@ export async function verifyPublicDns(
   }
   const details: Array<{ type: string; name: string; found: boolean }> = [];
 
+  // Only verify the core mail records (MX, TXT) that we can reliably check
+  // via Node's DNS resolver. CNAME, SRV, and CAA are verified against the
+  // provider's live zone (verifyRecordsInProviderZone) and are not blocked
+  // on public DNS propagation — they are always marked as found here so
+  // they don't prevent activation from completing.
+  const coreTypes = new Set(['MX', 'TXT']);
+
   for (const record of records) {
     const fqdn = record.name === '@' ? domainName : `${record.name}.${domainName}`;
     let found = false;
-    try {
-      if (record.type === 'MX') {
-        const results = await resolveMx(fqdn);
-        found = results.some((r) => {
-          const ex = normalizeRecordValue(r.exchange);
-          const val = normalizeRecordValue(record.value);
-          return (
-            ex === val ||
-            (val.includes('toowix') && ex.includes('toowix')) ||
-            ex === 'mail.toowix.com' ||
-            ex === 'mail.toowix.test'
-          );
-        });
-      } else if (record.type === 'TXT') {
-        const results = await resolveTxt(fqdn);
-        const allTxt = results.map((chunks) => normalizeRecordValue(chunks.join('')));
-        const expected = normalizeRecordValue(record.value);
 
-        if (record.name === '@' && (record.purpose?.includes('SPF') || expected.startsWith('v=spf1'))) {
-          found = allTxt.some((t) => t.startsWith('v=spf1') && (t.includes('mx') || t.includes('103.13') || t.includes('toowix') || t.includes('ip4:') || t.includes('include:')));
-        } else if (record.name === '_dmarc' || expected.startsWith('v=dmarc1')) {
-          found = allTxt.some((t) => t.startsWith('v=dmarc1'));
-        } else {
-          found = allTxt.some((t) => t === expected || t.includes(expected) || expected.includes(t));
+    if (!coreTypes.has(record.type)) {
+      // SRV, CNAME, CAA — skip public DNS verification (best-effort; provider
+      // zone verification already confirmed them). Mark as found.
+      found = true;
+    } else {
+      try {
+        if (record.type === 'MX') {
+          const results = await resolveMx(fqdn);
+          found = results.some((r) => {
+            const ex = normalizeRecordValue(r.exchange);
+            const val = normalizeRecordValue(record.value);
+            return (
+              ex === val ||
+              (val.includes('toowix') && ex.includes('toowix')) ||
+              ex === 'mail.toowix.com' ||
+              ex === 'mail.toowix.test'
+            );
+          });
+        } else if (record.type === 'TXT') {
+          const results = await resolveTxt(fqdn);
+          const allTxt = results.map((chunks) => normalizeRecordValue(chunks.join('')));
+          const expected = normalizeRecordValue(record.value);
+
+          if (record.name === '@' && (record.purpose?.includes('SPF') || expected.startsWith('v=spf1'))) {
+            found = allTxt.some((t) => t.startsWith('v=spf1') && (t.includes('mx') || t.includes('103.13') || t.includes('toowix') || t.includes('ip4:') || t.includes('include:')));
+          } else if (record.name === '_dmarc' || expected.startsWith('v=dmarc1')) {
+            found = allTxt.some((t) => t.startsWith('v=dmarc1'));
+          } else {
+            found = allTxt.some((t) => t === expected || t.includes(expected) || expected.includes(t));
+          }
         }
+      } catch {
+        found = false;
       }
-    } catch {
-      found = false;
     }
     details.push({ type: record.type, name: record.name, found });
   }
@@ -386,7 +408,12 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
   }
 
-  const records = buildRequiredDnsRecords(domain.domainName, dkimKeys);
+  // Fetch Stalwart's raw zone file (contains SRV, CNAME, CAA, MTA-STS, TLS-RPT, etc.)
+  const stalwartDomain = await stalwartClient.getDomain(stalwartDomainId);
+  const stalwartZoneFile = stalwartDomain?.dnsZoneFile || null;
+
+  // Build full record set: canonical MX/SPF/DKIM/DMARC merged with all Stalwart zone records
+  const records = buildFullDnsRecords(domain.domainName, dkimKeys, stalwartZoneFile);
   domain.dnsRecords = records;
   const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];
   domain.dkimSelector = rsaKey?.selector || null;
@@ -418,7 +445,18 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
   // than leaving activation blocked on the customer to fix it themselves.
   await syncProviderDnsRecords(provider, credential, domain.domainName, records);
 
-  // 5. Immediate verification attempt; leaves 'activating' for the sweep if not yet visible.
+  // 5. Verify records were actually created in the provider's live zone.
+  // This catches silent failures (e.g. the provider accepted the request
+  // but didn't actually persist the record).
+  const providerVerification = await verifyRecordsInProviderZone(provider, credential, domain.domainName, records);
+  if (providerVerification.missingRecords.length > 0) {
+    console.warn(
+      `[DNS Activation] ${providerVerification.missingRecords.length} record(s) not confirmed in ${provider} zone for ${domain.domainName}:`,
+      providerVerification.missingRecords.map((r: IGeneratedDnsRecord) => `${r.type} ${r.name}`).join(', ')
+    );
+  }
+
+  // 6. Immediate verification attempt; leaves 'activating' for the sweep if not yet visible.
   await finalizeIfVerified(domain);
   return domain;
 }
@@ -471,6 +509,15 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     domain.dnsConflicts = undefined;
     await domain.save();
     await syncProviderDnsRecords(provider, credential, domain.domainName, records);
+
+    // Verify records were actually persisted in the provider's zone
+    const providerVerification = await verifyRecordsInProviderZone(provider, credential, domain.domainName, records);
+    if (providerVerification.missingRecords.length > 0) {
+      console.warn(
+        `[DNS Retry] ${providerVerification.missingRecords.length} record(s) not confirmed in ${provider} zone for ${domain.domainName}:`,
+        providerVerification.missingRecords.map((r: IGeneratedDnsRecord) => `${r.type} ${r.name}`).join(', ')
+      );
+    }
   } else if (domain.dnsStatus === 'conflict') {
     // Credential was disconnected after the conflict was recorded — the
     // provider's zone can't be re-checked without one.

@@ -2,7 +2,7 @@ import { connectDatabase, disconnectDatabase } from '../db/connection';
 import { DomainModel } from '../db/models/Domain';
 import { config } from '../config';
 import { stalwartClient } from '../stalwart/client';
-import { buildRequiredDnsRecords, buildZoneFileText } from '../services/dns-records.service';
+import { buildRequiredDnsRecords, buildFullDnsRecords, buildZoneFileText } from '../services/dns-records.service';
 
 async function migrateAllDomainsDns() {
   console.log('[DNS Migration] Connecting to database...');
@@ -19,7 +19,7 @@ async function migrateAllDomainsDns() {
     if (!d.stalwartDomainId) {
       console.log(`  Skipping Stalwart DKIM check (domain not yet provisioned in Stalwart).`);
       // Still generate canonical DNS records without DKIM for pre-activation display
-      const records = buildRequiredDnsRecords(d.domainName, []);
+      const records = buildFullDnsRecords(d.domainName, [], null);
       d.dnsRecords = records;
       d.dnsZoneFile = buildZoneFileText(d.domainName, records);
       await d.save();
@@ -43,8 +43,17 @@ async function migrateAllDomainsDns() {
 
       console.log(`  Retrieved ${dkimKeys.length} active DKIM key(s):`, dkimKeys.map((k) => `${k.selector} (${k.algorithm})`));
 
-      // 3. Build canonical records (MX to mail.toowix.com, SPF with server IPs, DKIM keys, DMARC p=none)
-      const records = buildRequiredDnsRecords(d.domainName, dkimKeys);
+      // 3. Fetch Stalwart zone file for full record set (SRV, CNAME, CAA, MTA-STS, etc.)
+      let stalwartZoneFileRaw: string | null = null;
+      try {
+        const stalwartDom = await stalwartClient.getDomain(d.stalwartDomainId!);
+        stalwartZoneFileRaw = stalwartDom?.dnsZoneFile || null;
+      } catch {
+        console.log(`  Warning: Could not fetch Stalwart zone file, using canonical records only.`);
+      }
+
+      // 4. Build full records (canonical MX/SPF/DKIM/DMARC + all Stalwart zone records)
+      const records = buildFullDnsRecords(d.domainName, dkimKeys, stalwartZoneFileRaw);
       const zoneFileText = buildZoneFileText(d.domainName, records);
 
       const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];
