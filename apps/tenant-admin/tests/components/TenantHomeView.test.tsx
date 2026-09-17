@@ -111,6 +111,8 @@ describe('TenantHomeView Component', () => {
 
   it('lists every domain and navigates to a Domain Dashboard when one is clicked', async () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
 
     expect(await screen.findByText('acmecorp.com')).toBeInTheDocument();
     expect(screen.getByText('secondary.com')).toBeInTheDocument();
@@ -124,8 +126,21 @@ describe('TenantHomeView Component', () => {
     vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
 
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
 
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
+  });
+
+  it('shows tenant-wide stats and a domain preview on the Overview tab (the default landing tab)', async () => {
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getByText('acmecorp.com')).toBeInTheDocument();
+    expect(screen.getByText('secondary.com')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('acmecorp.com'));
+    expect(onNavigateToDomain).toHaveBeenCalledWith('dom-1');
   });
 
   it('shows the combined billing summary across every domain on the Billing tab', async () => {

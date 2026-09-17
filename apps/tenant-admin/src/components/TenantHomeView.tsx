@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { TenantSummary, DomainItem, AuditItem, UserContext } from '../types';
+import { TenantSummary, DomainItem, AuditItem, UserContext, TenantBillingSummary as TenantBillingSummaryType } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { dnsStatusPill } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
@@ -14,12 +14,15 @@ import {
   Globe,
   Plus,
   Shield,
+  ShieldCheck,
   FileText,
   Laptop,
   CreditCard,
   ArrowRight,
   X,
   Mail,
+  LayoutDashboard,
+  History,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -29,7 +32,7 @@ interface TenantHomeViewProps {
   onNavigateToDomain: (domainId: string) => void;
 }
 
-type HomeTab = 'domains' | 'billing' | 'security' | 'audit' | 'devices';
+type HomeTab = 'overview' | 'domains' | 'billing' | 'security' | 'audit' | 'devices';
 
 function formatAuditAction(action: string, metadata?: any) {
   switch (action) {
@@ -60,8 +63,9 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [domains, setDomains] = useState<DomainItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
+  const [billingSummary, setBillingSummary] = useState<TenantBillingSummaryType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<HomeTab>('domains');
+  const [activeTab, setActiveTab] = useState<HomeTab>('overview');
   const [showDomainModal, setShowDomainModal] = useState(false);
 
   const [dismissed2FaBanner, setDismissed2FaBanner] = useState<boolean>(() => {
@@ -75,14 +79,16 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
   const load = async () => {
     try {
-      const [tenantRes, domainsRes, auditRes] = await Promise.all([
+      const [tenantRes, domainsRes, auditRes, billingRes] = await Promise.all([
         api.getTenantMe(),
         api.listTenantDomains().catch(() => ({ domains: [] })),
         api.getAuditLogs({ limit: 50 }).catch(() => ({ logs: [] })),
+        api.getTenantBillingSummary().catch(() => null),
       ]);
       setTenant(tenantRes.tenant);
       setDomains(domainsRes.domains || []);
       setAuditLogs(auditRes.logs || []);
+      setBillingSummary(billingRes);
     } catch (err) {
       console.error('Failed to load tenant data:', err);
     } finally {
@@ -124,6 +130,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   const adminInitials = adminEmail.slice(0, 2).toUpperCase();
 
   const TABS: Array<{ key: HomeTab; label: string; icon: LucideIcon }> = [
+    { key: 'overview', label: 'Overview', icon: LayoutDashboard },
     { key: 'domains', label: 'Domains', icon: Globe },
     { key: 'billing', label: 'Billing', icon: CreditCard },
     { key: 'security', label: 'Security', icon: Shield },
@@ -270,6 +277,155 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                 </button>
               </div>
             </div>
+          )}
+
+          {activeTab === 'overview' && (
+            <>
+              <section className="flex flex-col gap-1">
+                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
+                <p className="text-xs text-slate-500">
+                  {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
+                </p>
+              </section>
+
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</span>
+                    <Globe className="w-[18px] h-[18px] text-slate-400" />
+                  </div>
+                  <span className="text-2xl font-semibold text-slate-900">{domains.length}</span>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailboxes</span>
+                    <Mail className="w-[18px] h-[18px] text-slate-400" />
+                  </div>
+                  <span className="text-2xl font-semibold text-slate-900">
+                    {domains.reduce((sum, d) => sum + d.mailboxCount, 0)}
+                    <span className="text-sm font-normal text-slate-500">
+                      {' '}
+                      / {domains.reduce((sum, d) => sum + d.mailboxLimit, 0)}
+                    </span>
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('billing')}
+                  className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Billing</span>
+                    <CreditCard className="w-[18px] h-[18px] text-slate-400" />
+                  </div>
+                  <span className="text-sm font-semibold text-slate-900 capitalize">
+                    {billingSummary?.hasSubscription ? billingSummary.status?.replace(/_/g, ' ') : 'Not started'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('security')}
+                  className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">2FA</span>
+                    {is2FaEnabled ? (
+                      <ShieldCheck className="w-[18px] h-[18px] text-emerald-500" />
+                    ) : (
+                      <Shield className="w-[18px] h-[18px] text-amber-500" />
+                    )}
+                  </div>
+                  <span className={`text-sm font-semibold ${is2FaEnabled ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {is2FaEnabled ? 'Enabled' : 'Not enabled'}
+                  </span>
+                </button>
+              </section>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <section className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-[18px] h-[18px] text-slate-400" />
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('domains')}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>View all domains</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {domains.length === 0 ? (
+                    <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
+                      <Globe className="w-7 h-7 text-slate-300" />
+                      <p className="text-xs text-slate-500">No domains yet.</p>
+                      <button
+                        onClick={() => setShowDomainModal(true)}
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                      >
+                        + Add your first domain
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col divide-y divide-slate-100">
+                      {domains.slice(0, 5).map((domain) => {
+                        const pill = dnsStatusPill(domain.dnsStatus);
+                        return (
+                          <button
+                            key={domain.id}
+                            type="button"
+                            onClick={() => onNavigateToDomain(domain.id)}
+                            className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors text-left cursor-pointer"
+                          >
+                            <span className="text-xs font-medium text-slate-900 truncate">{domain.domainName}</span>
+                            <span className={`shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${pill.className}`}>
+                              {pill.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <History className="w-[18px] h-[18px] text-slate-400" />
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Recent Activity</h2>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('audit')}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>View audit log</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {auditLogs.length === 0 ? (
+                    <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
+                      <FileText className="w-7 h-7 text-slate-300" />
+                      <p className="text-xs text-slate-500">No recent events recorded.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col divide-y divide-slate-100">
+                      {auditLogs.slice(0, 5).map((log) => (
+                        <div key={log.id} className="py-3 flex flex-col gap-0.5">
+                          <span className="text-xs text-slate-800 leading-snug">{formatAuditAction(log.action, log.metadata)}</span>
+                          <span className="text-[11px] text-slate-400">{new Date(log.timestamp).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </>
           )}
 
           {activeTab === 'domains' && (
