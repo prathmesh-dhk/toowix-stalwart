@@ -1,5 +1,21 @@
 import mongoose from 'mongoose';
-import { resolveMx, resolveTxt, resolveCname, resolveSrv, resolveCaa } from 'dns/promises';
+import { Resolver, resolveMx, resolveTxt, resolveCname, resolveSrv, resolveCaa } from 'dns/promises';
+
+let publicResolver: Resolver | null = null;
+try {
+  if (typeof Resolver === 'function') {
+    publicResolver = new Resolver();
+    publicResolver.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  }
+} catch {
+  publicResolver = null;
+}
+
+const lookupMx = (name: string) => (publicResolver ? publicResolver.resolveMx(name).catch(() => resolveMx(name)) : resolveMx(name));
+const lookupTxt = (name: string) => (publicResolver ? publicResolver.resolveTxt(name).catch(() => resolveTxt(name)) : resolveTxt(name));
+const lookupCname = (name: string) => (publicResolver ? publicResolver.resolveCname(name).catch(() => resolveCname(name)) : resolveCname(name));
+const lookupSrv = (name: string) => (publicResolver ? publicResolver.resolveSrv(name).catch(() => resolveSrv(name)) : resolveSrv(name));
+const lookupCaa = (name: string) => (publicResolver ? publicResolver.resolveCaa(name).catch(() => resolveCaa(name)) : resolveCaa(name));
 import { DomainModel, IDomain, IGeneratedDnsRecord, IDnsConflictRecord } from '../db/models/Domain';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainDnsCredentialModel, DnsProviderName } from '../db/models/DomainDnsCredential';
@@ -311,10 +327,10 @@ export async function verifyPublicDns(
     } else {
       try {
         if (record.type === 'MX') {
-          const results = await resolveMx(fqdn);
+          const results = await lookupMx(fqdn);
           found = results.some((r) => matchesMxRecord(record, r.exchange));
         } else if (record.type === 'TXT') {
-          const results = await resolveTxt(fqdn);
+          const results = await lookupTxt(fqdn);
           const allTxt = results.map((chunks) => normalizeRecordValue(chunks.join('')));
           found = matchesTxtRecord(record, allTxt);
         }
@@ -357,28 +373,28 @@ export async function checkDnsRecordsLive(
     try {
       switch (record.type) {
         case 'MX': {
-          const answers = await resolveMx(fqdn);
+          const answers = await lookupMx(fqdn);
           found = answers.some((a) => matchesMxRecord(record, a.exchange));
           break;
         }
         case 'TXT': {
-          const answers = await resolveTxt(fqdn);
+          const answers = await lookupTxt(fqdn);
           const allTxt = answers.map((chunks) => normalizeRecordValue(chunks.join('')));
           found = matchesTxtRecord(record, allTxt);
           break;
         }
         case 'CNAME': {
-          const answers = await resolveCname(fqdn);
+          const answers = await lookupCname(fqdn);
           found = answers.some((a) => normalizeRecordValue(a) === normalizeRecordValue(record.value));
           break;
         }
         case 'SRV': {
-          const answers = await resolveSrv(fqdn);
+          const answers = await lookupSrv(fqdn);
           found = answers.some((a) => normalizeRecordValue(a.name) === normalizeRecordValue(record.value));
           break;
         }
         case 'CAA': {
-          const answers = await resolveCaa(fqdn);
+          const answers = await lookupCaa(fqdn);
           found = answers.some((a) => {
             const caaValue = record.tag === 'iodef' ? a.iodef : a.issue;
             return typeof caaValue === 'string' && normalizeRecordValue(record.value).startsWith(normalizeRecordValue(caaValue));
