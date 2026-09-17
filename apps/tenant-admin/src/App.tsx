@@ -7,6 +7,7 @@ import { ActivateTenantView } from './components/ActivateTenantView';
 import { TenantAdminDashboard } from './components/TenantAdminDashboard';
 import { TenantHomeView } from './components/TenantHomeView';
 import { ForgotPasswordView } from './components/ForgotPasswordView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
@@ -167,21 +168,25 @@ export const App: React.FC = () => {
   const domainRouteMatch = currentPath.match(/^\/domains\/([^/]+)/);
   if (domainRouteMatch) {
     return (
-      <TenantAdminDashboard
-        domainId={domainRouteMatch[1]}
-        user={currentUser}
-        onLogout={handleLogout}
-        onNavigateHome={navigateHome}
-        onSelectDomain={navigateToDomain}
-      />
+      <ErrorBoundary fallbackTitle="Unable to load domain view" onReset={navigateHome}>
+        <TenantAdminDashboard
+          domainId={domainRouteMatch[1]}
+          user={currentUser}
+          onLogout={handleLogout}
+          onNavigateHome={navigateHome}
+          onSelectDomain={navigateToDomain}
+        />
+      </ErrorBoundary>
     );
   }
 
   return (
-    <TenantHomeView
-      user={currentUser}
-      onLogout={handleLogout}
-      onNavigateToDomain={navigateToDomain}
-    />
+    <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={navigateHome}>
+      <TenantHomeView
+        user={currentUser}
+        onLogout={handleLogout}
+        onNavigateToDomain={navigateToDomain}
+      />
+    </ErrorBoundary>
   );
 };

@@ -110,7 +110,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
         </p>
       )}
 
-      {dnsStatus === 'conflict' && status?.dnsConflicts && status.dnsConflicts.length > 0 && (
+      {dnsStatus === 'conflict' && Array.isArray(status?.dnsConflicts) && status.dnsConflicts.length > 0 && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
           <div className="flex items-center gap-1.5 text-rose-700 text-xs font-semibold">
             <AlertTriangle size={13} />
@@ -119,7 +119,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
           <div className="space-y-1">
             {status.dnsConflicts.map((c, i) => (
               <div key={i} className="font-mono text-[11px] text-rose-800 bg-white border border-rose-200 rounded px-2 py-1">
-                {c.type} {c.name}: {c.foundValue}
+                {c?.type || 'RECORD'} {c?.name || ''}: {c?.foundValue || ''}
               </div>
             ))}
           </div>
@@ -163,7 +163,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
             {checking ? 'Checking your records…' : 'Check My Records'}
           </button>
 
-          {liveCheck && (
+          {liveCheck && Array.isArray(liveCheck.results) && (
             <div className={`p-3 rounded-xl border space-y-2 ${liveCheck.allFound ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${liveCheck.allFound ? 'text-emerald-800' : 'text-amber-800'}`}>
                 {liveCheck.allFound ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}

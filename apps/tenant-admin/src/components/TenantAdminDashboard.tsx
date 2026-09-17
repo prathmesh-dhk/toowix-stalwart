@@ -238,8 +238,17 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
 
       // This view is always scoped to one domain, sourced from the route
       // (`domainId` prop) — never a sidebar switcher (that's Tenant Home now).
-      const currentDomain = loadedDomains.find((d) => d.id === (targetDomainId || domainId)) || null;
+      const currentDomain =
+        loadedDomains.find((d) => d.id === (targetDomainId || domainId)) ||
+        loadedDomains[0] ||
+        null;
       setActiveDomain(currentDomain);
+
+      // If fallback was used and targetDomainId/domainId was invalid or not found,
+      // update route to match the active domain so URL remains valid.
+      if (currentDomain && currentDomain.id !== domainId && typeof onSelectDomain === 'function') {
+        onSelectDomain(currentDomain.id);
+      }
 
       // Load mailboxes, deletion request, and DNS status for active domain
       if (currentDomain) {
@@ -1394,23 +1403,38 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           {/* VIEW: DOMAINS & DNS ZONE RECORDS                                      */}
           {/* ===================================================================== */}
           {activeNav === 'domains' && (
-            domains.length === 0 ? (
+            !activeDomain ? (
               <div className="bg-white border border-slate-200 rounded-xl p-12 text-center flex flex-col items-center justify-center gap-3 shadow-xs animate-in fade-in">
                 <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-1 shadow-2xs">
                   <Globe className="w-6 h-6" />
                 </div>
-                <h3 className="text-base font-semibold text-slate-900">No Domains Configured</h3>
+                <h3 className="text-base font-semibold text-slate-900">
+                  {domains.length === 0 ? 'No Domains Configured' : 'No Domain Selected'}
+                </h3>
                 <p className="text-xs text-slate-500 max-w-sm">
-                  Connect your domain to view authoritative DNS zone routing records (MX, SPF, DKIM, DMARC).
+                  {domains.length === 0
+                    ? 'Connect your domain to view authoritative DNS zone routing records (MX, SPF, DKIM, DMARC).'
+                    : 'Select a configured domain to view authoritative DNS zone routing records and configuration options.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setShowDomainModal(true)}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer mt-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Your First Domain</span>
-                </button>
+                <div className="flex items-center gap-2 mt-2">
+                  {domains.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDomain(domains[0])}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>Switch to {domains[0].domainName}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowDomainModal(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Domain</span>
+                  </button>
+                </div>
               </div>
             ) : (
             <section className="flex flex-col gap-6">
@@ -1536,7 +1560,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                       </div>
                     </button>
 
-                    {showInlineProviderForm && (
+                    {showInlineProviderForm && activeDomain && (
                       <div className="p-4 bg-white border-t border-indigo-100 animate-in fade-in duration-150">
                         <DnsProviderCredentialForm
                           domainId={activeDomain.id}
@@ -1576,14 +1600,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                     <p className="text-xs text-slate-500 leading-relaxed">
                       Permanently request removal of this domain. All associated configurations, DNS records, and active Stripe subscriptions will be cancelled upon Super Admin approval.
                     </p>
-                    {activeDomain.mailboxCount > 0 ? (
+                    {(activeDomain?.mailboxCount ?? 0) > 0 ? (
                       <p className="text-xs text-rose-600 font-medium mt-1 flex items-center gap-1.5">
                         <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                        <span>Remove all mailboxes first (current: {activeDomain.mailboxCount} {activeDomain.mailboxCount === 1 ? 'mailbox' : 'mailboxes'})</span>
+                        <span>Remove all mailboxes first (current: {activeDomain?.mailboxCount ?? 0} {(activeDomain?.mailboxCount ?? 0) === 1 ? 'mailbox' : 'mailboxes'})</span>
                       </p>
                     ) : deletionRequest?.status === 'pending' ? (
                       <p className="text-xs text-amber-700 mt-1">
-                        A deletion request submitted on {new Date(deletionRequest.createdAt).toLocaleDateString()} is awaiting Super Admin approval.
+                        A deletion request submitted on {deletionRequest.createdAt ? new Date(deletionRequest.createdAt).toLocaleDateString() : 'recently'} is awaiting Super Admin approval.
                       </p>
                     ) : deletionRequest?.status === 'rejected' ? (
                       <p className="text-xs text-slate-600 mt-1">
@@ -1595,10 +1619,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   <div className="shrink-0">
                     <button
                       type="button"
-                      disabled={activeDomain.mailboxCount > 0 || deletionRequest?.status === 'pending'}
+                      disabled={!activeDomain || (activeDomain?.mailboxCount ?? 0) > 0 || deletionRequest?.status === 'pending'}
                       onClick={() => setShowDomainDeletionModal(true)}
                       title={
-                        activeDomain.mailboxCount > 0
+                        (activeDomain?.mailboxCount ?? 0) > 0
                           ? 'Remove all mailboxes first'
                           : deletionRequest?.status === 'pending'
                           ? 'Deletion request already pending review'

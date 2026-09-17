@@ -553,6 +553,70 @@ describe('TenantAdminDashboard Component', () => {
         expect(screen.getByRole('button', { name: /allowed ips/i })).toBeInTheDocument();
       });
     });
+
+    it('gracefully falls back to first domain and does not crash when navigated with unknown domainId', async () => {
+      const onSelectDomain = vi.fn();
+      render(
+        <TenantAdminDashboard
+          domainId="unknown-non-existent-domain-id"
+          user={mockUser}
+          onLogout={onLogout}
+          onNavigateHome={onNavigateHome}
+          onSelectDomain={onSelectDomain}
+        />
+      );
+
+      // Should load fallback domain (dom-1)
+      expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
+      expect(onSelectDomain).toHaveBeenCalledWith('dom-1');
+
+      // Click Domains & DNS - should render smoothly without blank screen or crash
+      const domainsNavBtn = screen.getByRole('button', { name: /domains & dns/i });
+      fireEvent.click(domainsNavBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Authoritative DNS Zone Configuration')).toBeInTheDocument();
+        expect(screen.getByText('Danger Zone')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /delete domain/i })).toBeInTheDocument();
+      });
+    });
+
+    it('handles clicking Domains & DNS when no domain exists without throwing or blank screen', async () => {
+      vi.mocked(api.getTenantMe).mockResolvedValueOnce({
+        tenant: {
+          id: 'tenant-empty',
+          name: 'Empty Corp',
+          status: 'active',
+          mailboxLimit: 10,
+          mailboxCount: 0,
+          availableMailboxes: 10,
+          adminCount: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          domains: [],
+        } as any,
+      });
+      vi.mocked(api.listTenantDomains).mockResolvedValueOnce({ domains: [] });
+
+      render(
+        <TenantAdminDashboard
+          domainId="empty-id"
+          user={mockUser}
+          onLogout={onLogout}
+          onNavigateHome={onNavigateHome}
+        />
+      );
+
+      expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
+
+      const domainsNavBtn = screen.getByRole('button', { name: /domains & dns/i });
+      fireEvent.click(domainsNavBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('No Domains Configured')).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: /add domain/i }).length).toBeGreaterThanOrEqual(1);
+      });
+    });
   });
 });
 
