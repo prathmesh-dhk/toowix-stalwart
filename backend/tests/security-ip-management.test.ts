@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { app } from '../src/app';
 import { AdminUserModel } from '../src/db/models/AdminUser';
 import { TenantModel } from '../src/db/models/Tenant';
+import { DomainModel } from '../src/db/models/Domain';
 import { AuditLogModel } from '../src/db/models/AuditLog';
 import { generateOidcToken, hashPassword } from '../src/auth/service';
 import { stalwartClient } from '../src/stalwart/client';
@@ -262,6 +263,140 @@ describe('Security Firewall & IP Management API (/api/tenants/me/security)', () 
       const audit = await AuditLogModel.findOne({ action: 'SECURITY_IP_WHITELIST_REMOVED' });
       expect(audit).not.toBeNull();
       expect(audit?.resourceId).toBe('alw-del-123');
+    });
+  });
+
+  describe('Per-Domain IP Scoping (/api/tenants/me/security?domainId=...)', () => {
+    let testDomainId: string;
+
+    beforeEach(async () => {
+      await DomainModel.deleteMany({});
+      const domain = await DomainModel.create({
+        tenantId: new mongoose.Types.ObjectId(tenantId),
+        domainName: 'testdomain.com',
+        status: 'active',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        dnsStatus: 'active',
+        blockedIps: [
+          {
+            id: 'blk-dom-1',
+            address: '198.51.100.99',
+            reason: 'Domain specific block',
+            createdAt: new Date(),
+          },
+        ],
+        allowedIps: [
+          {
+            id: 'alw-dom-1',
+            address: '198.51.100.88',
+            reason: 'Domain specific allow',
+            createdAt: new Date(),
+          },
+        ],
+      });
+      testDomainId = domain._id.toString();
+    });
+
+    it('should list blocked IPs scoped to a specific domain', async () => {
+      const res = await request(app)
+        .get(`/api/tenants/me/security/blocked-ips?domainId=${testDomainId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.list).toHaveLength(1);
+      expect(res.body.list[0].address).toBe('198.51.100.99');
+    });
+
+    it('should add a blocked IP scoped to a specific domain', async () => {
+      vi.spyOn(stalwartClient, 'blockIp').mockResolvedValue({
+        id: 'blk-stw-1',
+        address: '203.0.113.111',
+        reason: 'Malicious domain probe',
+      });
+
+      const res = await request(app)
+        .post('/api/tenants/me/security/blocked-ips')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          address: '203.0.113.111',
+          reason: 'Malicious domain probe',
+          domainId: testDomainId,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+
+      const domain = await DomainModel.findById(testDomainId);
+      expect(domain?.blockedIps).toHaveLength(2);
+      expect(domain?.blockedIps?.some((b) => b.address === '203.0.113.111')).toBe(true);
+    });
+
+    it('should unblock an IP for a specific domain', async () => {
+      vi.spyOn(stalwartClient, 'unblockIp').mockResolvedValue();
+
+      const res = await request(app)
+        .post('/api/tenants/me/security/blocked-ips/unblock')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          id: 'blk-dom-1',
+          address: '198.51.100.99',
+          domainId: testDomainId,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const domain = await DomainModel.findById(testDomainId);
+      expect(domain?.blockedIps).toHaveLength(0);
+    });
+
+    it('should list allowed IPs scoped to a specific domain', async () => {
+      const res = await request(app)
+        .get(`/api/tenants/me/security/allowed-ips?domainId=${testDomainId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.list).toHaveLength(1);
+      expect(res.body.list[0].address).toBe('198.51.100.88');
+    });
+
+    it('should add an allowed IP scoped to a specific domain', async () => {
+      vi.spyOn(stalwartClient, 'addAllowedIp').mockResolvedValue({
+        id: 'alw-stw-2',
+        address: '10.200.0.1',
+        reason: 'Branch router',
+      });
+
+      const res = await request(app)
+        .post('/api/tenants/me/security/allowed-ips')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          address: '10.200.0.1',
+          reason: 'Branch router',
+          domainId: testDomainId,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+
+      const domain = await DomainModel.findById(testDomainId);
+      expect(domain?.allowedIps).toHaveLength(2);
+      expect(domain?.allowedIps?.some((a) => a.address === '10.200.0.1')).toBe(true);
+    });
+
+    it('should remove an allowed IP for a specific domain', async () => {
+      vi.spyOn(stalwartClient, 'removeAllowedIp').mockResolvedValue();
+
+      const res = await request(app)
+        .delete(`/api/tenants/me/security/allowed-ips/alw-dom-1?domainId=${testDomainId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const domain = await DomainModel.findById(testDomainId);
+      expect(domain?.allowedIps).toHaveLength(0);
     });
   });
 });

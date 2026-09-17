@@ -19,6 +19,8 @@ export interface IMailbox extends Document {
   status: MailboxStatus;
   stalwartAccountId?: string;
   security: IMailboxSecurityProfile;
+  domainName?: string;
+  storageBytes?: number;
   createdAt: Date;
   updatedAt: Date;
 }

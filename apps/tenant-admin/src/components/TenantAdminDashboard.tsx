@@ -11,6 +11,8 @@ import { DomainDnsStatusModal } from './DomainDnsStatusModal';
 import { DomainDeletionModal } from './DomainDeletionModal';
 import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
+import { DomainSwitcher } from './DomainSwitcher';
+import { DomainSecurityView } from './DomainSecurityView';
 import {
   Loader2,
   LogOut,
@@ -49,9 +51,16 @@ interface TenantAdminDashboardProps {
   user?: UserContext | null;
   onLogout?: () => void;
   onNavigateHome: () => void;
+  onSelectDomain?: (domainId: string) => void;
 }
 
-export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ domainId, user, onLogout, onNavigateHome }) => {
+export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
+  domainId,
+  user,
+  onLogout,
+  onNavigateHome,
+  onSelectDomain,
+}) => {
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [domains, setDomains] = useState<DomainItem[]>([]);
   const [activeDomain, setActiveDomain] = useState<DomainItem | null>(null);
@@ -61,7 +70,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ doma
   const [deletionRequest, setDeletionRequest] = useState<DomainDeletionRequestItem | null>(null);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains'>('dashboard');
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
@@ -262,9 +271,19 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ doma
     }
   };
 
+  const handleSelectDomain = (selectedDomain: DomainItem) => {
+    setActiveDomain(selectedDomain);
+    if (typeof onSelectDomain === 'function') {
+      onSelectDomain(selectedDomain.id);
+    } else if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', `/domains/${selectedDomain.id}`);
+      loadTenantData(selectedDomain.id);
+    }
+  };
+
   useEffect(() => {
-    loadTenantData();
-  }, []);
+    loadTenantData(domainId);
+  }, [domainId]);
 
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
@@ -606,29 +625,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ doma
       {/* ========================================================================= */}
       <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
         <div className="flex flex-col gap-1 overflow-y-auto">
-          {/* Back to Tenant Home (domain switching now happens by going back
-              to the full domain list, not an inline dropdown). */}
-          <button
-            type="button"
-            onClick={onNavigateHome}
-            className="w-full flex items-center gap-2 px-3 py-2.5 mb-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 text-slate-700 transition-colors cursor-pointer text-xs font-medium"
-            id="btn-back-to-domains"
-          >
-            <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0 rotate-180" />
-            <span className="truncate">{activeDomain?.domainName || 'All Domains'}</span>
-          </button>
-
-          {activeDomain && (
-            <button
-              type="button"
-              onClick={() => setShowDnsStatusModal(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 mb-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 transition-colors cursor-pointer text-xs font-medium"
-              id="btn-view-dns-setup"
-            >
-              <FileText className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <span>View DNS Setup</span>
-            </button>
-          )}
+          {/* Domain Switcher */}
+          <DomainSwitcher
+            domains={domains}
+            activeDomain={activeDomain}
+            onSelectDomain={handleSelectDomain}
+            onOpenAddDomain={() => setShowDomainModal(true)}
+          />
 
           {/* Main Navigation Group */}
           <div className="flex flex-col gap-0.5">
@@ -743,6 +746,27 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ doma
                   strokeWidth={1.75}
                 />
                 <span className="truncate">Domains & DNS</span>
+              </div>
+            </button>
+
+            {/* Security */}
+            <button
+              onClick={() => setActiveNav('security')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeNav === 'security'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-security"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <Shield
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeNav === 'security' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Security</span>
               </div>
             </button>
           </div>
@@ -1584,6 +1608,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ doma
           {/* ===================================================================== */}
           {activeNav === 'billing' && (
             <BillingView activeDomain={activeDomain} />
+          )}
+
+          {/* ===================================================================== */}
+          {/* VIEW: SECURITY (per-domain Blocked & Allowed IPs)                    */}
+          {/* ===================================================================== */}
+          {activeNav === 'security' && (
+            <DomainSecurityView activeDomain={activeDomain} />
           )}
 
         </main>

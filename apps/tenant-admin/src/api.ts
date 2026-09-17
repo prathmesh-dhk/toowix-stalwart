@@ -555,13 +555,18 @@ export const api = {
   // SECURITY FIREWALL / IP MANAGEMENT
   // ==========================================
 
-  checkIpStatus: (ip: string) =>
-    request<IpCheckResult>(`/api/tenants/me/security/check-ip?ip=${encodeURIComponent(ip)}`),
+  checkIpStatus: (ip: string, domainId?: string) => {
+    const q = new URLSearchParams({ ip });
+    if (domainId) q.set('domainId', domainId);
+    return request<IpCheckResult>(`/api/tenants/me/security/check-ip?${q.toString()}`);
+  },
 
-  getBlockedIps: () =>
-    request<{ list: BlockedIpItem[] }>('/api/tenants/me/security/blocked-ips'),
+  getBlockedIps: (domainId?: string) => {
+    const q = domainId ? `?domainId=${encodeURIComponent(domainId)}` : '';
+    return request<{ list: BlockedIpItem[] }>(`/api/tenants/me/security/blocked-ips${q}`);
+  },
 
-  unblockIp: (params: { id?: string; address?: string }) =>
+  unblockIp: (params: { id?: string; address?: string; domainId?: string }) =>
     request<{ success: boolean; unblockedCount: number; message: string }>(
       '/api/tenants/me/security/blocked-ips/unblock',
       {
@@ -570,7 +575,7 @@ export const api = {
       }
     ),
 
-  blockIp: (params: { address: string; reason?: string }) =>
+  blockIp: (params: { address: string; reason?: string; domainId?: string }) =>
     request<{ success: boolean; message: string; item: BlockedIpItem }>(
       '/api/tenants/me/security/blocked-ips',
       {
@@ -579,10 +584,12 @@ export const api = {
       }
     ),
 
-  getAllowedIps: () =>
-    request<{ list: AllowedIpItem[] }>('/api/tenants/me/security/allowed-ips'),
+  getAllowedIps: (domainId?: string) => {
+    const q = domainId ? `?domainId=${encodeURIComponent(domainId)}` : '';
+    return request<{ list: AllowedIpItem[] }>(`/api/tenants/me/security/allowed-ips${q}`);
+  },
 
-  addAllowedIp: (params: { address: string; reason?: string }) =>
+  addAllowedIp: (params: { address: string; reason?: string; domainId?: string }) =>
     request<{ success: boolean; message: string; item: AllowedIpItem }>(
       '/api/tenants/me/security/allowed-ips',
       {
@@ -591,13 +598,15 @@ export const api = {
       }
     ),
 
-  removeAllowedIp: (id: string) =>
-    request<{ success: boolean; message: string }>(
-      `/api/tenants/me/security/allowed-ips/${encodeURIComponent(id)}`,
+  removeAllowedIp: (id: string, domainId?: string) => {
+    const q = domainId ? `?domainId=${encodeURIComponent(domainId)}` : '';
+    return request<{ success: boolean; message: string }>(
+      `/api/tenants/me/security/allowed-ips/${encodeURIComponent(id)}${q}`,
       {
         method: 'DELETE',
       }
-    ),
+    );
+  },
 };
 
 

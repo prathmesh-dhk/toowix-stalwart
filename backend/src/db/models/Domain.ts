@@ -30,6 +30,22 @@ export interface IDnsConflictRecord {
   foundValue: string;
 }
 
+export interface IDomainBlockedIp {
+  id: string;
+  address: string;
+  reason?: string | null;
+  createdAt: Date;
+  expiresAt?: Date | null;
+}
+
+export interface IDomainAllowedIp {
+  id: string;
+  address: string;
+  reason?: string | null;
+  createdAt: Date;
+  expiresAt?: Date | null;
+}
+
 export interface IDomain extends Document {
   tenantId: Types.ObjectId;
   domainName: string;
@@ -62,6 +78,9 @@ export interface IDomain extends Document {
   dnsVerifiedAt?: Date | null;
   activatedAt?: Date | null;
 
+  blockedIps?: IDomainBlockedIp[];
+  allowedIps?: IDomainAllowedIp[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -89,6 +108,28 @@ const DnsConflictRecordSchema = new Schema<IDnsConflictRecord>(
     type: { type: String, required: true },
     name: { type: String, required: true },
     foundValue: { type: String, required: true },
+  },
+  { _id: false }
+);
+
+const DomainBlockedIpSchema = new Schema<IDomainBlockedIp>(
+  {
+    id: { type: String, required: true },
+    address: { type: String, required: true },
+    reason: { type: String, default: null },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
+const DomainAllowedIpSchema = new Schema<IDomainAllowedIp>(
+  {
+    id: { type: String, required: true },
+    address: { type: String, required: true },
+    reason: { type: String, default: null },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, default: null },
   },
   { _id: false }
 );
@@ -183,6 +224,14 @@ const DomainSchema = new Schema<IDomain>(
     activatedAt: {
       type: Date,
       default: null,
+    },
+    blockedIps: {
+      type: [DomainBlockedIpSchema],
+      default: [],
+    },
+    allowedIps: {
+      type: [DomainAllowedIpSchema],
+      default: [],
     },
   },
   {

@@ -74,6 +74,100 @@ platformTenantRouter.get('/', async (_req: Request, res: Response) => {
   }
 });
 
+// 1b. Get Single Tenant Full Details (Domains, Admins, Mailboxes, Audit Logs, Stats)
+platformTenantRouter.get('/:id', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant ID' });
+  }
+
+  try {
+    const tenant = await TenantModel.findById(req.params.id);
+    if (!tenant) {
+      return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
+    }
+
+    const [domains, admins, mailboxes, auditLogs] = await Promise.all([
+      DomainModel.find({ tenantId: tenant._id }).sort({ isPrimary: -1, createdAt: 1 }),
+      AdminUserModel.find({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).sort({ createdAt: 1 }),
+      MailboxModel.find({ tenantId: tenant._id }).sort({ createdAt: 1 }),
+      AuditLogModel.find({ tenantId: tenant._id }).sort({ timestamp: -1 }).limit(50),
+    ]);
+
+    const activeMailboxes = mailboxes.filter((m) => m.status === 'active').length;
+    const suspendedMailboxes = mailboxes.filter((m) => m.status === 'suspended').length;
+    const activeDomains = domains.filter((d) => d.dnsStatus === 'active').length;
+    const totalStorageBytes = mailboxes.reduce((acc, m) => acc + (m.storageBytes || 0), 0);
+
+    return res.status(200).json({
+      tenant: {
+        id: tenant._id.toString(),
+        name: tenant.name,
+        status: tenant.status,
+        mailboxLimit: tenant.mailboxLimit,
+        mailboxCount: tenant.mailboxCount,
+        createdAt: tenant.createdAt.toISOString(),
+        updatedAt: tenant.updatedAt.toISOString(),
+      },
+      domains: domains.map((d) => ({
+        id: d._id.toString(),
+        domainName: d.domainName,
+        stalwartDomainId: d.stalwartDomainId || null,
+        status: d.status,
+        isPrimary: d.isPrimary,
+        mailboxLimit: d.mailboxLimit,
+        employeeCount: d.employeeCount,
+        dnsStatus: d.dnsStatus,
+        planId: d.planId || null,
+        planName: d.planName || null,
+        createdAt: d.createdAt.toISOString(),
+      })),
+      admins: admins.map((a) => ({
+        id: a._id.toString(),
+        email: a.email,
+        role: a.role,
+        status: a.status,
+        twoFactorEnabled: a.twoFactorEnabled,
+        createdAt: a.createdAt.toISOString(),
+      })),
+      mailboxes: mailboxes.map((m) => ({
+        id: m._id.toString(),
+        address: m.address,
+        localPart: m.localPart,
+        domainId: m.domainId?.toString() || null,
+        domainName: m.domainName,
+        status: m.status,
+        storageBytes: m.storageBytes || 0,
+        createdAt: m.createdAt.toISOString(),
+      })),
+      auditLogs: auditLogs.map((l) => ({
+        id: l._id.toString(),
+        action: l.action,
+        actorEmail: l.actorEmail,
+        actorRole: l.actorRole,
+        actorIp: l.actorIp,
+        resource: l.resource,
+        resourceId: l.resourceId,
+        status: l.status,
+        timestamp: l.timestamp.toISOString(),
+        metadata: l.metadata,
+      })),
+      stats: {
+        totalDomains: domains.length,
+        activeDomains,
+        totalMailboxes: mailboxes.length,
+        activeMailboxes,
+        suspendedMailboxes,
+        totalStorageBytes,
+        mailboxLimit: tenant.mailboxLimit,
+        usagePercent: tenant.mailboxLimit > 0 ? Math.round((mailboxes.length / tenant.mailboxLimit) * 100) : 0,
+      },
+    });
+  } catch (err: any) {
+    console.error('[Get Tenant Error]:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve tenant details' });
+  }
+});
+
 const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
 const createTenantSchema = z.object({

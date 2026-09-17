@@ -15,6 +15,7 @@ import {
   DomainDnsStatus,
   Plan,
   DomainDeletionRequest,
+  TenantFullDetails,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -191,6 +192,7 @@ export const api = {
 
   // Platform Admin - Tenants
   listTenants: () => request<{ tenants: TenantSummary[] }>('/api/platform/tenants'),
+  getTenantDetails: (id: string) => request<TenantFullDetails>(`/api/platform/tenants/${id}`),
   createTenant: (body: { name: string; domain: string; mailboxLimit?: number }) =>
     request<TenantSummary>('/api/platform/tenants', {
       method: 'POST',

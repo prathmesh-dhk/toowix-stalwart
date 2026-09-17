@@ -9,9 +9,9 @@ import {
   ArrowLeft,
   ArrowRight,
   ShieldCheck,
-  Zap,
   FileText,
   CreditCard,
+  Globe,
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
 
@@ -21,21 +21,37 @@ interface DomainSetupModalProps {
   onDomainAdded: (domain: DomainItem) => void;
 }
 
-type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
-type WizardStep = 'domain' | 'plan' | 'method' | 'setup' | 'status';
-type SetupMethod = 'provider' | 'manual' | null;
+export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
+export type WizardStep = 'domain' | 'plan' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status';
+export type SetupMethod = 'provider' | 'manual' | null;
 
-const PROVIDER_LABEL: Record<DnsProvider, string> = {
+export const PROVIDER_LABEL: Record<DnsProvider, string> = {
   godaddy: 'GoDaddy',
   hostinger: 'Hostinger',
   cloudflare: 'Cloudflare',
 };
 
-const STEP_ORDER: WizardStep[] = ['domain', 'plan', 'method', 'setup', 'status'];
 const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
+import godaddyIcon from '../assets/godaddy-icon.png';
+import hostingerLogo from '../assets/hostinger-logo.png';
+import cloudflareLogo from '../assets/cloudflare-logo.png';
+
 const inputClass =
-  'w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400';
+  'w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400 bg-white text-slate-900';
+
+/* Authentic brand logos provided for GoDaddy, Hostinger, and Cloudflare */
+export const GoDaddyIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
+  <img src={godaddyIcon} alt="GoDaddy" className={`${className} object-contain`} />
+);
+
+export const HostingerIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
+  <img src={hostingerLogo} alt="Hostinger" className={`${className} object-contain`} />
+);
+
+export const CloudflareIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
+  <img src={cloudflareLogo} alt="Cloudflare" className={`${className} object-contain`} />
+);
 
 export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   isOpen,
@@ -43,6 +59,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   onDomainAdded,
 }) => {
   const [step, setStep] = useState<WizardStep>('domain');
+  const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [domainName, setDomainName] = useState('');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
@@ -67,13 +84,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  // DNS provider auto-detection: kicked off in the background as soon as the
-  // domain name is confirmed (step 1), so the result is ready by the time
-  // the domain is actually created (end of step 2) — at which point we skip
-  // the method-picker step forward, straight into the matching provider's
-  // credential form, or straight into Manual Setup if nothing matched.
-  // "Back" from the setup step still lands on the method picker either way,
-  // so a wrong auto-detection is always one click away from being overridden.
   const detectionRef = useRef<Promise<{ provider: DnsProvider | null; nameservers: string[] }> | null>(null);
   const [methodAutoSkipped, setMethodAutoSkipped] = useState(false);
 
@@ -92,23 +102,39 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentIdx = STEP_ORDER.indexOf(step);
+  const navigateTo = (nextStep: WizardStep) => {
+    setDirection('forward');
+    setStep(nextStep);
+  };
+
+  const navigateBack = (prevStep: WizardStep) => {
+    setDirection('backward');
+    setStep(prevStep);
+  };
+
+  const getStepNumber = (): { current: number; total: number } => {
+    if (step === 'domain') return { current: 1, total: 4 };
+    if (step === 'plan') return { current: 2, total: 4 };
+    if (step === 'method') return { current: 3, total: 4 };
+    if (step === 'godaddy' || step === 'hostinger' || step === 'cloudflare') {
+      return { current: 4, total: 5 };
+    }
+    if (method === 'provider') return { current: 5, total: 5 };
+    return { current: 4, total: 4 };
+  };
 
   const handleContinueDomainStep = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanDomain = domainName.trim().toLowerCase();
     if (!cleanDomain || !DOMAIN_REGEX.test(cleanDomain)) {
-      setError('Please enter a valid domain name (e.g. acme.com or mail.acme.com).');
+      setError('Please enter a valid domain name (e.g. acme.com or mail.brand.io).');
       return;
     }
     setError(null);
-    // Fire-and-forget: runs in the background while the tenant picks a plan,
-    // so the result is ready (or the wizard just waits briefly on it) by the
-    // time the domain is created and the wizard needs to decide the setup flow.
     detectionRef.current = api
       .detectDnsProvider(cleanDomain)
       .catch(() => ({ provider: null, nameservers: [] }));
-    setStep('plan');
+    navigateTo('plan');
   };
 
   const handleCreateDomain = async (e: React.FormEvent) => {
@@ -116,8 +142,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     const cleanDomain = domainName.trim().toLowerCase();
 
     if (!cleanDomain || !DOMAIN_REGEX.test(cleanDomain)) {
-      setError('Please enter a valid domain name (e.g. acme.com or mail.acme.com).');
-      setStep('domain');
+      setError('Please enter a valid domain name (e.g. acme.com or mail.brand.io).');
+      navigateBack('domain');
       return;
     }
     if (!selectedPlanId) {
@@ -129,8 +155,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setError(null);
 
     try {
-      // Creates the domain record only — Stalwart/DNS provisioning happens
-      // later when a Super Admin clicks "Activate Domain".
       const res = await api.createTenantDomain({
         domainName: cleanDomain,
         planId: selectedPlanId,
@@ -142,15 +166,25 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         ? await detectionRef.current
         : { provider: null, nameservers: [] };
 
-      if (detection.provider) {
-        setProvider(detection.provider);
+      if (detection.provider === 'godaddy') {
+        setProvider('godaddy');
         setMethod('provider');
         setMethodAutoSkipped(true);
-        setStep('setup');
+        navigateTo('godaddy');
+      } else if (detection.provider === 'hostinger') {
+        setProvider('hostinger');
+        setMethod('provider');
+        setMethodAutoSkipped(true);
+        navigateTo('hostinger');
+      } else if (detection.provider === 'cloudflare') {
+        setProvider('cloudflare');
+        setMethod('provider');
+        setMethodAutoSkipped(true);
+        navigateTo('cloudflare');
       } else {
         setMethod('manual');
         setMethodAutoSkipped(true);
-        setStep('setup');
+        goToStatus(res.domain);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to create domain. Please check if it already exists.');
@@ -159,14 +193,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     }
   };
 
-  const chooseMethod = (m: SetupMethod) => {
-    setMethod(m);
-    setMethodAutoSkipped(false);
-    setError(null);
-    setStep('setup');
-  };
-
-  const handleConnectProvider = async (e: React.FormEvent) => {
+  const handleConnectProvider = async (e: React.FormEvent, targetProvider: DnsProvider) => {
     e.preventDefault();
     if (!createdDomain) return;
     setConnecting(true);
@@ -178,24 +205,25 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         .replace(/^bearer\s+/i, '')
         .trim();
       const credential =
-        provider === 'godaddy'
+        targetProvider === 'godaddy'
           ? { provider: 'godaddy' as const, apiKey: apiKey.trim(), apiSecret: apiSecret.trim() }
-          : { provider, token: cleanToken };
+          : { provider: targetProvider, token: cleanToken };
       await api.connectDnsProviderCredential(createdDomain.id, credential);
       setConnected(true);
     } catch (err: any) {
-      setError(err.message || `Could not verify this ${PROVIDER_LABEL[provider]} credential against the domain.`);
+      setError(err.message || `Could not verify this ${PROVIDER_LABEL[targetProvider]} credential against the domain.`);
     } finally {
       setConnecting(false);
     }
   };
 
-  const refreshDnsStatus = async () => {
-    if (!createdDomain) return;
+  const refreshDnsStatus = async (targetDomain?: DomainItem | null) => {
+    const dom = targetDomain || createdDomain;
+    if (!dom) return;
     setStatusLoading(true);
     setStatusError(null);
     try {
-      const res = await api.getDomainDnsStatus(createdDomain.id);
+      const res = await api.getDomainDnsStatus(dom.id);
       setDnsStatus(res);
     } catch (err: any) {
       setStatusError(err.message || 'Failed to load DNS status.');
@@ -204,9 +232,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     }
   };
 
-  const goToStatus = () => {
-    setStep('status');
-    refreshDnsStatus();
+  const goToStatus = (targetDomain?: DomainItem | null) => {
+    navigateTo('status');
+    refreshDnsStatus(targetDomain);
   };
 
   const handleStartCheckout = async () => {
@@ -218,9 +246,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       if ('url' in res) {
         window.location.href = res.url;
       } else {
-        // Combined-billing model: this tenant already has a subscription via
-        // another domain, so this one attached directly — no redirect, no
-        // card details to collect again, already billed on the shared plan.
         setPaymentCardDismissed(true);
         setStartingCheckout(false);
       }
@@ -231,8 +256,19 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   };
 
   const goBack = () => {
-    if (currentIdx > 0) {
-      setStep(STEP_ORDER[currentIdx - 1]);
+    setError(null);
+    if (step === 'plan') {
+      navigateBack('domain');
+    } else if (step === 'method') {
+      navigateBack('plan');
+    } else if (step === 'godaddy' || step === 'hostinger' || step === 'cloudflare') {
+      navigateBack('method');
+    } else if (step === 'status') {
+      if (method === 'provider') {
+        navigateBack(provider);
+      } else {
+        navigateBack('method');
+      }
     }
   };
 
@@ -240,8 +276,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     if (createdDomain) {
       onDomainAdded(createdDomain);
     }
-    // Reset state and close
     setStep('domain');
+    setDirection('forward');
     setDomainName('');
     setSelectedPlanId(plans[0]?.id ?? null);
     setError(null);
@@ -263,36 +299,39 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   };
 
   const domainNameValid = domainName.trim().length > 0;
-  const setupContinueDisabled = method === 'provider' && !connected;
+  const stepInfo = getStepNumber();
 
   let headline: React.ReactNode = null;
   let subhead: React.ReactNode = null;
   if (step === 'domain') {
-    headline = 'Add New Domain';
+    headline = "Let's start with your domain name";
     subhead = "You'll need to own this domain and be able to manage its DNS.";
   } else if (step === 'plan') {
     headline = 'Choose a plan';
     subhead = 'Sets how many mailboxes this domain can create — you can change it anytime.';
   } else if (step === 'method') {
     headline = 'How do you want to set up DNS?';
-    subhead = 'Pick one — you can switch later if it turns out to be the wrong call.';
-  } else if (step === 'setup' && method === 'manual') {
-    headline = 'Manual DNS Setup';
-    subhead = `No credential needed. We generate everything for ${createdDomain?.domainName}.`;
-  } else if (step === 'setup' && method === 'provider') {
-    headline = `Connect ${PROVIDER_LABEL[provider]}`;
-    subhead = `Scoped to DNS management only, for ${createdDomain?.domainName}.`;
+    subhead = 'Pick your DNS provider for automatic setup, or configure records manually.';
+  } else if (step === 'godaddy') {
+    headline = 'Connect GoDaddy';
+    subhead = `Scoped to DNS management only, for ${createdDomain?.domainName || domainName}.`;
+  } else if (step === 'hostinger') {
+    headline = 'Connect Hostinger';
+    subhead = `Scoped to DNS management only, for ${createdDomain?.domainName || domainName}.`;
+  } else if (step === 'cloudflare') {
+    headline = 'Connect Cloudflare';
+    subhead = `Scoped to DNS management only, for ${createdDomain?.domainName || domainName}.`;
   } else if (step === 'status') {
-    headline = `DNS Setup — ${createdDomain?.domainName || ''}`;
+    headline = `DNS Setup — ${createdDomain?.domainName || domainName}`;
     subhead = 'Track activation and grab your records, whether or not a provider is connected.';
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-white overflow-y-auto" role="dialog" aria-modal="true">
       <div className="min-h-screen flex flex-col">
-        {/* Top bar: close + back, minimal step counter */}
-        <div className="flex items-center justify-between px-6 md:px-10 py-5 shrink-0">
-          <div className="flex items-center gap-1">
+        {/* Top bar: close + back, step counter */}
+        <div className="flex items-center justify-between px-6 md:px-10 py-5 shrink-0 border-b border-slate-100">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleFinish}
@@ -301,7 +340,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             >
               <X className="w-5 h-5" />
             </button>
-            {currentIdx > 0 && (
+            {step !== 'domain' && (
               <button
                 type="button"
                 onClick={goBack}
@@ -313,13 +352,23 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             )}
           </div>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Step {currentIdx + 1} of {STEP_ORDER.length}
+            Step {stepInfo.current} of {stepInfo.total}
           </span>
         </div>
 
-        {/* Centered, single-focus content */}
-        <div className="flex-1 flex items-start md:items-center justify-center px-6 pb-16">
-          <div className="w-full max-w-[560px] py-6">
+        {/* Centered single-focus content with slide animation */}
+        <div className="flex-1 flex items-start md:items-center justify-center px-6 pb-16 overflow-hidden">
+          <div
+            key={step}
+            className={`w-full max-w-[560px] py-6 ${
+              direction === 'forward' ? 'animate-slide-in-right' : 'animate-slide-in-left'
+            }`}
+          >
+            {step === 'domain' && (
+              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 block mb-2">
+                Add New Domain
+              </span>
+            )}
             <h1 className="text-[26px] md:text-[30px] font-bold text-slate-900 leading-[1.15] tracking-tight">
               {headline}
             </h1>
@@ -425,260 +474,447 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </form>
             )}
 
-            {/* STEP 3: METHOD */}
+            {/* STEP 3: METHOD (SSO-STYLE ICON BUTTONS & MANUAL SETUP) */}
             {step === 'method' && (
               <div className="mt-8 flex flex-col gap-3">
+                {/* GoDaddy SSO Button */}
                 <button
                   type="button"
-                  onClick={() => chooseMethod('provider')}
-                  className="text-left p-5 rounded-2xl border border-slate-200 hover:border-indigo-400 transition-all cursor-pointer flex gap-4 items-start"
+                  aria-label="GoDaddy"
+                  onClick={() => {
+                    setProvider('godaddy');
+                    setMethod('provider');
+                    setMethodAutoSkipped(false);
+                    setError(null);
+                    setConnected(false);
+                    navigateTo('godaddy');
+                  }}
+                  className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                    <Zap className="w-5 h-5" />
+                  <div className="flex items-center gap-3.5">
+                    <GoDaddyIcon className="w-7 h-7 shrink-0" />
+                    <div className="text-left">
+                      <span className="text-sm font-semibold text-slate-900 block">
+                        Connect with GoDaddy
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Automated DNS record provisioning
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <span className="text-sm font-bold text-slate-900">Connect a DNS Provider</span>
-                    <span className="text-[11px] font-medium text-slate-400 block mt-0.5">Automatic</span>
-                    <p className="text-[12px] text-slate-500 mt-1.5 leading-relaxed">
-                      GoDaddy, Hostinger or Cloudflare. We verify your credential and publish every record for you.
-                    </p>
-                  </div>
+                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
                 </button>
 
+                {/* Hostinger SSO Button */}
                 <button
                   type="button"
-                  onClick={() => chooseMethod('manual')}
-                  className="text-left p-5 rounded-2xl border border-slate-200 hover:border-indigo-400 transition-all cursor-pointer flex gap-4 items-start"
+                  aria-label="Hostinger"
+                  onClick={() => {
+                    setProvider('hostinger');
+                    setMethod('provider');
+                    setMethodAutoSkipped(false);
+                    setError(null);
+                    setConnected(false);
+                    navigateTo('hostinger');
+                  }}
+                  className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5" />
+                  <div className="flex items-center gap-3.5">
+                    <HostingerIcon className="w-7 h-7 shrink-0" />
+                    <div className="text-left">
+                      <span className="text-sm font-semibold text-slate-900 block">
+                        Connect with Hostinger
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Automated DNS record provisioning
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <span className="text-sm font-bold text-slate-900">Manual DNS Setup</span>
-                    <span className="text-[11px] font-medium text-slate-400 block mt-0.5">No credential needed</span>
-                    <p className="text-[12px] text-slate-500 mt-1.5 leading-relaxed">
-                      Get the records or a ready-made zone file, and add them yourself with any provider.
-                    </p>
+                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
+                </button>
+
+                {/* Cloudflare SSO Button */}
+                <button
+                  type="button"
+                  aria-label="Cloudflare"
+                  onClick={() => {
+                    setProvider('cloudflare');
+                    setMethod('provider');
+                    setMethodAutoSkipped(false);
+                    setError(null);
+                    setConnected(false);
+                    navigateTo('cloudflare');
+                  }}
+                  className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <CloudflareIcon className="w-7 h-7 shrink-0" />
+                    <div className="text-left">
+                      <span className="text-sm font-semibold text-slate-900 block">
+                        Connect with Cloudflare
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Automated DNS record provisioning
+                      </span>
+                    </div>
                   </div>
+                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
+                </button>
+
+                {/* Clean Divider */}
+                <div className="relative my-2.5">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200" />
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-white px-3 text-slate-400 font-medium uppercase tracking-wider text-[10px]">
+                      or
+                    </span>
+                  </div>
+                </div>
+
+                {/* Manual Setup Button */}
+                <button
+                  type="button"
+                  aria-label="Manual DNS Setup"
+                  onClick={() => {
+                    setMethod('manual');
+                    setMethodAutoSkipped(false);
+                    setError(null);
+                    goToStatus();
+                  }}
+                  className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <span className="text-sm font-semibold text-slate-900 block group-hover:text-indigo-950">
+                        Manual DNS Setup
+                      </span>
+                      <span className="text-[11px] text-slate-500 block">
+                        No credentials needed • Works with any registrar or DNS host
+                      </span>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
                 </button>
               </div>
             )}
 
-            {/* STEP 4: SETUP */}
-            {step === 'setup' && (
+            {/* DEDICATED PAGE: GODADDY */}
+            {step === 'godaddy' && (
               <div className="mt-8 flex flex-col gap-6">
-                {method === 'provider' && (
+                <div className="flex items-center gap-2">
+                  <GoDaddyIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    GoDaddy DNS Management
+                  </span>
+                </div>
+
+                {connected ? (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span className="text-xs font-medium text-emerald-800">
+                      GoDaddy connected and verified. Records will publish automatically once this domain is activated.
+                    </span>
+                  </div>
+                ) : (
                   <>
-                    {connected ? (
-                      <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-3">
-                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                        <span className="text-xs font-medium text-emerald-800">
-                          {PROVIDER_LABEL[provider]} connected and verified. Records will publish automatically once
-                          this domain is activated.
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        {methodAutoSkipped && (
-                          <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800">
-                            We detected <strong>{PROVIDER_LABEL[provider]}</strong> manages this domain's DNS.
-                            Switch below if that's not right.
-                          </div>
-                        )}
-                        <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
-                          {(['godaddy', 'hostinger', 'cloudflare'] as const).map((p) => (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => {
-                                setProvider(p);
-                                setApiKey('');
-                                setApiSecret('');
-                                setToken('');
-                                setConnected(false);
-                              }}
-                              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                                provider === p ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                              }`}
-                            >
-                              {PROVIDER_LABEL[p]}
-                            </button>
-                          ))}
-                        </div>
-
-                        <form onSubmit={handleConnectProvider} className="flex flex-col gap-4">
-                          {provider === 'godaddy' && (
-                            <>
-                              <p className="text-xs text-slate-500 leading-relaxed">
-                                Generate a Personal Access Token / API key+secret at{' '}
-                                <span className="font-mono">developer.godaddy.com</span>. We discard it once
-                                activation succeeds.
-                              </p>
-                              <div className="flex flex-col gap-1.5">
-                                <label htmlFor="input-godaddy-key" className="text-xs font-semibold text-slate-700">
-                                  GoDaddy API Key
-                                </label>
-                                <input
-                                  id="input-godaddy-key"
-                                  type="text"
-                                  required
-                                  value={apiKey}
-                                  onChange={(e) => setApiKey(e.target.value)}
-                                  className={`${inputClass} font-mono`}
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1.5">
-                                <label htmlFor="input-godaddy-secret" className="text-xs font-semibold text-slate-700">
-                                  GoDaddy API Secret
-                                </label>
-                                <input
-                                  id="input-godaddy-secret"
-                                  type="password"
-                                  required
-                                  value={apiSecret}
-                                  onChange={(e) => setApiSecret(e.target.value)}
-                                  className={`${inputClass} font-mono`}
-                                />
-                              </div>
-                            </>
-                          )}
-
-                          {provider === 'hostinger' && (
-                            <>
-                              <p className="text-xs text-slate-500 leading-relaxed">
-                                Generate an API token in hPanel at <span className="font-mono">hostinger.com</span>{' '}
-                                (Profile &rarr; Business &amp; Dev Tools &rarr; API Access). We discard it once
-                                activation succeeds.
-                              </p>
-                              <div className="flex flex-col gap-1.5">
-                                <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-700">
-                                  Hostinger API Token
-                                </label>
-                                <input
-                                  id="input-provider-token"
-                                  type="password"
-                                  required
-                                  value={token}
-                                  onChange={(e) => setToken(e.target.value)}
-                                  className={`${inputClass} font-mono`}
-                                />
-                              </div>
-                            </>
-                          )}
-
-                          {provider === 'cloudflare' && (
-                            <>
-                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-1.5 text-xs text-slate-600 leading-relaxed">
-                                <span className="font-semibold text-slate-800">Creating your Cloudflare API Token:</span>
-                                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
-                                  <li>
-                                    Go to <span className="font-mono font-medium">dash.cloudflare.com</span> &rarr; My
-                                    Profile &rarr; <strong>API Tokens</strong>
-                                  </li>
-                                  <li>
-                                    Click <strong>Create Token</strong> &rarr; use the <strong>Edit zone DNS</strong>{' '}
-                                    template
-                                  </li>
-                                  <li>
-                                    Zone Resources: <strong>Include &rarr; Specific zone &rarr; {createdDomain?.domainName}</strong>
-                                  </li>
-                                  <li>
-                                    Confirm permissions: <strong>Zone: DNS: Edit</strong> and <strong>Zone: Zone: Read</strong>
-                                  </li>
-                                  <li>Copy the 40-character token below (not the Global API Key)</li>
-                                </ol>
-                              </div>
-                              <div className="flex flex-col gap-1.5">
-                                <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-700">
-                                  Cloudflare API Token
-                                </label>
-                                <input
-                                  id="input-provider-token"
-                                  type="password"
-                                  required
-                                  placeholder="Paste 40-character API Token"
-                                  value={token}
-                                  onChange={(e) => setToken(e.target.value)}
-                                  className={`${inputClass} font-mono`}
-                                />
-                                {/^[a-f0-9]{37}$/i.test(token.trim()) && (
-                                  <p className="text-[11px] text-amber-600 font-medium">
-                                    That looks like a Global API Key (37 hex chars). Cloudflare needs an{' '}
-                                    <strong>API Token</strong> instead — My Profile &rarr; API Tokens &rarr; Create
-                                    Token &rarr; "Edit zone DNS".
-                                  </p>
-                                )}
-                              </div>
-                            </>
-                          )}
-
-                          <div>
-                            <button
-                              type="submit"
-                              disabled={
-                                connecting ||
-                                (provider === 'godaddy' ? !apiKey.trim() || !apiSecret.trim() : !token.trim())
-                              }
-                              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              {connecting ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                  <span>Verifying...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span>Verify &amp; Connect</span>
-                                  <ShieldCheck className="w-3.5 h-3.5" />
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </form>
-                      </>
-                    )}
-                  </>
-                )}
-
-                {method === 'manual' && (
-                  <div className="flex flex-col gap-2.5">
                     {methodAutoSkipped && (
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 mb-1">
-                        We couldn't detect GoDaddy, Hostinger, or Cloudflare managing this domain, so here's manual
-                        setup.{' '}
+                      <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                        <span>
+                          We detected <strong>GoDaddy</strong> manages this domain's DNS.
+                        </span>
                         <button
                           type="button"
                           onClick={() => {
                             setMethodAutoSkipped(false);
-                            setStep('method');
+                            navigateBack('method');
                           }}
-                          className="text-indigo-600 font-semibold hover:underline cursor-pointer"
+                          className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                         >
-                          Connect a provider instead
+                          Switch provider
                         </button>
                       </div>
                     )}
-                    <p className="text-xs font-semibold text-indigo-950">No credential required</p>
-                    {[
-                      'Works with any DNS provider — GoDaddy, Namecheap, Route 53, your own nameservers',
-                      'Copy each record, or import the whole zone file at once',
-                      'We check public DNS automatically and activate as soon as it resolves',
-                    ].map((line) => (
-                      <div key={line} className="flex items-start gap-2.5 text-xs text-slate-600">
-                        <Check className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                        <span>{line}</span>
+
+                    <form onSubmit={(e) => handleConnectProvider(e, 'godaddy')} className="flex flex-col gap-4">
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Generate a Personal Access Token / API key+secret at{' '}
+                        <span className="font-mono text-slate-700">developer.godaddy.com</span>. We discard it once
+                        activation succeeds.
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-godaddy-key" className="text-xs font-semibold text-slate-700">
+                          GoDaddy API Key
+                        </label>
+                        <input
+                          id="input-godaddy-key"
+                          type="text"
+                          required
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          className={`${inputClass} font-mono`}
+                        />
                       </div>
-                    ))}
-                  </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-godaddy-secret" className="text-xs font-semibold text-slate-700">
+                          GoDaddy API Secret
+                        </label>
+                        <input
+                          id="input-godaddy-secret"
+                          type="password"
+                          required
+                          value={apiSecret}
+                          onChange={(e) => setApiSecret(e.target.value)}
+                          className={`${inputClass} font-mono`}
+                        />
+                      </div>
+
+                      <div>
+                        <button
+                          type="submit"
+                          disabled={connecting || !apiKey.trim() || !apiSecret.trim()}
+                          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {connecting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Verifying...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Verify &amp; Connect</span>
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </>
                 )}
 
-                {(method === 'manual' || connected) && (
+                {connected && (
                   <div>
                     <button
                       type="button"
                       onClick={goToStatus}
-                      disabled={setupContinueDisabled}
-                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>Continue</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* DEDICATED PAGE: HOSTINGER */}
+            {step === 'hostinger' && (
+              <div className="mt-8 flex flex-col gap-6">
+                <div className="flex items-center gap-2">
+                  <HostingerIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Hostinger DNS Management
+                  </span>
+                </div>
+
+                {connected ? (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span className="text-xs font-medium text-emerald-800">
+                      Hostinger connected and verified. Records will publish automatically once this domain is activated.
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    {methodAutoSkipped && (
+                      <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                        <span>
+                          We detected <strong>Hostinger</strong> manages this domain's DNS.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMethodAutoSkipped(false);
+                            navigateBack('method');
+                          }}
+                          className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                        >
+                          Switch provider
+                        </button>
+                      </div>
+                    )}
+
+                    <form onSubmit={(e) => handleConnectProvider(e, 'hostinger')} className="flex flex-col gap-4">
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Generate an API token in hPanel at <span className="font-mono text-slate-700">hostinger.com</span>{' '}
+                        (Profile &rarr; Business &amp; Dev Tools &rarr; API Access). We discard it once
+                        activation succeeds.
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-700">
+                          Hostinger API Token
+                        </label>
+                        <input
+                          id="input-provider-token"
+                          type="password"
+                          required
+                          value={token}
+                          onChange={(e) => setToken(e.target.value)}
+                          className={`${inputClass} font-mono`}
+                        />
+                      </div>
+
+                      <div>
+                        <button
+                          type="submit"
+                          disabled={connecting || !token.trim()}
+                          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {connecting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Verifying...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Verify &amp; Connect</span>
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </>
+                )}
+
+                {connected && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={goToStatus}
+                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>Continue</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* DEDICATED PAGE: CLOUDFLARE */}
+            {step === 'cloudflare' && (
+              <div className="mt-8 flex flex-col gap-6">
+                <div className="flex items-center gap-2">
+                  <CloudflareIcon className="w-5 h-5 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Cloudflare DNS Management
+                  </span>
+                </div>
+
+                {connected ? (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span className="text-xs font-medium text-emerald-800">
+                      Cloudflare connected and verified. Records will publish automatically once this domain is activated.
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    {methodAutoSkipped && (
+                      <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                        <span>
+                          We detected <strong>Cloudflare</strong> manages this domain's DNS.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMethodAutoSkipped(false);
+                            navigateBack('method');
+                          }}
+                          className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                        >
+                          Switch provider
+                        </button>
+                      </div>
+                    )}
+
+                    <form onSubmit={(e) => handleConnectProvider(e, 'cloudflare')} className="flex flex-col gap-4">
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-1.5 text-xs text-slate-600 leading-relaxed">
+                        <span className="font-semibold text-slate-800">Creating your Cloudflare API Token:</span>
+                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                          <li>
+                            Go to <span className="font-mono font-medium">dash.cloudflare.com</span> &rarr; My
+                            Profile &rarr; <strong>API Tokens</strong>
+                          </li>
+                          <li>
+                            Click <strong>Create Token</strong> &rarr; use the <strong>Edit zone DNS</strong>{' '}
+                            template
+                          </li>
+                          <li>
+                            Zone Resources: <strong>Include &rarr; Specific zone &rarr; {createdDomain?.domainName || domainName}</strong>
+                          </li>
+                          <li>
+                            Confirm permissions: <strong>Zone: DNS: Edit</strong> and <strong>Zone: Zone: Read</strong>
+                          </li>
+                          <li>Copy the 40-character token below (not the Global API Key)</li>
+                        </ol>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-700">
+                          Cloudflare API Token
+                        </label>
+                        <input
+                          id="input-provider-token"
+                          type="password"
+                          required
+                          placeholder="Paste 40-character API Token"
+                          value={token}
+                          onChange={(e) => setToken(e.target.value)}
+                          className={`${inputClass} font-mono`}
+                        />
+                        {/^[a-f0-9]{37}$/i.test(token.trim()) && (
+                          <p className="text-[11px] text-amber-600 font-medium">
+                            That looks like a Global API Key (37 hex chars). Cloudflare needs an{' '}
+                            <strong>API Token</strong> instead — My Profile &rarr; API Tokens &rarr; Create
+                            Token &rarr; "Edit zone DNS".
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <button
+                          type="submit"
+                          disabled={connecting || !token.trim()}
+                          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {connecting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Verifying...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Verify &amp; Connect</span>
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </>
+                )}
+
+                {connected && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={goToStatus}
+                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span>Continue</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -691,8 +927,25 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             {/* STEP 5: STATUS */}
             {step === 'status' && (
               <div className="mt-8 flex flex-col gap-5">
+                {methodAutoSkipped && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-center justify-between">
+                    <span>
+                      We couldn't detect GoDaddy, Hostinger, or Cloudflare managing this domain.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMethodAutoSkipped(false);
+                        navigateBack('method');
+                      }}
+                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                    >
+                      Connect a provider instead
+                    </button>
+                  </div>
+                )}
                 <DnsStatusPanel
-                  domainName={createdDomain?.domainName || ''}
+                  domainName={createdDomain?.domainName || domainName}
                   status={dnsStatus}
                   loading={statusLoading}
                   error={statusError}

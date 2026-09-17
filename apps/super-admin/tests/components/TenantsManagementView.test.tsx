@@ -98,4 +98,13 @@ describe('TenantsManagementView Component', () => {
     fireEvent.click(suspendBtns[0]);
     expect(defaultProps.onToggleSuspend).toHaveBeenCalledWith(mockTenants[0]);
   });
+
+  it('triggers onViewDetails when clicking on a tenant row', () => {
+    render(<TenantsManagementView {...defaultProps} />);
+
+    // Click anywhere on Acme Global row text
+    const acmeName = screen.getByText('Acme Global');
+    fireEvent.click(acmeName);
+    expect(defaultProps.onViewDetails).toHaveBeenCalledWith(mockTenants[0]);
+  });
 });

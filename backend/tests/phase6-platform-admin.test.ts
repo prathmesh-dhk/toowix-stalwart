@@ -132,6 +132,74 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
   });
 
   // =========================================================================
+  // 0. Super Admin Tenant Full Details (/api/platform/tenants/:id)
+  // =========================================================================
+  describe('Super Admin Tenant Full Details (GET /api/platform/tenants/:id)', () => {
+    it('should return 200 and full details for an existing tenant', async () => {
+      // Create a test mailbox and audit log for Tenant A
+      await MailboxModel.create({
+        tenantId: tenantAId,
+        domainId: domainAId,
+        address: 'bruce@waynecorp.test',
+        localPart: 'bruce',
+        domainName: 'waynecorp.test',
+        status: 'active',
+        storageBytes: 1048576,
+      });
+
+      await AuditLogModel.create({
+        action: 'TENANT_TEST',
+        actorEmail: 'super@toowix.test',
+        actorRole: 'SUPER_ADMIN',
+        tenantId: tenantAId,
+        resource: 'tenant',
+        resourceId: tenantAId,
+        status: 'SUCCESS',
+        timestamp: new Date(),
+      });
+
+      const res = await request(app)
+        .get(`/api/platform/tenants/${tenantAId}`)
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.tenant).toBeDefined();
+      expect(res.body.tenant.id).toBe(tenantAId);
+      expect(res.body.tenant.name).toBe('Wayne Enterprises');
+      expect(res.body.domains).toHaveLength(1);
+      expect(res.body.domains[0].domainName).toBe('waynecorp.test');
+      expect(res.body.admins).toHaveLength(1);
+      expect(res.body.admins[0].email).toBe('bruce@waynecorp.test');
+      expect(res.body.mailboxes).toHaveLength(1);
+      expect(res.body.mailboxes[0].address).toBe('bruce@waynecorp.test');
+      expect(res.body.auditLogs).toHaveLength(1);
+      expect(res.body.stats).toBeDefined();
+      expect(res.body.stats.totalDomains).toBe(1);
+      expect(res.body.stats.totalMailboxes).toBe(1);
+      expect(res.body.stats.totalStorageBytes).toBe(0);
+    });
+
+    it('should return 400 for malformed tenant id', async () => {
+      const res = await request(app)
+        .get('/api/platform/tenants/invalid-mongo-id')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('INVALID_ID');
+    });
+
+    it('should return 404 for nonexistent tenant', async () => {
+      const nonExistentId = new mongoose.Types.ObjectId().toString();
+      const res = await request(app)
+        .get(`/api/platform/tenants/${nonExistentId}`)
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('TENANT_NOT_FOUND');
+    });
+  });
+
+  // =========================================================================
   // 1. Super Admin Tenant Admin Management (/api/platform/tenants/:id/admins)
   // =========================================================================
   describe('Super Admin Tenant Admin Management', () => {

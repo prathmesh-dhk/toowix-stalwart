@@ -224,7 +224,11 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                     : 0;
 
                   return (
-                    <tr key={tenant.id}>
+                    <tr
+                      key={tenant.id}
+                      onClick={() => onViewDetails(tenant)}
+                      className="cursor-pointer hover:bg-slate-50/80 transition-colors group"
+                    >
                       {/* Organization Name */}
                       <td>
                         <div className="flex items-center gap-2.5">
@@ -308,7 +312,7 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
 
                       {/* Actions */}
                       <td style={{ textAlign: 'right' }}>
-                        <div className="inline-flex items-center gap-1">
+                        <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <Button
                             size="sm"
                             variant="secondary"

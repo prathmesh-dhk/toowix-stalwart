@@ -378,3 +378,68 @@ export interface DomainDeletionRequest {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface TenantFullDetails {
+  tenant: {
+    id: string;
+    name: string;
+    status: 'active' | 'suspended' | 'approved_pending_setup';
+    mailboxLimit: number;
+    mailboxCount: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  domains: Array<{
+    id: string;
+    domainName: string;
+    stalwartDomainId: string | null;
+    status: string;
+    isPrimary?: boolean;
+    mailboxLimit?: number;
+    employeeCount?: number;
+    dnsStatus?: DnsActivationStatus;
+    planId?: string | null;
+    planName?: string | null;
+    createdAt: string;
+  }>;
+  admins: Array<{
+    id: string;
+    email: string;
+    role: string;
+    status?: string;
+    twoFactorEnabled?: boolean;
+    createdAt: string;
+  }>;
+  mailboxes: Array<{
+    id: string;
+    address: string;
+    localPart: string;
+    domainId: string | null;
+    domainName: string;
+    status: string;
+    storageBytes: number;
+    createdAt: string;
+  }>;
+  auditLogs: Array<{
+    id: string;
+    action: string;
+    actorEmail: string;
+    actorRole: string;
+    actorIp?: string;
+    resource: string;
+    resourceId?: string;
+    status: 'success' | 'failure';
+    timestamp: string;
+    metadata?: any;
+  }>;
+  stats: {
+    totalDomains: number;
+    activeDomains: number;
+    totalMailboxes: number;
+    activeMailboxes: number;
+    suspendedMailboxes: number;
+    totalStorageBytes: number;
+    mailboxLimit: number;
+    usagePercent: number;
+  };
+}

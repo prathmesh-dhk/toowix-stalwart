@@ -26,7 +26,7 @@ const mockDomains: DomainItem[] = [
 ];
 
 describe('DomainSwitcher Component', () => {
-  it('renders "+ Setup Domain" CTA when 0 domains exist', async () => {
+  it('renders "Add Domain" when 0 domains exist', async () => {
     const onSelectDomain = vi.fn();
     const onOpenAddDomain = vi.fn();
 
@@ -39,40 +39,38 @@ describe('DomainSwitcher Component', () => {
       />
     );
 
-    const setupBtn = screen.getByText('Add Your Domain');
+    const setupBtn = screen.getByText('Add Domain');
     expect(setupBtn).toBeInTheDocument();
 
     await userEvent.click(setupBtn);
     expect(onOpenAddDomain).toHaveBeenCalledTimes(1);
   });
 
-  it('renders active domain pill with domain name, initial, and quota seats', () => {
+  it('renders active domain button showing only domain name', () => {
     const onSelectDomain = vi.fn();
-    const onOpenAddDomain = vi.fn();
 
     render(
       <DomainSwitcher
         domains={mockDomains}
         activeDomain={mockDomains[0]}
         onSelectDomain={onSelectDomain}
-        onOpenAddDomain={onOpenAddDomain}
       />
     );
 
     expect(screen.getByText('primarybrand.com')).toBeInTheDocument();
-    expect(screen.getByText(/3\/10 seats/i)).toBeInTheDocument();
+    // Verify no seat count or status pills are rendered in the trigger
+    expect(screen.queryByText(/seats/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/active/i)).not.toBeInTheDocument();
   });
 
-  it('opens dropdown menu on click, switches domain on selection, and opens add domain modal', async () => {
+  it('opens dropdown menu on click and switches domain on selection', async () => {
     const onSelectDomain = vi.fn();
-    const onOpenAddDomain = vi.fn();
 
     render(
       <DomainSwitcher
         domains={mockDomains}
         activeDomain={mockDomains[0]}
         onSelectDomain={onSelectDomain}
-        onOpenAddDomain={onOpenAddDomain}
       />
     );
 
@@ -80,18 +78,12 @@ describe('DomainSwitcher Component', () => {
     const triggerBtn = screen.getByRole('button', { name: /primarybrand\.com/i });
     await userEvent.click(triggerBtn);
 
-    // Verify domains in dropdown
-    expect(screen.getByText('Your Domains (2)')).toBeInTheDocument();
+    // Verify only domain names in dropdown
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
     expect(screen.getByText('secondarybrand.com')).toBeInTheDocument();
 
     // Select second domain
     await userEvent.click(screen.getByText('secondarybrand.com'));
     expect(onSelectDomain).toHaveBeenCalledWith(mockDomains[1]);
-
-    // Open again and click "+ Add New Domain"
-    await userEvent.click(triggerBtn);
-    const addBtn = screen.getByText('+ Add New Domain');
-    await userEvent.click(addBtn);
-    expect(onOpenAddDomain).toHaveBeenCalledTimes(1);
   });
 });

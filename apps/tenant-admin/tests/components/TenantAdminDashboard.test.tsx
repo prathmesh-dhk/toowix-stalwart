@@ -27,6 +27,9 @@ vi.mock('../../src/api', () => ({
       dnsZoneFile: '; Authoritative Zone file for acmecorp.com\nacmecorp.com. IN MX 10 mail.acmecorp.com.\n',
     }),
     getSecuritySettings: vi.fn(),
+    getBlockedIps: vi.fn().mockResolvedValue({ list: [] }),
+    getAllowedIps: vi.fn().mockResolvedValue({ list: [] }),
+    checkIpStatus: vi.fn().mockResolvedValue({ isBlocked: false, isAllowed: false }),
     getStorageUsage: vi.fn().mockResolvedValue({
       summary: { totalStorageBytes: 1048576, totalStorageFormatted: '1.0 MB', mailboxCount: 1, mailboxesWithData: 1 },
       mailboxes: [
@@ -429,15 +432,17 @@ describe('TenantAdminDashboard Component', () => {
     expect(screen.queryByText('Recently Added Mailboxes')).not.toBeInTheDocument();
   });
 
-  it('navigates back to Tenant Home via the header brand and the sidebar back link', async () => {
+  it('navigates back to Tenant Home via the header brand and allows switching domains via the sidebar domain switcher', async () => {
     renderDashboard();
     await screen.findByText('Admin Overview');
 
     fireEvent.click(screen.getByRole('button', { name: /toowix admin/i }));
     expect(onNavigateHome).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /^acmecorp\.com$/i }));
-    expect(onNavigateHome).toHaveBeenCalledTimes(2);
+    // Sidebar domain switcher opens dropdown list of domains
+    const switcherTrigger = screen.getByRole('button', { name: /acmecorp\.com/i });
+    fireEvent.click(switcherTrigger);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
   });
 
   describe('2FA Setup Removable Notification', () => {
@@ -534,7 +539,22 @@ describe('TenantAdminDashboard Component', () => {
       expect(screen.queryByText('mail.123.com')).not.toBeInTheDocument();
       expect(screen.queryByText('v=spf1 mx include:relay.toowix.net ~all')).not.toBeInTheDocument();
     });
+
+    it('clicking Security in the sidebar switches navigation to Domain Security view', async () => {
+      renderDashboard();
+
+      const securityNavBtn = await screen.findByRole('button', { name: /^security$/i });
+      fireEvent.click(securityNavBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1, name: /domain security/i })).toBeInTheDocument();
+        expect(screen.getByText('@acmecorp.com')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /blocked ips/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /allowed ips/i })).toBeInTheDocument();
+      });
+    });
   });
 });
+
 
 

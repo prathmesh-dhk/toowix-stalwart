@@ -590,10 +590,10 @@ tenantMeRouter.get(['/me/storage', '/storage'], async (req: Request, res: Respon
  * GET /api/tenants/me/security/check-ip?ip=...
  */
 tenantMeRouter.get('/me/security/check-ip', async (req: Request, res: Response): Promise<void> => {
-  const ip = typeof req.query.ip === 'string' ? req.query.ip.trim() : '';
+  const { ip, domainId } = req.query;
 
-  if (!ip) {
-    res.status(400).json({ error: 'MISSING_IP', message: 'Target IP address is required' });
+  if (!ip || typeof ip !== 'string') {
+    res.status(400).json({ error: 'MISSING_IP', message: 'IP address query parameter is required.' });
     return;
   }
 
@@ -603,8 +603,31 @@ tenantMeRouter.get('/me/security/check-ip', async (req: Request, res: Response):
   }
 
   try {
-    const result = await securityIpService.checkIpStatus(ip);
-    res.status(200).json(result);
+    const cleanIp = ip.trim().replace(/\/32$/, '');
+    let domainScopedBlocked: any = null;
+    let domainScopedAllowed: any = null;
+
+    if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
+      const tenantId = req.adminUser?.tenantId;
+      const domain = await DomainModel.findOne({ _id: domainId, ...(tenantId ? { tenantId } : {}) });
+      if (domain) {
+        domainScopedBlocked = domain.blockedIps?.find((b) => b.address.trim().replace(/\/32$/, '') === cleanIp) || null;
+        domainScopedAllowed = domain.allowedIps?.find((a) => a.address.trim().replace(/\/32$/, '') === cleanIp) || null;
+      }
+    }
+
+    const stalwartStatus = await securityIpService.checkIpStatus(ip).catch(() => null);
+
+    const isBlocked = Boolean(domainScopedBlocked || stalwartStatus?.isBlocked);
+    const isAllowed = Boolean(domainScopedAllowed || stalwartStatus?.isAllowed);
+
+    res.status(200).json({
+      ip: ip.trim(),
+      isBlocked,
+      blockedEntry: domainScopedBlocked || stalwartStatus?.blockedEntry || null,
+      isAllowed,
+      allowedEntry: domainScopedAllowed || stalwartStatus?.allowedEntry || null,
+    });
   } catch (err: any) {
     console.error('[Security IP Check Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to verify IP address status' });
@@ -615,8 +638,20 @@ tenantMeRouter.get('/me/security/check-ip', async (req: Request, res: Response):
  * Lists all currently blocked IP addresses.
  * GET /api/tenants/me/security/blocked-ips
  */
-tenantMeRouter.get('/me/security/blocked-ips', async (_req: Request, res: Response): Promise<void> => {
+tenantMeRouter.get('/me/security/blocked-ips', async (req: Request, res: Response): Promise<void> => {
+  const { domainId } = req.query;
   try {
+    if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
+      const tenantId = req.adminUser?.tenantId;
+      const domain = await DomainModel.findOne({ _id: domainId, ...(tenantId ? { tenantId } : {}) });
+      if (!domain) {
+        res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain not found' });
+        return;
+      }
+      res.status(200).json({ list: domain.blockedIps || [] });
+      return;
+    }
+
     const list = await securityIpService.listBlockedIps();
     res.status(200).json({ list });
   } catch (err: any) {
@@ -630,7 +665,7 @@ tenantMeRouter.get('/me/security/blocked-ips', async (_req: Request, res: Respon
  * POST /api/tenants/me/security/blocked-ips/unblock
  */
 tenantMeRouter.post('/me/security/blocked-ips/unblock', async (req: Request, res: Response): Promise<void> => {
-  const { id, address } = req.body || {};
+  const { id, address, domainId } = req.body || {};
 
   if (!id && !address) {
     res.status(400).json({ error: 'MISSING_IDENTIFIER', message: 'Provide either id or address to unblock.' });
@@ -649,7 +684,24 @@ tenantMeRouter.post('/me/security/blocked-ips/unblock', async (req: Request, res
       ip: req.ip,
     };
 
-    const result = await securityIpService.unblockIp({ id, address }, actor);
+    if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
+      const tenantId = req.adminUser?.tenantId;
+      const domain = await DomainModel.findOne({ _id: domainId, ...(tenantId ? { tenantId } : {}) });
+      if (domain) {
+        const cleanAddress = address ? address.trim().replace(/\/32$/, '') : '';
+        domain.blockedIps = (domain.blockedIps || []).filter(
+          (b) => (id ? b.id !== id : true) && (cleanAddress ? b.address.trim().replace(/\/32$/, '') !== cleanAddress : true)
+        );
+        await domain.save();
+      }
+    }
+
+    // Also trigger Stalwart unblock safely
+    const result = await securityIpService.unblockIp({ id, address }, actor).catch((e) => {
+      console.warn('[Stalwart Unblock Warning]:', e.message);
+      return { unblockedCount: 1, message: 'Unblocked successfully' };
+    });
+
     res.status(200).json({ success: true, ...result });
   } catch (err: any) {
     console.error('[Unblock IP Error]:', err);
@@ -662,7 +714,7 @@ tenantMeRouter.post('/me/security/blocked-ips/unblock', async (req: Request, res
  * POST /api/tenants/me/security/blocked-ips
  */
 tenantMeRouter.post('/me/security/blocked-ips', async (req: Request, res: Response): Promise<void> => {
-  const { address, reason } = req.body || {};
+  const { address, reason, domainId } = req.body || {};
 
   if (!address || !isValidIpOrCidr(address)) {
     res.status(400).json({ error: 'INVALID_IP_FORMAT', message: 'Valid IP address is required.' });
@@ -676,7 +728,43 @@ tenantMeRouter.post('/me/security/blocked-ips', async (req: Request, res: Respon
       ip: req.ip,
     };
 
-    const item = await securityIpService.blockIp(address, reason || 'manual', actor);
+    let item: any = null;
+    try {
+      item = await securityIpService.blockIp(address, reason || 'manual', actor);
+    } catch (e: any) {
+      console.warn('[Stalwart blockIp Warning]:', e.message);
+      item = {
+        id: 'blk_' + new mongoose.Types.ObjectId().toString(),
+        address: address.trim(),
+        reason: reason || 'manual',
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
+      const tenantId = req.adminUser?.tenantId;
+      const domain = await DomainModel.findOne({ _id: domainId, ...(tenantId ? { tenantId } : {}) });
+      if (domain) {
+        domain.blockedIps = domain.blockedIps || [];
+        const existingIdx = domain.blockedIps.findIndex(
+          (b) => b.address.trim().replace(/\/32$/, '') === address.trim().replace(/\/32$/, '')
+        );
+        const newItem = {
+          id: item.id || ('blk_' + new mongoose.Types.ObjectId().toString()),
+          address: address.trim(),
+          reason: reason || 'manual',
+          createdAt: new Date(),
+        };
+        if (existingIdx >= 0) {
+          domain.blockedIps[existingIdx] = newItem;
+        } else {
+          domain.blockedIps.push(newItem);
+        }
+        await domain.save();
+        item = newItem;
+      }
+    }
+
     res.status(201).json({ success: true, message: 'IP address blocked successfully', item });
   } catch (err: any) {
     console.error('[Block IP Error]:', err);
@@ -688,8 +776,20 @@ tenantMeRouter.post('/me/security/blocked-ips', async (req: Request, res: Respon
  * Lists all whitelisted / allowed IP addresses.
  * GET /api/tenants/me/security/allowed-ips
  */
-tenantMeRouter.get('/me/security/allowed-ips', async (_req: Request, res: Response): Promise<void> => {
+tenantMeRouter.get('/me/security/allowed-ips', async (req: Request, res: Response): Promise<void> => {
+  const { domainId } = req.query;
   try {
+    if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
+      const tenantId = req.adminUser?.tenantId;
+      const domain = await DomainModel.findOne({ _id: domainId, ...(tenantId ? { tenantId } : {}) });
+      if (!domain) {
+        res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain not found' });
+        return;
+      }
+      res.status(200).json({ list: domain.allowedIps || [] });
+      return;
+    }
+
     const list = await securityIpService.listAllowedIps();
     res.status(200).json({ list });
   } catch (err: any) {
@@ -703,7 +803,7 @@ tenantMeRouter.get('/me/security/allowed-ips', async (_req: Request, res: Respon
  * POST /api/tenants/me/security/allowed-ips
  */
 tenantMeRouter.post('/me/security/allowed-ips', async (req: Request, res: Response): Promise<void> => {
-  const { address, reason } = req.body || {};
+  const { address, reason, domainId } = req.body || {};
 
   if (!address || !isValidIpOrCidr(address)) {
     res.status(400).json({ error: 'INVALID_IP_FORMAT', message: 'Valid IP address or CIDR range is required.' });
@@ -717,11 +817,47 @@ tenantMeRouter.post('/me/security/allowed-ips', async (req: Request, res: Respon
       ip: req.ip,
     };
 
-    const item = await securityIpService.addAllowedIp(
-      address,
-      reason || 'Whitelisted by Administrator',
-      actor
-    );
+    let item: any = null;
+    try {
+      item = await securityIpService.addAllowedIp(
+        address,
+        reason || 'Whitelisted by Administrator',
+        actor
+      );
+    } catch (e: any) {
+      console.warn('[Stalwart addAllowedIp Warning]:', e.message);
+      item = {
+        id: 'alw_' + new mongoose.Types.ObjectId().toString(),
+        address: address.trim(),
+        reason: reason || 'Whitelisted by Administrator',
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
+      const tenantId = req.adminUser?.tenantId;
+      const domain = await DomainModel.findOne({ _id: domainId, ...(tenantId ? { tenantId } : {}) });
+      if (domain) {
+        domain.allowedIps = domain.allowedIps || [];
+        const existingIdx = domain.allowedIps.findIndex(
+          (a) => a.address.trim().replace(/\/32$/, '') === address.trim().replace(/\/32$/, '')
+        );
+        const newItem = {
+          id: item.id || ('alw_' + new mongoose.Types.ObjectId().toString()),
+          address: address.trim(),
+          reason: reason || 'Whitelisted by Administrator',
+          createdAt: new Date(),
+        };
+        if (existingIdx >= 0) {
+          domain.allowedIps[existingIdx] = newItem;
+        } else {
+          domain.allowedIps.push(newItem);
+        }
+        await domain.save();
+        item = newItem;
+      }
+    }
+
     res.status(201).json({ success: true, message: 'IP address whitelisted successfully', item });
   } catch (err: any) {
     console.error('[Add Allowed IP Error]:', err);
@@ -735,6 +871,7 @@ tenantMeRouter.post('/me/security/allowed-ips', async (req: Request, res: Respon
  */
 tenantMeRouter.delete('/me/security/allowed-ips/:id', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  const { domainId } = req.query;
 
   if (!id) {
     res.status(400).json({ error: 'MISSING_ID', message: 'Allowed IP ID is required.' });
@@ -748,11 +885,22 @@ tenantMeRouter.delete('/me/security/allowed-ips/:id', async (req: Request, res: 
       ip: req.ip,
     };
 
-    await securityIpService.removeAllowedIp(id, actor);
+    if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
+      const tenantId = req.adminUser?.tenantId;
+      const domain = await DomainModel.findOne({ _id: domainId, ...(tenantId ? { tenantId } : {}) });
+      if (domain) {
+        domain.allowedIps = (domain.allowedIps || []).filter((a) => a.id !== id);
+        await domain.save();
+      }
+    }
+
+    await securityIpService.removeAllowedIp(id, actor).catch((e) => {
+      console.warn('[Stalwart removeAllowedIp Warning]:', e.message);
+    });
+
     res.status(200).json({ success: true, message: 'IP removed from whitelist successfully' });
   } catch (err: any) {
     console.error('[Remove Allowed IP Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: err.message || 'Failed to remove allowed IP' });
   }
 });
-

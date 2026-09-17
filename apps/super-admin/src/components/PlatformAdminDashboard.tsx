@@ -45,6 +45,7 @@ import { DashboardOverviewView } from './views/DashboardOverviewView';
 import { TenantApplicationsView } from './views/TenantApplicationsView';
 import { DomainDeletionsView } from './views/DomainDeletionsView';
 import { TenantsManagementView } from './views/TenantsManagementView';
+import { TenantDetailView } from './views/TenantDetailView';
 import { SystemOperationsView } from './views/SystemOperationsView';
 import { AuditLogView } from './views/AuditLogView';
 import { ActiveDevicesView } from './views/ActiveDevicesView';
@@ -146,6 +147,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
   // Modal Triggers
   const [reviewApp, setReviewApp] = useState<RegistrationApplication | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [detailTenant, setDetailTenant] = useState<TenantSummary | null>(null);
   const [activateTenant, setActivateTenant] = useState<TenantSummary | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -736,7 +738,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
             {/* Tenants */}
             <button
-              onClick={() => setActiveTab('tenants')}
+              onClick={() => {
+                setActiveTab('tenants');
+                setSelectedTenantId(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'tenants'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -981,18 +986,28 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
           )}
 
           {activeTab === 'tenants' && (
-            <TenantsManagementView
-              tenants={tenants}
-              loading={tenantsLoading}
-              onRefresh={loadTenantsAndMetrics}
-              onCreateTenant={() => setShowCreateModal(true)}
-              onViewDetails={(tenant) => setDetailTenant(tenant)}
-              onActivateTenant={(tenant) => setActivateTenant(tenant)}
-              onToggleSuspend={handleToggleSuspend}
-              onManageAdmins={(tenant) => setAdminTenant(tenant)}
-              onUpdateQuota={(tenant) => setQuotaTenant(tenant)}
-              onDeleteTenant={handleDeleteTenant}
-            />
+            selectedTenantId ? (
+              <TenantDetailView
+                tenantId={selectedTenantId}
+                onBack={() => setSelectedTenantId(null)}
+                onTenantUpdated={loadTenantsAndMetrics}
+                onShowAlert={showAlert}
+                onActivateTenant={(tenant) => setActivateTenant(tenant)}
+              />
+            ) : (
+              <TenantsManagementView
+                tenants={tenants}
+                loading={tenantsLoading}
+                onRefresh={loadTenantsAndMetrics}
+                onCreateTenant={() => setShowCreateModal(true)}
+                onViewDetails={(tenant) => setSelectedTenantId(tenant.id)}
+                onActivateTenant={(tenant) => setActivateTenant(tenant)}
+                onToggleSuspend={handleToggleSuspend}
+                onManageAdmins={(tenant) => setAdminTenant(tenant)}
+                onUpdateQuota={(tenant) => setQuotaTenant(tenant)}
+                onDeleteTenant={handleDeleteTenant}
+              />
+            )
           )}
 
           {activeTab === 'plans' && (

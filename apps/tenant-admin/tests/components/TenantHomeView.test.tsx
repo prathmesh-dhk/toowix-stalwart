@@ -153,12 +153,64 @@ describe('TenantHomeView Component', () => {
     expect(screen.getByText('secondary.com')).toBeInTheDocument();
     expect(screen.getByText('Team')).toBeInTheDocument(); // dom-1's plan name
     expect(screen.getByText('Individual')).toBeInTheDocument(); // dom-2's plan name
-    expect(screen.getByText('2 / 50 mailboxes')).toBeInTheDocument(); // dom-1's mailbox allocation
+    expect(screen.getByText('2 / 50')).toBeInTheDocument(); // dom-1's mailbox allocation
 
     expect(screen.queryByText('Recent Activity')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('acmecorp.com'));
     expect(onNavigateToDomain).toHaveBeenCalledWith('dom-1');
+  });
+
+  it('caps domain table on Overview to 5 items and expands when Show more is clicked', async () => {
+    const manyDomains: DomainItem[] = Array.from({ length: 12 }, (_, i) => ({
+      id: `dom-${i + 1}`,
+      domainName: `domain-${i + 1}.com`,
+      status: 'active',
+      dnsStatus: 'active',
+      mailboxLimit: 10,
+      employeeCount: 10,
+      mailboxCount: 0,
+      isPrimary: i === 0,
+      planName: 'Basic',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }));
+
+    vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: manyDomains });
+
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+    await screen.findByRole('heading', { name: 'Overview' });
+
+    // Initially only 5 domains are shown
+    expect(screen.getByText('domain-1.com')).toBeInTheDocument();
+    expect(screen.getByText('domain-5.com')).toBeInTheDocument();
+    expect(screen.queryByText('domain-6.com')).not.toBeInTheDocument();
+    expect(screen.getByText('Showing 5 of 12')).toBeInTheDocument();
+
+    // Click "Show more"
+    const showMoreBtn = screen.getByRole('button', { name: /show more/i });
+    fireEvent.click(showMoreBtn);
+
+    // Now 10 domains are shown
+    expect(screen.getByText('domain-6.com')).toBeInTheDocument();
+    expect(screen.getByText('domain-10.com')).toBeInTheDocument();
+    expect(screen.queryByText('domain-11.com')).not.toBeInTheDocument();
+    expect(screen.getByText('Showing 10 of 12')).toBeInTheDocument();
+
+    // Click "Show more" again
+    fireEvent.click(screen.getByRole('button', { name: /show more/i }));
+
+    // All 12 domains shown, button becomes "Show less"
+    expect(screen.getByText('domain-11.com')).toBeInTheDocument();
+    expect(screen.getByText('domain-12.com')).toBeInTheDocument();
+    expect(screen.getByText('Showing 12 of 12')).toBeInTheDocument();
+
+    const showLessBtn = screen.getByRole('button', { name: /show less/i });
+    expect(showLessBtn).toBeInTheDocument();
+
+    // Click "Show less" collapses back to 5
+    fireEvent.click(showLessBtn);
+    expect(screen.queryByText('domain-6.com')).not.toBeInTheDocument();
+    expect(screen.getByText('Showing 5 of 12')).toBeInTheDocument();
   });
 
   it('shows the combined billing summary across every domain on the Billing tab', async () => {

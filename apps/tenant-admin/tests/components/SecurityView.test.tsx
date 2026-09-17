@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SecurityView } from '../../src/components/SecurityView';
+import { DomainSecurityView } from '../../src/components/DomainSecurityView';
 import { BlockedIpsView } from '../../src/components/BlockedIpsView';
 import { AllowedIpsView } from '../../src/components/AllowedIpsView';
 import { api } from '../../src/api';
-import { UserContext, SecuritySettings } from '../../src/types';
+import { UserContext, SecuritySettings, DomainItem } from '../../src/types';
 
 vi.mock('../../src/api', () => ({
   api: {
@@ -27,6 +28,15 @@ const mockUser: UserContext = {
   tenantId: 'tenant-1',
 };
 
+const mockDomain: DomainItem = {
+  id: 'dom-1',
+  domainName: 'acmecorp.com',
+  status: 'active',
+  mailboxCount: 2,
+  mailboxLimit: 10,
+  dnsStatus: 'active',
+};
+
 const initialSettings: SecuritySettings = {
   email: 'admin@acmecorp.com',
   recoveryEmail: 'recovery@personal.org',
@@ -35,10 +45,30 @@ const initialSettings: SecuritySettings = {
   hasTotpConfigured: true,
 };
 
-describe('SecurityView Component', () => {
+describe('SecurityView Component (Global Account Security)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getSecuritySettings).mockResolvedValue(initialSettings);
+  });
+
+  it('renders Account Security directly without IP sub-tabs', async () => {
+    render(<SecurityView user={mockUser} />);
+
+    // Should display Account Security header and 2FA options
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Account Security' })).toBeInTheDocument();
+      expect(screen.getByText('Two-Factor Authentication (2FA) Methods')).toBeInTheDocument();
+    });
+
+    // Should NOT have Blocked IPs or Allowed IPs subtabs on this page
+    expect(screen.queryByRole('button', { name: /Blocked IPs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Allowed IPs/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('DomainSecurityView Component (Per-Domain IP Security)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(api.getBlockedIps).mockResolvedValue({
       list: [
         {
@@ -63,35 +93,22 @@ describe('SecurityView Component', () => {
     });
   });
 
-  it('renders sub-tab buttons and defaults to Account Security', async () => {
-    render(<SecurityView user={mockUser} />);
+  it('renders domain badge, sub-tabs, and defaults to Blocked IPs', async () => {
+    render(<DomainSecurityView activeDomain={mockDomain} />);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Security' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Account Security/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /Domain Security/i })).toBeInTheDocument();
+    expect(screen.getByText('@acmecorp.com')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Blocked IPs/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Allowed IPs/i })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('Two-Factor Authentication (2FA) Methods')).toBeInTheDocument();
-    });
-  });
-
-  it('switches to Blocked IPs sub-tab and displays search diagnostic card', async () => {
-    const user = userEvent.setup();
-    render(<SecurityView user={mockUser} />);
-
-    const blockedTabBtn = screen.getByRole('button', { name: /Blocked IPs/i });
-    await user.click(blockedTabBtn);
-
-    await waitFor(() => {
       expect(screen.getByText('Check Blocked IP')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/Enter IP address/i)).toBeInTheDocument();
     });
   });
 
-  it('switches to Allowed IPs sub-tab and displays whitelisted entries', async () => {
+  it('switches to Allowed IPs sub-tab and displays whitelisted entries for domain', async () => {
     const user = userEvent.setup();
-    render(<SecurityView user={mockUser} />);
+    render(<DomainSecurityView activeDomain={mockDomain} />);
 
     const allowedTabBtn = screen.getByRole('button', { name: /Allowed IPs/i });
     await user.click(allowedTabBtn);

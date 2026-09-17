@@ -171,12 +171,9 @@ describe('DomainSetupModal Component', () => {
     await screen.findByText('10 Seats'); // default-selected already
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    // Nothing was auto-detected (default mock), so the wizard lands on
-    // manual setup — use the override link to reach the method picker.
-    await screen.findByText('No credential required');
+    await screen.findByText(/couldn't detect/i);
     await userEvent.click(screen.getByText('Connect a provider instead'));
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Connect a DNS Provider'));
 
     await userEvent.click(screen.getByRole('button', { name: /^hostinger$/i }));
     await userEvent.type(screen.getByLabelText(/Hostinger API Token/i), 'hostinger-tok');
@@ -217,10 +214,9 @@ describe('DomainSetupModal Component', () => {
     await screen.findByText('10 Seats');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    await screen.findByText('No credential required');
+    await screen.findByText(/couldn't detect/i);
     await userEvent.click(screen.getByText('Connect a provider instead'));
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Connect a DNS Provider'));
 
     await userEvent.click(screen.getByRole('button', { name: /^cloudflare$/i }));
     await userEvent.type(screen.getByLabelText(/Cloudflare API Token/i), 'cf-tok');
@@ -263,13 +259,10 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     // Method picker is skipped — nothing was auto-detected (default mock),
-    // so the wizard lands directly on manual setup.
+    // so the wizard lands directly on the DNS records / status step.
     expect(screen.queryByText('How do you want to set up DNS?')).not.toBeInTheDocument();
-    expect(await screen.findByText('No credential required')).toBeInTheDocument();
-    expect(screen.getByText(/couldn't detect/i)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn't detect/i)).toBeInTheDocument();
     expect(api.connectDnsProviderCredential).not.toHaveBeenCalled();
-
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('DNS Setup — manualbrand.io')).toBeInTheDocument();
     expect(await screen.findByText('DNS Zone File')).toBeInTheDocument();
@@ -301,9 +294,6 @@ describe('DomainSetupModal Component', () => {
 
     await enterDomainAndContinue('payable.io');
     await screen.findByText('10 Seats');
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
-
-    await screen.findByText('No credential required');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('DNS Setup — payable.io')).toBeInTheDocument();

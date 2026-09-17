@@ -17,11 +17,15 @@ import { api } from '../api';
 import { AllowedIpItem } from '../types';
 
 interface AllowedIpsViewProps {
+  domainId?: string;
+  domainName?: string;
   initialPrefillIp?: string;
   onClearPrefillIp?: () => void;
 }
 
 export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
+  domainId,
+  domainName,
   initialPrefillIp,
   onClearPrefillIp,
 }) => {
@@ -48,14 +52,14 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const res = await api.getAllowedIps();
+      const res = await api.getAllowedIps(domainId);
       setAllowedList(res.list || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load allowed IPs');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [domainId]);
 
   useEffect(() => {
     fetchAllowedIps();
@@ -82,6 +86,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
       await api.addAllowedIp({
         address: cleanAddress,
         reason: inputReason.trim() || 'Allowed IP',
+        domainId,
       });
       setSuccessMsg(`IP ${cleanAddress} added to allowed list.`);
       setShowAddModal(false);
@@ -102,7 +107,7 @@ export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
     setError(null);
     setSuccessMsg(null);
     try {
-      await api.removeAllowedIp(deletingTarget.id);
+      await api.removeAllowedIp(deletingTarget.id, domainId);
       setSuccessMsg(`IP ${deletingTarget.address} removed from allowed list.`);
       setDeletingTarget(null);
       await fetchAllowedIps();

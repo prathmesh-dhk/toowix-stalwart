@@ -24,6 +24,8 @@ import {
   LayoutDashboard,
   Search,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   AlertTriangle,
   type LucideIcon,
@@ -71,6 +73,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   const [activeTab, setActiveTab] = useState<HomeTab>('overview');
   const [showDomainModal, setShowDomainModal] = useState(false);
   const [domainSearch, setDomainSearch] = useState('');
+  const [overviewLimit, setOverviewLimit] = useState(5);
 
   const [dismissed2FaBanner, setDismissed2FaBanner] = useState<boolean>(() => {
     try {
@@ -285,11 +288,22 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
           {activeTab === 'overview' && (
             <>
-              <section className="flex flex-col gap-1">
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
-                <p className="text-xs text-slate-500">
-                  {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
-                </p>
+              <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
+                  <p className="text-xs text-slate-500">
+                    {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDomainModal(true)}
+                  className="self-start sm:self-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer shrink-0"
+                  id="btn-add-domain-overview"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Domain</span>
+                </button>
               </section>
 
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -348,19 +362,29 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                 </button>
               </section>
 
-              <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <Globe className="w-[18px] h-[18px] text-slate-400" />
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
                   </div>
-                  <button
-                    onClick={() => setActiveTab('domains')}
-                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>View all domains</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowDomainModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Domain</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('domains')}
+                      className="text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>View all domains</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {domains.length === 0 ? (
@@ -375,47 +399,105 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col divide-y divide-slate-100">
-                    {domains.map((domain) => {
-                      const pill = dnsStatusPill(domain.dnsStatus);
-                      const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
-                      const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
-                      return (
-                        <button
-                          key={domain.id}
-                          type="button"
-                          onClick={() => onNavigateToDomain(domain.id)}
-                          className="py-3.5 flex flex-col gap-2.5 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors text-left cursor-pointer"
-                        >
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="text-xs font-semibold text-slate-900 truncate">{domain.domainName}</span>
-                              {domain.isPrimary && (
-                                <span className="shrink-0 text-[10px] font-semibold text-indigo-600">Primary</span>
-                              )}
-                            </div>
-                            <span className={`shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${pill.className}`}>
-                              {pill.label}
-                            </span>
-                          </div>
+                  <div className="overflow-x-auto">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Domain</th>
+                          <th>Status</th>
+                          <th>Mailboxes</th>
+                          <th>Plan</th>
+                          <th style={{ textAlign: 'right' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {domains.slice(0, overviewLimit).map((domain) => {
+                          const isDnsActive = domain.dnsStatus === 'active';
+                          const pill = dnsStatusPill(domain.dnsStatus);
+                          const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
+                          const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
+                          return (
+                            <tr
+                              key={domain.id}
+                              onClick={() => onNavigateToDomain(domain.id)}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <td>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-slate-900">{domain.domainName}</span>
+                                  {domain.isPrimary && (
+                                    <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                      Primary
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td>
+                                <div className="flex items-center gap-1.5">
+                                  {isDnsActive ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  ) : (
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                  )}
+                                  <span>{pill.label}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="flex items-center gap-2 min-w-[140px]">
+                                  <div className="flex-1 min-w-[60px] max-w-[80px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${usagePercent}%` }} />
+                                  </div>
+                                  <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">
+                                    {domain.mailboxCount} / {domain.mailboxLimit}
+                                  </span>
+                                </div>
+                              </td>
+                              <td>{domain.planName || '—'}</td>
+                              <td style={{ textAlign: 'right' }}>
+                                <ChevronRight className="w-4 h-4 text-slate-300 inline-block" />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div className="pagination-row">
+                      <span>
+                        Showing {Math.min(overviewLimit, domains.length)} of {domains.length}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {overviewLimit < domains.length ? (
+                          <button
+                            type="button"
+                            onClick={() => setOverviewLimit((prev) => prev + 5)}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Show more</span>
+                          </button>
+                        ) : domains.length > 5 ? (
+                          <button
+                            type="button"
+                            onClick={() => setOverviewLimit(5)}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Show less</span>
+                          </button>
+                        ) : null}
 
-                          <div className="flex items-center gap-3">
-                            {domain.planName && (
-                              <span className="shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200/60">
-                                {domain.planName}
-                              </span>
-                            )}
-                            <div className="flex-1 min-w-[80px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                              <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${usagePercent}%` }} />
-                            </div>
-                            <span className="shrink-0 flex items-center gap-1 text-[11px] text-slate-500 tabular-nums">
-                              <Mail className="w-3 h-3" />
-                              {domain.mailboxCount} / {domain.mailboxLimit} mailboxes
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
+                        {domains.length > 5 && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('domains')}
+                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer ml-1"
+                          >
+                            <span>View all</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </section>
