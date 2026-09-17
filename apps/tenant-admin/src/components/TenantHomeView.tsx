@@ -373,29 +373,39 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                   <div className="flex flex-col divide-y divide-slate-100">
                     {domains.map((domain) => {
                       const pill = dnsStatusPill(domain.dnsStatus);
+                      const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
+                      const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
                       return (
                         <button
                           key={domain.id}
                           type="button"
                           onClick={() => onNavigateToDomain(domain.id)}
-                          className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors text-left cursor-pointer"
+                          className="py-3.5 flex flex-col gap-2.5 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors text-left cursor-pointer"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="text-xs font-medium text-slate-900 truncate">{domain.domainName}</span>
-                            {domain.isPrimary && (
-                              <span className="shrink-0 text-[10px] font-semibold text-indigo-600">Primary</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0">
-                            {domain.planName && (
-                              <span className="text-[11px] text-slate-500">{domain.planName}</span>
-                            )}
-                            <span className="flex items-center gap-1 text-[11px] text-slate-500 tabular-nums">
-                              <Mail className="w-3 h-3" />
-                              {domain.mailboxCount} / {domain.mailboxLimit}
-                            </span>
-                            <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${pill.className}`}>
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-xs font-semibold text-slate-900 truncate">{domain.domainName}</span>
+                              {domain.isPrimary && (
+                                <span className="shrink-0 text-[10px] font-semibold text-indigo-600">Primary</span>
+                              )}
+                            </div>
+                            <span className={`shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${pill.className}`}>
                               {pill.label}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            {domain.planName && (
+                              <span className="shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200/60">
+                                {domain.planName}
+                              </span>
+                            )}
+                            <div className="flex-1 min-w-[80px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${usagePercent}%` }} />
+                            </div>
+                            <span className="shrink-0 flex items-center gap-1 text-[11px] text-slate-500 tabular-nums">
+                              <Mail className="w-3 h-3" />
+                              {domain.mailboxCount} / {domain.mailboxLimit} mailboxes
                             </span>
                           </div>
                         </button>

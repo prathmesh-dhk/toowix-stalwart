@@ -140,7 +140,7 @@ describe('TenantHomeView Component', () => {
     expect(screen.getByText('secondary.com')).toBeInTheDocument();
     expect(screen.getByText('Team')).toBeInTheDocument(); // dom-1's plan name
     expect(screen.getByText('Individual')).toBeInTheDocument(); // dom-2's plan name
-    expect(screen.getByText('2 / 50')).toBeInTheDocument(); // dom-1's seat usage
+    expect(screen.getByText('2 / 50 mailboxes')).toBeInTheDocument(); // dom-1's mailbox allocation
 
     expect(screen.queryByText('Recent Activity')).not.toBeInTheDocument();
 
