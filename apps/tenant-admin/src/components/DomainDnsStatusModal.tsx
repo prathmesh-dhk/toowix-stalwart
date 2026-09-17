@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { DomainItem, DomainDnsStatus } from '../types';
+import { DomainItem, DomainDnsStatus, DnsLiveCheckResult } from '../types';
 import { api } from '../api';
 import { X, Key, ChevronDown, ChevronUp } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
@@ -22,6 +22,8 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showProviderForm, setShowProviderForm] = useState(false);
+  const [liveCheck, setLiveCheck] = useState<DnsLiveCheckResult | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const refresh = async () => {
     if (!domain) return;
@@ -38,11 +40,26 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({
     }
   };
 
+  const checkRecords = async () => {
+    if (!domain) return;
+    setChecking(true);
+    setError(null);
+    try {
+      const res = await api.checkDnsRecordsLive(domain.id);
+      setLiveCheck(res);
+    } catch (err: any) {
+      setError(err.message || 'Failed to check DNS records.');
+    } finally {
+      setChecking(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && domain) {
       setStatus(null);
       setError(null);
       setShowProviderForm(false);
+      setLiveCheck(null);
       refresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,6 +101,9 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({
           loading={loading}
           error={error}
           onRefresh={refresh}
+          onCheckRecords={checkRecords}
+          checking={checking}
+          liveCheck={liveCheck}
         />
 
         {/* Connect DNS Provider Section */}

@@ -62,6 +62,20 @@ export interface DomainDnsStatus {
   activatedAt?: string | null;
 }
 
+export interface DnsRecordCheckResult {
+  type: string;
+  name: string;
+  purpose: string;
+  expectedValue: string;
+  found: boolean;
+}
+
+export interface DnsLiveCheckResult {
+  allFound: boolean;
+  checkedAt: string;
+  results: DnsRecordCheckResult[];
+}
+
 export interface TenantDomainSummary {
   id: string;
   domainName: string;

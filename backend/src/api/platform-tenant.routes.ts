@@ -12,7 +12,7 @@ import { AuditLogModel } from '../db/models/AuditLog';
 import { MailboxModel } from '../db/models/Mailbox';
 import { hashPassword } from '../auth/service';
 import { stalwartClient } from '../stalwart/client';
-import { activateDomain, retryVerify, DomainActivationError } from '../services/domain-activation.service';
+import { activateDomain, retryVerify, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
 
@@ -508,6 +508,29 @@ platformTenantRouter.get('/:id/domains/:domainId/dns-status', async (req: Reques
     dnsVerifiedAt: domain.dnsVerifiedAt,
     activatedAt: domain.activatedAt,
   });
+});
+
+// 2f. Live DNS Records Readiness Check — a real public-DNS lookup for every
+// required record, used to tell the Super Admin whether the tenant has
+// actually finished their DNS setup BEFORE Activate is clicked, instead of
+// only the stale dnsStatus left over from the last sweep/activation attempt.
+platformTenantRouter.get('/:id/domains/:domainId/dns-check', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });
+  }
+
+  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId: req.params.id });
+  if (!domain) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found for this tenant' });
+  }
+
+  try {
+    const result = await checkDnsRecordsLive(domain.domainName, domain.dnsRecords || []);
+    return res.status(200).json(result);
+  } catch (err: any) {
+    console.error('[Domain DNS Check Error]:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to check DNS records.' });
+  }
 });
 
 // 3. Suspend Tenant

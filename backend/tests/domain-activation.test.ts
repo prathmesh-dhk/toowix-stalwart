@@ -12,15 +12,19 @@ import {
   connectDnsProviderCredential,
   activateDomain,
   retryVerify,
+  checkDnsRecordsLive,
   DomainActivationError,
 } from '../src/services/domain-activation.service';
 
 vi.mock('dns/promises', () => ({
   resolveMx: vi.fn(),
   resolveTxt: vi.fn(),
+  resolveCname: vi.fn(),
+  resolveSrv: vi.fn(),
+  resolveCaa: vi.fn(),
 }));
 
-import { resolveMx, resolveTxt } from 'dns/promises';
+import { resolveMx, resolveTxt, resolveCname, resolveSrv, resolveCaa } from 'dns/promises';
 
 let mongoServer: MongoMemoryServer;
 
@@ -94,6 +98,9 @@ describe('domain-activation.service', () => {
 
     vi.mocked(resolveMx).mockReset();
     vi.mocked(resolveTxt).mockReset();
+    vi.mocked(resolveCname).mockReset();
+    vi.mocked(resolveSrv).mockReset();
+    vi.mocked(resolveCaa).mockReset();
   });
 
   describe('connectDnsProviderCredential (GoDaddy)', () => {
@@ -382,6 +389,64 @@ describe('domain-activation.service', () => {
 
       expect(replaceSpy).toHaveBeenCalled();
       expect(result.dnsStatus).toBe('active');
+    });
+  });
+
+  describe('checkDnsRecordsLive', () => {
+    it('reports allFound true only when every record type resolves publicly', async () => {
+      await DomainModel.updateOne(
+        { _id: domainId },
+        {
+          dnsRecords: [
+            { type: 'MX', name: '@', value: 'mail.toowix.com', priority: 10, ttl: 3600, purpose: 'Mail routing' },
+            { type: 'TXT', name: '@', value: 'v=spf1 mx ~all', ttl: 3600, purpose: 'SPF' },
+            { type: 'CNAME', name: 'autoconfig', value: 'mail.toowix.com', ttl: 3600, purpose: 'Autoconfig' },
+            { type: 'SRV', name: '_imaps._tcp', value: 'mail.toowix.com', priority: 0, weight: 1, port: 993, ttl: 3600, purpose: 'IMAP' },
+            { type: 'CAA', name: '@', value: 'letsencrypt.org;accounturi=https://x', tag: 'issue', flags: 0, ttl: 3600, purpose: 'CAA' },
+          ],
+        }
+      );
+      const domain = await DomainModel.findById(domainId);
+
+      vi.mocked(resolveMx).mockResolvedValue([{ exchange: 'mail.toowix.com', priority: 10 }] as any);
+      vi.mocked(resolveTxt).mockResolvedValue([['v=spf1 mx ~all']] as any);
+      vi.mocked(resolveCname).mockResolvedValue(['mail.toowix.com'] as any);
+      vi.mocked(resolveSrv).mockResolvedValue([{ name: 'mail.toowix.com', port: 993, priority: 0, weight: 1 }] as any);
+      vi.mocked(resolveCaa).mockResolvedValue([{ critical: 0, issue: 'letsencrypt.org' }] as any);
+
+      const result = await checkDnsRecordsLive(domain!.domainName, domain!.dnsRecords || []);
+
+      expect(result.allFound).toBe(true);
+      expect(result.results).toHaveLength(5);
+      expect(result.results.every((r) => r.found)).toBe(true);
+    });
+
+    it('reports the specific records still missing when only some resolve', async () => {
+      await DomainModel.updateOne(
+        { _id: domainId },
+        {
+          dnsRecords: [
+            { type: 'MX', name: '@', value: 'mail.toowix.com', priority: 10, ttl: 3600, purpose: 'Mail routing' },
+            { type: 'CNAME', name: 'autoconfig', value: 'mail.toowix.com', ttl: 3600, purpose: 'Autoconfig' },
+          ],
+        }
+      );
+      const domain = await DomainModel.findById(domainId);
+
+      vi.mocked(resolveMx).mockResolvedValue([{ exchange: 'mail.toowix.com', priority: 10 }] as any);
+      vi.mocked(resolveCname).mockRejectedValue(new Error('ENOTFOUND'));
+
+      const result = await checkDnsRecordsLive(domain!.domainName, domain!.dnsRecords || []);
+
+      expect(result.allFound).toBe(false);
+      expect(result.results.find((r) => r.type === 'MX')?.found).toBe(true);
+      expect(result.results.find((r) => r.type === 'CNAME')?.found).toBe(false);
+    });
+
+    it('reports allFound false for a domain with no generated records yet', async () => {
+      const result = await checkDnsRecordsLive('fresh.com', []);
+      expect(result.allFound).toBe(false);
+      expect(result.results).toHaveLength(0);
     });
   });
 

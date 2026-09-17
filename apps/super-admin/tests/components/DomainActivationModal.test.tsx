@@ -10,6 +10,7 @@ vi.mock('../../src/api', () => ({
     getDomainDnsStatus: vi.fn(),
     activateDomainDns: vi.fn(),
     retryVerifyDomainDns: vi.fn(),
+    checkDomainDnsLive: vi.fn(),
   },
 }));
 
@@ -38,6 +39,11 @@ describe('DomainActivationModal Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    vi.mocked(api.checkDomainDnsLive).mockResolvedValue({
+      allFound: true,
+      checkedAt: '2026-01-01T00:00:00.000Z',
+      results: [],
+    });
   });
 
   it('shows the manual zone file section with Copy and Export buttons once Stalwart has provisioned the domain', async () => {
@@ -117,5 +123,33 @@ describe('DomainActivationModal Component', () => {
 
     await waitFor(() => expect(api.activateDomainDns).toHaveBeenCalledWith('tenant-1', 'dom-1'));
     expect(await screen.findByText('Manual Setup — Raw DNS Zone File')).toBeInTheDocument();
+  });
+
+  it('disables Activate Domain until the tenant\'s DNS records are confirmed live, showing which are still missing', async () => {
+    vi.mocked(api.getDomainDnsStatus).mockResolvedValue({
+      dnsStatus: 'not_started',
+      dnsRecords: [],
+      dnsConflicts: [],
+      dnsZoneFile: null,
+    });
+    vi.mocked(api.checkDomainDnsLive).mockResolvedValue({
+      allFound: false,
+      checkedAt: '2026-01-01T00:00:00.000Z',
+      results: [
+        { type: 'MX', name: '@', purpose: 'Mail routing', expectedValue: 'mail.toowix.com', found: false },
+        { type: 'TXT', name: '@', purpose: 'SPF', expectedValue: 'v=spf1 mx ~all', found: true },
+      ],
+    });
+
+    render(
+      <DomainActivationModal tenant={mockTenant} domain={mockDomain} isOpen={true} onClose={vi.fn()} />
+    );
+
+    const activateButton = await screen.findByRole('button', { name: /activate domain/i });
+    expect(activateButton).toBeDisabled();
+    expect(screen.getByText(/1 of 2 required records not detected yet/i)).toBeInTheDocument();
+
+    await userEvent.click(activateButton);
+    expect(api.activateDomainDns).not.toHaveBeenCalled();
   });
 });

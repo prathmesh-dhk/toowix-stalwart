@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { DomainDnsStatus, DnsActivationStatus } from '../types';
-import { AlertTriangle, CheckCircle2, Copy, Check, FileText, Download, RefreshCw } from 'lucide-react';
+import { DomainDnsStatus, DnsActivationStatus, DnsLiveCheckResult } from '../types';
+import { AlertTriangle, CheckCircle2, XCircle, Copy, Check, FileText, Download, RefreshCw, Search } from 'lucide-react';
 
 interface DnsStatusPanelProps {
   domainName: string;
@@ -11,6 +11,10 @@ interface DnsStatusPanelProps {
   onRefresh: () => void;
   /** Label of a connected DNS provider (e.g. "GoDaddy"), if any, for copy on the activating banner. */
   connectedProviderLabel?: string | null;
+  /** On-demand live public-DNS check ("Check My Records") — separate from onRefresh, which only re-reads the last stored/background status. */
+  onCheckRecords?: () => void;
+  checking?: boolean;
+  liveCheck?: DnsLiveCheckResult | null;
 }
 
 function statusBadge(dnsStatus?: DnsActivationStatus) {
@@ -36,6 +40,9 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
   error,
   onRefresh,
   connectedProviderLabel,
+  onCheckRecords,
+  checking,
+  liveCheck,
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -141,6 +148,49 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
         <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs font-medium">
           <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
           <span>Domain is fully active. Mail service is live.</span>
+        </div>
+      )}
+
+      {dnsStatus !== 'active' && onCheckRecords && (
+        <div className="flex flex-col gap-2.5">
+          <button
+            type="button"
+            onClick={onCheckRecords}
+            disabled={checking}
+            className="self-start px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            <Search size={13} className={checking ? 'animate-pulse' : ''} />
+            {checking ? 'Checking your records…' : 'Check My Records'}
+          </button>
+
+          {liveCheck && (
+            <div className={`p-3 rounded-xl border space-y-2 ${liveCheck.allFound ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className={`flex items-center gap-1.5 text-xs font-semibold ${liveCheck.allFound ? 'text-emerald-800' : 'text-amber-800'}`}>
+                {liveCheck.allFound ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                <span>
+                  {liveCheck.allFound
+                    ? 'All your DNS records are live! You can let a Super Admin know you are ready for activation.'
+                    : `${liveCheck.results.filter((r) => !r.found).length} of ${liveCheck.results.length} records not detected yet — this is normal right after adding them, DNS can take a few minutes to propagate.`}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {liveCheck.results.map((r, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-2 font-mono text-[11px] px-2 py-1 rounded ${r.found ? 'text-emerald-800 bg-white/70' : 'text-amber-900 bg-white/70'}`}
+                  >
+                    {r.found ? (
+                      <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
+                    ) : (
+                      <XCircle size={11} className="text-amber-600 shrink-0" />
+                    )}
+                    <span className="font-semibold">{r.type}</span>
+                    <span className="text-slate-500 truncate">{r.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

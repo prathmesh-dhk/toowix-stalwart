@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
-import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDeletionRequestItem, DomainDnsStatus } from '../types';
+import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDeletionRequestItem, DomainDnsStatus, DnsLiveCheckResult } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
@@ -150,6 +150,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   const [domainDnsStatus, setDomainDnsStatus] = useState<DomainDnsStatus | null>(null);
   const [dnsStatusLoading, setDnsStatusLoading] = useState(false);
   const [dnsStatusError, setDnsStatusError] = useState<string | null>(null);
+  const [dnsLiveCheck, setDnsLiveCheck] = useState<DnsLiveCheckResult | null>(null);
+  const [dnsChecking, setDnsChecking] = useState(false);
   const [showInlineProviderForm, setShowInlineProviderForm] = useState(false);
 
   // Password copy feedback
@@ -310,12 +312,26 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     }
   };
 
+  const checkDomainDnsLive = async (domainId: string) => {
+    if (!domainId || typeof api.checkDnsRecordsLive !== 'function') return;
+    setDnsChecking(true);
+    try {
+      const res = await api.checkDnsRecordsLive(domainId);
+      setDnsLiveCheck(res);
+    } catch (err: any) {
+      setDnsStatusError(err.message || 'Failed to check DNS records.');
+    } finally {
+      setDnsChecking(false);
+    }
+  };
+
   const handleDomainAdded = async (newDomain: DomainItem) => {
     await loadTenantData(newDomain.id);
   };
 
   useEffect(() => {
     if (activeNav === 'domains' && activeDomain?.id) {
+      setDnsLiveCheck(null);
       loadDomainDnsStatus(activeDomain.id);
     }
   }, [activeNav, activeDomain?.id]);
@@ -1486,6 +1502,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   onRefresh={() => {
                     if (activeDomain) loadDomainDnsStatus(activeDomain.id);
                   }}
+                  onCheckRecords={() => {
+                    if (activeDomain) checkDomainDnsLive(activeDomain.id);
+                  }}
+                  checking={dnsChecking}
+                  liveCheck={dnsLiveCheck}
                 />
 
                 {/* Inline DNS Provider Configuration (Optional) */}

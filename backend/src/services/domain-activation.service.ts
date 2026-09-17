@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { resolveMx, resolveTxt } from 'dns/promises';
+import { resolveMx, resolveTxt, resolveCname, resolveSrv, resolveCaa } from 'dns/promises';
 import { DomainModel, IDomain, IGeneratedDnsRecord, IDnsConflictRecord } from '../db/models/Domain';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainDnsCredentialModel, DnsProviderName } from '../db/models/DomainDnsCredential';
@@ -24,7 +24,12 @@ export interface ActivationActor {
 }
 
 export class DomainActivationError extends Error {
-  constructor(message: string, public readonly code: string, public readonly statusCode: number = 400) {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly statusCode: number = 400,
+    public readonly details?: unknown
+  ) {
     super(message);
     this.name = 'DomainActivationError';
   }
@@ -251,6 +256,28 @@ function normalizeRecordValue(value: string): string {
   return value.trim().replace(/\.$/, '').replace(/\s+/g, ' ').toLowerCase();
 }
 
+function matchesMxRecord(record: IGeneratedDnsRecord, exchange: string): boolean {
+  const ex = normalizeRecordValue(exchange);
+  const val = normalizeRecordValue(record.value);
+  return (
+    ex === val ||
+    (val.includes('toowix') && ex.includes('toowix')) ||
+    ex === 'mail.toowix.com' ||
+    ex === 'mail.toowix.test'
+  );
+}
+
+function matchesTxtRecord(record: IGeneratedDnsRecord, allTxt: string[]): boolean {
+  const expected = normalizeRecordValue(record.value);
+  if (record.name === '@' && (record.purpose?.includes('SPF') || expected.startsWith('v=spf1'))) {
+    return allTxt.some((t) => t.startsWith('v=spf1') && (t.includes('mx') || t.includes('103.13') || t.includes('toowix') || t.includes('ip4:') || t.includes('include:')));
+  }
+  if (record.name === '_dmarc' || expected.startsWith('v=dmarc1')) {
+    return allTxt.some((t) => t.startsWith('v=dmarc1'));
+  }
+  return allTxt.some((t) => t === expected || t.includes(expected) || expected.includes(t));
+}
+
 /**
  * Attempts public DNS verification for the domain's persisted required
  * records. Uses Node's built-in resolver; any resolution error (NXDOMAIN,
@@ -285,28 +312,11 @@ export async function verifyPublicDns(
       try {
         if (record.type === 'MX') {
           const results = await resolveMx(fqdn);
-          found = results.some((r) => {
-            const ex = normalizeRecordValue(r.exchange);
-            const val = normalizeRecordValue(record.value);
-            return (
-              ex === val ||
-              (val.includes('toowix') && ex.includes('toowix')) ||
-              ex === 'mail.toowix.com' ||
-              ex === 'mail.toowix.test'
-            );
-          });
+          found = results.some((r) => matchesMxRecord(record, r.exchange));
         } else if (record.type === 'TXT') {
           const results = await resolveTxt(fqdn);
           const allTxt = results.map((chunks) => normalizeRecordValue(chunks.join('')));
-          const expected = normalizeRecordValue(record.value);
-
-          if (record.name === '@' && (record.purpose?.includes('SPF') || expected.startsWith('v=spf1'))) {
-            found = allTxt.some((t) => t.startsWith('v=spf1') && (t.includes('mx') || t.includes('103.13') || t.includes('toowix') || t.includes('ip4:') || t.includes('include:')));
-          } else if (record.name === '_dmarc' || expected.startsWith('v=dmarc1')) {
-            found = allTxt.some((t) => t.startsWith('v=dmarc1'));
-          } else {
-            found = allTxt.some((t) => t === expected || t.includes(expected) || expected.includes(t));
-          }
+          found = matchesTxtRecord(record, allTxt);
         }
       } catch {
         found = false;
@@ -316,6 +326,75 @@ export async function verifyPublicDns(
   }
 
   return { verified: details.every((d) => d.found), details };
+}
+
+export interface DnsRecordCheckResult {
+  type: string;
+  name: string;
+  purpose: string;
+  expectedValue: string;
+  found: boolean;
+}
+
+/**
+ * Full live public-DNS check across EVERY required record type (unlike
+ * verifyPublicDns, which only checks MX/TXT and treats CNAME/SRV/CAA as
+ * "found" to avoid blocking activation completion once provider-zone
+ * verification already confirmed them). This is the tenant/Super-Admin
+ * facing "is my DNS actually live" check — it's meant to answer the
+ * question honestly before anyone commits to activating, so nothing here
+ * is skipped or assumed.
+ */
+export async function checkDnsRecordsLive(
+  domainName: string,
+  records: IGeneratedDnsRecord[]
+): Promise<{ allFound: boolean; checkedAt: Date; results: DnsRecordCheckResult[] }> {
+  const results: DnsRecordCheckResult[] = [];
+
+  for (const record of records) {
+    const fqdn = record.name === '@' ? domainName : `${record.name}.${domainName}`;
+    let found = false;
+    try {
+      switch (record.type) {
+        case 'MX': {
+          const answers = await resolveMx(fqdn);
+          found = answers.some((a) => matchesMxRecord(record, a.exchange));
+          break;
+        }
+        case 'TXT': {
+          const answers = await resolveTxt(fqdn);
+          const allTxt = answers.map((chunks) => normalizeRecordValue(chunks.join('')));
+          found = matchesTxtRecord(record, allTxt);
+          break;
+        }
+        case 'CNAME': {
+          const answers = await resolveCname(fqdn);
+          found = answers.some((a) => normalizeRecordValue(a) === normalizeRecordValue(record.value));
+          break;
+        }
+        case 'SRV': {
+          const answers = await resolveSrv(fqdn);
+          found = answers.some((a) => normalizeRecordValue(a.name) === normalizeRecordValue(record.value));
+          break;
+        }
+        case 'CAA': {
+          const answers = await resolveCaa(fqdn);
+          found = answers.some((a) => {
+            const caaValue = record.tag === 'iodef' ? a.iodef : a.issue;
+            return typeof caaValue === 'string' && normalizeRecordValue(record.value).startsWith(normalizeRecordValue(caaValue));
+          });
+          break;
+        }
+        default:
+          found = false;
+      }
+    } catch {
+      found = false;
+    }
+    results.push({ type: record.type, name: record.name, purpose: record.purpose, expectedValue: record.value, found });
+  }
+
+  return { allFound: records.length > 0 && results.every((r) => r.found), checkedAt: new Date(), results };
 }
 
 /**

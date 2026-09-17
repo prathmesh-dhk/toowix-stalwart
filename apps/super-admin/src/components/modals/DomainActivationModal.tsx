@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { TenantSummary, TenantDomainSummary, DomainDnsStatus } from '../../types';
+import { TenantSummary, TenantDomainSummary, DomainDnsStatus, DnsLiveCheckResult } from '../../types';
 import { api } from '../../api';
-import { X, PlayCircle, RefreshCw, AlertTriangle, CheckCircle2, Copy, Check, FileText, Download } from 'lucide-react';
+import { X, PlayCircle, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Copy, Check, FileText, Download, Search } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
@@ -41,6 +41,8 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
   const [actionLoading, setActionLoading] = useState<'activate' | 'retry' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zoneFileCopied, setZoneFileCopied] = useState(false);
+  const [liveCheck, setLiveCheck] = useState<DnsLiveCheckResult | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const refresh = async () => {
     if (!tenant || !domain) return;
@@ -56,11 +58,26 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
     }
   };
 
+  const checkRecords = async () => {
+    if (!tenant || !domain) return;
+    setChecking(true);
+    try {
+      const res = await api.checkDomainDnsLive(tenant.id, domain.id);
+      setLiveCheck(res);
+    } catch (err: any) {
+      setError(err.message || 'Failed to check DNS records.');
+    } finally {
+      setChecking(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && tenant && domain) {
       setStatus(null);
       setError(null);
+      setLiveCheck(null);
       refresh();
+      checkRecords();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, tenant?.id, domain?.id]);
@@ -117,7 +134,8 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
 
   const dnsStatus = status?.dnsStatus || domain.dnsStatus || 'not_started';
   const badge = badgeProps(dnsStatus);
-  const canActivate = dnsStatus === 'not_started';
+  const recordsReady = liveCheck?.allFound === true;
+  const showActivateButton = dnsStatus === 'not_started';
   const canRetry = dnsStatus === 'activating' || dnsStatus === 'conflict' || dnsStatus === 'activation_failed';
 
   return (
@@ -151,6 +169,50 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
               published automatically. If not, Toowix generates a full DNS zone file below that can be configured
               manually with any DNS provider — no credential connection required.
             </p>
+          )}
+
+          {dnsStatus === 'not_started' && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Search size={13} className="text-slate-500" />
+                  Tenant DNS Readiness
+                </span>
+                <button
+                  type="button"
+                  onClick={checkRecords}
+                  disabled={checking}
+                  className="btn-secondary btn-sm text-[11px] inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw size={11} className={checking ? 'animate-spin' : ''} />
+                  {checking ? 'Checking…' : 'Re-check'}
+                </button>
+              </div>
+
+              {liveCheck && (
+                <div className={`p-3 rounded-lg border space-y-2 ${liveCheck.allFound ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className={`flex items-center gap-1.5 text-xs font-semibold ${liveCheck.allFound ? 'text-emerald-800' : 'text-amber-800'}`}>
+                    {liveCheck.allFound ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                    <span>
+                      {liveCheck.allFound
+                        ? 'All required DNS records are live publicly — ready to activate.'
+                        : `${liveCheck.results.filter((r) => !r.found).length} of ${liveCheck.results.length} required records not detected yet. The tenant has not finished DNS setup — Activate is disabled until they do.`}
+                    </span>
+                  </div>
+                  {!liveCheck.allFound && (
+                    <div className="space-y-1">
+                      {liveCheck.results.filter((r) => !r.found).map((r, i) => (
+                        <div key={i} className="flex items-center gap-2 font-mono text-[11px] px-2 py-1 rounded bg-white/70 text-amber-900">
+                          <XCircle size={11} className="text-amber-600 shrink-0" />
+                          <span className="font-semibold">{r.type}</span>
+                          <span className="text-slate-500 truncate">{r.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {dnsStatus === 'conflict' && status?.dnsConflicts && status.dnsConflicts.length > 0 && (
@@ -236,8 +298,15 @@ export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({
               <span>Retry / Verify</span>
             </Button>
           )}
-          {canActivate && (
-            <Button size="md" variant="primary" onClick={handleActivate} loading={actionLoading === 'activate'}>
+          {showActivateButton && (
+            <Button
+              size="md"
+              variant="primary"
+              onClick={handleActivate}
+              loading={actionLoading === 'activate'}
+              disabled={!recordsReady}
+              title={recordsReady ? undefined : 'Waiting for the tenant to finish DNS setup — records not yet detected publicly'}
+            >
               <PlayCircle size={15} />
               <span>Activate Domain</span>
             </Button>

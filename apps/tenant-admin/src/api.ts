@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -273,6 +273,9 @@ export const api = {
 
   getDomainDnsStatus: (domainId: string) =>
     request<DomainDnsStatus>(`/api/tenants/me/domains/${domainId}/dns-status`),
+
+  checkDnsRecordsLive: (domainId: string) =>
+    request<DnsLiveCheckResult>(`/api/tenants/me/domains/${domainId}/dns-check`),
 
   requestDomainDeletion: (domainId: string, reason?: string) =>
     request<{ success: boolean; message: string; request: DomainDeletionRequestItem }>(

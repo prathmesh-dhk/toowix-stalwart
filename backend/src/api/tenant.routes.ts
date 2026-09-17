@@ -8,7 +8,7 @@ import { PlanModel } from '../db/models/Plan';
 import { AdminUserModel } from '../db/models/AdminUser';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
-import { connectDnsProviderCredential, DomainActivationError } from '../services/domain-activation.service';
+import { connectDnsProviderCredential, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
 import { requestDomainDeletion, getDomainDeletionRequest, DomainDeletionError } from '../services/domain-deletion.service';
 import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/errors';
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
@@ -424,6 +424,35 @@ tenantMeRouter.get('/me/domains/:domainId/dns-status', async (req: Request, res:
   } catch (err: any) {
     console.error('[Tenant Domain DNS Status Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve domain DNS status.' });
+  }
+});
+
+// ==========================================
+// LIVE DNS RECORDS CHECK (/api/tenants/me/domains/:domainId/dns-check)
+// ==========================================
+// On-demand, real public-DNS lookup for every required record — lets the
+// tenant confirm for themselves that their DNS provider setup (or manual
+// zone-file paste) is actually live, instead of only ever seeing the
+// passive dnsStatus left over from the last background sweep/activation
+// attempt (see GET .../dns-status above).
+tenantMeRouter.get('/me/domains/:domainId/dns-check', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+
+  try {
+    const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId });
+    if (!domain) {
+      res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found' });
+      return;
+    }
+    const result = await checkDnsRecordsLive(domain.domainName, domain.dnsRecords || []);
+    res.status(200).json(result);
+  } catch (err: any) {
+    console.error('[Tenant Domain DNS Check Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to check DNS records.' });
   }
 });
 

@@ -13,6 +13,7 @@ import {
   SessionItem,
   PlatformAnalytics,
   DomainDnsStatus,
+  DnsLiveCheckResult,
   Plan,
   DomainDeletionRequest,
   TenantFullDetails,
@@ -257,6 +258,9 @@ export const api = {
 
   getDomainDnsStatus: (tenantId: string, domainId: string) =>
     request<DomainDnsStatus>(`/api/platform/tenants/${tenantId}/domains/${domainId}/dns-status`),
+
+  checkDomainDnsLive: (tenantId: string, domainId: string) =>
+    request<DnsLiveCheckResult>(`/api/platform/tenants/${tenantId}/domains/${domainId}/dns-check`),
 
   // Platform Admin - Tenant Admins
   listTenantAdmins: (tenantId: string) =>
