@@ -22,6 +22,10 @@ import {
   X,
   Mail,
   LayoutDashboard,
+  Search,
+  ChevronRight,
+  CheckCircle2,
+  AlertTriangle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -66,6 +70,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<HomeTab>('overview');
   const [showDomainModal, setShowDomainModal] = useState(false);
+  const [domainSearch, setDomainSearch] = useState('');
 
   const [dismissed2FaBanner, setDismissed2FaBanner] = useState<boolean>(() => {
     try {
@@ -446,7 +451,10 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
               ) : (
                 <section className="flex flex-col gap-4">
                   <div className="flex items-center justify-between">
-                    <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Domains</h1>
+                    <div className="flex flex-col gap-0.5">
+                      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Domains</h1>
+                      <p className="text-xs text-slate-500">Every domain on this account and its mail setup.</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setShowDomainModal(true)}
@@ -456,36 +464,101 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                       <span>Add Domain</span>
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {domains.map((domain) => {
-                      const pill = dnsStatusPill(domain.dnsStatus);
-                      return (
-                        <button
-                          key={domain.id}
-                          type="button"
-                          onClick={() => onNavigateToDomain(domain.id)}
-                          className="text-left bg-white border border-slate-200 rounded-2xl p-5 hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer flex flex-col gap-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-sm font-bold text-slate-900 truncate">{domain.domainName}</span>
-                            <span className={`shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${pill.className}`}>
-                              {pill.label}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                            <span className="flex items-center gap-1">
-                              <Mail className="w-3 h-3" />
-                              {domain.mailboxCount} / {domain.mailboxLimit}
-                            </span>
-                            {domain.planName && <span>{domain.planName}</span>}
-                            {domain.isPrimary && (
-                              <span className="text-indigo-600 font-semibold">Primary</span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={domainSearch}
+                      onChange={(e) => setDomainSearch(e.target.value)}
+                      placeholder="Search by domain name..."
+                      className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400"
+                    />
                   </div>
+
+                  {(() => {
+                    const filteredDomains = domains.filter((d) =>
+                      d.domainName.toLowerCase().includes(domainSearch.trim().toLowerCase())
+                    );
+                    return (
+                      <div className="data-table-container">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Domain</th>
+                              <th>Status</th>
+                              <th>Mailboxes</th>
+                              <th>Plan</th>
+                              <th style={{ textAlign: 'right' }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredDomains.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--slate-400)' }}>
+                                  No domains match "{domainSearch}".
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredDomains.map((domain) => {
+                                const isDnsActive = domain.dnsStatus === 'active';
+                                const pill = dnsStatusPill(domain.dnsStatus);
+                                const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
+                                const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
+                                return (
+                                  <tr
+                                    key={domain.id}
+                                    onClick={() => onNavigateToDomain(domain.id)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    <td>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-slate-900">{domain.domainName}</span>
+                                        {domain.isPrimary && (
+                                          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                            Primary
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <div className="flex items-center gap-1.5">
+                                        {isDnsActive ? (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                        ) : (
+                                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                        )}
+                                        <span>{pill.label}</span>
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <div className="flex items-center gap-2 min-w-[140px]">
+                                        <div className="flex-1 min-w-[60px] max-w-[80px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${usagePercent}%` }} />
+                                        </div>
+                                        <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">
+                                          {domain.mailboxCount} / {domain.mailboxLimit}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td>{domain.planName || '—'}</td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <ChevronRight className="w-4 h-4 text-slate-300 inline-block" />
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                        <div className="pagination-row">
+                          <span>
+                            Showing {filteredDomains.length} of {domains.length}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </section>
               )}
             </>

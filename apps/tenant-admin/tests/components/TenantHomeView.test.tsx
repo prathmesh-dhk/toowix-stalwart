@@ -122,6 +122,19 @@ describe('TenantHomeView Component', () => {
     expect(onNavigateToDomain).toHaveBeenCalledWith('dom-2');
   });
 
+  it('filters the Domains table by search text', async () => {
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
+    await screen.findByText('acmecorp.com');
+
+    fireEvent.change(screen.getByPlaceholderText('Search by domain name...'), { target: { value: 'secondary' } });
+
+    expect(screen.queryByText('acmecorp.com')).not.toBeInTheDocument();
+    expect(screen.getByText('secondary.com')).toBeInTheDocument();
+    expect(screen.getByText('Showing 1 of 2')).toBeInTheDocument();
+  });
+
   it('shows the "connect your first domain" onboarding state when the tenant has zero domains', async () => {
     vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
 
