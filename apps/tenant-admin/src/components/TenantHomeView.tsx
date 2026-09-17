@@ -20,6 +20,7 @@ import {
   ArrowRight,
   X,
   Mail,
+  type LucideIcon,
 } from 'lucide-react';
 
 interface TenantHomeViewProps {
@@ -122,12 +123,12 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   const adminEmail = user?.email || 'admin@toowix.com';
   const adminInitials = adminEmail.slice(0, 2).toUpperCase();
 
-  const TABS: Array<{ key: HomeTab; label: string; icon: React.ReactNode }> = [
-    { key: 'domains', label: 'Domains', icon: <Globe className="w-4 h-4" /> },
-    { key: 'billing', label: 'Billing', icon: <CreditCard className="w-4 h-4" /> },
-    { key: 'security', label: 'Security', icon: <Shield className="w-4 h-4" /> },
-    { key: 'audit', label: 'Audit Log', icon: <FileText className="w-4 h-4" /> },
-    { key: 'devices', label: 'Active Devices', icon: <Laptop className="w-4 h-4" /> },
+  const TABS: Array<{ key: HomeTab; label: string; icon: LucideIcon }> = [
+    { key: 'domains', label: 'Domains', icon: Globe },
+    { key: 'billing', label: 'Billing', icon: CreditCard },
+    { key: 'security', label: 'Security', icon: Shield },
+    { key: 'audit', label: 'Audit Log', icon: FileText },
+    { key: 'devices', label: 'Active Devices', icon: Laptop },
   ];
 
   if (loading) {
@@ -179,7 +180,43 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
         </div>
       </header>
 
-      <main className="pt-16 min-h-screen">
+      {/* ========================================================================= */}
+      {/* SIDEBAR NAVIGATION RAIL (matches the Domain Dashboard's rail)             */}
+      {/* ========================================================================= */}
+      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
+        <div className="flex flex-col gap-1 overflow-y-auto">
+          <div className="flex flex-col gap-0.5">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                    activeTab === tab.key
+                      ? 'bg-indigo-50 text-indigo-700 font-medium'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                  }`}
+                  id={`nav-home-${tab.key}`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <Icon
+                      className={`w-5 h-5 shrink-0 transition-colors ${
+                        activeTab === tab.key ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                      }`}
+                      strokeWidth={1.75}
+                    />
+                    <span className="truncate">{tab.label}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </aside>
+
+      <main className="pl-60 pt-16 min-h-screen">
         <div className="page-content-scaled w-full max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
           {!is2FaEnabled && !dismissed2FaBanner && activeTab !== 'security' && (
             <div
@@ -234,22 +271,6 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
               </div>
             </div>
           )}
-
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === tab.key ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
 
           {activeTab === 'domains' && (
             <>
