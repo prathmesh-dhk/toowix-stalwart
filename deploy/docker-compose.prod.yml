@@ -25,8 +25,11 @@ services:
     # Stalwart Management API (8080) is NEVER exposed on host or public network.
     # It is strictly reachable ONLY on toowix-internal by Toowix Backend.
     ports:
-      # Management Web UI & API
-      - "${PORT_STALWART_ADMIN:-8080}:8080"
+      # Management Web UI & API — loopback-only. The comment above is the
+      # intent; without a host-IP prefix Docker binds 0.0.0.0, which
+      # publicly exposed /admin to the internet until this was added.
+      # Use `ssh -L 8080:localhost:8080 <host>` to reach it remotely.
+      - "127.0.0.1:${PORT_STALWART_ADMIN:-8080}:8080"
       # Public Mail Protocol Ports
       - "25:25"       # SMTP MX inbound
       - "587:587"     # SMTP Submission
