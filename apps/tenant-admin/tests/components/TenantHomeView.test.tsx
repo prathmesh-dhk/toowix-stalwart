@@ -132,12 +132,17 @@ describe('TenantHomeView Component', () => {
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
   });
 
-  it('shows tenant-wide stats and a domain preview on the Overview tab (the default landing tab)', async () => {
+  it('shows tenant-wide stats and a domain preview (with plan + seat usage) on the Overview tab, with no Recent Activity panel', async () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByText('acmecorp.com')).toBeInTheDocument();
     expect(screen.getByText('secondary.com')).toBeInTheDocument();
+    expect(screen.getByText('Team')).toBeInTheDocument(); // dom-1's plan name
+    expect(screen.getByText('Individual')).toBeInTheDocument(); // dom-2's plan name
+    expect(screen.getByText('2 / 50')).toBeInTheDocument(); // dom-1's seat usage
+
+    expect(screen.queryByText('Recent Activity')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('acmecorp.com'));
     expect(onNavigateToDomain).toHaveBeenCalledWith('dom-1');

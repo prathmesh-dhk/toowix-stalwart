@@ -22,7 +22,6 @@ import {
   X,
   Mail,
   LayoutDashboard,
-  History,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -344,87 +343,67 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                 </button>
               </section>
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <section className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-[18px] h-[18px] text-slate-400" />
-                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
-                    </div>
+              <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-[18px] h-[18px] text-slate-400" />
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('domains')}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>View all domains</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {domains.length === 0 ? (
+                  <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
+                    <Globe className="w-7 h-7 text-slate-300" />
+                    <p className="text-xs text-slate-500">No domains yet.</p>
                     <button
-                      onClick={() => setActiveTab('domains')}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                      onClick={() => setShowDomainModal(true)}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
                     >
-                      <span>View all domains</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      + Add your first domain
                     </button>
                   </div>
-
-                  {domains.length === 0 ? (
-                    <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-                      <Globe className="w-7 h-7 text-slate-300" />
-                      <p className="text-xs text-slate-500">No domains yet.</p>
-                      <button
-                        onClick={() => setShowDomainModal(true)}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
-                      >
-                        + Add your first domain
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col divide-y divide-slate-100">
-                      {domains.slice(0, 5).map((domain) => {
-                        const pill = dnsStatusPill(domain.dnsStatus);
-                        return (
-                          <button
-                            key={domain.id}
-                            type="button"
-                            onClick={() => onNavigateToDomain(domain.id)}
-                            className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors text-left cursor-pointer"
-                          >
+                ) : (
+                  <div className="flex flex-col divide-y divide-slate-100">
+                    {domains.map((domain) => {
+                      const pill = dnsStatusPill(domain.dnsStatus);
+                      return (
+                        <button
+                          key={domain.id}
+                          type="button"
+                          onClick={() => onNavigateToDomain(domain.id)}
+                          className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors text-left cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
                             <span className="text-xs font-medium text-slate-900 truncate">{domain.domainName}</span>
-                            <span className={`shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${pill.className}`}>
+                            {domain.isPrimary && (
+                              <span className="shrink-0 text-[10px] font-semibold text-indigo-600">Primary</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            {domain.planName && (
+                              <span className="text-[11px] text-slate-500">{domain.planName}</span>
+                            )}
+                            <span className="flex items-center gap-1 text-[11px] text-slate-500 tabular-nums">
+                              <Mail className="w-3 h-3" />
+                              {domain.mailboxCount} / {domain.mailboxLimit}
+                            </span>
+                            <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${pill.className}`}>
                               {pill.label}
                             </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-
-                <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <History className="w-[18px] h-[18px] text-slate-400" />
-                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Recent Activity</h2>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('audit')}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>View audit log</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-
-                  {auditLogs.length === 0 ? (
-                    <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-                      <FileText className="w-7 h-7 text-slate-300" />
-                      <p className="text-xs text-slate-500">No recent events recorded.</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col divide-y divide-slate-100">
-                      {auditLogs.slice(0, 5).map((log) => (
-                        <div key={log.id} className="py-3 flex flex-col gap-0.5">
-                          <span className="text-xs text-slate-800 leading-snug">{formatAuditAction(log.action, log.metadata)}</span>
-                          <span className="text-[11px] text-slate-400">{new Date(log.timestamp).toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              </div>
+                )}
+              </section>
             </>
           )}
 
