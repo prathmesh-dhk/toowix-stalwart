@@ -19,7 +19,42 @@ import {
 //        `overwrite: false` explicitly (update ttl/append new, never wipe).
 //  - No dedicated MX priority field; priority is encoded directly in
 //    `content` as "<priority> <target>", per DNS zone-file convention.
+//    Hostinger has no structured fields for SRV/CAA either (each record is
+//    just `{content, isDisabled}`), so those are encoded/decoded the same
+//    zone-file way: SRV as "<priority> <weight> <port> <target>", CAA as
+//    "<flags> <tag> <value>".
 const HOSTINGER_API_BASE = process.env.HOSTINGER_API_BASE_URL || 'https://developers.hostinger.com';
+
+/** Encodes a structured record into Hostinger's single `content` string. */
+function encodeContent(type: string, r: { data: string; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }): string {
+  if (type === 'MX' && r.priority != null) {
+    return `${r.priority} ${r.data}`;
+  }
+  if (type === 'SRV') {
+    return `${r.priority ?? 0} ${r.weight ?? 1} ${r.port ?? 0} ${r.data}`;
+  }
+  if (type === 'CAA') {
+    return `${r.flags ?? 0} ${r.tag ?? 'issue'} ${r.data}`;
+  }
+  return r.data;
+}
+
+/** Decodes Hostinger's `content` string back into structured fields. */
+function decodeContent(type: string, content: string): { data: string; priority?: number; weight?: number; port?: number; flags?: number; tag?: string } {
+  if (type === 'MX') {
+    const m = content.match(/^(\d+)\s+(.+)$/);
+    if (m) return { data: m[2], priority: parseInt(m[1], 10) };
+  }
+  if (type === 'SRV') {
+    const m = content.match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
+    if (m) return { data: m[4], priority: parseInt(m[1], 10), weight: parseInt(m[2], 10), port: parseInt(m[3], 10) };
+  }
+  if (type === 'CAA') {
+    const m = content.match(/^(\d+)\s+(\S+)\s+(.+)$/);
+    if (m) return { data: m[3].replace(/^"|"$/g, ''), flags: parseInt(m[1], 10), tag: m[2] };
+  }
+  return { data: content };
+}
 
 export class HostingerClient {
   private async request(
@@ -120,7 +155,7 @@ export class HostingerClient {
     const zone = await this.getZone(token, normalized);
     const group = zone.find((g) => g.type === type && normalizeName(g.name) === normalizeName(name));
     if (!group) return [];
-    return group.records.map((r) => ({ type: type as any, name, data: r.content, ttl: group.ttl }));
+    return group.records.map((r) => ({ type: type as any, name, ttl: group.ttl, ...decodeContent(type, r.content) }));
   }
 
   /**
@@ -132,14 +167,14 @@ export class HostingerClient {
   async createDnsRecords(
     token: string,
     domain: string,
-    records: Array<{ type: string; name: string; data: string; ttl?: number; priority?: number | null }>
+    records: Array<{ type: string; name: string; data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }>
   ): Promise<void> {
     const normalized = domain.trim().toLowerCase();
     const zone = records.map((r) => ({
       name: r.name,
       type: r.type,
       ttl: r.ttl ?? 3600,
-      records: [{ content: r.type === 'MX' && r.priority != null ? `${r.priority} ${r.data}` : r.data }],
+      records: [{ content: encodeContent(r.type, r) }],
     }));
 
     const { status, json } = await this.request('PUT', `/api/dns/v1/zones/${encodeURIComponent(normalized)}`, token, {
@@ -168,7 +203,7 @@ export class HostingerClient {
     domain: string,
     type: string,
     name: string,
-    records: Array<{ data: string; ttl?: number; priority?: number | null }>
+    records: Array<{ data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }>
   ): Promise<void> {
     const normalized = domain.trim().toLowerCase();
     const zone = [
@@ -177,7 +212,7 @@ export class HostingerClient {
         type,
         ttl: records[0]?.ttl ?? 3600,
         records: records.map((r) => ({
-          content: type === 'MX' && r.priority != null ? `${r.priority} ${r.data}` : r.data,
+          content: encodeContent(type, r),
         })),
       },
     ];

@@ -180,6 +180,63 @@ export class CloudflareClient {
     return name === '@' ? domain : `${name}.${domain}`;
   }
 
+  /**
+   * SRV record names are always "_service._protocol" — Cloudflare's API
+   * requires these decomposed into a `data.service`/`data.proto` pair rather
+   * than accepting them folded into a plain `content` string the way MX/TXT
+   * do (SRV has no `content` field at all in Cloudflare's schema).
+   */
+  private deriveSrvServiceProtocol(name: string): { service: string; proto: string } | null {
+    const match = name.match(/^(_[^.]+)\.(_[^.]+)$/);
+    if (!match) return null;
+    return { service: match[1], proto: match[2] };
+  }
+
+  /**
+   * Cloudflare's create/update body shape differs by type: MX/TXT/CNAME use
+   * a flat `content` string (+ top-level `priority` for MX); SRV and CAA
+   * have no `content` field at all and require a structured `data` object
+   * instead (verified against Cloudflare's DNS records API reference).
+   */
+  private buildRecordBody(
+    normalizedDomain: string,
+    type: string,
+    name: string,
+    r: { data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }
+  ): any {
+    const base = { type, name: this.fqdn(normalizedDomain, name), ttl: r.ttl ?? 3600 };
+    if (type === 'SRV') {
+      const sp = this.deriveSrvServiceProtocol(name);
+      return {
+        ...base,
+        data: {
+          service: sp?.service,
+          proto: sp?.proto,
+          name: normalizedDomain,
+          priority: r.priority ?? 0,
+          weight: r.weight ?? 1,
+          port: r.port ?? 0,
+          target: r.data,
+        },
+      };
+    }
+    if (type === 'CAA') {
+      return { ...base, data: { flags: r.flags ?? 0, tag: r.tag ?? 'issue', value: r.data } };
+    }
+    return { ...base, content: r.data, ...(type === 'MX' && r.priority != null ? { priority: r.priority } : {}) };
+  }
+
+  /** Reverses buildRecordBody() — decodes one record as returned by the API back into this codebase's flat shape. */
+  private parseRecordResult(type: string, r: any): { data: string; ttl?: number; priority?: number; weight?: number; port?: number; flags?: number; tag?: string; id?: string } {
+    if (type === 'SRV' && r.data) {
+      return { data: r.data.target, priority: r.data.priority, weight: r.data.weight, port: r.data.port, ttl: r.ttl, id: r.id };
+    }
+    if (type === 'CAA' && r.data) {
+      return { data: r.data.value, flags: r.data.flags, tag: r.data.tag, ttl: r.ttl, id: r.id };
+    }
+    return { data: r.content, priority: r.priority, ttl: r.ttl, id: r.id };
+  }
+
   /** Confirms the token is valid AND actually manages the given domain. */
   async verifyCredential(token: string, domain: string): Promise<{ domain: string }> {
     const zone = await this.resolveZone(token, domain);
@@ -195,7 +252,7 @@ export class CloudflareClient {
     domain: string,
     type: string,
     name: string
-  ): Promise<Array<{ type: string; name: string; data: string; ttl?: number; priority?: number; id?: string }>> {
+  ): Promise<Array<{ type: string; name: string; data: string; ttl?: number; priority?: number; weight?: number; port?: number; flags?: number; tag?: string; id?: string }>> {
     const normalized = domain.trim().toLowerCase();
     const zone = await this.resolveZone(token, normalized);
     const fqdn = this.fqdn(normalized, name);
@@ -214,7 +271,7 @@ export class CloudflareClient {
       throw new CloudflareError(msg, 'CLOUDFLARE_LIST_FAILED', json);
     }
     const records = Array.isArray(json?.result) ? json.result : [];
-    return records.map((r: any) => ({ type, name, data: r.content, ttl: r.ttl, priority: r.priority, id: r.id }));
+    return records.map((r: any) => ({ type, name, ...this.parseRecordResult(type, r) }));
   }
 
   /**
@@ -224,19 +281,18 @@ export class CloudflareClient {
   async createDnsRecords(
     token: string,
     domain: string,
-    records: Array<{ type: string; name: string; data: string; ttl?: number; priority?: number | null }>
+    records: Array<{ type: string; name: string; data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }>
   ): Promise<void> {
     const normalized = domain.trim().toLowerCase();
     const zone = await this.resolveZone(token, normalized);
 
     for (const r of records) {
-      const { status, json } = await this.request('POST', `/zones/${zone.id}/dns_records`, token, {
-        type: r.type,
-        name: this.fqdn(normalized, r.name),
-        content: r.data,
-        ttl: r.ttl ?? 3600,
-        ...(r.type === 'MX' && r.priority != null ? { priority: r.priority } : {}),
-      });
+      const { status, json } = await this.request(
+        'POST',
+        `/zones/${zone.id}/dns_records`,
+        token,
+        this.buildRecordBody(normalized, r.type, r.name, r)
+      );
 
       if (this.isAuthError(status, json)) {
         throw new CloudflareAuthError(this.formatAuthErrorMessage(json, token), json);
@@ -275,7 +331,7 @@ export class CloudflareClient {
     domain: string,
     type: string,
     name: string,
-    records: Array<{ data: string; ttl?: number; priority?: number | null }>
+    records: Array<{ data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }>
   ): Promise<void> {
     const normalized = domain.trim().toLowerCase();
     const zone = await this.resolveZone(token, normalized);
@@ -293,14 +349,18 @@ export class CloudflareClient {
       const msg = this.extractErrorMessage(json, `Failed to list DNS records: HTTP ${status}`);
       throw new CloudflareError(msg, 'CLOUDFLARE_LIST_FAILED', json);
     }
-    const existing: Array<{ id: string; content: string }> = Array.isArray(json?.result) ? json.result : [];
+    const rawExisting: any[] = Array.isArray(json?.result) ? json.result : [];
+    const existing = rawExisting.map((r) => ({ id: r.id as string, ...this.parseRecordResult(type, r) }));
 
+    // SRV/CAA compare on their real value only (target / value) — priority,
+    // weight, port, flags, tag differing on an otherwise-identical record
+    // would otherwise register as a spurious delete+recreate every sync.
     const normalize = (v: string) => v.trim().replace(/\.$/, '').replace(/\s+/g, ' ').toLowerCase();
     const desiredValues = new Set(records.map((r) => normalize(r.data)));
-    const existingValues = new Set(existing.map((r) => normalize(r.content)));
+    const existingValues = new Set(existing.map((r) => normalize(r.data)));
 
     for (const e of existing) {
-      if (!desiredValues.has(normalize(e.content))) {
+      if (!desiredValues.has(normalize(e.data))) {
         await this.deleteDnsRecord(token, zone.id, e.id);
       }
     }
@@ -310,7 +370,7 @@ export class CloudflareClient {
       await this.createDnsRecords(
         token,
         normalized,
-        toCreate.map((r) => ({ type, name, data: r.data, ttl: r.ttl, priority: r.priority }))
+        toCreate.map((r) => ({ type, name, data: r.data, ttl: r.ttl, priority: r.priority, weight: r.weight, port: r.port, flags: r.flags, tag: r.tag }))
       );
     }
   }

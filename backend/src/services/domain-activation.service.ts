@@ -162,6 +162,16 @@ function isForeignRecordToPreserve(existingValue: string, record: IGeneratedDnsR
   if (record.type === 'TXT' && record.name === '@') {
     return !/^v=spf1\b/i.test(existingValue.trim());
   }
+  // CAA governs which CAs may issue ANY certificate across the whole domain
+  // tree (lookups walk up from a subdomain to the apex), so an existing
+  // entry is never "stale" the way an old MX or SPF value would be — it may
+  // be the customer's own intentional restriction to a specific CA for
+  // their website. Deleting it to publish ours would be destructive and
+  // could break their unrelated cert issuance; always keep every existing
+  // CAA record and only add ours alongside if not already present.
+  if (record.type === 'CAA') {
+    return true;
+  }
   return false;
 }
 
@@ -190,7 +200,7 @@ async function syncProviderDnsRecords(
 
     const toPreserve = existing.filter((e) => isForeignRecordToPreserve(e.data, record));
     const finalSet = [
-      ...toPreserve.map((e) => ({ data: e.data, ttl: e.ttl, priority: e.priority })),
+      ...toPreserve.map((e) => ({ data: e.data, ttl: e.ttl, priority: e.priority, weight: e.weight, port: e.port, flags: e.flags, tag: e.tag })),
       {
         data: record.value,
         ttl: record.ttl,

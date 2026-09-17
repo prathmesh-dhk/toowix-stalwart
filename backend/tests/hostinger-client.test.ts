@@ -61,7 +61,11 @@ describe('Hostinger Client (Offline / Mocked)', () => {
       });
       const records = await client.listDnsRecords('token123', 'acme.com', 'MX', '@');
       expect(records).toHaveLength(1);
-      expect(records[0].data).toBe('10 mail.otherprovider.com');
+      // MX priority is decoded out of Hostinger's combined "<priority> <target>"
+      // content into its own field — data holds just the target, matching the
+      // shape GoDaddy/Cloudflare already return so comparisons work uniformly.
+      expect(records[0].data).toBe('mail.otherprovider.com');
+      expect(records[0].priority).toBe(10);
     });
   });
 
@@ -89,6 +93,48 @@ describe('Hostinger Client (Offline / Mocked)', () => {
       await expect(
         client.createDnsRecords('token123', 'acme.com', [{ type: 'TXT', name: '@', data: 'x' }])
       ).rejects.toThrow(HostingerAuthError);
+    });
+
+    it('encodes SRV as "<priority> <weight> <port> <target>" and CAA as "<flags> <tag> <value>" in content', async () => {
+      const mockRequest = vi.fn().mockResolvedValue({ status: 200, json: null });
+      (client as any).request = mockRequest;
+
+      await client.createDnsRecords('token123', 'acme.com', [
+        { type: 'SRV', name: '_imaps._tcp', data: 'mail.toowix.com', priority: 0, weight: 1, port: 993, ttl: 3600 },
+        { type: 'CAA', name: '@', data: 'letsencrypt.org', flags: 0, tag: 'issue', ttl: 3600 },
+      ]);
+
+      expect(mockRequest).toHaveBeenCalledWith('PUT', '/api/dns/v1/zones/acme.com', 'token123', {
+        overwrite: false,
+        zone: [
+          { name: '_imaps._tcp', type: 'SRV', ttl: 3600, records: [{ content: '0 1 993 mail.toowix.com' }] },
+          { name: '@', type: 'CAA', ttl: 3600, records: [{ content: '0 issue letsencrypt.org' }] },
+        ],
+      });
+    });
+  });
+
+  describe('SRV/CAA round-trip through listDnsRecords', () => {
+    it('decodes an SRV content string back into structured fields', async () => {
+      (client as any).request = vi.fn().mockResolvedValue({
+        status: 200,
+        json: [{ name: '_imaps._tcp', type: 'SRV', ttl: 3600, records: [{ content: '0 1 993 mail.toowix.com' }] }],
+      });
+      const records = await client.listDnsRecords('token123', 'acme.com', 'SRV', '_imaps._tcp');
+      expect(records).toEqual([
+        expect.objectContaining({ data: 'mail.toowix.com', priority: 0, weight: 1, port: 993 }),
+      ]);
+    });
+
+    it('decodes a CAA content string back into structured fields', async () => {
+      (client as any).request = vi.fn().mockResolvedValue({
+        status: 200,
+        json: [{ name: '@', type: 'CAA', ttl: 3600, records: [{ content: '0 issue letsencrypt.org' }] }],
+      });
+      const records = await client.listDnsRecords('token123', 'acme.com', 'CAA', '@');
+      expect(records).toEqual([
+        expect.objectContaining({ data: 'letsencrypt.org', flags: 0, tag: 'issue' }),
+      ]);
     });
   });
 });

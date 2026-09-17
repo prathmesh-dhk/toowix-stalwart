@@ -22,4 +22,12 @@ export interface HostingerDnsRecord {
   name: string;
   data: string;
   ttl?: number;
+  // SRV-specific (Hostinger has no dedicated fields for these either — see
+  // hostinger/client.ts's content encode/decode)
+  priority?: number | null;
+  weight?: number | null;
+  port?: number | null;
+  // CAA-specific
+  flags?: number | null;
+  tag?: string | null;
 }

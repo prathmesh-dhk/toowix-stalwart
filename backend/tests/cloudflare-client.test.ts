@@ -127,5 +127,80 @@ describe('Cloudflare Client (Offline / Mocked)', () => {
         client.createDnsRecords('token123', 'acme.com', [{ type: 'TXT', name: '@', data: 'x' }])
       ).rejects.toThrow(CloudflareAuthError);
     });
+
+    it('sends SRV records via a structured data object, not content', async () => {
+      const mockRequest = vi
+        .fn()
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: [{ id: 'zone123', name: 'acme.com', status: 'active' }] } })
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: { id: 'rec1' } } });
+      (client as any).request = mockRequest;
+
+      await client.createDnsRecords('token123', 'acme.com', [
+        { type: 'SRV', name: '_imaps._tcp', data: 'mail.toowix.com', priority: 0, weight: 1, port: 993, ttl: 3600 },
+      ]);
+
+      expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/zones/zone123/dns_records', 'token123', {
+        type: 'SRV',
+        name: '_imaps._tcp.acme.com',
+        ttl: 3600,
+        data: { service: '_imaps', proto: '_tcp', name: 'acme.com', priority: 0, weight: 1, port: 993, target: 'mail.toowix.com' },
+      });
+    });
+
+    it('sends CAA records via a structured data object, not content', async () => {
+      const mockRequest = vi
+        .fn()
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: [{ id: 'zone123', name: 'acme.com', status: 'active' }] } })
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: { id: 'rec1' } } });
+      (client as any).request = mockRequest;
+
+      await client.createDnsRecords('token123', 'acme.com', [
+        { type: 'CAA', name: '@', data: 'letsencrypt.org', flags: 0, tag: 'issue', ttl: 3600 },
+      ]);
+
+      expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/zones/zone123/dns_records', 'token123', {
+        type: 'CAA',
+        name: 'acme.com',
+        ttl: 3600,
+        data: { flags: 0, tag: 'issue', value: 'letsencrypt.org' },
+      });
+    });
+  });
+
+  describe('listDnsRecords decodes structured SRV/CAA data', () => {
+    it('decodes an SRV data object back into a flat target/priority/weight/port shape', async () => {
+      const mockRequest = vi
+        .fn()
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: [{ id: 'zone123', name: 'acme.com', status: 'active' }] } })
+        .mockResolvedValueOnce({
+          status: 200,
+          json: {
+            success: true,
+            result: [{ id: 'rec1', type: 'SRV', data: { service: '_imaps', proto: '_tcp', priority: 0, weight: 1, port: 993, target: 'mail.toowix.com' }, ttl: 3600 }],
+          },
+        });
+      (client as any).request = mockRequest;
+
+      const records = await client.listDnsRecords('token123', 'acme.com', 'SRV', '_imaps._tcp');
+      expect(records).toEqual([
+        expect.objectContaining({ data: 'mail.toowix.com', priority: 0, weight: 1, port: 993 }),
+      ]);
+    });
+
+    it('decodes a CAA data object back into a flat value/flags/tag shape', async () => {
+      const mockRequest = vi
+        .fn()
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: [{ id: 'zone123', name: 'acme.com', status: 'active' }] } })
+        .mockResolvedValueOnce({
+          status: 200,
+          json: { success: true, result: [{ id: 'rec1', type: 'CAA', data: { flags: 0, tag: 'issue', value: 'letsencrypt.org' }, ttl: 3600 }] },
+        });
+      (client as any).request = mockRequest;
+
+      const records = await client.listDnsRecords('token123', 'acme.com', 'CAA', '@');
+      expect(records).toEqual([
+        expect.objectContaining({ data: 'letsencrypt.org', flags: 0, tag: 'issue' }),
+      ]);
+    });
   });
 });
