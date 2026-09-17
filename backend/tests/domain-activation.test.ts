@@ -386,7 +386,14 @@ describe('domain-activation.service', () => {
   });
 
   describe('connectDnsProviderCredential with live record verification', () => {
-    it('verifies records in provider zone and completes credential connection', async () => {
+    // Record publishing/verification runs fire-and-forget in the background
+    // (see domain-activation.service.ts's doc comment on connectDnsProviderCredential
+    // for why: syncing ~19 records synchronously within one HTTP request was
+    // exceeding reverse-proxy timeouts). These tests flush that background
+    // work with a short real delay before asserting on it.
+    const flushBackgroundSync = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+    it('returns immediately (sync pending) and completes the sync in the background', async () => {
       vi.spyOn(goDaddyClient, 'verifyCredential').mockResolvedValue({ domain: 'acme.com', domainId: 1, status: 'ACTIVE' });
       vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
 
@@ -401,8 +408,9 @@ describe('domain-activation.service', () => {
         }
       );
 
-      // Provider returns matching live records upon verification
-      vi.spyOn(goDaddyClient, 'listDnsRecords').mockImplementation(async (_k, _s, _d, type, name) => {
+      // Provider already has the matching live records — nothing to replace,
+      // but the background pass should still list/verify each one.
+      const listSpy = vi.spyOn(goDaddyClient, 'listDnsRecords').mockImplementation(async (_k, _s, _d, type, name) => {
         if (type === 'MX' && name === '@') return [{ type: 'MX', name: '@', data: 'mail.toowix.com', ttl: 3600, priority: 10 }];
         if (type === 'TXT' && name === '@') return [{ type: 'TXT', name: '@', data: 'v=spf1 mx ~all', ttl: 3600 }];
         return [];
@@ -414,14 +422,20 @@ describe('domain-activation.service', () => {
         role: 'TENANT_ADMIN',
       });
 
-      expect(result.verifiedInProvider).toBe(true);
+      // The response comes back before sync/verification finish.
+      expect(result.verifiedInProvider).toBe(false);
       expect(result.recordsSynced).toBe(2);
+      expect(result.syncPending).toBe(true);
 
       const cred = await DomainDnsCredentialModel.findOne({ domainId });
       expect(cred).not.toBeNull();
+
+      await flushBackgroundSync();
+      // sync's own list call + verify's list call, per record, both ran in the background.
+      expect(listSpy.mock.calls.length).toBeGreaterThanOrEqual(4);
     });
 
-    it('rejects if provider zone does not contain the required records after sync', async () => {
+    it('does not throw when the provider zone still lacks records after a background sync attempt', async () => {
       vi.spyOn(goDaddyClient, 'verifyCredential').mockResolvedValue({ domain: 'acme.com', domainId: 1, status: 'ACTIVE' });
       vi.spyOn(goDaddyClient, 'replaceDnsRecordGroup').mockResolvedValue(undefined);
 
@@ -436,17 +450,21 @@ describe('domain-activation.service', () => {
 
       // Provider returns empty list even after replace (e.g. provider silently dropped record)
       vi.spyOn(goDaddyClient, 'listDnsRecords').mockResolvedValue([]);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      await expect(
-        connectDnsProviderCredential(domainId, tenantId, 'godaddy', GODADDY_CRED, {
-          id: adminUserId,
-          email: 'owner@acme.com',
-          role: 'TENANT_ADMIN',
-        })
-      ).rejects.toMatchObject({
-        code: 'PROVIDER_RECORDS_NOT_VERIFIED',
-        statusCode: 422,
+      // The call itself still resolves — credential verification (the only
+      // synchronous part) succeeded; the record mismatch is discovered later,
+      // in the background, and logged rather than rejecting this promise.
+      const result = await connectDnsProviderCredential(domainId, tenantId, 'godaddy', GODADDY_CRED, {
+        id: adminUserId,
+        email: 'owner@acme.com',
+        role: 'TENANT_ADMIN',
       });
+      expect(result.syncPending).toBe(true);
+
+      await flushBackgroundSync();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('still missing records'));
+      warnSpy.mockRestore();
     });
   });
 });

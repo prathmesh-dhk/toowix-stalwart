@@ -13,7 +13,7 @@ const PROVIDER_LABELS: Record<DnsProvider, string> = {
 interface DnsProviderCredentialFormProps {
   domainId: string;
   domainName: string;
-  onSuccess: (info: { verifiedProviderDomain: string; recordsSynced?: number }) => void;
+  onSuccess: (info: { verifiedProviderDomain: string; recordsSynced?: number; syncPending?: boolean }) => void;
   onCancel?: () => void;
   compact?: boolean;
 }
@@ -29,9 +29,9 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [token, setToken] = useState('');
-  const [connectingStage, setConnectingStage] = useState<null | 'verifying_cred' | 'syncing_records' | 'verifying_records'>(null);
+  const [connectingStage, setConnectingStage] = useState<null | 'verifying_cred'>(null);
   const [error, setError] = useState<string | null>(null);
-  const [successInfo, setSuccessInfo] = useState<{ verifiedProviderDomain: string; recordsSynced?: number } | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{ verifiedProviderDomain: string; recordsSynced?: number; syncPending?: boolean } | null>(null);
 
   const cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '');
   const looksLikeCloudflareGlobalKey = provider === 'cloudflare' && cleanToken.length === 37 && /^[0-9a-fA-F]{37}$/.test(cleanToken);
@@ -55,23 +55,20 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
           ? { provider: 'godaddy' as const, apiKey: apiKey.trim(), apiSecret: apiSecret.trim() }
           : { provider, token: cleanToken };
 
-      // Give visual feedback of record publication and verification
-      setTimeout(() => {
-        setConnectingStage((prev) => (prev ? 'syncing_records' : null));
-      }, 700);
-
-      setTimeout(() => {
-        setConnectingStage((prev) => (prev ? 'verifying_records' : null));
-      }, 1500);
-
+      // Credential verification is the only thing this request waits on —
+      // publishing/verifying the actual DNS records happens in the
+      // background afterward (see domain-activation.service.ts), so this
+      // resolves quickly regardless of how many records this domain needs.
       const res = await api.connectDnsProviderCredential(domainId, credential);
       setSuccessInfo({
         verifiedProviderDomain: res.verifiedProviderDomain,
         recordsSynced: res.recordsSynced,
+        syncPending: res.syncPending,
       });
       onSuccess({
         verifiedProviderDomain: res.verifiedProviderDomain,
         recordsSynced: res.recordsSynced,
+        syncPending: res.syncPending,
       });
     } catch (err: any) {
       setError(err.message || `Could not verify credentials or create DNS records with ${PROVIDER_LABELS[provider]}.`);
@@ -85,10 +82,12 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col gap-2">
         <div className="flex items-center gap-2 text-emerald-800 font-semibold text-xs">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>DNS Provider Connected & Verified!</span>
+          <span>{PROVIDER_LABELS[provider]} Connected</span>
         </div>
         <p className="text-xs text-emerald-700">
-          All required DNS records (MX, SPF, DKIM, DMARC) were confirmed in your <strong>{PROVIDER_LABELS[provider]}</strong> zone for <strong>{successInfo.verifiedProviderDomain}</strong>.
+          {successInfo.syncPending
+            ? <>Publishing your DNS records to <strong>{successInfo.verifiedProviderDomain}</strong> now — this runs in the background and usually takes a minute or two. Check DNS Setup status to confirm once it's done.</>
+            : <>Connected to <strong>{successInfo.verifiedProviderDomain}</strong> in your <strong>{PROVIDER_LABELS[provider]}</strong> account.</>}
         </p>
       </div>
     );
@@ -228,18 +227,12 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
           {connectingStage !== null ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>
-                {connectingStage === 'verifying_cred'
-                  ? 'Verifying credential...'
-                  : connectingStage === 'syncing_records'
-                  ? 'Publishing DNS records...'
-                  : 'Verifying records in zone...'}
-              </span>
+              <span>Verifying credential...</span>
             </>
           ) : (
             <>
               <Key className="w-3.5 h-3.5" />
-              <span>Connect & Verify Records</span>
+              <span>Connect DNS Provider</span>
             </>
           )}
         </button>

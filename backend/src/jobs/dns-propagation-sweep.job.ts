@@ -1,6 +1,6 @@
 import { DomainModel } from '../db/models/Domain';
 import { SystemSettingsModel } from '../db/models/SystemSettings';
-import { attemptVerification, notifyActivationFailure } from '../services/domain-activation.service';
+import { attemptVerification, notifyActivationFailure, saveIfExists } from '../services/domain-activation.service';
 import { logAudit } from '../audit/service';
 
 /**
@@ -55,7 +55,7 @@ export async function runSweepOnce(): Promise<SweepResult> {
     for (const domain of domains) {
       if (domain.dnsVerificationStartedAt && domain.dnsVerificationStartedAt < cutoff) {
         domain.dnsStatus = 'activation_failed';
-        await domain.save();
+        await saveIfExists(domain);
         await logAudit({
           actorRole: 'SYSTEM',
           action: 'DOMAIN_ACTIVATION_TIMED_OUT',

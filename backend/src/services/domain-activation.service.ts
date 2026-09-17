@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { resolveMx, resolveTxt } from 'dns/promises';
 import { DomainModel, IDomain, IGeneratedDnsRecord, IDnsConflictRecord } from '../db/models/Domain';
 import { TenantModel } from '../db/models/Tenant';
@@ -30,6 +31,28 @@ export class DomainActivationError extends Error {
 }
 
 /**
+ * Saves a Domain doc loaded earlier in the same async flow, tolerating the
+ * case where it was deleted in the meantime (e.g. a Super Admin approved a
+ * pending domain-deletion request while a background sweep, retry, or
+ * in-flight activation/verification call for that same domain was still
+ * running). Mongoose's `.save()` on an existing document throws
+ * DocumentNotFoundError rather than silently no-op'ing when zero documents
+ * match its `_id` — that's correct default behavior, but every caller in
+ * this file needs "deleted mid-flight" to be a normal, expected outcome
+ * (nothing left to activate/verify), not an unhandled crash.
+ */
+export async function saveIfExists(domain: IDomain): Promise<void> {
+  try {
+    await domain.save();
+  } catch (err) {
+    if (err instanceof mongoose.Error.DocumentNotFoundError) {
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
  * Actively checks the DNS provider's live zone to verify that every required record
  * (MX, SPF, DKIM, DMARC) is actually present and matching expected values.
  */
@@ -58,9 +81,21 @@ export async function verifyRecordsInProviderZone(
 }
 
 /**
- * Verifies a tenant-supplied DNS provider credential, publishes authoritative DNS records,
- * actively verifies that the records were created in the provider's live zone, then stores
- * the credential encrypted.
+ * Verifies a tenant-supplied DNS provider credential and stores it encrypted.
+ * Publishing/verifying the actual DNS records happens in the BACKGROUND after
+ * this returns (see below) — only credential verification (one fast API
+ * call) blocks the response.
+ *
+ * This used to also synchronously publish every required record (now up to
+ * ~19 with the full record set: MX/SPF/DMARC/DKIM×2/SRV×6/CNAME×4/CAA×2/
+ * misc TXT×4) and then re-verify every one of them against the provider's
+ * live zone, all within one HTTP request. Each record can mean multiple
+ * sequential provider API round-trips (Cloudflare especially: resolve zone +
+ * list + delete + create per record) — comfortably exceeding a 60s reverse-
+ * proxy timeout and surfacing as a 504 to the tenant even though the backend
+ * was still working and the records eventually did get created. Publishing
+ * now happens fire-and-forget; the tenant admin's existing DNS status panel
+ * (already polls GET /dns-status) reflects progress and the eventual result.
  */
 export async function connectDnsProviderCredential(
   domainId: string,
@@ -73,6 +108,7 @@ export async function connectDnsProviderCredential(
   connectedAt: Date;
   verifiedInProvider: boolean;
   recordsSynced: number;
+  syncPending: boolean;
 }> {
   const domain = await DomainModel.findOne({ _id: domainId, tenantId });
   if (!domain) {
@@ -82,28 +118,9 @@ export async function connectDnsProviderCredential(
   // Provider-specific auth/not-managed errors propagate as-is to the route handler.
   const info = await verifyProviderCredential(provider, credential, domain.domainName);
 
-  // If the domain has records generated (from creation or activation), publish & verify them in provider
   const records = domain.dnsRecords && domain.dnsRecords.length > 0 ? domain.dnsRecords : [];
-  let verifiedInProvider = false;
-
-  if (records.length > 0) {
-    // 1. Sync / publish records to provider zone
-    await syncProviderDnsRecords(provider, credential, domain.domainName, records);
-
-    // 2. Actively verify that the records were created in the provider's zone
-    const check = await verifyRecordsInProviderZone(provider, credential, domain.domainName, records);
-    if (!check.verified) {
-      const missingSummary = check.missingRecords.map((r) => `${r.type} ${r.name}`).join(', ');
-      throw new DomainActivationError(
-        `Failed to verify that records were created in ${provider} DNS zone for ${domain.domainName}. Missing: ${missingSummary}`,
-        'PROVIDER_RECORDS_NOT_VERIFIED',
-        422
-      );
-    }
-    verifiedInProvider = true;
-  }
-
   const connectedAt = new Date();
+
   await DomainDnsCredentialModel.findOneAndUpdate(
     { domainId: domain._id },
     {
@@ -119,16 +136,6 @@ export async function connectDnsProviderCredential(
     { upsert: true, setDefaultsOnInsert: true }
   );
 
-  // If the domain was already activated by a Super Admin (dnsStatus === 'activating'),
-  // re-trigger public verification so attaching a provider can complete activation immediately.
-  if (domain.dnsStatus === 'activating' && records.length > 0) {
-    try {
-      await finalizeIfVerified(domain);
-    } catch {
-      // Best effort public verification, background sweep will continue
-    }
-  }
-
   await logAudit({
     actorId: actor.id,
     actorRole: actor.role,
@@ -137,14 +144,39 @@ export async function connectDnsProviderCredential(
     action: 'DNS_PROVIDER_CREDENTIAL_CONNECTED',
     resource: 'DOMAIN',
     resourceId: domain._id.toString(),
-    metadata: { domainName: domain.domainName, provider, verifiedInProvider },
+    metadata: { domainName: domain.domainName, provider, recordCount: records.length },
   });
+
+  if (records.length > 0) {
+    // Fire-and-forget: publish + verify records, then (if this domain was
+    // already 'activating') finalize — all after the HTTP response is sent.
+    void (async () => {
+      try {
+        await syncProviderDnsRecords(provider, credential, domain.domainName, records);
+        const check = await verifyRecordsInProviderZone(provider, credential, domain.domainName, records);
+        if (!check.verified) {
+          const missingSummary = check.missingRecords.map((r) => `${r.type} ${r.name}`).join(', ');
+          console.warn(
+            `[DNS Provider Sync] ${provider} zone for domain ${domain._id} (${domain.domainName}) still missing records after sync: ${missingSummary}`
+          );
+          return;
+        }
+        const freshDomain = await DomainModel.findById(domain._id);
+        if (freshDomain && freshDomain.dnsStatus === 'activating') {
+          await finalizeIfVerified(freshDomain);
+        }
+      } catch (err: any) {
+        console.warn(`[DNS Provider Sync] Background sync failed for domain ${domain._id}:`, err.message);
+      }
+    })();
+  }
 
   return {
     verifiedProviderDomain: info.domain,
     connectedAt,
-    verifiedInProvider,
+    verifiedInProvider: false,
     recordsSynced: records.length,
+    syncPending: records.length > 0,
   };
 }
 
@@ -311,14 +343,14 @@ async function finalizeIfVerified(domain: IDomain): Promise<void> {
   domain.dnsLastCheckedAt = new Date();
 
   if (!result.verified) {
-    await domain.save();
+    await saveIfExists(domain);
     return;
   }
 
   domain.dnsStatus = 'active';
   domain.dnsVerifiedAt = new Date();
   domain.activatedAt = new Date();
-  await domain.save();
+  await saveIfExists(domain);
 
   await logAudit({
     actorRole: 'SYSTEM',
@@ -366,7 +398,7 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
   domain.dnsStatus = 'activating';
   domain.dnsVerificationStartedAt = new Date();
   domain.dnsConflicts = undefined;
-  await domain.save();
+  await saveIfExists(domain);
 
   await logAudit({
     actorId: actor.id,
@@ -425,7 +457,7 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
   domain.dkimSelector = rsaKey?.selector || null;
   domain.dkimPublicKey = rsaKey?.publicKey || null;
   domain.dnsZoneFile = buildZoneFileText(domain.domainName, records);
-  await domain.save();
+  await saveIfExists(domain);
 
   // 3. If no DNS provider is connected, this is manual mode: the admin/
   // tenant publishes the zone file themselves. Skip straight to verification.
@@ -513,7 +545,7 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     const { provider, credential } = connected;
     domain.dnsStatus = 'activating';
     domain.dnsConflicts = undefined;
-    await domain.save();
+    await saveIfExists(domain);
     await syncProviderDnsRecords(provider, credential, domain.domainName, records);
 
     // Verify records were actually persisted in the provider's zone

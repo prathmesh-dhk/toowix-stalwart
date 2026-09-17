@@ -263,7 +263,7 @@ export const api = {
       | { provider: 'hostinger'; token: string }
       | { provider: 'cloudflare'; token: string }
   ) =>
-    request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string; verifiedInProvider?: boolean; recordsSynced?: number }>(
+    request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string; verifiedInProvider?: boolean; recordsSynced?: number; syncPending?: boolean }>(
       `/api/tenants/me/domains/${domainId}/dns-provider-credential`,
       {
         method: 'POST',
