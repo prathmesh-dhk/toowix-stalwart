@@ -111,7 +111,14 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
     setActionError(null);
     try {
       const res = await api.startDomainCheckout(activeDomain.id);
-      window.location.href = res.url;
+      if ('url' in res) {
+        window.location.href = res.url;
+      } else {
+        // Combined-billing model: this tenant already has a subscription via
+        // another domain, so this one attached directly — no redirect needed.
+        await loadBilling();
+        setActionLoading(null);
+      }
     } catch (err: any) {
       setActionError(err.message || 'Failed to start checkout.');
       setActionLoading(null);

@@ -5,6 +5,7 @@ import { TenantAdminLoginView } from './components/TenantAdminLoginView';
 import { RegisterView } from './components/RegisterView';
 import { ActivateTenantView } from './components/ActivateTenantView';
 import { TenantAdminDashboard } from './components/TenantAdminDashboard';
+import { TenantHomeView } from './components/TenantHomeView';
 import { ForgotPasswordView } from './components/ForgotPasswordView';
 
 export const App: React.FC = () => {
@@ -42,6 +43,21 @@ export const App: React.FC = () => {
   };
 
   const navigateToLogin = () => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/');
+    }
+    setCurrentPath('/');
+  };
+
+  const navigateToDomain = (domainId: string) => {
+    const path = `/domains/${domainId}`;
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', path);
+    }
+    setCurrentPath(path);
+  };
+
+  const navigateHome = () => {
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', '/');
     }
@@ -148,7 +164,23 @@ export const App: React.FC = () => {
     );
   }
 
+  const domainRouteMatch = currentPath.match(/^\/domains\/([^/]+)/);
+  if (domainRouteMatch) {
+    return (
+      <TenantAdminDashboard
+        domainId={domainRouteMatch[1]}
+        user={currentUser}
+        onLogout={handleLogout}
+        onNavigateHome={navigateHome}
+      />
+    );
+  }
+
   return (
-    <TenantAdminDashboard user={currentUser} onLogout={handleLogout} />
+    <TenantHomeView
+      user={currentUser}
+      onLogout={handleLogout}
+      onNavigateToDomain={navigateToDomain}
+    />
   );
 };

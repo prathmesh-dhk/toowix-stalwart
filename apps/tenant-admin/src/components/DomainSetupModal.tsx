@@ -215,7 +215,15 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setCheckoutError(null);
     try {
       const res = await api.startDomainCheckout(createdDomain.id);
-      window.location.href = res.url;
+      if ('url' in res) {
+        window.location.href = res.url;
+      } else {
+        // Combined-billing model: this tenant already has a subscription via
+        // another domain, so this one attached directly — no redirect, no
+        // card details to collect again, already billed on the shared plan.
+        setPaymentCardDismissed(true);
+        setStartingCheckout(false);
+      }
     } catch (err: any) {
       setCheckoutError(err.message || 'Failed to start checkout.');
       setStartingCheckout(false);

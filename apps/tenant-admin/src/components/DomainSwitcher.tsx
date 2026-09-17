@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { DomainItem, DnsActivationStatus } from '../types';
 import { ChevronsUpDown, Plus, Check } from 'lucide-react';
 
-function dnsStatusPill(dnsStatus?: DnsActivationStatus) {
+export function dnsStatusPill(dnsStatus?: DnsActivationStatus) {
   switch (dnsStatus) {
     case 'active':
       return { label: 'Active', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };

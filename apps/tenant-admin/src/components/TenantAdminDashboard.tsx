@@ -1,17 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
-import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDeletionRequestItem } from '../types';
+import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDeletionRequestItem, DomainDnsStatus } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
-import { ActiveDevicesView } from './ActiveDevicesView';
-import { SecurityView } from './SecurityView';
 import { StorageView } from './StorageView';
 import { BillingView } from './BillingView';
-import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
 import { DomainDnsStatusModal } from './DomainDnsStatusModal';
 import { DomainDeletionModal } from './DomainDeletionModal';
+import { DnsStatusPanel } from './DnsStatusPanel';
+import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
 import {
   Loader2,
   LogOut,
@@ -21,7 +20,6 @@ import {
   CreditCard,
   FileText,
   Shield,
-  Laptop,
   AlertCircle,
   AlertTriangle,
   Plus,
@@ -42,14 +40,18 @@ import {
   MoreVertical,
   Ban,
   KeyRound,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface TenantAdminDashboardProps {
+  domainId: string;
   user?: UserContext | null;
   onLogout?: () => void;
+  onNavigateHome: () => void;
 }
 
-export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user, onLogout }) => {
+export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ domainId, user, onLogout, onNavigateHome }) => {
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [domains, setDomains] = useState<DomainItem[]>([]);
   const [activeDomain, setActiveDomain] = useState<DomainItem | null>(null);
@@ -59,7 +61,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [deletionRequest, setDeletionRequest] = useState<DomainDeletionRequestItem | null>(null);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'audit' | 'devices'>('dashboard');
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
@@ -135,8 +137,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
   const [reactivateModalLoading, setReactivateModalLoading] = useState(false);
   const [reactivateModalError, setReactivateModalError] = useState<string | null>(null);
 
-  // DNS copy feedback
-  const [copiedRecordKey, setCopiedRecordKey] = useState<string | null>(null);
+  // DNS Status state
+  const [domainDnsStatus, setDomainDnsStatus] = useState<DomainDnsStatus | null>(null);
+  const [dnsStatusLoading, setDnsStatusLoading] = useState(false);
+  const [dnsStatusError, setDnsStatusError] = useState<string | null>(null);
+  const [showInlineProviderForm, setShowInlineProviderForm] = useState(false);
 
   // Password copy feedback
   const [copiedPasswordKey, setCopiedPasswordKey] = useState<string | null>(null);
@@ -220,31 +225,26 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       setDomains(loadedDomains);
       setAuditLogs(auditRes.logs || []);
 
-      // Determine active domain
-      let currentDomain: DomainItem | null = null;
-      if (targetDomainId) {
-        currentDomain = loadedDomains.find((d) => d.id === targetDomainId) || null;
-      } else if (activeDomain) {
-        currentDomain = loadedDomains.find((d) => d.id === activeDomain.id) || null;
-      }
-
-      if (!currentDomain && loadedDomains.length > 0) {
-        currentDomain = loadedDomains.find((d) => d.isPrimary) || loadedDomains[0];
-      }
-
+      // This view is always scoped to one domain, sourced from the route
+      // (`domainId` prop) — never a sidebar switcher (that's Tenant Home now).
+      const currentDomain = loadedDomains.find((d) => d.id === (targetDomainId || domainId)) || null;
       setActiveDomain(currentDomain);
 
-      // Load mailboxes and deletion request for active domain
+      // Load mailboxes, deletion request, and DNS status for active domain
       if (currentDomain) {
         const [mailboxesRes, deletionRes] = await Promise.all([
           api.listMyMailboxes(currentDomain.id).catch(() => ({ mailboxes: [] })),
-          api.getDomainDeletionRequest(currentDomain.id).catch(() => ({ request: null })),
+          typeof api.getDomainDeletionRequest === 'function'
+            ? api.getDomainDeletionRequest(currentDomain.id).catch(() => ({ request: null }))
+            : Promise.resolve({ request: null }),
         ]);
         setMailboxes(mailboxesRes.mailboxes || []);
         setDeletionRequest(deletionRes.request);
+        loadDomainDnsStatus(currentDomain.id);
       } else {
         setMailboxes([]);
         setDeletionRequest(null);
+        setDomainDnsStatus(null);
       }
     } catch (err) {
       console.error('Failed to load tenant data:', err);
@@ -277,20 +277,29 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     return () => document.removeEventListener('click', handleDocumentClick);
   }, []);
 
-  const handleSelectDomain = async (domain: DomainItem) => {
-    setActiveDomain(domain);
-    loadDeletionRequest(domain.id);
+  const loadDomainDnsStatus = async (domainId: string) => {
+    if (!domainId || typeof api.getDomainDnsStatus !== 'function') return;
+    setDnsStatusLoading(true);
+    setDnsStatusError(null);
     try {
-      const res = await api.listMyMailboxes(domain.id);
-      setMailboxes(res.mailboxes || []);
-    } catch (err) {
-      console.error('Failed to load mailboxes for domain:', err);
+      const res = await api.getDomainDnsStatus(domainId);
+      setDomainDnsStatus(res);
+    } catch (err: any) {
+      setDnsStatusError(err.message || 'Failed to load DNS status.');
+    } finally {
+      setDnsStatusLoading(false);
     }
   };
 
   const handleDomainAdded = async (newDomain: DomainItem) => {
     await loadTenantData(newDomain.id);
   };
+
+  useEffect(() => {
+    if (activeNav === 'domains' && activeDomain?.id) {
+      loadDomainDnsStatus(activeDomain.id);
+    }
+  }, [activeNav, activeDomain?.id]);
 
   const handleOpenCreateModal = () => {
     if (activeDomain && activeDomain.dnsStatus !== 'active') {
@@ -448,11 +457,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
     }
   };
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedRecordKey(key);
-    setTimeout(() => setCopiedRecordKey(null), 2000);
-  };
 
   const formatRelativeTime = (dateString?: string) => {
     if (!dateString) return 'recently';
@@ -541,13 +545,19 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
         <div className="h-full px-6 flex items-center justify-between">
           {/* Brand & Tenant Context */}
           <div className="flex items-center gap-4">
-            {/* Brand */}
-            <div className="flex items-center gap-3">
+            {/* Brand — clickable here: this view is one domain drilled into
+                from Tenant Home, so it's always a way back to the full list. */}
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="flex items-center gap-3 cursor-pointer group"
+              title="Back to all domains"
+            >
               <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
-              <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight select-none">
+              <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight select-none group-hover:text-indigo-600 transition-colors">
                 TOOWIX ADMIN
               </span>
-            </div>
+            </button>
 
             <span className="text-slate-300 font-light text-base hidden md:inline select-none">/</span>
 
@@ -596,13 +606,17 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
       {/* ========================================================================= */}
       <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
         <div className="flex flex-col gap-1 overflow-y-auto">
-          {/* Domain Tab / Switcher Dropdown (Top of Sidebar) */}
-          <DomainSwitcher
-            domains={domains}
-            activeDomain={activeDomain}
-            onSelectDomain={handleSelectDomain}
-            onOpenAddDomain={() => setShowDomainModal(true)}
-          />
+          {/* Back to Tenant Home (domain switching now happens by going back
+              to the full domain list, not an inline dropdown). */}
+          <button
+            type="button"
+            onClick={onNavigateHome}
+            className="w-full flex items-center gap-2 px-3 py-2.5 mb-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 text-slate-700 transition-colors cursor-pointer text-xs font-medium"
+            id="btn-back-to-domains"
+          >
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0 rotate-180" />
+            <span className="truncate">{activeDomain?.domainName || 'All Domains'}</span>
+          </button>
 
           {activeDomain && (
             <button
@@ -731,69 +745,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 <span className="truncate">Domains & DNS</span>
               </div>
             </button>
-
-            {/* Account Security */}
-            <button
-              onClick={() => setActiveNav('security')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'security'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-security"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <Shield
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'security' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Security</span>
-              </div>
-            </button>
-
-            {/* Audit Log */}
-            <button
-              onClick={() => setActiveNav('audit')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'audit'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-audit"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <FileText
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'audit' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Audit Log</span>
-              </div>
-            </button>
-
-            {/* Active Devices & Sessions */}
-            <button
-              onClick={() => setActiveNav('devices')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'devices'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-devices"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <Laptop
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'devices' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Active Devices</span>
-              </div>
-            </button>
           </div>
         </div>
       </aside>
@@ -855,7 +806,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           )}
 
           {/* 2FA Setup Reminder Banner (Removable per login session) */}
-          {!is2FaEnabled && !dismissed2FaBanner && activeNav !== 'security' && (
+          {!is2FaEnabled && !dismissed2FaBanner && (
             <div
               role="region"
               aria-label="Two-Factor Authentication Setup Notice"
@@ -881,7 +832,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                     <div className="mt-2.5 flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => setActiveNav('security')}
+                        onClick={onNavigateHome}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
                       >
                         <span>Set up 2FA</span>
@@ -1173,7 +1124,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                           </h2>
                         </div>
                         <button
-                          onClick={() => setActiveNav('audit')}
+                          onClick={onNavigateHome}
                           className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
                         >
                           <span>View audit log</span>
@@ -1400,70 +1351,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           )}
 
           {/* ===================================================================== */}
-          {/* VIEW: FULL AUDIT LOG                                                  */}
-          {/* ===================================================================== */}
-          {activeNav === 'audit' && (
-            <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
-              <div className="flex flex-col gap-1 pb-4 border-b border-slate-100">
-                <h2 className="text-lg font-semibold text-slate-900">Organization Audit Trail</h2>
-                <p className="text-xs text-slate-500">
-                  Immutable record of all administrative activities, mailbox operations, and security events.
-                </p>
-              </div>
-
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
-                      <th className="px-4 py-3">Timestamp</th>
-                      <th className="px-4 py-3">Action</th>
-                      <th className="px-4 py-3">Resource</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Actor</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {auditLogs.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400">
-                          No audit log records found.
-                        </td>
-                      </tr>
-                    ) : (
-                      auditLogs.map((log) => (
-                        <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                            {new Date(log.timestamp).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            {formatAuditAction(log.action, log.metadata)}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-[11px] text-slate-600">
-                            {log.resource}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${log.success
-                                  ? 'bg-emerald-50 text-emerald-700'
-                                  : 'bg-rose-50 text-rose-700'
-                                }`}
-                            >
-                              {log.success ? 'Success' : 'Failed'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500">
-                            {log.actor_role}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
-          {/* ===================================================================== */}
           {/* VIEW: DOMAINS & DNS ZONE RECORDS                                      */}
           {/* ===================================================================== */}
           {activeNav === 'domains' && (
@@ -1496,10 +1383,47 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                       Authoritative Domain Verification
                     </h2>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    Verified & Active
-                  </span>
+                  {(() => {
+                    const currentStatus = domainDnsStatus?.dnsStatus || activeDomain?.dnsStatus || 'not_started';
+                    if (currentStatus === 'active') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          Verified & Active
+                        </span>
+                      );
+                    }
+                    if (currentStatus === 'activating') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                          Activating / Propagating
+                        </span>
+                      );
+                    }
+                    if (currentStatus === 'conflict') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          DNS Conflict
+                        </span>
+                      );
+                    }
+                    if (currentStatus === 'activation_failed') {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          Activation Failed
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                        Pending DNS Setup
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -1519,83 +1443,69 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
                 </div>
               </div>
 
-              {/* Recommended DNS Records */}
+              {/* Authoritative DNS Zone Records & Status Panel */}
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
                 <div className="flex flex-col gap-1 pb-3 border-b border-slate-100">
                   <h3 className="text-sm font-semibold text-slate-900">
-                    Public DNS Zone Configuration Records
+                    Authoritative DNS Zone Configuration
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Publish these records with your DNS registrar (Cloudflare, Route 53, GoDaddy) to ensure optimal email deliverability and avoid spam classification.
+                    Publish this zone configuration or individual records with your DNS registrar (Cloudflare, GoDaddy, Hostinger, Route 53) to ensure optimal email deliverability and avoid spam classification.
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-3">
-                  {[
-                    {
-                      type: 'MX',
-                      name: '@',
-                      target: `mail.${domainName}`,
-                      priority: '10',
-                      desc: 'Primary Mail Routing Exchange',
-                      key: 'mx',
-                    },
-                    {
-                      type: 'TXT (SPF)',
-                      name: '@',
-                      target: 'v=spf1 mx include:relay.toowix.net ~all',
-                      priority: 'TTL 3600',
-                      desc: 'Sender Policy Framework record',
-                      key: 'spf',
-                    },
-                    {
-                      type: 'TXT (DKIM)',
-                      name: `mail._domainkey.${domainName}`,
-                      target: 'v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ...',
-                      priority: 'TTL 3600',
-                      desc: 'DomainKeys Identified Mail Signature',
-                      key: 'dkim',
-                    },
-                    {
-                      type: 'TXT (DMARC)',
-                      name: '_dmarc',
-                      target: `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@${domainName}`,
-                      priority: 'TTL 3600',
-                      desc: 'Domain-based Message Authentication Reporting',
-                      key: 'dmarc',
-                    },
-                  ].map((rec) => (
-                    <div
-                      key={rec.key}
-                      className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="flex flex-col gap-1 min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded font-mono font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60 text-[11px]">
-                            {rec.type}
-                          </span>
-                          <span className="font-mono text-slate-700 font-semibold">{rec.name}</span>
-                          <span className="text-slate-400">• {rec.desc}</span>
-                        </div>
-                        <span className="font-mono text-[11px] text-slate-600 truncate bg-white px-2 py-1 rounded border border-slate-200 mt-1">
-                          {rec.target}
-                        </span>
-                      </div>
+                <DnsStatusPanel
+                  domainName={domainName}
+                  status={domainDnsStatus}
+                  loading={dnsStatusLoading}
+                  error={dnsStatusError}
+                  onRefresh={() => {
+                    if (activeDomain) loadDomainDnsStatus(activeDomain.id);
+                  }}
+                />
 
-                      <button
-                        onClick={() => copyToClipboard(rec.target, rec.key)}
-                        className="self-start md:self-auto px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-medium transition-colors flex items-center gap-1.5 shrink-0"
-                      >
-                        {copiedRecordKey === rec.key ? (
-                          <Check className="w-3.5 h-3.5" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                        <span>{copiedRecordKey === rec.key ? 'Copied' : 'Copy value'}</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                {/* Inline DNS Provider Configuration (Optional) */}
+                {activeDomain && (
+                  <div className="mt-1 border border-indigo-100 rounded-xl overflow-hidden bg-indigo-50/30">
+                    <button
+                      type="button"
+                      onClick={() => setShowInlineProviderForm((prev) => !prev)}
+                      className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-indigo-50/60 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                          <Key className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="text-xs font-semibold text-slate-900 block">
+                            Connect DNS Provider
+                          </span>
+                          <span className="text-[11px] text-slate-500 block">
+                            Auto-publish and verify records on GoDaddy, Hostinger, or Cloudflare
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-indigo-600">
+                        <span>{showInlineProviderForm ? 'Hide' : 'Configure'}</span>
+                        {showInlineProviderForm ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </div>
+                    </button>
+
+                    {showInlineProviderForm && (
+                      <div className="p-4 bg-white border-t border-indigo-100 animate-in fade-in duration-150">
+                        <DnsProviderCredentialForm
+                          domainId={activeDomain.id}
+                          domainName={activeDomain.domainName}
+                          compact
+                          onSuccess={() => {
+                            loadDomainDnsStatus(activeDomain.id);
+                            loadTenantData(activeDomain.id);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Danger Zone: Domain Deletion */}
@@ -1663,13 +1573,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
           )}
 
           {/* ===================================================================== */}
-          {/* VIEW: SECURITY (ACCOUNT, BLOCKED IPS, ALLOWED IPS)                     */}
-          {/* ===================================================================== */}
-          {activeNav === 'security' && (
-            <SecurityView user={user} on2FaStatusChange={(enabled) => setIs2FaEnabled(enabled)} />
-          )}
-
-          {/* ===================================================================== */}
           {/* VIEW: STORAGE MONITORING                                              */}
           {/* ===================================================================== */}
           {activeNav === 'storage' && (
@@ -1683,12 +1586,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({ user
             <BillingView activeDomain={activeDomain} />
           )}
 
-          {/* ===================================================================== */}
-          {/* VIEW: ACTIVE DEVICES & SESSIONS (FULL PAGE)                           */}
-          {/* ===================================================================== */}
-          {activeNav === 'devices' && (
-            <ActiveDevicesView />
-          )}
         </main>
       </div>
 

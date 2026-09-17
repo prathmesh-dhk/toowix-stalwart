@@ -161,6 +161,30 @@ export class ToowixStripeClient {
     return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: cancel });
   }
 
+  /**
+   * Attaches a new domain's plan to an already-existing tenant subscription
+   * (combined-billing model: every domain under a tenant shares one Stripe
+   * Subscription, one item per domain, so Stripe combines them onto a single
+   * invoice per cycle). Prorated immediately unless the subscription is
+   * still in its trial window, in which case Stripe doesn't invoice at all
+   * until the trial ends — the new item rides the remainder of that trial.
+   */
+  async addSubscriptionItem(subscriptionId: string, priceId: string, quantity?: number): Promise<Stripe.SubscriptionItem> {
+    const stripe = getStripe();
+    return stripe.subscriptionItems.create({
+      subscription: subscriptionId,
+      price: priceId,
+      quantity,
+      proration_behavior: 'create_prorations',
+    });
+  }
+
+  /** Detaches one domain's item from the shared subscription, leaving the subscription (and every other domain on it) untouched. */
+  async removeSubscriptionItem(subscriptionItemId: string): Promise<void> {
+    const stripe = getStripe();
+    await stripe.subscriptionItems.del(subscriptionItemId, { proration_behavior: 'create_prorations' });
+  }
+
   /** Immediately cancels a subscription on Stripe. */
   async cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
     const stripe = getStripe();

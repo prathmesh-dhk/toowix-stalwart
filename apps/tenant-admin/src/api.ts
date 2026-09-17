@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, InvoiceItem, DomainDeletionRequestItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -226,10 +226,15 @@ export const api = {
 
   // Billing (Stripe — one Subscription per Domain, see backend/src/services/billing.service.ts)
   getBillingConfig: () => request<{ publishableKey: string }>('/api/tenants/me/billing/config'),
+  // Combined-billing model: every domain after a tenant's first shares one
+  // Stripe subscription, so checkout for domain #2+ attaches directly with
+  // no redirect (`attached: true`) instead of returning a Checkout `url`.
   startDomainCheckout: (domainId: string) =>
-    request<{ url: string }>(`/api/tenants/me/billing/domains/${domainId}/checkout`, { method: 'POST' }),
+    request<{ url: string } | { attached: true }>(`/api/tenants/me/billing/domains/${domainId}/checkout`, { method: 'POST' }),
   getDomainBillingStatus: (domainId: string) =>
     request<DomainBillingStatus>(`/api/tenants/me/billing/domains/${domainId}`),
+  getTenantBillingSummary: () =>
+    request<TenantBillingSummary>('/api/tenants/me/billing/summary'),
   listBillingInvoices: () => request<{ invoices: InvoiceItem[] }>('/api/tenants/me/billing/invoices'),
   createPaymentMethodSetupIntent: (domainId: string) =>
     request<{ clientSecret: string }>(`/api/tenants/me/billing/domains/${domainId}/setup-intent`, { method: 'POST' }),

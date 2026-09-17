@@ -17,6 +17,8 @@ vi.mock('../src/stripe/client', () => ({
     reportMeteredUsage: vi.fn(),
     listInvoices: vi.fn(),
     createSetupIntent: vi.fn(),
+    addSubscriptionItem: vi.fn(),
+    removeSubscriptionItem: vi.fn(),
   },
   meterEventNameForPlan: (plan: any) => `mailbox_count_${plan._id.toString()}`,
 }));
@@ -31,6 +33,7 @@ import {
   requestUpgrade,
   requestDowngrade,
   cancelSubscription,
+  getTenantBillingSummary,
   BillingError,
 } from '../src/services/billing.service';
 
@@ -150,6 +153,49 @@ describe('billing.service', () => {
       await expect(startCheckout(domain._id.toString(), tenantId, actor)).rejects.toMatchObject({
         code: 'SUBSCRIPTION_EXISTS',
       });
+    });
+
+    it('attaches a second domain to the tenant\'s existing subscription instead of starting a new Checkout', async () => {
+      const domain1 = await DomainModel.create({
+        tenantId,
+        domainName: 'first.com',
+        planId: fixedPlanId,
+        status: 'active',
+        isPrimary: true,
+      });
+      await DomainSubscriptionModel.create({
+        domainId: domain1._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_shared',
+        stripeSubscriptionItemId: 'si_first',
+        status: 'trialing',
+        currentPeriodEnd: new Date('2026-10-01'),
+        trialEnd: new Date('2026-10-01'),
+      });
+
+      const domain2 = await DomainModel.create({
+        tenantId,
+        domainName: 'second.com',
+        planId: fixedPlanId,
+        status: 'active',
+        isPrimary: false,
+      });
+
+      vi.mocked(stripeClient.addSubscriptionItem).mockResolvedValue({ id: 'si_second' } as any);
+
+      const result = await startCheckout(domain2._id.toString(), tenantId, actor);
+
+      expect(result).toEqual({ attached: true });
+      expect(stripeClient.createCheckoutSession).not.toHaveBeenCalled();
+      expect(stripeClient.addSubscriptionItem).toHaveBeenCalledWith('sub_shared', 'price_test123', 10);
+
+      const sub2 = await DomainSubscriptionModel.findOne({ domainId: domain2._id });
+      expect(sub2?.stripeSubscriptionId).toBe('sub_shared');
+      expect(sub2?.stripeSubscriptionItemId).toBe('si_second');
+      // Rides the remainder of the existing (still-trialing) shared subscription.
+      expect(sub2?.status).toBe('trialing');
+      expect(sub2?.trialEnd?.toISOString()).toBe(new Date('2026-10-01').toISOString());
     });
   });
 
@@ -402,7 +448,7 @@ describe('billing.service', () => {
       expect((await DomainSubscriptionModel.findById(sub._id))?.pendingDowngradePlanId?.toString()).toBe(smallerPlan._id.toString());
     });
 
-    it('cancelSubscription sets cancel_at_period_end on Stripe and locally', async () => {
+    it('cancelSubscription sets cancel_at_period_end on Stripe when this is the last domain on the subscription', async () => {
       const domain = await DomainModel.create({ tenantId, domainName: 'cancel.com', planId: fixedPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
@@ -416,7 +462,91 @@ describe('billing.service', () => {
       await cancelSubscription(domain._id.toString(), tenantId, actor);
 
       expect(stripeClient.cancelAtPeriodEnd).toHaveBeenCalledWith('sub_cancel', true);
+      expect(stripeClient.removeSubscriptionItem).not.toHaveBeenCalled();
       expect((await DomainSubscriptionModel.findById(sub._id))?.cancelAtPeriodEnd).toBe(true);
+    });
+
+    it('cancelSubscription only detaches this domain\'s item when siblings remain on the shared subscription', async () => {
+      const domain1 = await DomainModel.create({ tenantId, domainName: 'keep.com', planId: fixedPlanId, status: 'active' });
+      await DomainSubscriptionModel.create({
+        domainId: domain1._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_multi',
+        stripeSubscriptionItemId: 'si_keep',
+        status: 'active',
+      });
+      const domain2 = await DomainModel.create({ tenantId, domainName: 'remove.com', planId: fixedPlanId, status: 'active' });
+      const sub2 = await DomainSubscriptionModel.create({
+        domainId: domain2._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_multi',
+        stripeSubscriptionItemId: 'si_remove',
+        status: 'active',
+      });
+
+      await cancelSubscription(domain2._id.toString(), tenantId, actor);
+
+      expect(stripeClient.removeSubscriptionItem).toHaveBeenCalledWith('si_remove');
+      expect(stripeClient.cancelAtPeriodEnd).not.toHaveBeenCalled();
+      expect((await DomainSubscriptionModel.findById(sub2._id))?.status).toBe('canceled');
+      // The other domain on the shared subscription is completely unaffected.
+      const sibling = await DomainSubscriptionModel.findOne({ domainId: domain1._id });
+      expect(sibling?.status).toBe('active');
+    });
+  });
+
+  describe('combined-billing webhook cascade', () => {
+    it('invoice.payment_failed puts every sibling domain on the shared subscription into grace', async () => {
+      const domain1 = await DomainModel.create({ tenantId, domainName: 'sibling1.com', planId: fixedPlanId, status: 'active' });
+      const domain2 = await DomainModel.create({ tenantId, domainName: 'sibling2.com', planId: fixedPlanId, status: 'active' });
+      const sub1 = await DomainSubscriptionModel.create({
+        domainId: domain1._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_shared_fail', stripeSubscriptionItemId: 'si_s1', status: 'active',
+      });
+      const sub2 = await DomainSubscriptionModel.create({
+        domainId: domain2._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_shared_fail', stripeSubscriptionItemId: 'si_s2', status: 'active',
+      });
+
+      await handleWebhookEvent({
+        type: 'invoice.payment_failed',
+        data: { object: { subscription: 'sub_shared_fail' } },
+      } as any);
+
+      expect((await DomainSubscriptionModel.findById(sub1._id))?.status).toBe('grace');
+      expect((await DomainSubscriptionModel.findById(sub2._id))?.status).toBe('grace');
+      expect(emailService.sendBillingGraceStartedEmail).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('getTenantBillingSummary', () => {
+    it('returns no subscription for a tenant with nothing billed yet', async () => {
+      const summary = await getTenantBillingSummary(tenantId);
+      expect(summary.hasSubscription).toBe(false);
+      expect(summary.domains).toEqual([]);
+    });
+
+    it('lists every domain sharing the tenant\'s subscription', async () => {
+      const domain1 = await DomainModel.create({ tenantId, domainName: 'sum1.com', planId: fixedPlanId, status: 'active' });
+      const domain2 = await DomainModel.create({ tenantId, domainName: 'sum2.com', planId: fixedPlanId, status: 'active' });
+      await DomainSubscriptionModel.create({
+        domainId: domain1._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_sum', stripeSubscriptionItemId: 'si_sum1', status: 'active',
+        currentPeriodEnd: new Date('2026-11-01'),
+      });
+      await DomainSubscriptionModel.create({
+        domainId: domain2._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_sum', stripeSubscriptionItemId: 'si_sum2', status: 'active',
+      });
+
+      const summary = await getTenantBillingSummary(tenantId);
+      expect(summary.hasSubscription).toBe(true);
+      expect(summary.status).toBe('active');
+      expect(summary.domains).toHaveLength(2);
+      expect(summary.domains.map((d) => d.domainName).sort()).toEqual(['sum1.com', 'sum2.com']);
+      expect(summary.domains[0].planName).toBe('Team');
     });
   });
 });

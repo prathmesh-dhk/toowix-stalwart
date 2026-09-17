@@ -6,6 +6,7 @@ import {
   createPaymentMethodSetupIntent,
   getDomainBillingStatus,
   listTenantInvoices,
+  getTenantBillingSummary,
   requestUpgrade,
   requestDowngrade,
   cancelSubscription,
@@ -67,6 +68,16 @@ tenantBillingRouter.get('/domains/:domainId', async (req: Request, res: Response
           }
         : null,
     });
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+tenantBillingRouter.get('/summary', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const summary = await getTenantBillingSummary(tenantId);
+    res.json(summary);
   } catch (err: any) {
     handleBillingError(res, err);
   }

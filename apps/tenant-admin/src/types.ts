@@ -116,6 +116,17 @@ export interface DomainBillingStatus {
   subscription: DomainSubscription | null;
 }
 
+// Combined-billing model: every domain a tenant has shares one Stripe
+// subscription, so this is a tenant-wide summary (not per-domain).
+export interface TenantBillingSummary {
+  hasSubscription: boolean;
+  status: DomainSubscriptionStatus | null;
+  currentPeriodEnd: string | null;
+  trialEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  domains: Array<{ domainId: string; domainName: string; planName: string | null; seatCount: number | null }>;
+}
+
 export interface InvoiceItem {
   id: string;
   status: string | null;

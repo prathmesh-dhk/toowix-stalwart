@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -19,6 +20,12 @@ vi.mock('../../src/api', () => ({
     createTenantDomain: vi.fn(),
     requestDomainDeletion: vi.fn(),
     getDomainDeletionRequest: vi.fn().mockResolvedValue({ request: null }),
+    getDomainDnsStatus: vi.fn().mockResolvedValue({
+      dnsStatus: 'active',
+      dnsRecords: [],
+      dnsConflicts: [],
+      dnsZoneFile: '; Authoritative Zone file for acmecorp.com\nacmecorp.com. IN MX 10 mail.acmecorp.com.\n',
+    }),
     getSecuritySettings: vi.fn(),
     getStorageUsage: vi.fn().mockResolvedValue({
       summary: { totalStorageBytes: 1048576, totalStorageFormatted: '1.0 MB', mailboxCount: 1, mailboxesWithData: 1 },
@@ -39,6 +46,7 @@ const mockUser: UserContext = {
 
 describe('TenantAdminDashboard Component', () => {
   const onLogout = vi.fn();
+  const onNavigateHome = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -115,8 +123,19 @@ describe('TenantAdminDashboard Component', () => {
     sessionStorage.clear();
   });
 
+  const renderDashboard = (props: Partial<React.ComponentProps<typeof TenantAdminDashboard>> = {}) =>
+    render(
+      <TenantAdminDashboard
+        domainId="dom-1"
+        user={mockUser}
+        onLogout={onLogout}
+        onNavigateHome={onNavigateHome}
+        {...props}
+      />
+    );
+
   it('renders tenant overview with domain, quota stats, and mailbox count', async () => {
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
 
     expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
     expect(screen.getAllByText(/@acmecorp\.com/i).length).toBeGreaterThan(0);
@@ -144,7 +163,7 @@ describe('TenantAdminDashboard Component', () => {
       },
     });
 
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
 
     expect(
       await screen.findByText(/Workspace Suspended by Platform Administrators/i)
@@ -164,7 +183,7 @@ describe('TenantAdminDashboard Component', () => {
       updatedAt: '2026-01-04T00:00:00.000Z',
     });
 
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
     await screen.findByText('Admin Overview');
 
     const createBtn = screen.getByRole('button', { name: /create mailbox/i });
@@ -194,7 +213,7 @@ describe('TenantAdminDashboard Component', () => {
       new Error('Mailbox limit of 50 reached for tenant')
     );
 
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
     await screen.findByText('Admin Overview');
 
     const createBtn = screen.getByRole('button', { name: /create mailbox/i });
@@ -216,7 +235,7 @@ describe('TenantAdminDashboard Component', () => {
   it('opens confirmation popup before deleting mailbox and executes deletion upon confirmation', async () => {
     vi.mocked(api.deleteMailbox).mockResolvedValueOnce({ success: true });
 
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
     await screen.findByText('Admin Overview');
 
     // Switch to Mailboxes tab
@@ -291,7 +310,7 @@ describe('TenantAdminDashboard Component', () => {
       },
     });
 
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
     await screen.findByText('Admin Overview');
 
     const mailboxesTab = screen.getByText('View all mailboxes');
@@ -354,7 +373,7 @@ describe('TenantAdminDashboard Component', () => {
       },
     });
 
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
     await screen.findByText('Admin Overview');
 
     const mailboxesTab = screen.getByText('View all mailboxes');
@@ -401,7 +420,7 @@ describe('TenantAdminDashboard Component', () => {
     });
     vi.mocked(api.listTenantDomains).mockResolvedValueOnce({ domains: [] });
 
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    renderDashboard();
 
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add your first domain/i })).toBeInTheDocument();
@@ -410,51 +429,20 @@ describe('TenantAdminDashboard Component', () => {
     expect(screen.queryByText('Recently Added Mailboxes')).not.toBeInTheDocument();
   });
 
-  it('allows switching domain from top sidebar dropdown and reloads scoped mailboxes', async () => {
-    const multiDomains = [
-      {
-        id: 'dom-1',
-        domainName: 'primary.com',
-        status: 'active',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        mailboxCount: 1,
-        isPrimary: true,
-      },
-      {
-        id: 'dom-2',
-        domainName: 'secondary.com',
-        status: 'active',
-        mailboxLimit: 25,
-        employeeCount: 25,
-        mailboxCount: 0,
-        isPrimary: false,
-      },
-    ];
+  it('navigates back to Tenant Home via the header brand and the sidebar back link', async () => {
+    renderDashboard();
+    await screen.findByText('Admin Overview');
 
-    vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: multiDomains });
-    render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+    fireEvent.click(screen.getByRole('button', { name: /toowix admin/i }));
+    expect(onNavigateHome).toHaveBeenCalledTimes(1);
 
-    expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
-    expect(screen.getAllByText('primary.com').length).toBeGreaterThan(0);
-
-    // Click domain switcher trigger
-    const switcher = screen.getByRole('button', { name: /primary\.com/i });
-    fireEvent.click(switcher);
-
-    // Click secondary.com
-    const secondaryOption = screen.getByText('secondary.com');
-    fireEvent.click(secondaryOption);
-
-    // Verify listMyMailboxes was called with dom-2
-    await waitFor(() => {
-      expect(api.listMyMailboxes).toHaveBeenCalledWith('dom-2');
-    });
+    fireEvent.click(screen.getByRole('button', { name: /^acmecorp\.com$/i }));
+    expect(onNavigateHome).toHaveBeenCalledTimes(2);
   });
 
   describe('2FA Setup Removable Notification', () => {
     it('renders 2FA setup reminder notification when 2FA is not enabled', async () => {
-      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+      renderDashboard({ user: { ...mockUser, twoFactorEnabled: false } });
 
       expect(await screen.findByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).toBeInTheDocument();
       expect(screen.getByText(/Enhance account security with Two-Factor Authentication/i)).toBeInTheDocument();
@@ -464,7 +452,7 @@ describe('TenantAdminDashboard Component', () => {
     });
 
     it('dismisses 2FA reminder when X close button is clicked and records in sessionStorage', async () => {
-      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+      renderDashboard({ user: { ...mockUser, twoFactorEnabled: false } });
 
       const closeBtn = await screen.findByRole('button', { name: /Dismiss 2FA notification/i });
       fireEvent.click(closeBtn);
@@ -476,7 +464,7 @@ describe('TenantAdminDashboard Component', () => {
     });
 
     it('dismisses 2FA reminder when Remind me later button is clicked', async () => {
-      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+      renderDashboard({ user: { ...mockUser, twoFactorEnabled: false } });
 
       const remindBtn = await screen.findByRole('button', { name: /Remind me later/i });
       fireEvent.click(remindBtn);
@@ -487,18 +475,13 @@ describe('TenantAdminDashboard Component', () => {
       expect(sessionStorage.getItem('toowix_dismissed_2fa_banner')).toBe('true');
     });
 
-    it('clicking Set up 2FA switches navigation to the Account Security view', async () => {
-      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+    it('clicking Set up 2FA navigates to Tenant Home (Security now lives there)', async () => {
+      renderDashboard({ user: { ...mockUser, twoFactorEnabled: false } });
 
       const setupBtn = await screen.findByRole('button', { name: /Set up 2FA/i });
       fireEvent.click(setupBtn);
 
-      // Verify that security view has opened
-      await waitFor(() => {
-        expect(screen.getByText('Account Security')).toBeInTheDocument();
-      });
-      // And the reminder banner itself is hidden while viewing the security tab
-      expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
+      expect(onNavigateHome).toHaveBeenCalled();
     });
 
     it('does not render 2FA setup notification when user has 2FA enabled', async () => {
@@ -508,7 +491,7 @@ describe('TenantAdminDashboard Component', () => {
         twoFactorMethod: 'totp',
       } as any);
 
-      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: true }} onLogout={onLogout} />);
+      renderDashboard({ user: { ...mockUser, twoFactorEnabled: true } });
 
       expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
       expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
@@ -517,14 +500,14 @@ describe('TenantAdminDashboard Component', () => {
     it('does not render 2FA setup notification when already dismissed in sessionStorage', async () => {
       sessionStorage.setItem('toowix_dismissed_2fa_banner', 'true');
 
-      render(<TenantAdminDashboard user={{ ...mockUser, twoFactorEnabled: false }} onLogout={onLogout} />);
+      renderDashboard({ user: { ...mockUser, twoFactorEnabled: false } });
 
       expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
       expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
     });
 
     it('clicking Storage in the sidebar switches navigation to the Storage view', async () => {
-      render(<TenantAdminDashboard user={mockUser} onLogout={onLogout} />);
+      renderDashboard();
 
       const storageNavBtn = await screen.findByRole('button', { name: /Storage/i });
       fireEvent.click(storageNavBtn);
@@ -533,6 +516,23 @@ describe('TenantAdminDashboard Component', () => {
         expect(screen.getByText('Total Storage Used')).toBeInTheDocument();
         expect(screen.getByText('Average per Mailbox')).toBeInTheDocument();
       });
+    });
+
+    it('clicking Domains in the sidebar displays authoritative DNS zone file and status panel', async () => {
+      renderDashboard();
+
+      const domainsNavBtn = await screen.findByRole('button', { name: /domains & dns/i });
+      fireEvent.click(domainsNavBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Authoritative DNS Zone Configuration')).toBeInTheDocument();
+        expect(screen.getByText(/Authoritative Zone file for acmecorp\.com/i)).toBeInTheDocument();
+        expect(screen.getByText('DNS Activation Status')).toBeInTheDocument();
+      });
+
+      // Dummy hardcoded records should not exist
+      expect(screen.queryByText('mail.123.com')).not.toBeInTheDocument();
+      expect(screen.queryByText('v=spf1 mx include:relay.toowix.net ~all')).not.toBeInTheDocument();
     });
   });
 });
