@@ -129,6 +129,11 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     expect(listRes.body.domains).toHaveLength(2);
     expect(listRes.body.domains[0].domainName).toBe('primarybrand.com');
     expect(listRes.body.domains[1].domainName).toBe('subsidiary.org');
+    // dnsStatus must be present here — the tenant-admin UI gates mailbox
+    // creation on it (a domain fetched via this list without it looks
+    // permanently "pending activation" even once DNS is actually verified).
+    expect(listRes.body.domains[0].dnsStatus).toBe('not_started');
+    expect(listRes.body.domains[1].dnsStatus).toBe('not_started');
 
     // 4. Verify /api/tenants/me returns domains array
     const meRes = await request(app)

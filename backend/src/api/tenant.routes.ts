@@ -120,6 +120,7 @@ tenantMeRouter.get(['/me/domains', '/domains'], async (req: Request, res: Respon
       domainName: d.domainName,
       stalwartDomainId: d.stalwartDomainId || null,
       status: d.status,
+      dnsStatus: d.dnsStatus,
       mailboxLimit: d.mailboxLimit || 10,
       employeeCount: d.employeeCount || d.mailboxLimit || 10,
       mailboxCount: countsMap.get(d._id.toString()) || 0,
