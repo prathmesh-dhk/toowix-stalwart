@@ -246,6 +246,11 @@ export const api = {
   cancelDomainSubscription: (domainId: string) =>
     request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/cancel`, { method: 'POST' }),
 
+  detectDnsProvider: (domain: string) =>
+    request<{ provider: 'godaddy' | 'hostinger' | 'cloudflare' | null; nameservers: string[] }>(
+      `/api/tenants/me/domains/detect-dns-provider?domain=${encodeURIComponent(domain)}`
+    ),
+
   connectDnsProviderCredential: (
     domainId: string,
     credential:

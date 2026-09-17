@@ -11,6 +11,7 @@ vi.mock('../../src/api', () => ({
     getDomainDnsStatus: vi.fn(),
     listPlans: vi.fn(),
     startDomainCheckout: vi.fn(),
+    detectDnsProvider: vi.fn(),
   },
 }));
 
@@ -42,6 +43,9 @@ describe('DomainSetupModal Component', () => {
       dnsConflicts: [],
       dnsZoneFile: null,
     });
+    // Default: no provider detected, so existing tests keep landing on the
+    // method-picker step exactly as before this feature was added.
+    vi.mocked(api.detectDnsProvider).mockResolvedValue({ provider: null, nameservers: [] });
   });
 
   it('renders the domain step, then the fetched plan tiers (1, 10, 25, 50, 75, 100 seats) on the next step', async () => {
@@ -62,10 +66,14 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText('100 Seats')).toBeInTheDocument();
   });
 
-  it('creates an unprovisioned domain by planId, then connects GoDaddy (default provider) before finishing', async () => {
+  it('creates an unprovisioned domain by planId, then connects GoDaddy after auto-detecting it from nameservers', async () => {
     const onClose = vi.fn();
     const onDomainAdded = vi.fn();
 
+    vi.mocked(api.detectDnsProvider).mockResolvedValueOnce({
+      provider: 'godaddy',
+      nameservers: ['ns1.domaincontrol.com', 'ns2.domaincontrol.com'],
+    });
     vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
       success: true,
       domain: {
@@ -91,6 +99,7 @@ describe('DomainSetupModal Component', () => {
 
     // Step 1: domain name
     await enterDomainAndContinue('newbrand.io');
+    expect(api.detectDnsProvider).toHaveBeenCalledWith('newbrand.io');
 
     // Step 2: plan
     await userEvent.click(await screen.findByText('25 Seats'));
@@ -101,12 +110,11 @@ describe('DomainSetupModal Component', () => {
       planId: 'plan-25',
     });
 
-    // Step 3: choose setup method
-    expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Connect a DNS Provider'));
-
-    // Step 4: GoDaddy selected by default
+    // Step 3 (method picker) is skipped — GoDaddy was auto-detected from
+    // nameservers, so the wizard lands directly on its credential form.
+    expect(screen.queryByText('How do you want to set up DNS?')).not.toBeInTheDocument();
     expect(await screen.findByText(/^Connect GoDaddy$/)).toBeInTheDocument();
+    expect(screen.getByText(/we detected/i)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/GoDaddy API Key/i), 'test-key');
     await userEvent.type(screen.getByLabelText(/GoDaddy API Secret/i), 'test-secret');
     await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
@@ -135,7 +143,7 @@ describe('DomainSetupModal Component', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('switches to Hostinger and connects with a single API token', async () => {
+  it('switches to Hostinger and connects with a single API token (method picker used to override an undetected provider)', async () => {
     vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
       success: true,
       domain: {
@@ -163,6 +171,10 @@ describe('DomainSetupModal Component', () => {
     await screen.findByText('10 Seats'); // default-selected already
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
+    // Nothing was auto-detected (default mock), so the wizard lands on
+    // manual setup — use the override link to reach the method picker.
+    await screen.findByText('No credential required');
+    await userEvent.click(screen.getByText('Connect a provider instead'));
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
     await userEvent.click(screen.getByText('Connect a DNS Provider'));
 
@@ -205,6 +217,8 @@ describe('DomainSetupModal Component', () => {
     await screen.findByText('10 Seats');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
+    await screen.findByText('No credential required');
+    await userEvent.click(screen.getByText('Connect a provider instead'));
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
     await userEvent.click(screen.getByText('Connect a DNS Provider'));
 
@@ -248,10 +262,11 @@ describe('DomainSetupModal Component', () => {
     await screen.findByText('10 Seats');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Manual DNS Setup'));
-
+    // Method picker is skipped — nothing was auto-detected (default mock),
+    // so the wizard lands directly on manual setup.
+    expect(screen.queryByText('How do you want to set up DNS?')).not.toBeInTheDocument();
     expect(await screen.findByText('No credential required')).toBeInTheDocument();
+    expect(screen.getByText(/couldn't detect/i)).toBeInTheDocument();
     expect(api.connectDnsProviderCredential).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
@@ -288,8 +303,7 @@ describe('DomainSetupModal Component', () => {
     await screen.findByText('10 Seats');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Manual DNS Setup'));
+    await screen.findByText('No credential required');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     expect(await screen.findByText('DNS Setup — payable.io')).toBeInTheDocument();
@@ -303,5 +317,41 @@ describe('DomainSetupModal Component', () => {
     expect(onDomainAdded).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
     expect(api.startDomainCheckout).not.toHaveBeenCalled();
+  });
+
+  it('lets "Back" from an auto-skipped setup step reach the method picker as an override', async () => {
+    vi.mocked(api.detectDnsProvider).mockResolvedValueOnce({
+      provider: 'cloudflare',
+      nameservers: ['aida.ns.cloudflare.com', 'walt.ns.cloudflare.com'],
+    });
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-new-6',
+        domainName: 'backnav.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+
+    render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+
+    await enterDomainAndContinue('backnav.io');
+    await screen.findByText('10 Seats');
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    // Auto-skipped straight to Cloudflare's form.
+    expect(await screen.findByText(/^Connect Cloudflare$/)).toBeInTheDocument();
+
+    // "Back" reaches the method picker (not the plan step), so a wrong
+    // auto-detection is always one click away from being overridden.
+    await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
   });
 });

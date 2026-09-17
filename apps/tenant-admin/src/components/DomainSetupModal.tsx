@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { DomainItem, DomainDnsStatus, Plan } from '../types';
 import {
@@ -67,6 +67,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
+  // DNS provider auto-detection: kicked off in the background as soon as the
+  // domain name is confirmed (step 1), so the result is ready by the time
+  // the domain is actually created (end of step 2) — at which point we skip
+  // the method-picker step forward, straight into the matching provider's
+  // credential form, or straight into Manual Setup if nothing matched.
+  // "Back" from the setup step still lands on the method picker either way,
+  // so a wrong auto-detection is always one click away from being overridden.
+  const detectionRef = useRef<Promise<{ provider: DnsProvider | null; nameservers: string[] }> | null>(null);
+  const [methodAutoSkipped, setMethodAutoSkipped] = useState(false);
+
   useEffect(() => {
     if (!isOpen) return;
     setPlansLoading(true);
@@ -92,6 +102,12 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       return;
     }
     setError(null);
+    // Fire-and-forget: runs in the background while the tenant picks a plan,
+    // so the result is ready (or the wizard just waits briefly on it) by the
+    // time the domain is created and the wizard needs to decide the setup flow.
+    detectionRef.current = api
+      .detectDnsProvider(cleanDomain)
+      .catch(() => ({ provider: null, nameservers: [] }));
     setStep('plan');
   };
 
@@ -121,7 +137,21 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       });
 
       setCreatedDomain(res.domain);
-      setStep('method');
+
+      const detection = detectionRef.current
+        ? await detectionRef.current
+        : { provider: null, nameservers: [] };
+
+      if (detection.provider) {
+        setProvider(detection.provider);
+        setMethod('provider');
+        setMethodAutoSkipped(true);
+        setStep('setup');
+      } else {
+        setMethod('manual');
+        setMethodAutoSkipped(true);
+        setStep('setup');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to create domain. Please check if it already exists.');
     } finally {
@@ -131,6 +161,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
   const chooseMethod = (m: SetupMethod) => {
     setMethod(m);
+    setMethodAutoSkipped(false);
     setError(null);
     setStep('setup');
   };
@@ -214,6 +245,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setToken('');
     setConnecting(false);
     setConnected(false);
+    setMethodAutoSkipped(false);
+    detectionRef.current = null;
     setDnsStatus(null);
     setStatusError(null);
     setPaymentCardDismissed(false);
@@ -438,6 +471,12 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       </div>
                     ) : (
                       <>
+                        {methodAutoSkipped && (
+                          <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800">
+                            We detected <strong>{PROVIDER_LABEL[provider]}</strong> manages this domain's DNS.
+                            Switch below if that's not right.
+                          </div>
+                        )}
                         <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
                           {(['godaddy', 'hostinger', 'cloudflare'] as const).map((p) => (
                             <button
@@ -595,6 +634,22 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
                 {method === 'manual' && (
                   <div className="flex flex-col gap-2.5">
+                    {methodAutoSkipped && (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 mb-1">
+                        We couldn't detect GoDaddy, Hostinger, or Cloudflare managing this domain, so here's manual
+                        setup.{' '}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMethodAutoSkipped(false);
+                            setStep('method');
+                          }}
+                          className="text-indigo-600 font-semibold hover:underline cursor-pointer"
+                        >
+                          Connect a provider instead
+                        </button>
+                      </div>
+                    )}
                     <p className="text-xs font-semibold text-indigo-950">No credential required</p>
                     {[
                       'Works with any DNS provider — GoDaddy, Namecheap, Route 53, your own nameservers',

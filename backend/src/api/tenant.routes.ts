@@ -19,6 +19,7 @@ import { buildRequiredDnsRecords, buildFullDnsRecords, buildZoneFileText } from 
 import { StalwartDkimKey } from '../stalwart/types';
 import { IGeneratedDnsRecord } from '../db/models/Domain';
 import { securityIpService, isValidIpOrCidr } from '../services/security-ip.service';
+import { detectDnsProvider } from '../dns-providers/detect-provider';
 
 export const tenantMeRouter = Router();
 
@@ -130,6 +131,30 @@ tenantMeRouter.get(['/me/domains', '/domains'], async (req: Request, res: Respon
   } catch (err: any) {
     console.error('[Tenant Domains List Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve domains' });
+  }
+});
+
+// ==========================================
+// DETECT DNS PROVIDER (/api/tenants/me/domains/detect-dns-provider)
+// ==========================================
+// Read-only nameserver lookup, deliberately before domain creation/ownership
+// checks — the wizard calls this the moment a domain name is typed, before
+// the domain even exists as a record, so it can pre-select the matching
+// provider tab (or skip straight to manual setup when nothing matches).
+tenantMeRouter.get('/me/domains/detect-dns-provider', async (req: Request, res: Response): Promise<void> => {
+  const domain = String(req.query.domain || '').trim().toLowerCase();
+  if (!domain || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(domain)) {
+    res.status(400).json({ error: 'INVALID_DOMAIN', message: 'A valid domain name is required.' });
+    return;
+  }
+
+  try {
+    const result = await detectDnsProvider(domain);
+    res.status(200).json(result);
+  } catch (err: any) {
+    console.error('[DNS Provider Detection Error]:', err);
+    // Best-effort — the wizard falls back to manual provider selection on any failure here.
+    res.status(200).json({ provider: null, nameservers: [] });
   }
 });
 
