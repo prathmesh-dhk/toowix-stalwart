@@ -17,6 +17,8 @@ vi.mock('../../src/api', () => ({
     deleteMailbox: vi.fn(),
     listTenantDomains: vi.fn(),
     createTenantDomain: vi.fn(),
+    requestDomainDeletion: vi.fn(),
+    getDomainDeletionRequest: vi.fn().mockResolvedValue({ request: null }),
     getSecuritySettings: vi.fn(),
     getStorageUsage: vi.fn().mockResolvedValue({
       summary: { totalStorageBytes: 1048576, totalStorageFormatted: '1.0 MB', mailboxCount: 1, mailboxesWithData: 1 },
