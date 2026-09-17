@@ -330,6 +330,28 @@ export class StalwartClient {
   }
 
   /**
+   * Polls getActiveDkimKeys() until keys appear or the budget runs out.
+   * Stalwart generates DKIM keys asynchronously right after domain creation
+   * — a single fixed-delay retry (the pattern this replaces, used to be a
+   * one-shot 500-800ms wait) is a coin flip under any real load: too slow
+   * and it's a wasted delay every time, too fast under load and the domain
+   * permanently ships with no DKIM record in its initial zone file/DNS
+   * provider sync, since nothing re-checks after that single retry.
+   * Defaults to ~8 attempts / 500ms apart (4s worst case) — long enough for
+   * real key generation, short enough not to visibly stall the caller.
+   */
+  async getActiveDkimKeysWithRetry(domainId: string, maxAttempts = 8, intervalMs = 500): Promise<StalwartDkimKey[]> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const keys = await this.getActiveDkimKeys(domainId);
+      if (keys.length > 0) return keys;
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    }
+    return [];
+  }
+
+  /**
    * Updates a domain's enabled status on Stalwart.
    */
   async updateDomainStatus(domainId: string, isEnabled: boolean): Promise<void> {

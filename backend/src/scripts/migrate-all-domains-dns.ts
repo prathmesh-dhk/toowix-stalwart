@@ -33,13 +33,8 @@ async function migrateAllDomainsDns() {
       console.log(`  Ensuring automatic DKIM configuration in Stalwart...`);
       await stalwartClient.ensureAutomaticDkim(d.stalwartDomainId);
 
-      // 2. Fetch active DKIM keys (RSA and Ed25519)
-      let dkimKeys = await stalwartClient.getActiveDkimKeys(d.stalwartDomainId);
-      if (dkimKeys.length === 0) {
-        console.log(`  Waiting for Stalwart to finish key generation...`);
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        dkimKeys = await stalwartClient.getActiveDkimKeys(d.stalwartDomainId);
-      }
+      // 2. Fetch active DKIM keys (RSA and Ed25519), polling for generation to finish
+      const dkimKeys = await stalwartClient.getActiveDkimKeysWithRetry(d.stalwartDomainId);
 
       console.log(`  Retrieved ${dkimKeys.length} active DKIM key(s):`, dkimKeys.map((k) => `${k.selector} (${k.algorithm})`));
 

@@ -32,6 +32,10 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([]);
     vi.spyOn(stalwartClient, 'updateDomainStatus').mockResolvedValue();
     vi.spyOn(stalwartClient, 'getActiveDkimKeys').mockResolvedValue([]);
+    // Stub the retrying wrapper directly too — an always-empty getActiveDkimKeys
+    // mock would otherwise make every domain creation actually sleep through
+    // all of getActiveDkimKeysWithRetry's real retry delays.
+    vi.spyOn(stalwartClient, 'getActiveDkimKeysWithRetry').mockResolvedValue([]);
   });
 
   afterAll(async () => {

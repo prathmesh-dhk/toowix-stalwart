@@ -411,12 +411,8 @@ export async function activateDomain(domainId: string, actor: ActivationActor): 
     // Non-fatal: Stalwart may already have DKIM configured
   }
 
-  // Fetch real DKIM keys (retrying briefly if Stalwart key generation is in progress).
-  let dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
-  if (dkimKeys.length === 0) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
-  }
+  // Fetch real DKIM keys, polling since Stalwart generates them asynchronously.
+  const dkimKeys = await stalwartClient.getActiveDkimKeysWithRetry(stalwartDomainId);
 
   // Fetch Stalwart's raw zone file (contains SRV, CNAME, CAA, MTA-STS, TLS-RPT, etc.)
   const stalwartDomain = await stalwartClient.getDomain(stalwartDomainId);

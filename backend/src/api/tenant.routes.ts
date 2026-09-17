@@ -209,12 +209,8 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
         // Keep domain disabled on Stalwart so mail routing is suspended until Super Admin activates
         await stalwartClient.updateDomainStatus(stalwartDomainId, false);
 
-        // Fetch generated DKIM keys (quick retry if Stalwart key generation is in progress)
-        dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
-        if (dkimKeys.length === 0) {
-          await new Promise((r) => setTimeout(r, 600));
-          dkimKeys = await stalwartClient.getActiveDkimKeys(stalwartDomainId);
-        }
+        // Fetch generated DKIM keys, polling since Stalwart generates them asynchronously
+        dkimKeys = await stalwartClient.getActiveDkimKeysWithRetry(stalwartDomainId);
       } catch (err: any) {
         console.warn(`[Tenant Domain Creation] Stalwart DKIM retrieval warning: ${err.message}`);
       }
