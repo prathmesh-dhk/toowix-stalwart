@@ -49,6 +49,7 @@ platformTenantRouter.get('/', async (_req: Request, res: Response) => {
                 domainName: primaryDomain.domainName,
                 stalwartDomainId: primaryDomain.stalwartDomainId || null,
                 status: primaryDomain.status,
+                dnsStatus: primaryDomain.dnsStatus,
               }
             : null,
           domains: allDomains.map((d) => ({

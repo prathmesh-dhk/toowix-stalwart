@@ -17,21 +17,7 @@ import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
 import { DomainActivationModal } from './DomainActivationModal';
-
-function dnsStatusBadgeProps(dnsStatus?: string): { status: string; label: string } {
-  switch (dnsStatus) {
-    case 'active':
-      return { status: 'active', label: 'Active' };
-    case 'activating':
-      return { status: 'pending', label: 'Activating' };
-    case 'conflict':
-      return { status: 'error', label: 'Conflict' };
-    case 'activation_failed':
-      return { status: 'failed', label: 'Activation Failed' };
-    default:
-      return { status: 'inactive', label: 'Not Started' };
-  }
-}
+import { dnsStatusBadgeProps } from '../../utils/dnsStatus';
 
 interface TenantDetailModalProps {
   tenant: TenantSummary | null;

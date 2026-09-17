@@ -337,8 +337,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   }, [activeNav, activeDomain?.id]);
 
   const handleOpenCreateModal = () => {
-    if (activeDomain && activeDomain.dnsStatus !== 'active') {
-      alert(`Domain '${activeDomain.domainName}' is pending activation by a Super Admin. Mailbox creation will unlock once activated.`);
+    if (isDomainPendingActivation) {
+      alert(`Domain '${activeDomain?.domainName}' is pending activation by a Super Admin. Mailbox creation will unlock once activated.`);
       return;
     }
     setLocalPart('');
@@ -353,7 +353,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
       setModalError('Please add or select a domain before creating mailboxes.');
       return;
     }
-    if (activeDomain.dnsStatus !== 'active') {
+    if (isDomainPendingActivation) {
       setModalError(`Domain '${activeDomain.domainName}' is pending activation by a Super Admin. Mailboxes can only be created once activated.`);
       return;
     }

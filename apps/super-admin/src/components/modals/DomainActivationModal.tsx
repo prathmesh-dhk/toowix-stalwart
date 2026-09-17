@@ -5,6 +5,7 @@ import { X, PlayCircle, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Copy, C
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
+import { dnsStatusBadgeProps as badgeProps } from '../../utils/dnsStatus';
 
 interface DomainActivationModalProps {
   tenant: TenantSummary | null;
@@ -12,21 +13,6 @@ interface DomainActivationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onChanged?: () => void;
-}
-
-function badgeProps(dnsStatus?: string): { status: string; label: string } {
-  switch (dnsStatus) {
-    case 'active':
-      return { status: 'active', label: 'Active' };
-    case 'activating':
-      return { status: 'pending', label: 'Activating' };
-    case 'conflict':
-      return { status: 'error', label: 'Conflict' };
-    case 'activation_failed':
-      return { status: 'failed', label: 'Activation Failed' };
-    default:
-      return { status: 'inactive', label: 'Not Started' };
-  }
 }
 
 export const DomainActivationModal: React.FC<DomainActivationModalProps> = ({

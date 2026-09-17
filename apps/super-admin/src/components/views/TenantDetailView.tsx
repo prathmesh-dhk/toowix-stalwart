@@ -28,12 +28,13 @@ import {
   Lock,
   Plus,
 } from 'lucide-react';
-import { TenantFullDetails, TenantDomainSummary, TenantSummary, DnsActivationStatus } from '../../types';
+import { TenantFullDetails, TenantDomainSummary, TenantSummary } from '../../types';
 import { api } from '../../api';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
 import { DomainActivationModal } from '../modals/DomainActivationModal';
+import { dnsStatusBadgeProps } from '../../utils/dnsStatus';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
@@ -41,21 +42,6 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-function dnsStatusBadgeProps(dnsStatus?: DnsActivationStatus): { status: string; label: string } {
-  switch (dnsStatus) {
-    case 'active':
-      return { status: 'active', label: 'Active' };
-    case 'activating':
-      return { status: 'pending', label: 'Activating' };
-    case 'conflict':
-      return { status: 'error', label: 'Conflict' };
-    case 'activation_failed':
-      return { status: 'failed', label: 'Activation Failed' };
-    default:
-      return { status: 'inactive', label: 'Not Started' };
-  }
 }
 
 export interface TenantDetailViewProps {
