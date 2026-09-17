@@ -84,8 +84,14 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      MAIL_SERVER_IPS: ${MAIL_SERVER_IPS}
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME}
+      GODADDY_API_BASE_URL: ${GODADDY_API_BASE_URL}
     volumes:
-      - toowix-prod-backups:/usr/src/app/backups
+      # backup.service.ts defaults to path.resolve(process.cwd(), 'backups'),
+      # and the Dockerfile's WORKDIR is /app — must match, or backups land on
+      # the container's ephemeral layer and are lost on every recreate.
+      - toowix-prod-backups:/app/backups
     depends_on:
       mongodb:
         condition: service_healthy
@@ -157,7 +163,7 @@ services:
       dockerfile: Dockerfile
     container_name: toowix-prod-backup-cron
     restart: always
-    entrypoint: ["/bin/sh", "-c", "echo '0 2 * * * /usr/src/app/scripts/backup-s3.sh >> /var/log/backup.log 2>&1' > /etc/crontabs/root && crond -f -l 2"]
+    entrypoint: ["/bin/sh", "-c", "echo '0 2 * * * /app/scripts/backup-s3.sh >> /var/log/backup.log 2>&1' > /etc/crontabs/root && crond -f -l 2"]
     environment:
       MONGODB_URI: mongodb://mongodb:27017/toowix_mail
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
