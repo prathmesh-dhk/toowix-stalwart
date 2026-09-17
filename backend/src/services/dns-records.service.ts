@@ -323,23 +323,34 @@ export function buildFullDnsRecords(
   // 2. Parse additional records from Stalwart's zone file
   const parsed = parseStalwartZoneFile(stalwartZoneFile, domainName);
 
-  // 3. Build a key set of canonical records so we can deduplicate
+  // 3. Build a FIXED key set of canonical (type,name) pairs — never mutated
+  // by the loop below. Multiple Stalwart-parsed records can legitimately
+  // share a (type,name) with each other (e.g. this domain's real zone file
+  // carries two CAA records at "@": one "issue" tag and one "iodef" tag —
+  // different values, both needed). Adding each parsed record's key to this
+  // same set as we went used to make the second one look like a duplicate
+  // of the first and silently drop it; only a record whose (type,name)
+  // collides with something Toowix's OWN canonical policy governs (MX/SPF
+  // at "@", DMARC, DKIM per selector) should ever be skipped here.
   const canonicalKeys = new Set(canonical.map((r) => `${r.type}|${r.name}`.toLowerCase()));
 
-  // 4. Add parsed records that don't collide with canonical ones
+  // 4. Add parsed records that don't collide with canonical ones, skipping
+  // only exact (type,name,value) duplicates among the parsed records
+  // themselves (e.g. Stalwart listing the same record twice).
+  const seenParsedValues = new Set<string>();
   for (const record of parsed) {
-    const key = `${record.type}|${record.name}`.toLowerCase();
-    // For types like TXT at @ (SPF), TXT at _dmarc (DMARC), and DKIM TXT records,
-    // canonical already provides the correct values with our relaxed policy.
-    // For DKIM records specifically, check by selector to allow multiple DKIM keys.
-    if (canonicalKeys.has(key)) {
-      // Exception: DKIM records — canonical covers all selectors returned by
-      // dkimKeys, and parseStalwartZoneFile would return the same selectors.
-      // Skip the duplicate.
+    const typeNameKey = `${record.type}|${record.name}`.toLowerCase();
+    if (canonicalKeys.has(typeNameKey)) {
+      // Canonical (MX/SPF/DKIM/DMARC) already provides this exact
+      // (type,name) with Toowix's relaxed policy — skip Stalwart's version.
+      continue;
+    }
+    const valueKey = `${typeNameKey}|${record.value}`.toLowerCase();
+    if (seenParsedValues.has(valueKey)) {
       continue;
     }
     canonical.push(record);
-    canonicalKeys.add(key);
+    seenParsedValues.add(valueKey);
   }
 
   return canonical;

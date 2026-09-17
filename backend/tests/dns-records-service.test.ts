@@ -112,6 +112,24 @@ dhkinnovation.com. 3600 IN CAA 0 issue "letsencrypt.org"
     expect(full.some((r) => r.type === 'CAA')).toBe(true);
   });
 
+  it('keeps multiple distinct records that share a (type,name), like two CAA tags at "@"', () => {
+    // Real Stalwart zone files carry both an "issue" and an "iodef" CAA
+    // record at the domain apex — different values, same (type,name). A
+    // dedup bug once mutated the same key set the loop checked against,
+    // making the second CAA record look like a duplicate of the first and
+    // silently dropping it.
+    const zoneWithTwoCaa = `
+dhkinnovation.com. 3600 IN CAA 0 issue "letsencrypt.org;accounturi=https://acme.org/acct/123"
+dhkinnovation.com. 3600 IN CAA 0 iodef "mailto:postmaster@dhkinnovation.com"
+`;
+    const full = buildFullDnsRecords('dhkinnovation.com', [], zoneWithTwoCaa);
+    const caaRecords = full.filter((r) => r.type === 'CAA');
+
+    expect(caaRecords).toHaveLength(2);
+    expect(caaRecords.some((r) => r.tag === 'issue')).toBe(true);
+    expect(caaRecords.some((r) => r.tag === 'iodef')).toBe(true);
+  });
+
   it('generates standard BIND zone file text matching record set', () => {
     const records = buildRequiredDnsRecords('dhkinnovation.com', []);
     const zoneText = buildZoneFileText('dhkinnovation.com', records);
