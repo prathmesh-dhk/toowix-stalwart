@@ -9,6 +9,7 @@ import { AdminUserModel } from '../db/models/AdminUser';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { emailService } from '../services/email.service';
 import { getDefaultPlanSeatCount } from '../services/plan.service';
+import { checkAndIncrementRateLimit, resetAllRateLimits } from '../utils/rate-limit';
 import {
   hashPassword,
   verifyPassword,
@@ -28,39 +29,33 @@ import {
 
 export const publicRouter = Router();
 
-// In-memory rate limiter for public registration: max 5 requests per hour per IP
-interface RegRateLimit {
-  count: number;
-  resetAt: number;
-}
-const regRateLimitMap = new Map<string, RegRateLimit>();
-
+// Rate limiter for public registration: max 5 requests per hour per IP —
+// backed by MongoDB (see utils/rate-limit.ts) so it survives backend
+// restarts/redeploys instead of resetting like an in-memory Map would.
 export function registrationRateLimiter(windowMs: number = 60 * 60 * 1000, maxAttempts: number = 5) {
-  return (req: Request, res: Response, next: () => void) => {
+  return async (req: Request, res: Response, next: () => void) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const now = Date.now();
-    const entry = regRateLimitMap.get(ip);
+    const key = `register:${ip}`;
 
-    if (entry && entry.resetAt > now) {
-      if (entry.count >= maxAttempts) {
-        const retryAfterSeconds = Math.ceil((entry.resetAt - now) / 1000);
+    try {
+      const { blocked, retryAfterSeconds } = await checkAndIncrementRateLimit(key, windowMs, maxAttempts);
+      if (blocked) {
         res.setHeader('Retry-After', retryAfterSeconds);
         return res.status(429).json({
           error: 'RATE_LIMIT_EXCEEDED',
           message: `Too many registration attempts from this IP. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minutes.`,
         });
       }
-      entry.count += 1;
-    } else {
-      regRateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    } catch (err) {
+      console.error('[Registration Rate Limiter] Store error, allowing request through:', err);
     }
 
     next();
   };
 }
 
-export function resetRegistrationRateLimitStore() {
-  regRateLimitMap.clear();
+export async function resetRegistrationRateLimitStore(): Promise<void> {
+  await resetAllRateLimits('register:');
 }
 
 interface RecoveryOtpEntry {

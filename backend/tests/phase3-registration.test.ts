@@ -34,7 +34,7 @@ describe('Phase 3: Public Registration & Super Admin Application Queue', () => {
   });
 
   beforeEach(async () => {
-    resetRegistrationRateLimitStore();
+    await resetRegistrationRateLimitStore();
     vi.restoreAllMocks();
 
     vi.spyOn(stalwartClient, 'createDomain').mockImplementation(async (domainName: string) => ({

@@ -39,7 +39,7 @@ describe('Phase 4: Stalwart Pre-Flight Verification & Tenant Activation Flow', (
   });
 
   beforeEach(async () => {
-    resetRegistrationRateLimitStore();
+    await resetRegistrationRateLimitStore();
     vi.restoreAllMocks();
 
     // Default Stalwart client mock: WayneCorp domain is present

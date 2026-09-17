@@ -2,47 +2,44 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyOidcToken } from './service';
 import { AdminUserContext } from './types';
 import { sessionService } from '../services/session.service';
+import { checkAndIncrementRateLimit, clearRateLimitKey, resetAllRateLimits } from '../utils/rate-limit';
 
-// Rate Limiter Memory Store for brute-force protection
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
+// Brute-force login rate limiting — backed by MongoDB (see utils/rate-limit.ts)
+// so attempt counts survive a backend restart/redeploy instead of resetting.
+function loginRateLimitKey(ip: string, email: string): string {
+  return `login:${ip}:${email.toLowerCase().trim()}`;
 }
-const loginRateLimitMap = new Map<string, RateLimitEntry>();
 
 export function loginRateLimiter(windowMs: number = 15 * 60 * 1000, maxAttempts: number = 5) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const email = (req.body.email || '').toLowerCase().trim();
-    const key = `${ip}:${email}`;
-    const now = Date.now();
+    const email = req.body.email || '';
+    const key = loginRateLimitKey(ip, email);
 
-    const entry = loginRateLimitMap.get(key);
-
-    if (entry && entry.resetAt > now) {
-      if (entry.count >= maxAttempts) {
-        const retryAfterSeconds = Math.ceil((entry.resetAt - now) / 1000);
+    try {
+      const { blocked, retryAfterSeconds } = await checkAndIncrementRateLimit(key, windowMs, maxAttempts);
+      if (blocked) {
         res.setHeader('Retry-After', retryAfterSeconds);
         return res.status(429).json({
           error: 'TOO_MANY_ATTEMPTS',
           message: `Too many failed attempts. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minutes.`,
         });
       }
-      entry.count += 1;
-    } else {
-      loginRateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+    } catch (err) {
+      // Fail open on a rate-limit store outage rather than locking every admin out of login.
+      console.error('[Login Rate Limiter] Store error, allowing request through:', err);
     }
 
     next();
   };
 }
 
-export function clearRateLimit(ip: string, email: string) {
-  loginRateLimitMap.delete(`${ip}:${email.toLowerCase().trim()}`);
+export async function clearRateLimit(ip: string, email: string): Promise<void> {
+  await clearRateLimitKey(loginRateLimitKey(ip, email));
 }
 
-export function resetRateLimitStore() {
-  loginRateLimitMap.clear();
+export async function resetRateLimitStore(): Promise<void> {
+  await resetAllRateLimits('login:');
 }
 
 export function extractToken(req: Request): string | null {

@@ -31,7 +31,7 @@ describe('Phase 2: Authentication Engine, TOTP 2FA & Dual Portal Routing', () =>
   });
 
   beforeEach(async () => {
-    resetRateLimitStore();
+    await resetRateLimitStore();
     // Clean database collections
     await AdminUserModel.deleteMany({});
     await TenantModel.deleteMany({});

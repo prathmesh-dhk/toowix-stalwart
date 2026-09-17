@@ -12,3 +12,4 @@ export * from './BackupRecord';
 export * from './SystemSettings';
 export * from './AdminSession';
 export * from './DomainDeletionRequest';
+export * from './RateLimitEntry';
