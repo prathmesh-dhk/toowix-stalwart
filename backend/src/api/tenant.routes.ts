@@ -353,6 +353,10 @@ tenantMeRouter.post(
       res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
       return;
     }
+    if (!req.params.domainId || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+      res.status(400).json({ error: 'INVALID_DOMAIN_ID', message: 'Domain ID is missing or malformed' });
+      return;
+    }
 
     const parseResult = dnsProviderCredentialSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -405,6 +409,10 @@ tenantMeRouter.get('/me/domains/:domainId/dns-status', async (req: Request, res:
     res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
     return;
   }
+  if (!req.params.domainId || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    res.status(400).json({ error: 'INVALID_DOMAIN_ID', message: 'Domain ID is missing or malformed' });
+    return;
+  }
 
   try {
     const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId });
@@ -439,6 +447,10 @@ tenantMeRouter.get('/me/domains/:domainId/dns-check', async (req: Request, res: 
   const tenantId = req.adminUser?.tenantId;
   if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
     res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+  if (!req.params.domainId || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    res.status(400).json({ error: 'INVALID_DOMAIN_ID', message: 'Domain ID is missing or malformed' });
     return;
   }
 

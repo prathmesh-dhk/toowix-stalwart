@@ -202,5 +202,24 @@ describe('Cloudflare Client (Offline / Mocked)', () => {
         expect.objectContaining({ data: 'letsencrypt.org', flags: 0, tag: 'issue' }),
       ]);
     });
+
+    it('caches the resolved zone to eliminate redundant /zones API lookups', async () => {
+      const mockRequest = vi
+        .fn()
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: [{ id: 'zone123', name: 'cached.com', status: 'active' }] } })
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: [] } })
+        .mockResolvedValueOnce({ status: 200, json: { success: true, result: [] } });
+      (client as any).request = mockRequest;
+
+      await client.listDnsRecords('token123', 'cached.com', 'MX', '@');
+      await client.listDnsRecords('token123', 'cached.com', 'TXT', '_dmarc');
+
+      // The first call resolved the zone, the second call reused cached zone!
+      // Total calls: 1 (zone lookup) + 1 (MX records) + 1 (TXT records) = 3 calls (not 4)
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+      expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/zones?name=cached.com', 'token123');
+      expect(mockRequest).toHaveBeenNthCalledWith(2, 'GET', '/zones/zone123/dns_records?type=MX&name=cached.com', 'token123');
+      expect(mockRequest).toHaveBeenNthCalledWith(3, 'GET', '/zones/zone123/dns_records?type=TXT&name=_dmarc.cached.com', 'token123');
+    });
   });
 });

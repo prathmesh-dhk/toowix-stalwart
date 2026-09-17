@@ -625,15 +625,20 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
     domain.dnsStatus = 'activating';
     domain.dnsConflicts = undefined;
     await saveIfExists(domain);
-    await syncProviderDnsRecords(provider, credential, domain.domainName, records);
 
-    // Verify records were actually persisted in the provider's zone
-    const providerVerification = await verifyRecordsInProviderZone(provider, credential, domain.domainName, records);
-    if (providerVerification.missingRecords.length > 0) {
-      console.warn(
-        `[DNS Retry] ${providerVerification.missingRecords.length} record(s) not confirmed in ${provider} zone for ${domain.domainName}:`,
-        providerVerification.missingRecords.map((r: IGeneratedDnsRecord) => `${r.type} ${r.name}`).join(', ')
-      );
+    try {
+      await syncProviderDnsRecords(provider, credential, domain.domainName, records);
+
+      // Verify records were actually persisted in the provider's zone
+      const providerVerification = await verifyRecordsInProviderZone(provider, credential, domain.domainName, records);
+      if (providerVerification.missingRecords.length > 0) {
+        console.warn(
+          `[DNS Retry] ${providerVerification.missingRecords.length} record(s) not confirmed in ${provider} zone for ${domain.domainName}:`,
+          providerVerification.missingRecords.map((r: IGeneratedDnsRecord) => `${r.type} ${r.name}`).join(', ')
+        );
+      }
+    } catch (syncErr: any) {
+      console.warn(`[DNS Retry] Provider sync failed for domain ${domain._id}:`, syncErr.message);
     }
   } else if (domain.dnsStatus === 'conflict') {
     // Credential was disconnected after the conflict was recorded — the

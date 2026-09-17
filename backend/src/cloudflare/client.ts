@@ -24,6 +24,12 @@ import {
 const CLOUDFLARE_API_BASE = process.env.CLOUDFLARE_API_BASE_URL || 'https://api.cloudflare.com/client/v4';
 
 export class CloudflareClient {
+  private zoneCache = new Map<string, { zone: CloudflareZone; expires: number }>();
+
+  public clearZoneCache(): void {
+    this.zoneCache.clear();
+  }
+
   /**
    * Cleans user-supplied tokens by removing surrounding quotes, whitespace,
    * and accidental "Bearer " prefixes.
@@ -102,7 +108,7 @@ export class CloudflareClient {
         url,
         {
           method,
-          timeout: 10000,
+          timeout: 30000,
           headers: {
             'Authorization': `Bearer ${cleanToken}`,
             'Content-Type': 'application/json',
@@ -147,9 +153,17 @@ export class CloudflareClient {
 
   private async resolveZone(token: string, domain: string): Promise<CloudflareZone> {
     const normalized = domain.trim().toLowerCase();
+    const cleanToken = this.sanitizeToken(token);
+    const cacheKey = `${cleanToken}:${normalized}`;
+    const cached = this.zoneCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.zone;
+    }
+
     const { status, json } = await this.request('GET', `/zones?name=${encodeURIComponent(normalized)}`, token);
 
     if (this.isAuthError(status, json)) {
+      this.zoneCache.delete(cacheKey);
       throw new CloudflareAuthError(this.formatAuthErrorMessage(json, token), json);
     }
     if (status >= 400 || json?.success === false) {
@@ -173,7 +187,9 @@ export class CloudflareClient {
     if (!zone) {
       throw new CloudflareDomainNotManagedError(normalized, json);
     }
-    return { id: zone.id, name: zone.name, status: zone.status };
+    const resolvedZone: CloudflareZone = { id: zone.id, name: zone.name, status: zone.status };
+    this.zoneCache.set(cacheKey, { zone: resolvedZone, expires: Date.now() + 10 * 60 * 1000 });
+    return resolvedZone;
   }
 
   private fqdn(domain: string, name: string): string {
