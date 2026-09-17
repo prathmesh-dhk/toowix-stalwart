@@ -13,6 +13,21 @@ import {
 // validated against OTE during development without touching real DNS.
 const GODADDY_API_BASE = process.env.GODADDY_API_BASE_URL || 'https://api.godaddy.com';
 
+/**
+ * GoDaddy's SRV record schema requires `service` and `protocol` as separate
+ * fields (e.g. "_imaps" / "_tcp") rather than accepting them folded into
+ * `name` the way BIND zone files (and this codebase's internal record
+ * model) do — a bare SRV record name is always `_service._protocol`, so
+ * these are always derivable rather than something the caller must supply.
+ * Missing them is exactly GoDaddy's "Missing record information, [protocol]"
+ * 422 error.
+ */
+function deriveSrvServiceProtocol(name: string): { service: string; protocol: string } | null {
+  const match = name.match(/^(_[^.]+)\.(_[^.]+)$/);
+  if (!match) return null;
+  return { service: match[1], protocol: match[2] };
+}
+
 export class GoDaddyClient {
   /**
    * Low-level dispatch mirroring backend/src/stalwart/client.ts's `dispatch`
@@ -161,7 +176,9 @@ export class GoDaddyClient {
         data: r.data,
         ttl: r.ttl ?? 3600,
         ...(r.priority != null ? { priority: r.priority } : {}),
-        ...(r.type === 'SRV' ? { weight: r.weight ?? 1, port: r.port ?? 0, service: r.service, protocol: r.protocol } : {}),
+        ...(r.type === 'SRV'
+          ? { weight: r.weight ?? 1, port: r.port ?? 0, ...(deriveSrvServiceProtocol(r.name) || { service: r.service, protocol: r.protocol }) }
+          : {}),
         ...(r.type === 'CAA' ? { flags: r.flags ?? 0, tag: r.tag ?? 'issue' } : {}),
       }))
     );
@@ -201,7 +218,9 @@ export class GoDaddyClient {
         data: r.data,
         ttl: r.ttl ?? 3600,
         ...(type === 'MX' && r.priority != null ? { priority: r.priority } : {}),
-        ...(type === 'SRV' ? { priority: r.priority ?? 0, weight: r.weight ?? 1, port: r.port ?? 0 } : {}),
+        ...(type === 'SRV'
+          ? { priority: r.priority ?? 0, weight: r.weight ?? 1, port: r.port ?? 0, ...(deriveSrvServiceProtocol(name) || {}) }
+          : {}),
         ...(type === 'CAA' ? { flags: r.flags ?? 0, tag: r.tag ?? 'issue' } : {}),
       }))
     );
