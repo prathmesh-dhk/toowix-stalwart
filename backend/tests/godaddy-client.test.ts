@@ -72,11 +72,103 @@ describe('GoDaddy Client (Offline / Mocked)', () => {
       expect(mockRequest).toHaveBeenCalledWith('PATCH', '/v1/domains/acme.com/records', 'key', 'secret', records);
     });
 
+    it('correctly maps SRV records with name @ and service/protocol fields', async () => {
+      const mockRequest = vi.fn().mockResolvedValue({ status: 200, json: null });
+      (client as any).request = mockRequest;
+
+      const records = [
+        {
+          type: 'SRV' as const,
+          name: '_caldavs._tcp',
+          data: 'mail.toowix.com',
+          ttl: 3600,
+          priority: 0,
+          weight: 1,
+          port: 443,
+        },
+      ];
+      await expect(client.createDnsRecords('key', 'secret', 'acme.com', records)).resolves.not.toThrow();
+      expect(mockRequest).toHaveBeenCalledWith('PATCH', '/v1/domains/acme.com/records', 'key', 'secret', [
+        {
+          type: 'SRV',
+          name: '@',
+          data: 'mail.toowix.com',
+          ttl: 3600,
+          priority: 0,
+          weight: 1,
+          port: 443,
+          service: '_caldavs',
+          protocol: '_tcp',
+        },
+      ]);
+    });
+
     it('throws GoDaddyAuthError on 403', async () => {
       (client as any).request = vi.fn().mockResolvedValue({ status: 403, json: { code: 'FORBIDDEN' } });
       await expect(
         client.createDnsRecords('key', 'secret', 'acme.com', [{ type: 'TXT', name: '@', data: 'v=spf1 mx ~all' }])
       ).rejects.toThrow(GoDaddyAuthError);
+    });
+  });
+
+  describe('SRV handling in listDnsRecords & replaceDnsRecordGroup', () => {
+    it('listDnsRecords queries /records/SRV/@ and filters by service and protocol', async () => {
+      const mockRequest = vi.fn().mockResolvedValue({
+        status: 200,
+        json: [
+          { type: 'SRV', name: '@', service: '_caldavs', protocol: '_tcp', data: 'mail.toowix.com', port: 443 },
+          { type: 'SRV', name: '@', service: '_imaps', protocol: '_tcp', data: 'mail.toowix.com', port: 993 },
+        ],
+      });
+      (client as any).request = mockRequest;
+
+      const records = await client.listDnsRecords('key', 'secret', 'acme.com', 'SRV', '_imaps._tcp');
+      expect(records).toHaveLength(1);
+      expect(records[0].service).toBe('_imaps');
+      expect(records[0].port).toBe(993);
+      expect(mockRequest).toHaveBeenCalledWith('GET', '/v1/domains/acme.com/records/SRV/%40', 'key', 'secret');
+    });
+
+    it('replaceDnsRecordGroup preserves other SRV services when replacing one SRV group', async () => {
+      const existing = [
+        { type: 'SRV', name: '@', service: '_caldavs', protocol: '_tcp', data: 'mail.toowix.com', port: 443, priority: 0, weight: 1, ttl: 3600 },
+        { type: 'SRV', name: '@', service: '_imaps', protocol: '_tcp', data: 'old.mail.com', port: 993, priority: 0, weight: 1, ttl: 3600 },
+      ];
+      const mockRequest = vi.fn().mockImplementation(async (method: string, path: string) => {
+        if (method === 'GET' && path === '/v1/domains/acme.com/records/SRV') {
+          return { status: 200, json: existing };
+        }
+        if (method === 'PUT' && path === '/v1/domains/acme.com/records/SRV') {
+          return { status: 200, json: null };
+        }
+        return { status: 404, json: null };
+      });
+      (client as any).request = mockRequest;
+
+      await client.replaceDnsRecordGroup('key', 'secret', 'acme.com', 'SRV', '_imaps._tcp', [
+        { data: 'mail.toowix.com', port: 993, priority: 0, weight: 1, ttl: 3600 },
+      ]);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'PUT',
+        '/v1/domains/acme.com/records/SRV',
+        'key',
+        'secret',
+        [
+          existing[0], // preserved _caldavs
+          {
+            type: 'SRV',
+            name: '@',
+            data: 'mail.toowix.com',
+            ttl: 3600,
+            priority: 0,
+            weight: 1,
+            port: 993,
+            service: '_imaps',
+            protocol: '_tcp',
+          },
+        ]
+      );
     });
   });
 });

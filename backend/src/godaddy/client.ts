@@ -14,18 +14,21 @@ import {
 const GODADDY_API_BASE = process.env.GODADDY_API_BASE_URL || 'https://api.godaddy.com';
 
 /**
- * GoDaddy's SRV record schema requires `service` and `protocol` as separate
- * fields (e.g. "_imaps" / "_tcp") rather than accepting them folded into
- * `name` the way BIND zone files (and this codebase's internal record
- * model) do — a bare SRV record name is always `_service._protocol`, so
- * these are always derivable rather than something the caller must supply.
- * Missing them is exactly GoDaddy's "Missing record information, [protocol]"
- * 422 error.
+ * GoDaddy's SRV record schema requires `service` (e.g. "_imaps") and `protocol`
+ * ("_tcp") as separate fields rather than accepting them folded into `name` the
+ * way BIND zone files and standard DNS models do.
+ * Furthermore, GoDaddy constructs the published FQDN as `${service}.${protocol}.${name}.${domain}`.
+ * Therefore, for root-domain SRV records, `name` must be "@" (or the subdomain if scoped).
+ * If `name` were kept as "_imaps._tcp", GoDaddy would publish it as "_imaps._tcp._imaps._tcp.domain.com".
  */
-function deriveSrvServiceProtocol(name: string): { service: string; protocol: string } | null {
-  const match = name.match(/^(_[^.]+)\.(_[^.]+)$/);
+export function deriveSrv(name: string): { service: string; protocol: string; godaddyName: string } | null {
+  const match = name.match(/^(_[^.]+)\.(_[^.]+)(?:\.(.+))?$/);
   if (!match) return null;
-  return { service: match[1], protocol: match[2] };
+  return {
+    service: match[1],
+    protocol: match[2],
+    godaddyName: match[3] && match[3] !== '@' ? match[3] : '@',
+  };
 }
 
 export class GoDaddyClient {
@@ -135,6 +138,35 @@ export class GoDaddyClient {
     name: string
   ): Promise<GoDaddyDnsRecord[]> {
     const normalized = domain.trim().toLowerCase();
+
+    if (type === 'SRV') {
+      const srv = deriveSrv(name);
+      const godaddyName = srv?.godaddyName ?? name;
+      const { status, json } = await this.request(
+        'GET',
+        `/v1/domains/${encodeURIComponent(normalized)}/records/SRV/${encodeURIComponent(godaddyName)}`,
+        apiKey,
+        apiSecret
+      );
+
+      if (status === 404) return [];
+      if (status === 401 || status === 403) {
+        throw new GoDaddyAuthError(undefined, json);
+      }
+      if (status >= 400) {
+        throw new GoDaddyError(`Failed to list DNS records: HTTP ${status}`, 'GODADDY_LIST_FAILED', json);
+      }
+      if (!Array.isArray(json)) return [];
+      if (srv) {
+        return json.filter(
+          (r: any) =>
+            r.service?.toLowerCase() === srv.service.toLowerCase() &&
+            r.protocol?.toLowerCase() === srv.protocol.toLowerCase()
+        );
+      }
+      return json;
+    }
+
     const { status, json } = await this.request(
       'GET',
       `/v1/domains/${encodeURIComponent(normalized)}/records/${type}/${encodeURIComponent(name)}`,
@@ -170,17 +202,25 @@ export class GoDaddyClient {
       `/v1/domains/${encodeURIComponent(normalized)}/records`,
       apiKey,
       apiSecret,
-      records.map((r) => ({
-        type: r.type,
-        name: r.name,
-        data: r.data,
-        ttl: r.ttl ?? 3600,
-        ...(r.priority != null ? { priority: r.priority } : {}),
-        ...(r.type === 'SRV'
-          ? { weight: r.weight ?? 1, port: r.port ?? 0, ...(deriveSrvServiceProtocol(r.name) || { service: r.service, protocol: r.protocol }) }
-          : {}),
-        ...(r.type === 'CAA' ? { flags: r.flags ?? 0, tag: r.tag ?? 'issue' } : {}),
-      }))
+      records.map((r) => {
+        const srv = r.type === 'SRV' ? deriveSrv(r.name) : null;
+        return {
+          type: r.type,
+          name: srv ? srv.godaddyName : r.name,
+          data: r.data,
+          ttl: r.ttl ?? 3600,
+          ...(r.priority != null ? { priority: r.priority } : {}),
+          ...(r.type === 'SRV'
+            ? {
+                weight: r.weight ?? 1,
+                port: r.port ?? 0,
+                service: srv?.service || r.service,
+                protocol: srv?.protocol || r.protocol,
+              }
+            : {}),
+          ...(r.type === 'CAA' ? { flags: r.flags ?? 0, tag: r.tag ?? 'issue' } : {}),
+        };
+      })
     );
 
     if (status === 401 || status === 403) {
@@ -209,6 +249,63 @@ export class GoDaddyClient {
     records: Array<{ data: string; ttl?: number; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }>
   ): Promise<void> {
     const normalized = domain.trim().toLowerCase();
+
+    if (type === 'SRV') {
+      const srv = deriveSrv(name);
+      const godaddyName = srv?.godaddyName ?? (name === '@' || !name ? '@' : name);
+      // Fetch all existing SRV records so we don't accidentally wipe out other SRV services at the same name
+      const { status: listStatus, json: listJson } = await this.request(
+        'GET',
+        `/v1/domains/${encodeURIComponent(normalized)}/records/SRV`,
+        apiKey,
+        apiSecret
+      );
+      if (listStatus === 401 || listStatus === 403) {
+        throw new GoDaddyAuthError(undefined, listJson);
+      }
+      if (listStatus >= 400 && listStatus !== 404) {
+        throw new GoDaddyError(`Failed to fetch SRV records: HTTP ${listStatus}`, 'GODADDY_LIST_FAILED', listJson);
+      }
+
+      const existingRecords: any[] = Array.isArray(listJson) ? listJson : [];
+      // Keep records that do NOT match this service + protocol + name
+      const preserved = existingRecords.filter((r) => {
+        if (!srv) return (r.name || '@').toLowerCase() !== godaddyName.toLowerCase();
+        const matchService = r.service?.toLowerCase() === srv.service.toLowerCase();
+        const matchProtocol = r.protocol?.toLowerCase() === srv.protocol.toLowerCase();
+        const matchName = (r.name || '@').toLowerCase() === godaddyName.toLowerCase();
+        return !(matchService && matchProtocol && matchName);
+      });
+
+      const newSrvRecords = records.map((r) => ({
+        type: 'SRV',
+        name: godaddyName,
+        data: r.data,
+        ttl: r.ttl ?? 3600,
+        priority: r.priority ?? 0,
+        weight: r.weight ?? 1,
+        port: r.port ?? 0,
+        ...(srv ? { service: srv.service, protocol: srv.protocol } : {}),
+      }));
+
+      const payload = [...preserved, ...newSrvRecords];
+      const { status, json } = await this.request(
+        'PUT',
+        `/v1/domains/${encodeURIComponent(normalized)}/records/SRV`,
+        apiKey,
+        apiSecret,
+        payload
+      );
+
+      if (status === 401 || status === 403) {
+        throw new GoDaddyAuthError(undefined, json);
+      }
+      if (status >= 400) {
+        throw new GoDaddyError(`Failed to replace SRV records: HTTP ${status}`, 'GODADDY_REPLACE_FAILED', json);
+      }
+      return;
+    }
+
     const { status, json } = await this.request(
       'PUT',
       `/v1/domains/${encodeURIComponent(normalized)}/records/${type}/${encodeURIComponent(name)}`,
@@ -218,9 +315,6 @@ export class GoDaddyClient {
         data: r.data,
         ttl: r.ttl ?? 3600,
         ...(type === 'MX' && r.priority != null ? { priority: r.priority } : {}),
-        ...(type === 'SRV'
-          ? { priority: r.priority ?? 0, weight: r.weight ?? 1, port: r.port ?? 0, ...(deriveSrvServiceProtocol(name) || {}) }
-          : {}),
         ...(type === 'CAA' ? { flags: r.flags ?? 0, tag: r.tag ?? 'issue' } : {}),
       }))
     );
