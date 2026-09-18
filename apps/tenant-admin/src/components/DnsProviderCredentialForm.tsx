@@ -21,11 +21,12 @@ const PROVIDER_ICONS: Record<DnsProvider, React.FC<{ className?: string }>> = {
 const inputClass =
   'w-full px-4 py-3 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 transition-colors placeholder:text-slate-400 bg-white text-slate-900 font-mono';
 
-interface SuccessInfo {
+export interface SuccessInfo {
   verifiedProviderDomain?: string | null;
   recordsSynced?: number;
   syncPending?: boolean;
   savedToVault?: boolean;
+  usedSavedKey?: boolean;
 }
 
 interface DnsProviderCredentialFormProps {
@@ -134,6 +135,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
           verifiedProviderDomain: res.verifiedProviderDomain,
           recordsSynced: res.recordsSynced,
           syncPending: res.syncPending,
+          usedSavedKey: true,
         };
         setSuccessInfo(info);
         if (createdDomainItem) {

@@ -734,7 +734,12 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                     const dom = newDom ?? createdDomain;
                     if (dom) setCreatedDomain(dom);
                     setConnected(true);
-                    goToStatus(dom);
+                    if (info.usedSavedKey) {
+                      if (dom) onDomainAdded(dom);
+                      handleClose();
+                    } else {
+                      goToStatus(dom);
+                    }
                   }}
                 />
               </div>
@@ -780,7 +785,12 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                     const dom = newDom ?? createdDomain;
                     if (dom) setCreatedDomain(dom);
                     setConnected(true);
-                    goToStatus(dom);
+                    if (info.usedSavedKey) {
+                      if (dom) onDomainAdded(dom);
+                      handleClose();
+                    } else {
+                      goToStatus(dom);
+                    }
                   }}
                 />
               </div>
@@ -826,7 +836,12 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                     const dom = newDom ?? createdDomain;
                     if (dom) setCreatedDomain(dom);
                     setConnected(true);
-                    goToStatus(dom);
+                    if (info.usedSavedKey) {
+                      if (dom) onDomainAdded(dom);
+                      handleClose();
+                    } else {
+                      goToStatus(dom);
+                    }
                   }}
                 />
               </div>

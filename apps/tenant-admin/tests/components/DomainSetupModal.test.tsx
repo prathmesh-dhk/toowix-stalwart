@@ -350,21 +350,6 @@ describe('DomainSetupModal Component', () => {
       provider: 'cloudflare',
       nameservers: ['aida.ns.cloudflare.com', 'walt.ns.cloudflare.com'],
     });
-    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
-      success: true,
-      domain: {
-        id: 'dom-new-6',
-        domainName: 'backnav.io',
-        status: 'active',
-        dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
-        mailboxCount: 0,
-        isPrimary: false,
-      },
-    });
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
 
@@ -379,5 +364,73 @@ describe('DomainSetupModal Component', () => {
     // auto-detection is always one click away from being overridden.
     await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
     expect(await screen.findByText('How do you want to set up DNS?')).toBeInTheDocument();
+  });
+
+  it('finishes setup directly and returns to dashboard when using a saved provider key', async () => {
+    vi.mocked(api.detectDnsProvider).mockResolvedValueOnce({
+      provider: 'godaddy',
+      nameservers: ['ns01.domaincontrol.com', 'ns02.domaincontrol.com'],
+    });
+    vi.mocked(api.listTenantDnsCredentials).mockResolvedValueOnce({
+      credentials: [
+        {
+          id: 'cred-1',
+          tenantId: 'tenant-1',
+          provider: 'godaddy',
+          keyPreview: 'UZ78...90AB',
+          verifiedProviderDomain: 'dhkinnovations.com',
+          isActive: true,
+          createdAt: '2026-09-18T10:00:00Z',
+          updatedAt: '2026-09-18T10:00:00Z',
+        },
+      ],
+    });
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-saved-1',
+        domainName: 'dhkinnovations.com',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+    vi.mocked(api.useSavedDnsProviderCredential).mockResolvedValueOnce({
+      success: true,
+      verifiedProviderDomain: 'dhkinnovations.com',
+      recordsSynced: 5,
+      syncPending: false,
+    });
+
+    const onDomainAdded = vi.fn();
+    const onClose = vi.fn();
+    render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
+
+    await enterDomainAndContinue('dhkinnovations.com');
+    await screen.findByText('10 Seats');
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    // Land on Connect GoDaddy with saved key button
+    expect(await screen.findByText(/^Connect GoDaddy$/)).toBeInTheDocument();
+    const useSavedBtn = await screen.findByText(/Use saved GoDaddy key/i);
+    await userEvent.click(useSavedBtn);
+
+    expect(api.useSavedDnsProviderCredential).toHaveBeenCalledWith('dom-saved-1', 'godaddy');
+    // Must NOT land on status/zone file step
+    expect(screen.queryByText(/DNS Setup — dhkinnovations.com/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/DNS Zone File/i)).not.toBeInTheDocument();
+
+    // Must immediately finish and close
+    expect(onDomainAdded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domainName: 'dhkinnovations.com',
+      })
+    );
+    expect(onClose).toHaveBeenCalled();
   });
 });
