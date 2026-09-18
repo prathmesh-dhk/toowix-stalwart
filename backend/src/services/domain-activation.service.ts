@@ -11,11 +11,43 @@ try {
   publicResolver = null;
 }
 
-const lookupMx = (name: string) => (publicResolver ? publicResolver.resolveMx(name).catch(() => resolveMx(name)) : resolveMx(name));
-const lookupTxt = (name: string) => (publicResolver ? publicResolver.resolveTxt(name).catch(() => resolveTxt(name)) : resolveTxt(name));
-const lookupCname = (name: string) => (publicResolver ? publicResolver.resolveCname(name).catch(() => resolveCname(name)) : resolveCname(name));
-const lookupSrv = (name: string) => (publicResolver ? publicResolver.resolveSrv(name).catch(() => resolveSrv(name)) : resolveSrv(name));
-const lookupCaa = (name: string) => (publicResolver ? publicResolver.resolveCaa(name).catch(() => resolveCaa(name)) : resolveCaa(name));
+const rawLookupMx = (name: string) => (publicResolver ? publicResolver.resolveMx(name).catch(() => resolveMx(name)) : resolveMx(name));
+const rawLookupTxt = (name: string) => (publicResolver ? publicResolver.resolveTxt(name).catch(() => resolveTxt(name)) : resolveTxt(name));
+const rawLookupCname = (name: string) => (publicResolver ? publicResolver.resolveCname(name).catch(() => resolveCname(name)) : resolveCname(name));
+const rawLookupSrv = (name: string) => (publicResolver ? publicResolver.resolveSrv(name).catch(() => resolveSrv(name)) : resolveSrv(name));
+const rawLookupCaa = (name: string) => (publicResolver ? publicResolver.resolveCaa(name).catch(() => resolveCaa(name)) : resolveCaa(name));
+
+/**
+ * A single UDP DNS query can transiently fail (packet loss, a resolver hop
+ * momentarily SERVFAILing, negative caching that hasn't expired yet) even
+ * when the record is genuinely live — this showed up as the live-record
+ * checker flagging a different, seemingly random subset of records as
+ * "missing" on every re-check, especially SRV/CAA/less-common TXT names.
+ * Retrying a couple of times with a short delay absorbs that noise without
+ * meaningfully slowing down the common case (a real NXDOMAIN/ENODATA still
+ * fails fast on the first attempt via each resolveX call's own behavior;
+ * this only adds latency when a query is actually flaking).
+ */
+async function withDnsRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 400): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+const lookupMx = (name: string) => withDnsRetry(() => rawLookupMx(name));
+const lookupTxt = (name: string) => withDnsRetry(() => rawLookupTxt(name));
+const lookupCname = (name: string) => withDnsRetry(() => rawLookupCname(name));
+const lookupSrv = (name: string) => withDnsRetry(() => rawLookupSrv(name));
+const lookupCaa = (name: string) => withDnsRetry(() => rawLookupCaa(name));
 import { DomainModel, IDomain, IGeneratedDnsRecord, IDnsConflictRecord } from '../db/models/Domain';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainDnsCredentialModel, DnsProviderName } from '../db/models/DomainDnsCredential';
