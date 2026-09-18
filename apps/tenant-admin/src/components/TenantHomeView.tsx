@@ -85,15 +85,18 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
     }
   });
   const [is2FaEnabled, setIs2FaEnabled] = useState<boolean>(Boolean(user?.twoFactorEnabled));
+  const [hasSavedDnsCredential, setHasSavedDnsCredential] = useState(false);
 
   const load = async () => {
     try {
-      const [tenantRes, domainsRes, auditRes, billingRes] = await Promise.all([
+      const [tenantRes, domainsRes, auditRes, billingRes, dnsCredentialsRes] = await Promise.all([
         api.getTenantMe(),
         api.listTenantDomains().catch(() => ({ domains: [] })),
         api.getAuditLogs({ limit: 50 }).catch(() => ({ logs: [] })),
         api.getTenantBillingSummary().catch(() => null),
+        api.listTenantDnsCredentials().catch(() => ({ credentials: [] })),
       ]);
+      setHasSavedDnsCredential(dnsCredentialsRes.credentials.length > 0);
       setTenant(tenantRes.tenant);
       setDomains(domainsRes.domains || []);
       setAuditLogs(auditRes.logs || []);
@@ -235,7 +238,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
       <main className="pl-60 pt-16 min-h-screen">
         <div className="page-content-scaled w-full max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
-          {!is2FaEnabled && !dismissed2FaBanner && activeTab !== 'security' && (
+          {!is2FaEnabled && !dismissed2FaBanner && activeTab !== 'security' && !(activeTab === 'overview' && domains.length === 0) && (
             <div
               role="region"
               aria-label="Two-Factor Authentication Setup Notice"
@@ -292,60 +295,152 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
           {activeTab === 'overview' && (
             <>
               {domains.length === 0 ? (
-                <div className="min-h-[60vh] flex items-center justify-center">
-                  <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xs p-8 flex flex-col gap-6">
-                    <div className="flex flex-col items-center gap-3 text-center">
-                      <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
-                        <Building2 className="w-5 h-5" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <h1 className="text-base font-semibold tracking-tight text-slate-900">
-                          Set up {tenant?.name || 'your organization'}
-                        </h1>
-                        <p className="text-xs text-slate-500">Two quick steps and you're ready to create mailboxes.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => setShowDomainModal(true)}
-                        className="w-full group px-4 py-3.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 transition-all cursor-pointer flex items-center justify-between"
-                        id="btn-add-first-domain-overview"
-                      >
+                (() => {
+                  const steps = [
+                    { key: 'domain', complete: false },
+                    { key: 'apikey', complete: hasSavedDnsCredential },
+                    { key: '2fa', complete: is2FaEnabled },
+                  ];
+                  const completedCount = steps.filter((s) => s.complete).length;
+                  return (
+                    <div className="max-w-2xl mx-auto w-full flex flex-col gap-6 pt-2">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                            Set up {tenant?.name || 'your organization'}
+                          </h1>
+                          <p className="text-xs text-slate-500">Three steps and you're ready to create mailboxes.</p>
+                        </div>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                            1
-                          </div>
-                          <div className="text-left">
-                            <span className="text-sm font-semibold text-slate-900 block">Add your first domain</span>
-                            <span className="text-[11px] text-slate-500 block">DNS records generated automatically</span>
+                          <span className="text-xs font-medium text-slate-500 shrink-0">{completedCount} of 3 complete</span>
+                          <div className="flex-1 flex gap-1.5">
+                            {steps.map((s) => (
+                              <div
+                                key={s.key}
+                                className={`h-1 flex-1 rounded-full ${s.complete ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                              />
+                            ))}
                           </div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all shrink-0" />
-                      </button>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('apikeys')}
-                        className="w-full group px-4 py-3.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
-                            <Key className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="text-left">
-                            <span className="text-sm font-semibold text-slate-900 block">
-                              Save a DNS provider API key <span className="text-slate-400 font-normal">— optional</span>
+                      <div className="flex flex-col gap-4">
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
+                          <div className="flex items-start justify-between">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                              <Globe className="w-5 h-5" />
+                            </div>
+                            <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
+                              Step 1
                             </span>
-                            <span className="text-[11px] text-slate-500 block">Reuse it for every future domain</span>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <h2 className="text-sm font-semibold text-slate-900">Add your first domain</h2>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Point a domain you own at Toowix. DNS records are generated automatically — you only paste them into your registrar.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setShowDomainModal(true)}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+                              id="btn-add-first-domain-overview"
+                            >
+                              <span>Add domain</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-xs text-slate-400">Takes about two minutes.</span>
                           </div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" />
-                      </button>
+
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
+                          <div className="flex items-start justify-between">
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                              <Key className="w-4 h-4" />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
+                                Optional
+                              </span>
+                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
+                                Step 2
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <h2 className="text-sm font-semibold text-slate-900">Save a DNS provider API key</h2>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Store the key once and Toowix writes DNS records for you on every future domain — no manual copying.
+                            </p>
+                          </div>
+                          {hasSavedDnsCredential ? (
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Saved</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('apikeys')}
+                                className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 rounded-lg shadow-xs transition-colors cursor-pointer"
+                              >
+                                Add API key
+                              </button>
+                              <span className="text-xs text-slate-400">Cloudflare, Route 53, GoDaddy and more.</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
+                          <div className="flex items-start justify-between">
+                            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                              <Shield className="w-5 h-5" />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 rounded-full">
+                                Recommended
+                              </span>
+                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
+                                Step 3
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <h2 className="text-sm font-semibold text-slate-900">Turn on two-factor authentication</h2>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Protect administrative controls and every organization mailbox from unauthorized access with a second factor.
+                            </p>
+                          </div>
+                          {is2FaEnabled ? (
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Enabled</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('security')}
+                                className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 rounded-lg shadow-xs transition-colors cursor-pointer"
+                              >
+                                Set up 2FA
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDismiss2FaBanner}
+                                className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+                              >
+                                Remind me later
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })()
               ) : (
                 <>
                   <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

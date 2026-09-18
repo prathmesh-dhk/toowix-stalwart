@@ -158,8 +158,24 @@ describe('TenantHomeView Component', () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 
     await screen.findByRole('heading', { name: /set up/i });
-    fireEvent.click(screen.getByRole('button', { name: /save a dns provider api key/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^add api key$/i }));
     expect(await screen.findByRole('heading', { name: 'API Keys' })).toBeInTheDocument();
+  });
+
+  it('marks the setup checklist steps already done (saved API key, 2FA enabled) as complete', async () => {
+    vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
+    vi.mocked(api.listTenantDnsCredentials).mockResolvedValue({
+      credentials: [
+        { provider: 'godaddy', verified: true, verifiedProviderDomain: 'acme.com', connectedAt: '2026-01-01T00:00:00.000Z', lastUsedAt: null },
+      ],
+    });
+
+    render(<TenantHomeView user={{ ...mockUser, twoFactorEnabled: true }} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+
+    await screen.findByRole('heading', { name: /set up/i });
+    expect(await screen.findByText('2 of 3 complete')).toBeInTheDocument();
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(screen.getByText('Enabled')).toBeInTheDocument();
   });
 
   it('shows the full Overview dashboard once the tenant has at least one domain', async () => {
@@ -170,12 +186,16 @@ describe('TenantHomeView Component', () => {
   });
 
   it('lists saved API keys with a nav tab, and removes one when deleted', async () => {
+    const savedGoDaddyKey = {
+      credentials: [
+        { provider: 'godaddy' as const, verified: true, verifiedProviderDomain: 'acmecorp.com', connectedAt: '2026-01-01T00:00:00.000Z', lastUsedAt: null },
+      ],
+    };
     vi.mocked(api.listTenantDnsCredentials)
-      .mockResolvedValueOnce({
-        credentials: [
-          { provider: 'godaddy', verified: true, verifiedProviderDomain: 'acmecorp.com', connectedAt: '2026-01-01T00:00:00.000Z', lastUsedAt: null },
-        ],
-      })
+      // TenantHomeView's own load() call, then ApiKeysView's mount call, both
+      // see the saved key; the reload after deleting sees it gone.
+      .mockResolvedValueOnce(savedGoDaddyKey)
+      .mockResolvedValueOnce(savedGoDaddyKey)
       .mockResolvedValueOnce({ credentials: [] });
     vi.mocked(api.deleteTenantDnsCredential).mockResolvedValue({ success: true });
 
