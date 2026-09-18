@@ -147,11 +147,16 @@ describe('TenantHomeView Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
 
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
+  });
 
-    // A second onboarding card nudges saving a DNS provider API key too,
-    // and clicking it takes the tenant to the API Keys tab.
-    expect(screen.getByText(/save your dns provider api key/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^add api key$/i }));
+  it('nudges saving a DNS provider API key on the Overview landing page when the tenant has zero domains', async () => {
+    vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
+
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+    await screen.findByRole('heading', { name: 'Overview' });
+
+    expect(await screen.findByText(/add your first domain to start provisioning mailboxes/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /or save a dns provider api key first/i }));
     expect(await screen.findByRole('heading', { name: 'API Keys' })).toBeInTheDocument();
   });
 

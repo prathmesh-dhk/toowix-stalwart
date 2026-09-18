@@ -291,6 +291,40 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
           {activeTab === 'overview' && (
             <>
+              {domains.length === 0 && (
+                <div className="relative overflow-hidden bg-gradient-to-r from-indigo-50/90 via-blue-50/40 to-white border border-indigo-100/90 rounded-2xl p-4 sm:p-5 shadow-xs">
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                      <Globe className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-sm font-semibold text-slate-900">Add your first domain to start provisioning mailboxes</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+                        DNS records (MX, SPF, DKIM) are generated automatically the moment you add a domain.
+                      </p>
+                      <div className="mt-2.5 flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setShowDomainModal(true)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
+                          id="btn-add-first-domain-overview"
+                        >
+                          <span>Add Domain</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('apikeys')}
+                          className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 transition-colors"
+                        >
+                          Or save a DNS provider API key first
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex flex-col gap-1">
                   <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
@@ -510,55 +544,29 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
           {activeTab === 'domains' && (
             <>
               {domains.length === 0 ? (
-                <div className="flex flex-col gap-4">
-                  <section className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                    <div className="flex flex-col gap-3 max-w-2xl">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
-                          Setup Required
-                        </span>
-                      </div>
-                      <h2 className="text-xl font-bold tracking-tight text-slate-900">Connect your first domain to get started</h2>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        Add an authoritative domain to allocate employee mailbox seats. Once added, your DNS records
-                        (MX, SPF, DKIM) will be generated automatically so you can start provisioning team accounts.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setShowDomainModal(true)}
-                        className="self-start px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-                        id="btn-add-first-domain-home"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Add Your First Domain</span>
-                      </button>
+                <section className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                  <div className="flex flex-col gap-3 max-w-2xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+                        Setup Required
+                      </span>
                     </div>
-                  </section>
-
-                  <section className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                    <div className="flex flex-col gap-3 max-w-2xl">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200">
-                          Optional, saves time later
-                        </span>
-                      </div>
-                      <h2 className="text-xl font-bold tracking-tight text-slate-900">Save your DNS provider API key</h2>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        If you manage domains with GoDaddy, Hostinger, or Cloudflare, save your API key once and
-                        it'll be offered automatically every time you add a domain — no re-entering it each time.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('apikeys')}
-                        className="self-start px-4 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-                        id="btn-add-api-key-nudge"
-                      >
-                        <Key className="w-4 h-4" />
-                        <span>Add API Key</span>
-                      </button>
-                    </div>
-                  </section>
-                </div>
+                    <h2 className="text-xl font-bold tracking-tight text-slate-900">Connect your first domain to get started</h2>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Add an authoritative domain to allocate employee mailbox seats. Once added, your DNS records
+                      (MX, SPF, DKIM) will be generated automatically so you can start provisioning team accounts.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowDomainModal(true)}
+                      className="self-start px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                      id="btn-add-first-domain-home"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Your First Domain</span>
+                    </button>
+                  </div>
+                </section>
               ) : (
                 <section className="flex flex-col gap-4">
                   <div className="flex items-center justify-between">
