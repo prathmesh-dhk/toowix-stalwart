@@ -89,7 +89,7 @@ describe('PlatformAdminDashboard Component', () => {
     await waitForDashboardReady();
 
     expect(screen.getByText(/Platform Console/i)).toBeInTheDocument();
-    expect(screen.getByText(/Tenant Applications/i)).toBeInTheDocument();
+    expect(screen.getByText(/Domain Applications/i)).toBeInTheDocument();
   });
 
   it('switches to Tenants tab when clicked in sidebar', async () => {

@@ -64,7 +64,7 @@ export const ApplicationReviewModal: React.FC<ApplicationReviewModalProps> = ({
         {/* Header */}
         <div className="modal-header">
           <div>
-            <h3 className="modal-title">Review Tenant Application</h3>
+            <h3 className="modal-title">Review Domain Application</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               Reference ID: <span className="font-medium text-slate-700">#{application._id.slice(-8).toUpperCase()}</span>
             </p>

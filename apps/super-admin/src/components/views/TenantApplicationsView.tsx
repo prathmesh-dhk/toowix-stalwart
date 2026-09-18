@@ -55,9 +55,9 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
       {/* Top Header & Context */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
         <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold text-slate-900">Tenant Applications</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Domain Applications</h2>
           <p className="text-xs text-slate-500">
-            Review, verify authoritative DNS credentials, and approve inbound organization tenant requests
+            Review, verify authoritative DNS credentials, and approve inbound organization domain requests
           </p>
         </div>
       </div>
@@ -129,7 +129,7 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
       <div className="data-table-container">
         {loading && applications.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-xs">
-            Loading tenant applications...
+            Loading domain applications...
           </div>
         ) : filteredApps.length === 0 ? (
           <div className="p-12 text-center">
@@ -141,8 +141,8 @@ export const TenantApplicationsView: React.FC<TenantApplicationsViewProps> = ({
             </div>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
               {filterStatus === 'PENDING_REVIEW'
-                ? 'All tenant registration requests have been reviewed and processed.'
-                : 'No tenant registration applications have been rejected.'}
+                ? 'All domain registration requests have been reviewed and processed.'
+                : 'No domain registration applications have been rejected.'}
             </p>
           </div>
         ) : (

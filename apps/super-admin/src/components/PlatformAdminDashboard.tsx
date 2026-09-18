@@ -676,7 +676,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               </div>
             </button>
 
-            {/* Tenant Applications */}
+            {/* Domain Applications */}
             <button
               onClick={() => setActiveTab('applications')}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
@@ -693,7 +693,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
                   }`}
                   strokeWidth={1.75}
                 />
-                <span className="truncate">Tenant Applications</span>
+                <span className="truncate">Domain Applications</span>
               </div>
               {pendingAppsCount > 0 ? (
                 <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/60">
