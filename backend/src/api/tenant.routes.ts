@@ -169,6 +169,30 @@ tenantMeRouter.get('/me/domains/detect-dns-provider', async (req: Request, res: 
 });
 
 // ==========================================
+// CHECK DOMAIN AVAILABILITY (/api/tenants/me/domains/check-availability)
+// ==========================================
+// Read-only uniqueness check, deliberately before domain creation — the
+// wizard calls this the moment a domain name is submitted on step 1, so a
+// domain already claimed by another organization is caught immediately
+// instead of surfacing as a "domain already exists" failure several steps
+// later (after plan selection and DNS provider setup).
+tenantMeRouter.get('/me/domains/check-availability', async (req: Request, res: Response): Promise<void> => {
+  const domain = String(req.query.domain || '').trim().toLowerCase();
+  if (!domain || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(domain)) {
+    res.status(400).json({ error: 'INVALID_DOMAIN', message: 'A valid domain name is required.' });
+    return;
+  }
+
+  try {
+    const existing = await DomainModel.findOne({ domainName: domain });
+    res.status(200).json({ available: !existing });
+  } catch (err: any) {
+    console.error('[Domain Availability Check Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to check domain availability.' });
+  }
+});
+
+// ==========================================
 // ADD NEW DOMAIN (/api/tenants/me/domains)
 // ==========================================
 const addDomainSchema = z.object({

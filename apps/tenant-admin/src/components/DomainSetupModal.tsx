@@ -52,6 +52,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   const [createdDomain, setCreatedDomain] = useState<DomainItem | null>(null);
   const [method, setMethod] = useState<SetupMethod>(null);
@@ -115,7 +116,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     return { current: 4, total: 4 };
   };
 
-  const handleContinueDomainStep = (e: React.FormEvent) => {
+  const handleContinueDomainStep = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanDomain = domainName.trim().toLowerCase();
     if (!cleanDomain || !DOMAIN_REGEX.test(cleanDomain)) {
@@ -123,6 +124,19 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       return;
     }
     setError(null);
+    setCheckingAvailability(true);
+    try {
+      const { available } = await api.checkDomainAvailability(cleanDomain);
+      if (!available) {
+        setError(`'${cleanDomain}' is already registered on Toowix. Please enter a different domain.`);
+        return;
+      }
+    } catch (err: any) {
+      setError(err.message || 'Could not check domain availability. Please try again.');
+      return;
+    } finally {
+      setCheckingAvailability(false);
+    }
     detectionRef.current = api
       .detectDnsProvider(cleanDomain)
       .catch(() => ({ provider: null, nameservers: [] }));
@@ -434,11 +448,20 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                 <div>
                   <button
                     type="submit"
-                    disabled={!domainNameValid}
+                    disabled={!domainNameValid || checkingAvailability}
                     className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <span>Continue</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    {checkingAvailability ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Checking availability...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Continue</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

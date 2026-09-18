@@ -83,6 +83,46 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     });
   });
 
+  describe('GET /api/tenants/me/domains/check-availability', () => {
+    it('reports a domain available when nothing owns it yet', async () => {
+      const res = await request(app)
+        .get('/api/tenants/me/domains/check-availability?domain=freshbrand.com')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(true);
+    });
+
+    it('reports a domain unavailable once claimed, catching it before domain creation is even attempted', async () => {
+      await request(app)
+        .post('/api/tenants/me/domains')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ domainName: 'takenbrand.com', planId: plan10Id });
+
+      const res = await request(app)
+        .get('/api/tenants/me/domains/check-availability?domain=takenbrand.com')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(false);
+
+      // Case-insensitive, matching the same normalization domain creation uses.
+      const resUpper = await request(app)
+        .get('/api/tenants/me/domains/check-availability?domain=TakenBrand.com')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(resUpper.body.available).toBe(false);
+    });
+
+    it('rejects a malformed domain name', async () => {
+      const res = await request(app)
+        .get('/api/tenants/me/domains/check-availability?domain=not a domain')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('INVALID_DOMAIN');
+    });
+  });
+
   it('allows a tenant to create multiple domains with employee tiers', async () => {
     // 1. Add first domain with 10 employees
     const res1 = await request(app)

@@ -16,6 +16,7 @@ vi.mock('../../src/api', () => ({
     listPlans: vi.fn(),
     startDomainCheckout: vi.fn(),
     detectDnsProvider: vi.fn(),
+    checkDomainAvailability: vi.fn(),
   },
 }));
 
@@ -51,6 +52,21 @@ describe('DomainSetupModal Component', () => {
     // Default: no provider detected, so existing tests keep landing on the
     // method-picker step exactly as before this feature was added.
     vi.mocked(api.detectDnsProvider).mockResolvedValue({ provider: null, nameservers: [] });
+    vi.mocked(api.checkDomainAvailability).mockResolvedValue({ available: true });
+  });
+
+  it('blocks advancing past the domain step when the domain is already taken, without touching plan/provider steps', async () => {
+    vi.mocked(api.checkDomainAvailability).mockResolvedValue({ available: false });
+
+    render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+
+    await userEvent.type(screen.getByPlaceholderText(/acme-tech\.com/i), 'takenbrand.com');
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(api.checkDomainAvailability).toHaveBeenCalledWith('takenbrand.com');
+    expect(await screen.findByText(/already registered on toowix/i)).toBeInTheDocument();
+    expect(screen.queryByText('Choose a plan')).not.toBeInTheDocument();
+    expect(api.createTenantDomain).not.toHaveBeenCalled();
   });
 
   it('renders the domain step, then the fetched plan tiers (1, 10, 25, 50, 75, 100 seats) on the next step', async () => {

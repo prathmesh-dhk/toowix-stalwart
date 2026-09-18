@@ -256,6 +256,11 @@ export const api = {
       `/api/tenants/me/domains/detect-dns-provider?domain=${encodeURIComponent(domain)}`
     ),
 
+  checkDomainAvailability: (domain: string) =>
+    request<{ available: boolean }>(
+      `/api/tenants/me/domains/check-availability?domain=${encodeURIComponent(domain)}`
+    ),
+
   connectDnsProviderCredential: (
     domainId: string,
     credential:
