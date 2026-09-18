@@ -162,7 +162,7 @@ describe('TenantHomeView Component', () => {
     expect(await screen.findByRole('heading', { name: 'API Keys' })).toBeInTheDocument();
   });
 
-  it('marks the setup checklist steps already done (saved API key, 2FA enabled) as complete', async () => {
+  it('marks the setup checklist entries already done (saved API key, 2FA enabled) as complete', async () => {
     vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
     vi.mocked(api.listTenantDnsCredentials).mockResolvedValue({
       credentials: [
@@ -173,8 +173,7 @@ describe('TenantHomeView Component', () => {
     render(<TenantHomeView user={{ ...mockUser, twoFactorEnabled: true }} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 
     await screen.findByRole('heading', { name: /set up/i });
-    expect(await screen.findByText('2 of 3 complete')).toBeInTheDocument();
-    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
     expect(screen.getByText('Enabled')).toBeInTheDocument();
   });
 

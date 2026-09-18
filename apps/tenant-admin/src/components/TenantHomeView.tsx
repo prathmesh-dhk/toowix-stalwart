@@ -296,43 +296,19 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
             <>
               {domains.length === 0 ? (
                 (() => {
-                  const steps = [
-                    { key: 'domain', complete: false },
-                    { key: 'apikey', complete: hasSavedDnsCredential },
-                    { key: '2fa', complete: is2FaEnabled },
-                  ];
-                  const completedCount = steps.filter((s) => s.complete).length;
                   return (
                     <div className="max-w-2xl mx-auto w-full flex flex-col gap-6 pt-2">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex flex-col gap-1">
-                          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                            Set up {tenant?.name || 'your organization'}
-                          </h1>
-                          <p className="text-xs text-slate-500">Three steps and you're ready to create mailboxes.</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-medium text-slate-500 shrink-0">{completedCount} of 3 complete</span>
-                          <div className="flex-1 flex gap-1.5">
-                            {steps.map((s) => (
-                              <div
-                                key={s.key}
-                                className={`h-1 flex-1 rounded-full ${s.complete ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                              />
-                            ))}
-                          </div>
-                        </div>
+                      <div className="flex flex-col gap-1">
+                        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                          Set up {tenant?.name || 'your organization'}
+                        </h1>
+                        <p className="text-xs text-slate-500">Get everything ready to start creating mailboxes.</p>
                       </div>
 
                       <div className="flex flex-col gap-4">
                         <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
-                          <div className="flex items-start justify-between">
-                            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                              <Globe className="w-5 h-5" />
-                            </div>
-                            <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
-                              Step 1
-                            </span>
+                          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                            <Globe className="w-5 h-5" />
                           </div>
                           <div className="flex flex-col gap-1">
                             <h2 className="text-sm font-semibold text-slate-900">Add your first domain</h2>
@@ -359,14 +335,9 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                             <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
                               <Key className="w-4 h-4" />
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
-                                Optional
-                              </span>
-                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
-                                Step 2
-                              </span>
-                            </div>
+                            <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
+                              Optional
+                            </span>
                           </div>
                           <div className="flex flex-col gap-1">
                             <h2 className="text-sm font-semibold text-slate-900">Save a DNS provider API key</h2>
@@ -398,14 +369,9 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                             <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                               <Shield className="w-5 h-5" />
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 rounded-full">
-                                Recommended
-                              </span>
-                              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
-                                Step 3
-                              </span>
-                            </div>
+                            <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 rounded-full">
+                              Recommended
+                            </span>
                           </div>
                           <div className="flex flex-col gap-1">
                             <h2 className="text-sm font-semibold text-slate-900">Turn on two-factor authentication</h2>
