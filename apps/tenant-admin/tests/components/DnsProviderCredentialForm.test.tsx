@@ -38,7 +38,7 @@ describe('DnsProviderCredentialForm Component', () => {
     );
 
     expect(await screen.findByText(/you have a saved godaddy key/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /use saved godaddy key/i }));
+    await userEvent.click(screen.getByRole('button', { name: /use saved key/i }));
 
     expect(api.useSavedDnsProviderCredential).toHaveBeenCalledWith('dom-1', 'godaddy');
     expect(onSuccess).toHaveBeenCalledWith(

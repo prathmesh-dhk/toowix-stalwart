@@ -1565,7 +1565,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                         <DnsProviderCredentialForm
                           domainId={activeDomain.id}
                           domainName={activeDomain.domainName}
-                          compact
                           onSuccess={() => {
                             loadDomainDnsStatus(activeDomain.id);
                             loadTenantData(activeDomain.id);

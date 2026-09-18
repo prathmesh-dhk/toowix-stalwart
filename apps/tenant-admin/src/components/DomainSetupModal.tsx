@@ -34,25 +34,10 @@ export const PROVIDER_LABEL: Record<DnsProvider, string> = {
 
 const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
-import godaddyIcon from '../assets/godaddy-icon.png';
-import hostingerLogo from '../assets/hostinger-logo.png';
-import cloudflareLogo from '../assets/cloudflare-logo.png';
+import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
 
 const inputClass =
   'w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400 bg-white text-slate-900';
-
-/* Authentic brand logos provided for GoDaddy, Hostinger, and Cloudflare */
-export const GoDaddyIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
-  <img src={godaddyIcon} alt="GoDaddy" className={`${className} object-contain`} />
-);
-
-export const HostingerIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
-  <img src={hostingerLogo} alt="Hostinger" className={`${className} object-contain`} />
-);
-
-export const CloudflareIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
-  <img src={cloudflareLogo} alt="Cloudflare" className={`${className} object-contain`} />
-);
 
 export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   isOpen,

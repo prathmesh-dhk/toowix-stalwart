@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 import { TenantDnsCredentialSummary } from '../types';
-import { CheckCircle2, AlertTriangle, AlertCircle, Loader2, Key, ShieldCheck } from 'lucide-react';
+import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
+import { AlertTriangle, AlertCircle, Loader2, Key, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
 
@@ -10,6 +11,15 @@ const PROVIDER_LABELS: Record<DnsProvider, string> = {
   hostinger: 'Hostinger',
   cloudflare: 'Cloudflare',
 };
+
+const PROVIDER_ICONS: Record<DnsProvider, React.FC<{ className?: string }>> = {
+  godaddy: GoDaddyIcon,
+  hostinger: HostingerIcon,
+  cloudflare: CloudflareIcon,
+};
+
+const inputClass =
+  'w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400 bg-white text-slate-900 font-mono';
 
 interface SuccessInfo {
   verifiedProviderDomain?: string | null;
@@ -22,11 +32,10 @@ interface DnsProviderCredentialFormProps {
   /** Omit to save straight into the tenant's credential vault (API Keys tab) instead of connecting a domain. */
   domainId?: string;
   domainName?: string;
-  /** Forces a single provider and hides the 3-way picker — used when embedded in a wizard step already scoped to one provider. */
+  /** Forces a single provider and hides the picker — used when embedded in a wizard step already scoped to one provider. */
   provider?: DnsProvider;
   onSuccess: (info: SuccessInfo) => void;
   onCancel?: () => void;
-  compact?: boolean;
 }
 
 function formatDate(iso?: string | null): string {
@@ -45,7 +54,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
   onSuccess,
   onCancel,
 }) => {
-  const [provider, setProvider] = useState<DnsProvider>(forcedProvider || 'godaddy');
+  const [provider, setProvider] = useState<DnsProvider | null>(forcedProvider || null);
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [token, setToken] = useState('');
@@ -74,7 +83,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
     };
   }, []);
 
-  const savedForProvider = savedCredentials.find((c) => c.provider === provider) || null;
+  const savedForProvider = provider ? savedCredentials.find((c) => c.provider === provider) || null : null;
 
   useEffect(() => {
     // Only domain-connect mode offers "use saved key" — vault-only saves are
@@ -91,12 +100,13 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
 
   const canSubmit =
     connectingStage === null &&
+    provider !== null &&
     (provider === 'godaddy'
       ? apiKey.trim().length > 0 && apiSecret.trim().length > 0
       : token.trim().length > 0);
 
   const handleUseSaved = async () => {
-    if (!domainId) return;
+    if (!domainId || !provider) return;
     setError(null);
     setConnectingStage('verifying_cred');
     try {
@@ -118,7 +128,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || !provider) return;
 
     setError(null);
     setConnectingStage('verifying_cred');
@@ -158,41 +168,74 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
     }
   };
 
-  if (successInfo) {
+  if (successInfo && provider) {
     return (
-      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col gap-2">
-        <div className="flex items-center gap-2 text-emerald-800 font-semibold text-xs">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{PROVIDER_LABELS[provider]} {successInfo.savedToVault ? 'Key Saved' : 'Connected'}</span>
-        </div>
-        <p className="text-xs text-emerald-700">
-          {successInfo.savedToVault ? (
-            successInfo.verifiedProviderDomain ? (
-              <>Saved — we verified it against <strong>{successInfo.verifiedProviderDomain}</strong>. It'll be offered automatically next time you set up a domain with {PROVIDER_LABELS[provider]}.</>
+      <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-start gap-3">
+        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-semibold text-emerald-900">
+            {PROVIDER_LABELS[provider]} {successInfo.savedToVault ? 'Key Saved' : 'Connected'}
+          </span>
+          <p className="text-xs text-emerald-700 leading-relaxed">
+            {successInfo.savedToVault ? (
+              successInfo.verifiedProviderDomain ? (
+                <>We verified it against <strong>{successInfo.verifiedProviderDomain}</strong>. It'll be offered automatically next time you set up a domain with {PROVIDER_LABELS[provider]}.</>
+              ) : (
+                <>Since you don't have a domain yet, we'll verify it the first time you actually use it.</>
+              )
+            ) : successInfo.syncPending ? (
+              <>Publishing your DNS records to <strong>{successInfo.verifiedProviderDomain}</strong> now — this runs in the background and usually takes a minute or two.</>
             ) : (
-              <>Saved for next time. Since you don't have a domain yet, we'll verify it the first time you actually use it.</>
-            )
-          ) : successInfo.syncPending ? (
-            <>Publishing your DNS records to <strong>{successInfo.verifiedProviderDomain}</strong> now — this runs in the background and usually takes a minute or two. Check DNS Setup status to confirm once it's done.</>
-          ) : (
-            <>Connected to <strong>{successInfo.verifiedProviderDomain}</strong> in your <strong>{PROVIDER_LABELS[provider]}</strong> account.</>
-          )}
-        </p>
+              <>Connected to <strong>{successInfo.verifiedProviderDomain}</strong> in your {PROVIDER_LABELS[provider]} account.</>
+            )}
+          </p>
+        </div>
       </div>
     );
   }
 
-  if (domainId && entryChoice === 'pending' && savedForProvider) {
+  // Provider not chosen yet (only reachable when not forced to one) — SSO-style icon rows, matching the wizard's method-picker step.
+  if (!forcedProvider && !provider) {
     return (
       <div className="flex flex-col gap-3">
-        <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/60 flex flex-col gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-900">
-            <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-            <span>You have a saved {PROVIDER_LABELS[provider]} key</span>
+        {(['godaddy', 'hostinger', 'cloudflare'] as const).map((p) => {
+          const Icon = PROVIDER_ICONS[p];
+          return (
+            <button
+              key={p}
+              type="button"
+              aria-label={PROVIDER_LABELS[p]}
+              onClick={() => {
+                setProvider(p);
+                setError(null);
+              }}
+              className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
+            >
+              <div className="flex items-center gap-3.5">
+                <Icon className="w-7 h-7 shrink-0" />
+                <span className="text-sm font-semibold text-slate-900">{PROVIDER_LABELS[p]}</span>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (!provider) return null;
+
+  if (domainId && entryChoice === 'pending' && savedForProvider) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-xl flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold text-indigo-900">You have a saved {PROVIDER_LABELS[provider]} key</span>
+            {savedForProvider.connectedAt && (
+              <p className="text-xs text-indigo-700">Connected {formatDate(savedForProvider.connectedAt)}.</p>
+            )}
           </div>
-          {savedForProvider.connectedAt && (
-            <p className="text-[11px] text-indigo-700">Connected {formatDate(savedForProvider.connectedAt)}.</p>
-          )}
         </div>
 
         {error && (
@@ -202,12 +245,12 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => setEntryChoice('manual')}
             disabled={connectingStage !== null}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
           >
             Enter different credentials
           </button>
@@ -215,17 +258,17 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             type="button"
             onClick={handleUseSaved}
             disabled={connectingStage !== null}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {connectingStage !== null ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Verifying...</span>
               </>
             ) : (
               <>
-                <Key className="w-3.5 h-3.5" />
-                <span>Use Saved {PROVIDER_LABELS[provider]} Key</span>
+                <span>Use Saved Key</span>
+                <ShieldCheck className="w-3.5 h-3.5" />
               </>
             )}
           </button>
@@ -235,38 +278,31 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {/* Provider Selector */}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      {/* When embedded in a wizard step already scoped to one provider, that
+          step renders its own icon+label header — showing another one here
+          would duplicate it, so this only appears in freeform (picker) mode. */}
       {!forcedProvider && (
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-slate-700">DNS Provider</label>
-          <div className="grid grid-cols-3 gap-2">
-            {(['godaddy', 'hostinger', 'cloudflare'] as const).map((p) => {
-              const isSelected = provider === p;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => {
-                    setProvider(p);
-                    setError(null);
-                  }}
-                  className={`py-2 px-3 rounded-xl border text-xs font-medium transition-all text-center cursor-pointer ${
-                    isSelected
-                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 shadow-2xs font-semibold'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {PROVIDER_LABELS[p]}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex items-center gap-2">
+          {React.createElement(PROVIDER_ICONS[provider], { className: 'w-5 h-5 shrink-0' })}
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            {PROVIDER_LABELS[provider]} DNS Management
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setProvider(null);
+              setError(null);
+            }}
+            className="ml-auto text-xs font-medium text-indigo-600 hover:underline cursor-pointer"
+          >
+            Switch provider
+          </button>
         </div>
       )}
 
       {domainId && savedForProvider && (
-        <p className="text-[11px] text-slate-500 -mt-2">
+        <p className="text-xs text-slate-500 -mt-3">
           This replaces your saved {PROVIDER_LABELS[provider]} key.{' '}
           <button type="button" onClick={() => setEntryChoice('pending')} className="text-indigo-600 hover:underline cursor-pointer">
             Use the saved one instead
@@ -274,87 +310,104 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         </p>
       )}
       {!domainId && savedForProvider && (
-        <p className="text-[11px] text-slate-500 -mt-2">You already have a saved {PROVIDER_LABELS[provider]} key — saving will replace it.</p>
+        <p className="text-xs text-slate-500 -mt-3">You already have a saved {PROVIDER_LABELS[provider]} key — saving will replace it.</p>
       )}
 
       {/* Credential Inputs */}
       {provider === 'godaddy' ? (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="dns-cred-godaddy-key" className="text-xs font-medium text-slate-700">GoDaddy API Key</label>
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Generate a Personal Access Token / API key+secret at{' '}
+            <span className="font-mono text-slate-700">developer.godaddy.com</span>.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="dns-cred-godaddy-key" className="text-xs font-semibold text-slate-700">GoDaddy API Key</label>
             <input
               id="dns-cred-godaddy-key"
               type="text"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="e.g. dL8Q... (Production Key)"
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+              className={inputClass}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="dns-cred-godaddy-secret" className="text-xs font-medium text-slate-700">GoDaddy API Secret</label>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="dns-cred-godaddy-secret" className="text-xs font-semibold text-slate-700">GoDaddy API Secret</label>
             <input
               id="dns-cred-godaddy-secret"
               type="password"
               value={apiSecret}
               onChange={(e) => setApiSecret(e.target.value)}
               placeholder="API Secret"
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+              className={inputClass}
             />
           </div>
-          <p className="text-[11px] text-slate-500">
-            Generate in GoDaddy Developer Portal under <strong>API Keys (Production)</strong>
-            {domainName ? <> with access to domain <strong>{domainName}</strong></> : null}.
-          </p>
+          {domainName && (
+            <p className="text-[11px] text-slate-500">
+              Needs access to domain <strong>{domainName}</strong>.
+            </p>
+          )}
         </div>
       ) : provider === 'hostinger' ? (
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="dns-cred-hostinger-token" className="text-xs font-medium text-slate-700">Hostinger API Token</label>
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Generate an API token in hPanel at <span className="font-mono text-slate-700">hostinger.com</span>{' '}
+            (Profile &rarr; Business &amp; Dev Tools &rarr; API Access).
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="dns-cred-hostinger-token" className="text-xs font-semibold text-slate-700">Hostinger API Token</label>
             <input
               id="dns-cred-hostinger-token"
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Hostinger API Token"
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+              className={inputClass}
             />
           </div>
-          <p className="text-[11px] text-slate-500">
-            Generate in Hostinger Profile → API Tokens with DNS Edit permissions.
-          </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="dns-cred-cloudflare-token" className="text-xs font-medium text-slate-700">Cloudflare API Token</label>
+        <div className="flex flex-col gap-4">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-1.5 text-xs text-slate-600 leading-relaxed">
+            <span className="font-semibold text-slate-800">Creating your Cloudflare API Token:</span>
+            <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+              <li>
+                Go to <span className="font-mono font-medium">dash.cloudflare.com</span> &rarr; My Profile &rarr;{' '}
+                <strong>API Tokens</strong>
+              </li>
+              <li>
+                Click <strong>Create Token</strong> &rarr; use the <strong>Edit zone DNS</strong> template
+              </li>
+              {domainName && (
+                <li>
+                  Zone Resources: <strong>Include &rarr; Specific zone &rarr; {domainName}</strong>
+                </li>
+              )}
+              <li>
+                Confirm permissions: <strong>Zone: DNS: Edit</strong> and <strong>Zone: Zone: Read</strong>
+              </li>
+              <li>Copy the 40-character token below (not the Global API Key)</li>
+            </ol>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="dns-cred-cloudflare-token" className="text-xs font-semibold text-slate-700">Cloudflare API Token</label>
             <input
               id="dns-cred-cloudflare-token"
               type="password"
+              placeholder="Paste 40-character API Token"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="e.g. 40-character API Token"
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+              className={inputClass}
             />
-          </div>
-
-          {looksLikeCloudflareGlobalKey && (
-            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2 text-[11px] text-amber-800">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <strong>Global API Key detected:</strong> Cloudflare Global API Keys cannot be used as Bearer tokens. Please generate a scoped <strong>API Token</strong> using the <em>Edit zone DNS</em> template.
-              </div>
-            </div>
-          )}
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-[11px] text-slate-600 space-y-1.5">
-            <div className="font-semibold text-slate-800">Creating your Cloudflare API Token:</div>
-            <ol className="list-decimal pl-4 space-y-0.5 text-slate-500">
-              <li>Open Cloudflare Dashboard → <strong>My Profile</strong> → <strong>API Tokens</strong></li>
-              <li>Click <strong>Create Token</strong> and choose the <strong>Edit zone DNS</strong> template</li>
-              <li>Ensure permissions include <strong>Zone: DNS: Edit</strong> and <strong>Zone: Zone: Read</strong></li>
-              {domainName ? <li>Set Zone Resources to <strong>Specific zone → {domainName}</strong></li> : null}
-            </ol>
+            {looksLikeCloudflareGlobalKey && (
+              <p className="text-[11px] text-amber-600 font-medium flex items-start gap-1.5 mt-1">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>
+                  That looks like a Global API Key (37 hex chars). Cloudflare needs an <strong>API Token</strong>{' '}
+                  instead — My Profile &rarr; API Tokens &rarr; Create Token &rarr; "Edit zone DNS".
+                </span>
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -380,13 +433,13 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       )}
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+      <div className="flex items-center justify-end gap-3">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
             disabled={connectingStage !== null}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -394,17 +447,17 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         <button
           type="submit"
           disabled={!canSubmit}
-          className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {connectingStage !== null ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Verifying credential...</span>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Verifying...</span>
             </>
           ) : (
             <>
-              <Key className="w-3.5 h-3.5" />
-              <span>{domainId ? 'Connect DNS Provider' : 'Save API Key'}</span>
+              <span>{domainId ? 'Verify & Connect' : 'Save API Key'}</span>
+              {domainId ? <ShieldCheck className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
             </>
           )}
         </button>

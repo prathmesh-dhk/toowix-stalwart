@@ -122,7 +122,7 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText(/we detected/i)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/GoDaddy API Key/i), 'test-key');
     await userEvent.type(screen.getByLabelText(/GoDaddy API Secret/i), 'test-secret');
-    await userEvent.click(screen.getByRole('button', { name: /connect dns provider/i }));
+    await userEvent.click(screen.getByRole('button', { name: /verify . connect/i }));
 
     expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
       'dom-new-1',
@@ -186,7 +186,7 @@ describe('DomainSetupModal Component', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^hostinger$/i }));
     await userEvent.type(screen.getByLabelText(/Hostinger API Token/i), 'hostinger-tok');
-    await userEvent.click(screen.getByRole('button', { name: /connect dns provider/i }));
+    await userEvent.click(screen.getByRole('button', { name: /verify . connect/i }));
 
     expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
       'dom-new-2',
@@ -233,7 +233,7 @@ describe('DomainSetupModal Component', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^cloudflare$/i }));
     await userEvent.type(screen.getByLabelText(/Cloudflare API Token/i), 'cf-tok');
-    await userEvent.click(screen.getByRole('button', { name: /connect dns provider/i }));
+    await userEvent.click(screen.getByRole('button', { name: /verify . connect/i }));
 
     expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
       'dom-new-3',
