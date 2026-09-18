@@ -59,4 +59,68 @@ describe('RegisterView Component', () => {
       expect(screen.getByText('admin@mycompany.com')).toBeInTheDocument();
     });
   });
+
+  it('allows 1-character security question answers and calls publicRegister', async () => {
+    vi.mocked(api.publicSendContactEmailOtp).mockResolvedValueOnce({
+      success: true,
+      message: 'Verification code sent',
+      expiresMinutes: 10,
+    });
+    vi.mocked(api.publicVerifyContactEmailOtp).mockResolvedValueOnce({
+      success: true,
+      verificationToken: 'test-otp-token-xyz',
+      message: 'Email verified',
+    });
+    vi.mocked(api.publicRegister).mockResolvedValueOnce({
+      success: true,
+      user: { id: 'user-1', email: 'admin@mycompany.com', role: 'TENANT_ADMIN' },
+      message: 'Account created successfully',
+    });
+
+    render(<RegisterView onBackToLogin={onBackToLogin} />);
+
+    // Step 1: Email
+    await userEvent.type(screen.getByPlaceholderText(/abc@mail\.com/i), 'admin@mycompany.com');
+    fireEvent.click(screen.getByRole('button', { name: /^next/i }));
+
+    // Step 2: OTP
+    await waitFor(() => expect(screen.getByText('Verify your email')).toBeInTheDocument());
+    const digitInputs = screen.getAllByRole('textbox');
+    for (let i = 0; i < 6; i++) {
+      fireEvent.change(digitInputs[i], { target: { value: String(i + 1) } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+
+    // Step 3: Password
+    await waitFor(() => expect(screen.getByText('Set your password')).toBeInTheDocument());
+    const pwdInput = screen.getByLabelText(/^password$/i);
+    const confirmPwdInput = screen.getByLabelText(/^confirm password$/i);
+    await userEvent.type(pwdInput, 'Password123!');
+    await userEvent.type(confirmPwdInput, 'Password123!');
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+
+    // Step 4: Security questions - single character answers
+    await waitFor(() => expect(screen.getByText('Security questions')).toBeInTheDocument());
+    await userEvent.type(screen.getByPlaceholderText('Answer 1'), 'A');
+    await userEvent.type(screen.getByPlaceholderText('Answer 2'), 'B');
+    await userEvent.type(screen.getByPlaceholderText('Answer 3'), 'C');
+
+    const submitBtn = screen.getByRole('button', { name: /complete registration/i });
+    expect(submitBtn).not.toBeDisabled();
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(api.publicRegister).toHaveBeenCalledWith({
+        email: 'admin@mycompany.com',
+        emailVerificationToken: 'test-otp-token-xyz',
+        password: 'Password123!',
+        securityQuestions: [
+          { question: expect.any(String), answer: 'A' },
+          { question: expect.any(String), answer: 'B' },
+          { question: expect.any(String), answer: 'C' },
+        ],
+      });
+      expect(screen.getByText('Registration successful!')).toBeInTheDocument();
+    });
+  });
 });

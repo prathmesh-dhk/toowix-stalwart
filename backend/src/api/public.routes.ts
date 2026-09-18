@@ -263,7 +263,7 @@ const directRegisterSchema = z.object({
     .array(
       z.object({
         question: z.string().min(3, 'Security question is required'),
-        answer: z.string().min(2, 'Security answer must be at least 2 characters'),
+        answer: z.string().min(1, 'Security answer is required'),
       })
     )
     .length(3, 'Exactly 3 security questions are required')
@@ -441,7 +441,7 @@ const registerTenantSchema = z.object({
     .array(
       z.object({
         question: z.string().min(3, 'Security question must be at least 3 characters'),
-        answer: z.string().min(2, 'Security answer must be at least 2 characters'),
+        answer: z.string().min(1, 'Security answer is required'),
       })
     )
     .optional()

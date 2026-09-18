@@ -208,15 +208,15 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     e.preventDefault();
     setError(null);
 
-    if (!sq1Answer.trim() || sq1Answer.trim().length < 2) {
+    if (!sq1Answer.trim()) {
       setError('Please provide an answer for Security Question 1.');
       return;
     }
-    if (!sq2Answer.trim() || sq2Answer.trim().length < 2) {
+    if (!sq2Answer.trim()) {
       setError('Please provide an answer for Security Question 2.');
       return;
     }
-    if (!sq3Answer.trim() || sq3Answer.trim().length < 2) {
+    if (!sq3Answer.trim()) {
       setError('Please provide an answer for Security Question 3.');
       return;
     }

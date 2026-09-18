@@ -150,4 +150,29 @@ describe('Direct Self-Service Registration Flow', () => {
     expect(loginRes.body.user.email).toBe(email);
     expect(loginRes.body.user.role).toBe('TENANT_ADMIN');
   });
+
+  it('accepts single-character security question answers', async () => {
+    const email = 'singlechar@startup.io';
+    const password = 'SuperSecretPassword123!';
+    const token = generateContactEmailVerificationToken(email);
+
+    const regRes = await request(app)
+      .post('/api/public/register')
+      .send({
+        email,
+        emailVerificationToken: token,
+        password,
+        securityQuestions: [
+          { question: 'What was the name of your first pet?', answer: 'A' },
+          { question: 'In what city were you born?', answer: 'B' },
+          { question: 'What was your high school mascot?', answer: 'C' },
+        ],
+      });
+
+    expect(regRes.status).toBe(201);
+    expect(regRes.body.success).toBe(true);
+
+    const userDoc = await AdminUserModel.findOne({ email });
+    expect(userDoc?.securityQuestions).toHaveLength(3);
+  });
 });
