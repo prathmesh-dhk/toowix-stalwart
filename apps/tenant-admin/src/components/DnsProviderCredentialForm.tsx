@@ -283,51 +283,52 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
   if (!provider) return null;
 
   if ((domainId || domainName) && entryChoice === 'pending' && savedForProvider) {
+    const Icon = PROVIDER_ICONS[provider];
     return (
-      <div className="flex flex-col gap-5">
-        <div className={`p-4 rounded-xl flex items-start gap-3 ${isDark ? 'bg-indigo-950/40 border border-indigo-500/30' : 'bg-indigo-50/60 border border-indigo-200/80'}`}>
-          <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-          <div className="flex flex-col gap-0.5">
-            <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-indigo-900'}`}>You have a saved {PROVIDER_LABELS[provider]} key</span>
-            {savedForProvider.connectedAt && (
-              <p className={`text-xs ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>Connected {formatDate(savedForProvider.connectedAt)}.</p>
-            )}
-          </div>
-        </div>
-
+      <div className="flex flex-col gap-4">
         {error && (
-          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2 text-xs text-rose-700">
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-700">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
-        <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={handleUseSaved}
+          disabled={connectingStage !== null}
+          aria-label="Use saved key"
+          className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/20 transition-colors cursor-pointer flex items-center justify-between bg-white text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <div className="flex items-center gap-3.5">
+            <Icon className="w-7 h-7 shrink-0" />
+            <div>
+              <span className="text-sm font-semibold text-slate-900 block group-hover:text-indigo-950">
+                Use saved {PROVIDER_LABELS[provider]} key
+              </span>
+              <span className="text-[11px] text-slate-500 block mt-0.5">
+                You have a saved {PROVIDER_LABELS[provider]} key{savedForProvider.connectedAt ? ` · Connected ${formatDate(savedForProvider.connectedAt)}` : ''}
+              </span>
+            </div>
+          </div>
+          {connectingStage !== null ? (
+            <div className="flex items-center gap-2 text-indigo-600 text-xs font-semibold">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Verifying...</span>
+            </div>
+          ) : (
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-transform" />
+          )}
+        </button>
+
+        <div>
           <button
             type="button"
             onClick={() => setEntryChoice('manual')}
             disabled={connectingStage !== null}
-            className={`text-xs font-medium ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-700'} transition-colors cursor-pointer`}
+            className="text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline transition-colors cursor-pointer"
           >
             Enter different credentials
-          </button>
-          <button
-            type="button"
-            onClick={handleUseSaved}
-            disabled={connectingStage !== null}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {connectingStage !== null ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Verifying...</span>
-              </>
-            ) : (
-              <>
-                <span>Use Saved Key</span>
-                <ShieldCheck className="w-3.5 h-3.5" />
-              </>
-            )}
           </button>
         </div>
       </div>
