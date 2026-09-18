@@ -150,13 +150,19 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
     }
   };
 
+  const isProceedingRef = useRef(false);
+
   // Step 2A: Proceed from Method Selection to Verification Step
   const handleProceedToVerify = async () => {
+    if (sendingEmailOtp || isProceedingRef.current) return;
     setError(null);
-    setDigits(['', '', '', '', '', '']);
     if (twoFactorMethod === 'email' && !emailOtpSent) {
-      await handleSendEmailOtp();
+      isProceedingRef.current = true;
+      const sent = await handleSendEmailOtp();
+      isProceedingRef.current = false;
+      if (!sent) return;
     }
+    setDigits(['', '', '', '', '', '']);
     setTwoFactorStep('verify');
   };
 
@@ -170,8 +176,9 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
   }, [tempToken, twoFactorStep]);
 
   // Step 2: Send OTP to email
-  const handleSendEmailOtp = async () => {
-    if (!tempToken) return;
+  const handleSendEmailOtp = async (): Promise<boolean> => {
+    if (!tempToken) return false;
+    if (sendingEmailOtp) return false;
     setError(null);
     setSendingEmailOtp(true);
     try {
@@ -180,8 +187,10 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
       if (res.isRecoveryEmail !== undefined) setIsRecoveryEmail(res.isRecoveryEmail);
       setEmailOtpSent(true);
       setEmailOtpCooldown(60);
+      return true;
     } catch (err: any) {
       setError(err.message || 'Failed to send verification code. Please try again.');
+      return false;
     } finally {
       setSendingEmailOtp(false);
     }
@@ -509,7 +518,7 @@ export const TenantAdminLoginView: React.FC<TenantAdminLoginViewProps> = ({
                           className="btn btn-primary btn-lg w-full flex items-center justify-center gap-2"
                           type="button"
                           onClick={handleProceedToVerify}
-                          disabled={sendingEmailOtp}
+                          disabled={sendingEmailOtp || isProceedingRef.current}
                         >
                           <span>{sendingEmailOtp ? 'Sending code...' : 'Continue'}</span>
                           <ArrowRight className="w-4 h-4" />

@@ -203,5 +203,90 @@ describe('SuperAdminLoginView Component', () => {
       );
     });
   });
+
+  it('dispatches Email OTP strictly once only when Continue button is clicked', async () => {
+    vi.mocked(api.superAdminLogin).mockResolvedValueOnce({
+      requires2FA: true,
+      tempToken: 'super-temp-email-otp-token',
+      defaultMethod: 'email',
+      hasEmail2Fa: true,
+      maskedEmail: 'r***t@toowix.com',
+      user: {
+        id: 'super-1',
+        email: 'root@toowix.com',
+        role: 'SUPER_ADMIN',
+      },
+    });
+
+    vi.mocked(api.send2FaLoginOtp).mockResolvedValueOnce({
+      success: true,
+      message: 'Verification code sent to email',
+      maskedEmail: 'r***t@toowix.com',
+      expiresMinutes: 10,
+    });
+
+    vi.mocked(api.verify2Fa).mockResolvedValueOnce({
+      token: 'super-jwt-token-email',
+      user: {
+        id: 'super-1',
+        email: 'root@toowix.com',
+        role: 'SUPER_ADMIN',
+      },
+    });
+
+    render(
+      <SuperAdminLoginView
+        onSuccess={onSuccess}
+        onForgotPassword={onForgotPassword}
+      />
+    );
+
+    await userEvent.type(screen.getByPlaceholderText(/admin@toowix.com/i), 'root@toowix.com');
+    await userEvent.type(screen.getByLabelText(/password/i), 'SuperMasterKey2026!');
+
+    fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    // 2FA challenge screen appears - Step 1: Method selection
+    expect(await screen.findByText(/two-factor authentication/i)).toBeInTheDocument();
+    expect(screen.getByText(/choose a verification method to complete sign in/i)).toBeInTheDocument();
+
+    // Verify OTP was NOT sent during initial credentials check
+    expect(api.send2FaLoginOtp).not.toHaveBeenCalled();
+
+    // Click Continue to proceed to OTP entry
+    const continueBtn = screen.getByRole('button', { name: /continue/i });
+    fireEvent.click(continueBtn);
+
+    // Verify OTP is dispatched strictly once
+    await waitFor(() => {
+      expect(api.send2FaLoginOtp).toHaveBeenCalledTimes(1);
+      expect(api.send2FaLoginOtp).toHaveBeenCalledWith('super-temp-email-otp-token');
+    });
+
+    // Step 2: Verify Code screen is now displayed
+    expect(await screen.findByText(/verify email code/i)).toBeInTheDocument();
+
+    // Fill 6 digits
+    const inputs = screen.getAllByRole('textbox');
+    expect(inputs.length).toBe(6);
+    for (let i = 0; i < 6; i++) {
+      fireEvent.change(inputs[i], { target: { value: String(i + 1) } });
+    }
+
+    const verifyBtn = screen.getByRole('button', { name: /verify and sign in/i });
+    fireEvent.click(verifyBtn);
+
+    await waitFor(() => {
+      expect(api.verify2Fa).toHaveBeenCalledWith('super-temp-email-otp-token', '123456', false, 'email');
+      expect(onSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'super-1',
+          email: 'root@toowix.com',
+          role: 'SUPER_ADMIN',
+        })
+      );
+    });
+  });
 });
+
 

@@ -19,7 +19,7 @@ const PROVIDER_ICONS: Record<DnsProvider, React.FC<{ className?: string }>> = {
 };
 
 const inputClass =
-  'w-full px-4 py-3 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400 bg-white text-slate-900 font-mono';
+  'w-full px-4 py-3 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 transition-colors placeholder:text-slate-400 bg-white text-slate-900 font-mono';
 
 interface SuccessInfo {
   verifiedProviderDomain?: string | null;
@@ -373,24 +373,15 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       {/* Credential Inputs */}
       {provider === 'godaddy' ? (
         <div className="flex flex-col gap-4">
-          <div className={`rounded-xl p-3.5 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-slate-50 border border-slate-200'}`}>
-            <div className="flex items-center gap-2">
-              <GoDaddyIcon className="w-5 h-5 shrink-0" />
-              <span className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>GoDaddy API Key Setup</span>
-            </div>
-            <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Create a <strong>Production</strong> API Key &amp; Secret{domainName ? <> scoped to <strong>{domainName}</strong></> : null}.
-            </p>
+          <div>
             <a
               href="https://classic-developer.godaddy.com/keys"
               target="_blank"
               rel="noopener noreferrer"
-              className={`self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                isDark ? 'text-indigo-400 bg-slate-800 border border-slate-700 hover:bg-slate-700' : 'text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50'
-              }`}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer w-fit"
             >
+              <GoDaddyIcon className="w-4 h-4 shrink-0" />
               <span>Get API Keys</span>
-              <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -418,24 +409,15 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         </div>
       ) : provider === 'hostinger' ? (
         <div className="flex flex-col gap-4">
-          <div className={`rounded-xl p-3.5 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-slate-50 border border-slate-200'}`}>
-            <div className="flex items-center gap-2">
-              <HostingerIcon className="w-5 h-5 shrink-0" />
-              <span className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>Hostinger API Token Setup</span>
-            </div>
-            <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Generate an API token in hPanel (Account &rarr; API).
-            </p>
+          <div>
             <a
               href="https://hpanel.hostinger.com/api"
               target="_blank"
               rel="noopener noreferrer"
-              className={`self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                isDark ? 'text-indigo-400 bg-slate-800 border border-slate-700 hover:bg-slate-700' : 'text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50'
-              }`}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer w-fit"
             >
+              <HostingerIcon className="w-4 h-4 shrink-0" />
               <span>Get API Keys</span>
-              <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -452,35 +434,15 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className={`rounded-xl p-4 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-slate-50 border border-slate-200'}`}>
-            <div className="flex items-center gap-2">
-              <CloudflareIcon className="w-5 h-5 shrink-0" />
-              <span className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>Creating your Cloudflare API Token</span>
-            </div>
-            <ol className={`list-decimal list-inside space-y-1 text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              <li>
-                Click <strong>Create Token</strong> below &rarr; use the <strong>Edit zone DNS</strong> template
-              </li>
-              {domainName && (
-                <li>
-                  Zone Resources: <strong>Include &rarr; Specific zone &rarr; {domainName}</strong>
-                </li>
-              )}
-              <li>
-                Confirm permissions: <strong>Zone: DNS: Edit</strong> and <strong>Zone: Zone: Read</strong>
-              </li>
-              <li>Copy the 40-character token below (not the Global API Key)</li>
-            </ol>
+          <div>
             <a
               href="https://dash.cloudflare.com/profile/api-tokens"
               target="_blank"
               rel="noopener noreferrer"
-              className={`self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                isDark ? 'text-indigo-400 bg-slate-800 border border-slate-700 hover:bg-slate-700' : 'text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50'
-              }`}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer w-fit"
             >
+              <CloudflareIcon className="w-4 h-4 shrink-0" />
               <span>Get API Keys</span>
-              <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -542,7 +504,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             type="button"
             onClick={onCancel}
             disabled={connectingStage !== null}
-            className={`px-4 py-2 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+            className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
               isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -552,7 +514,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         <button
           type="submit"
           disabled={!canSubmit}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-sm font-semibold shadow-sm hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {connectingStage !== null ? (
             <>

@@ -300,26 +300,9 @@ export async function authenticatePortalUser(
     const tempToken = generate2FaPendingToken(userContext);
     const defaultMethod = user.twoFactorMethod || 'totp';
 
-    if (defaultMethod === 'email') {
-      const otpCode = crypto.randomInt(100000, 999999).toString();
-      const codeHash = hashSecurityAnswer(otpCode);
-      user.loginOtp = {
-        codeHash,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-        attempts: 0,
-      };
-      await user.save();
-      try {
-        await emailService.sendLogin2FaOtpEmail({
-          to: user.email,
-          recipientName: user.email,
-          otpCode,
-          expiresMinutes: 10,
-        });
-      } catch (err) {
-        console.error('Failed to auto-send 2FA email OTP during login:', err);
-      }
-    }
+    // Note: Do not auto-send OTP here during credentials check.
+    // OTP is sent strictly when the user clicks the "Continue" button on the 2FA selection screen (hitting /api/auth/2fa/send-otp).
+
 
     const hasDistinctRecovery = !!(user.recoveryEmail && user.recoveryEmail.trim().toLowerCase() !== user.email.trim().toLowerCase());
     const destinationEmail = (user.twoFactorMethod === 'email' || !hasDistinctRecovery) ? user.email : (user.recoveryEmail || user.email);

@@ -195,8 +195,20 @@ describe('Account Security & Recovery Email Settings API Tests', () => {
     expect(loginRes.body.defaultMethod).toBe('email');
     expect(loginRes.body.tempToken).toBeDefined();
 
+    // Verify that credentials check does NOT prematurely send an email OTP
+    expect(emailService.sendLogin2FaOtpEmail).not.toHaveBeenCalled();
+
+    // OTP is sent strictly when user clicks Continue (hitting /api/auth/2fa/send-otp)
+    const sendOtpRes = await request(app)
+      .post('/api/auth/2fa/send-otp')
+      .send({ tempToken: loginRes.body.tempToken });
+
+    expect(sendOtpRes.status).toBe(200);
+    expect(sendOtpRes.body.success).toBe(true);
+    expect(emailService.sendLogin2FaOtpEmail).toHaveBeenCalledTimes(1);
     expect(emailService.sendLogin2FaOtpEmail).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'admin@secorg.com' })
     );
   });
 });
+

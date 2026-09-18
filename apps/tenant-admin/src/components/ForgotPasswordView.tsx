@@ -167,6 +167,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   // =========================================================================
   const handleStage1Submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     if (!email.trim()) {
       setError('Please enter your administrator account email address.');
       return;

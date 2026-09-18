@@ -234,4 +234,91 @@ describe('TenantAdminLoginView Component', () => {
       );
     });
   });
+
+  it('dispatches Email OTP strictly once only when Continue button is clicked', async () => {
+    vi.mocked(api.tenantAdminLogin).mockResolvedValueOnce({
+      requires2FA: true,
+      tempToken: 'tenant-temp-email-otp-token',
+      defaultMethod: 'email',
+      hasEmail2Fa: true,
+      maskedEmail: 'a***n@acme.com',
+      user: {
+        id: 'tenant-admin-1',
+        email: 'admin@acme.com',
+        role: 'TENANT_ADMIN',
+        tenantId: 'tenant-acme-id',
+      },
+    });
+
+    vi.mocked(api.send2FaLoginOtp).mockResolvedValueOnce({
+      success: true,
+      message: 'Verification code sent to email',
+      maskedEmail: 'a***n@acme.com',
+      expiresMinutes: 10,
+    });
+
+    vi.mocked(api.verify2Fa).mockResolvedValueOnce({
+      token: 'tenant-jwt-token-email',
+      user: {
+        id: 'tenant-admin-1',
+        email: 'admin@acme.com',
+        role: 'TENANT_ADMIN',
+        tenantId: 'tenant-acme-id',
+      },
+    });
+
+    render(
+      <TenantAdminLoginView
+        onSuccess={onSuccess}
+        onGoToRegister={onGoToRegister}
+        onForgotPassword={onForgotPassword}
+      />
+    );
+
+    await userEvent.type(screen.getByPlaceholderText(/admin@company\.com/i), 'admin@acme.com');
+    await userEvent.type(screen.getByLabelText('Password', { exact: true }), 'TenantAdminPass123!');
+
+    fireEvent.submit(screen.getByRole('button', { name: /^sign in$/i }).closest('form')!);
+
+    // 2FA challenge screen appears - Step 1: Method selection
+    expect(await screen.findByText(/two-factor authentication/i)).toBeInTheDocument();
+    expect(screen.getByText(/Choose a verification method to complete sign in/i)).toBeInTheDocument();
+
+    // Verify OTP was NOT sent during initial credential submission
+    expect(api.send2FaLoginOtp).not.toHaveBeenCalled();
+
+    // Click Continue to proceed to OTP entry
+    const continueBtn = screen.getByRole('button', { name: /continue/i });
+    fireEvent.click(continueBtn);
+
+    // Verify OTP is dispatched strictly once
+    await waitFor(() => {
+      expect(api.send2FaLoginOtp).toHaveBeenCalledTimes(1);
+      expect(api.send2FaLoginOtp).toHaveBeenCalledWith('tenant-temp-email-otp-token');
+    });
+
+    // Step 2: Verify Code screen is now displayed
+    expect(await screen.findByText(/verify email code/i)).toBeInTheDocument();
+
+    // Fill 6 digits
+    const inputs = screen.getAllByRole('textbox');
+    expect(inputs.length).toBe(6);
+    for (let i = 0; i < 6; i++) {
+      fireEvent.change(inputs[i], { target: { value: String(i + 1) } });
+    }
+
+    const verifyBtn = screen.getByRole('button', { name: /verify and sign in/i });
+    fireEvent.click(verifyBtn);
+
+    await waitFor(() => {
+      expect(api.verify2Fa).toHaveBeenCalledWith('tenant-temp-email-otp-token', '123456', false, 'email');
+      expect(onSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'tenant-admin-1',
+          email: 'admin@acme.com',
+        })
+      );
+    });
+  });
 });
+

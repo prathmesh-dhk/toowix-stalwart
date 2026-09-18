@@ -153,6 +153,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
   // Stage 1 submit: Directly open email verification method
   const handleStage1Submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       setError('Please enter your administrator account email address.');
