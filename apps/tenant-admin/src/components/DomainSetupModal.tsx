@@ -657,13 +657,13 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <div className="mt-8 flex flex-col gap-6">
                 <div className="flex items-center gap-2">
                   <GoDaddyIcon className="w-5 h-5 shrink-0" />
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     GoDaddy DNS Management
                   </span>
                 </div>
 
                 {methodAutoSkipped && (
-                  <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                  <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-xl text-xs text-indigo-200 flex items-center justify-between">
                     <span>
                       We detected <strong>GoDaddy</strong> manages this domain's DNS.
                     </span>
@@ -673,7 +673,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         setMethodAutoSkipped(false);
                         navigateBack('method');
                       }}
-                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                      className="text-indigo-400 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                     >
                       Switch provider
                     </button>
@@ -685,6 +685,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
                   planId={selectedPlanId || undefined}
                   provider="godaddy"
+                  theme="dark"
                   onSuccess={(info, newDom) => {
                     const dom = newDom ?? createdDomain;
                     if (dom) setCreatedDomain(dom);
@@ -700,13 +701,13 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <div className="mt-8 flex flex-col gap-6">
                 <div className="flex items-center gap-2">
                   <HostingerIcon className="w-5 h-5 shrink-0" />
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Hostinger DNS Management
                   </span>
                 </div>
 
                 {methodAutoSkipped && (
-                  <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                  <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-xl text-xs text-indigo-200 flex items-center justify-between">
                     <span>
                       We detected <strong>Hostinger</strong> manages this domain's DNS.
                     </span>
@@ -716,7 +717,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         setMethodAutoSkipped(false);
                         navigateBack('method');
                       }}
-                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                      className="text-indigo-400 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                     >
                       Switch provider
                     </button>
@@ -728,6 +729,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
                   planId={selectedPlanId || undefined}
                   provider="hostinger"
+                  theme="dark"
                   onSuccess={(info, newDom) => {
                     const dom = newDom ?? createdDomain;
                     if (dom) setCreatedDomain(dom);
@@ -743,13 +745,13 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <div className="mt-8 flex flex-col gap-6">
                 <div className="flex items-center gap-2">
                   <CloudflareIcon className="w-5 h-5 shrink-0" />
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Cloudflare DNS Management
                   </span>
                 </div>
 
                 {methodAutoSkipped && (
-                  <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                  <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-xl text-xs text-indigo-200 flex items-center justify-between">
                     <span>
                       We detected <strong>Cloudflare</strong> manages this domain's DNS.
                     </span>
@@ -759,7 +761,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         setMethodAutoSkipped(false);
                         navigateBack('method');
                       }}
-                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                      className="text-indigo-400 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                     >
                       Switch provider
                     </button>
@@ -771,6 +773,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
                   planId={selectedPlanId || undefined}
                   provider="cloudflare"
+                  theme="dark"
                   onSuccess={(info, newDom) => {
                     const dom = newDom ?? createdDomain;
                     if (dom) setCreatedDomain(dom);
@@ -785,7 +788,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             {step === 'status' && (
               <div className="mt-8 flex flex-col gap-5">
                 {methodAutoSkipped && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-center justify-between">
+                  <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-400 flex items-center justify-between">
                     <span>
                       We couldn't detect GoDaddy, Hostinger, or Cloudflare managing this domain.
                     </span>
@@ -795,7 +798,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         setMethodAutoSkipped(false);
                         navigateBack('method');
                       }}
-                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                      className="text-indigo-400 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                     >
                       Connect a provider instead
                     </button>
@@ -808,29 +811,30 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   error={statusError}
                   onRefresh={refreshDnsStatus}
                   connectedProviderLabel={method === 'provider' && connected ? PROVIDER_LABEL[provider] : null}
+                  theme="dark"
                 />
 
                 {billingEnabled && !paymentCardDismissed && (
-                  <div className="p-4 bg-indigo-50 border border-indigo-200/80 rounded-xl">
+                  <div className="p-4 bg-indigo-950/40 border border-indigo-500/30 rounded-xl">
                     <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                      <div className="w-9 h-9 rounded-lg bg-indigo-900/60 text-indigo-400 flex items-center justify-center shrink-0">
                         <CreditCard className="w-4 h-4" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="text-xs font-semibold text-indigo-950 block">Add a payment method</span>
-                        <span className="text-[11px] text-indigo-700 leading-relaxed block mt-1">
+                        <span className="text-xs font-semibold text-white block">Add a payment method</span>
+                        <span className="text-[11px] text-indigo-300 leading-relaxed block mt-1">
                           One month free, then billed monthly for this domain's plan. Skip this and add it later —
                           mailboxes just can't be created here until you do.
                         </span>
                         {checkoutError && (
-                          <span className="text-[11px] text-rose-600 block mt-1.5">{checkoutError}</span>
+                          <span className="text-[11px] text-rose-400 block mt-1.5">{checkoutError}</span>
                         )}
                         <div className="flex items-center gap-2 mt-3">
                           <button
                             type="button"
                             onClick={handleStartCheckout}
                             disabled={startingCheckout}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-[11px] font-semibold shadow-xs transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-[11px] font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                           >
                             {startingCheckout ? (
                               <>
@@ -845,7 +849,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                             type="button"
                             onClick={() => setPaymentCardDismissed(true)}
                             disabled={startingCheckout}
-                            className="px-3 py-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                            className="px-3 py-2 text-[11px] font-medium text-slate-400 hover:text-white rounded-full transition-colors cursor-pointer disabled:opacity-50"
                           >
                             Skip for now
                           </button>
@@ -859,7 +863,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <button
                     type="button"
                     onClick={handleFinish}
-                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-sm font-semibold shadow-sm hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     id="btn-complete-domain-setup"
                   >
                     <span>Done</span>

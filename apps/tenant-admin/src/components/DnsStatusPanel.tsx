@@ -15,6 +15,7 @@ interface DnsStatusPanelProps {
   onCheckRecords?: () => void;
   checking?: boolean;
   liveCheck?: DnsLiveCheckResult | null;
+  theme?: 'light' | 'dark';
 }
 
 function statusBadge(dnsStatus?: DnsActivationStatus) {
@@ -43,7 +44,9 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
   onCheckRecords,
   checking,
   liveCheck,
+  theme = 'light',
 }) => {
+  const isDark = theme === 'dark';
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const dnsStatus = status?.dnsStatus || 'not_started';
@@ -72,12 +75,16 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-        <span className="text-[11px] font-semibold text-slate-500">DNS Activation Status</span>
+      <div className={`flex items-center justify-between p-3 rounded-xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+        <span className={`text-[11px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>DNS Activation Status</span>
         <div className="flex items-center gap-2">
           <span
             className="text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full border"
-            style={{ background: badge.bg, color: badge.color, borderColor: badge.border }}
+            style={{
+              background: isDark && dnsStatus === 'not_started' ? '#1e293b' : badge.bg,
+              color: isDark && dnsStatus === 'not_started' ? '#94a3b8' : badge.color,
+              borderColor: isDark && dnsStatus === 'not_started' ? '#334155' : badge.border,
+            }}
           >
             {badge.label}
           </span>
@@ -85,7 +92,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
             type="button"
             onClick={onRefresh}
             disabled={loading || refreshing}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+            className={`p-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}
             aria-label="Refresh status"
           >
             <RefreshCw size={13} className={loading || refreshing ? 'animate-spin' : ''} />
@@ -100,10 +107,10 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
         </div>
       )}
 
-      {loading && !status && <p className="text-xs text-slate-500">Loading current status…</p>}
+      {loading && !status && <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading current status…</p>}
 
       {dnsStatus === 'not_started' && !loading && (
-        <p className="text-xs text-slate-600 leading-relaxed">
+        <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           {connectedProviderLabel
             ? `Once activated, your connected ${connectedProviderLabel} account publishes these records automatically.`
             : 'Copy the DNS zone file below and add the records to your DNS provider. Mailbox creation will unlock once a Super Admin activates the domain.'}
@@ -130,7 +137,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
       )}
 
       {dnsStatus === 'activating' && (
-        <p className="text-xs text-slate-600 leading-relaxed">
+        <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           {connectedProviderLabel
             ? `Published automatically via ${connectedProviderLabel}. Waiting for public DNS propagation — usually minutes, up to 48 hours.`
             : 'DNS zone file is ready below. Add the records to your DNS provider, then propagation is checked automatically — usually minutes, up to 48 hours.'}
@@ -157,7 +164,11 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
             type="button"
             onClick={onCheckRecords}
             disabled={checking}
-            className="self-start px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+            className={`self-start px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5 ${
+              isDark
+                ? 'border border-indigo-500/30 bg-indigo-950/60 text-indigo-300 hover:bg-indigo-900/60'
+                : 'border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+            }`}
           >
             <Search size={13} className={checking ? 'animate-pulse' : ''} />
             {checking ? 'Checking your records…' : 'Check My Records'}
@@ -197,26 +208,30 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
       {status?.dnsZoneFile && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-              <FileText size={13} className="text-slate-500" />
+            <span className={`text-xs font-semibold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <FileText size={13} className={isDark ? 'text-slate-400' : 'text-slate-500'} />
               DNS Zone File
             </span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => copy('zone', status.dnsZoneFile as string)}
-                className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  isDark ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
               >
-                {copiedKey === 'zone' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                {copiedKey === 'zone' ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                 {copiedKey === 'zone' ? 'Copied' : 'Copy'}
               </button>
               <button
                 type="button"
                 onClick={handleExportZoneFile}
-                className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  isDark ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
               >
                 {copiedKey === 'zoneexport' ? (
-                  <Check size={12} className="text-emerald-600" />
+                  <Check size={12} className="text-emerald-400" />
                 ) : (
                   <Download size={12} />
                 )}
@@ -224,7 +239,9 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
               </button>
             </div>
           </div>
-          <pre className="p-3.5 bg-slate-900 text-slate-100 rounded-xl text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-60 overflow-y-auto border border-slate-800">
+          <pre className={`p-3.5 rounded-xl text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-60 overflow-y-auto border ${
+            isDark ? 'bg-slate-950 text-indigo-200 border-slate-800' : 'bg-slate-900 text-slate-100 border-slate-800'
+          }`}>
             {status.dnsZoneFile}
           </pre>
           <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5">

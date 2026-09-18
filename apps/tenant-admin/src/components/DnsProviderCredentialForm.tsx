@@ -35,6 +35,7 @@ interface DnsProviderCredentialFormProps {
   planId?: string;
   /** Forces a single provider and hides the picker — used when embedded in a wizard step already scoped to one provider. */
   provider?: DnsProvider;
+  theme?: 'light' | 'dark';
   onSuccess: (info: SuccessInfo, createdDomain?: DomainItem) => void;
   onCancel?: () => void;
 }
@@ -53,9 +54,14 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
   domainName,
   planId,
   provider: forcedProvider,
+  theme = 'light',
   onSuccess,
   onCancel,
 }) => {
+  const isDark = theme === 'dark';
+  const effectiveInputClass = isDark
+    ? 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-500 bg-slate-900 text-white font-mono'
+    : inputClass;
   const [provider, setProvider] = useState<DnsProvider | null>(forcedProvider || null);
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
@@ -279,12 +285,12 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
   if ((domainId || domainName) && entryChoice === 'pending' && savedForProvider) {
     return (
       <div className="flex flex-col gap-5">
-        <div className="p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-xl flex items-start gap-3">
-          <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+        <div className={`p-4 rounded-xl flex items-start gap-3 ${isDark ? 'bg-indigo-950/40 border border-indigo-500/30' : 'bg-indigo-50/60 border border-indigo-200/80'}`}>
+          <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-indigo-900">You have a saved {PROVIDER_LABELS[provider]} key</span>
+            <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-indigo-900'}`}>You have a saved {PROVIDER_LABELS[provider]} key</span>
             {savedForProvider.connectedAt && (
-              <p className="text-xs text-indigo-700">Connected {formatDate(savedForProvider.connectedAt)}.</p>
+              <p className={`text-xs ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>Connected {formatDate(savedForProvider.connectedAt)}.</p>
             )}
           </div>
         </div>
@@ -301,7 +307,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             type="button"
             onClick={() => setEntryChoice('manual')}
             disabled={connectingStage !== null}
-            className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+            className={`text-xs font-medium ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-700'} transition-colors cursor-pointer`}
           >
             Enter different credentials
           </button>
@@ -309,7 +315,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             type="button"
             onClick={handleUseSaved}
             disabled={connectingStage !== null}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {connectingStage !== null ? (
               <>
@@ -367,87 +373,91 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       {/* Credential Inputs */}
       {provider === 'godaddy' ? (
         <div className="flex flex-col gap-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col gap-2.5">
+          <div className={`rounded-xl p-3.5 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-slate-50 border border-slate-200'}`}>
             <div className="flex items-center gap-2">
               <GoDaddyIcon className="w-5 h-5 shrink-0" />
-              <span className="text-xs font-semibold text-slate-800">GoDaddy API Key Setup</span>
+              <span className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>GoDaddy API Key Setup</span>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
+            <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               Create a <strong>Production</strong> API Key &amp; Secret{domainName ? <> scoped to <strong>{domainName}</strong></> : null}.
             </p>
             <a
               href="https://classic-developer.godaddy.com/keys"
               target="_blank"
               rel="noopener noreferrer"
-              className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+              className={`self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                isDark ? 'text-indigo-400 bg-slate-800 border border-slate-700 hover:bg-slate-700' : 'text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50'
+              }`}
             >
               <span>Get API Keys</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="dns-cred-godaddy-key" className="text-xs font-semibold text-slate-700">GoDaddy API Key</label>
+            <label htmlFor="dns-cred-godaddy-key" className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>GoDaddy API Key</label>
             <input
               id="dns-cred-godaddy-key"
               type="text"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="e.g. dL8Q... (Production Key)"
-              className={inputClass}
+              className={effectiveInputClass}
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="dns-cred-godaddy-secret" className="text-xs font-semibold text-slate-700">GoDaddy API Secret</label>
+            <label htmlFor="dns-cred-godaddy-secret" className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>GoDaddy API Secret</label>
             <input
               id="dns-cred-godaddy-secret"
               type="password"
               value={apiSecret}
               onChange={(e) => setApiSecret(e.target.value)}
               placeholder="API Secret"
-              className={inputClass}
+              className={effectiveInputClass}
             />
           </div>
         </div>
       ) : provider === 'hostinger' ? (
         <div className="flex flex-col gap-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col gap-2.5">
+          <div className={`rounded-xl p-3.5 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-slate-50 border border-slate-200'}`}>
             <div className="flex items-center gap-2">
               <HostingerIcon className="w-5 h-5 shrink-0" />
-              <span className="text-xs font-semibold text-slate-800">Hostinger API Token Setup</span>
+              <span className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>Hostinger API Token Setup</span>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
+            <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               Generate an API token in hPanel (Account &rarr; API).
             </p>
             <a
               href="https://hpanel.hostinger.com/api"
               target="_blank"
               rel="noopener noreferrer"
-              className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+              className={`self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                isDark ? 'text-indigo-400 bg-slate-800 border border-slate-700 hover:bg-slate-700' : 'text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50'
+              }`}
             >
               <span>Get API Keys</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="dns-cred-hostinger-token" className="text-xs font-semibold text-slate-700">Hostinger API Token</label>
+            <label htmlFor="dns-cred-hostinger-token" className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Hostinger API Token</label>
             <input
               id="dns-cred-hostinger-token"
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Hostinger API Token"
-              className={inputClass}
+              className={effectiveInputClass}
             />
           </div>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2.5">
+          <div className={`rounded-xl p-4 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-slate-50 border border-slate-200'}`}>
             <div className="flex items-center gap-2">
               <CloudflareIcon className="w-5 h-5 shrink-0" />
-              <span className="text-xs font-semibold text-slate-800">Creating your Cloudflare API Token</span>
+              <span className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>Creating your Cloudflare API Token</span>
             </div>
-            <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 leading-relaxed">
+            <ol className={`list-decimal list-inside space-y-1 text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               <li>
                 Click <strong>Create Token</strong> below &rarr; use the <strong>Edit zone DNS</strong> template
               </li>
@@ -465,24 +475,26 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
               href="https://dash.cloudflare.com/profile/api-tokens"
               target="_blank"
               rel="noopener noreferrer"
-              className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+              className={`self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                isDark ? 'text-indigo-400 bg-slate-800 border border-slate-700 hover:bg-slate-700' : 'text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50'
+              }`}
             >
               <span>Get API Keys</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="dns-cred-cloudflare-token" className="text-xs font-semibold text-slate-700">Cloudflare API Token</label>
+            <label htmlFor="dns-cred-cloudflare-token" className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Cloudflare API Token</label>
             <input
               id="dns-cred-cloudflare-token"
               type="password"
               placeholder="Paste 40-character API Token"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              className={inputClass}
+              className={effectiveInputClass}
             />
             {looksLikeCloudflareGlobalKey && (
-              <p className="text-[11px] text-amber-600 font-medium flex items-start gap-1.5 mt-1">
+              <p className="text-[11px] text-amber-500 font-medium flex items-start gap-1.5 mt-1">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>
                   That looks like a Global API Key (37 hex chars). Cloudflare needs an <strong>API Token</strong>{' '}
@@ -504,12 +516,12 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       )}
 
       {(domainId || domainName) && (
-        <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+        <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           <input
             type="checkbox"
             checked={saveForFuture}
             onChange={(e) => setSaveForFuture(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
+            className="w-3.5 h-3.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
           />
           Save these credentials for future domains
         </label>
@@ -530,7 +542,9 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             type="button"
             onClick={onCancel}
             disabled={connectingStage !== null}
-            className="px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className={`px-4 py-2 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+              isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`}
           >
             Cancel
           </button>
@@ -538,7 +552,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         <button
           type="submit"
           disabled={!canSubmit}
-          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-sm font-semibold shadow-sm hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {connectingStage !== null ? (
             <>
