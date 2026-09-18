@@ -129,7 +129,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     navigateTo('plan');
   };
 
-  const handleCreateDomain = async (e: React.FormEvent) => {
+  const handlePlanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanDomain = domainName.trim().toLowerCase();
 
@@ -147,13 +147,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setError(null);
 
     try {
-      const res = await api.createTenantDomain({
-        domainName: cleanDomain,
-        planId: selectedPlanId,
-      });
-
-      setCreatedDomain(res.domain);
-
       const detection = detectionRef.current
         ? await detectionRef.current
         : { provider: null, nameservers: [] };
@@ -174,12 +167,55 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         setMethodAutoSkipped(true);
         navigateTo('cloudflare');
       } else {
+        // No automated provider detected:
+        // "if the tenant has choosed manual setup then the domain can be created"
+        const res = await api.createTenantDomain({
+          domainName: cleanDomain,
+          planId: selectedPlanId,
+        });
+
+        setCreatedDomain(res.domain);
         setMethod('manual');
         setMethodAutoSkipped(true);
         goToStatus(res.domain);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to create domain. Please check if it already exists.');
+      setError(err.message || 'Failed to proceed with domain setup.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChooseManualSetup = async () => {
+    const cleanDomain = domainName.trim().toLowerCase();
+    if (!cleanDomain || !DOMAIN_REGEX.test(cleanDomain)) {
+      setError('Please enter a valid domain name.');
+      navigateBack('domain');
+      return;
+    }
+    if (!selectedPlanId) {
+      setError('Please select a plan.');
+      navigateBack('plan');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      let dom = createdDomain;
+      if (!dom) {
+        const res = await api.createTenantDomain({
+          domainName: cleanDomain,
+          planId: selectedPlanId,
+        });
+        dom = res.domain;
+        setCreatedDomain(dom);
+      }
+      setMethod('manual');
+      setMethodAutoSkipped(false);
+      goToStatus(dom);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create domain for manual setup.');
     } finally {
       setLoading(false);
     }
@@ -240,6 +276,37 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     }
   };
 
+  const handleClose = async () => {
+    // If the domain was created, but setup was cancelled or interrupted before completing on status:
+    if (createdDomain && step !== 'status') {
+      try {
+        await api.deleteDomain(createdDomain.id);
+      } catch (err) {
+        console.warn('Could not clean up cancelled domain:', err);
+      }
+    } else if (createdDomain && step === 'status') {
+      // Manual setup or verified provider setup completed
+      onDomainAdded(createdDomain);
+    }
+
+    setStep('domain');
+    setDirection('forward');
+    setDomainName('');
+    setSelectedPlanId(plans[0]?.id ?? null);
+    setError(null);
+    setCreatedDomain(null);
+    setMethod(null);
+    setProvider('godaddy');
+    setConnected(false);
+    setMethodAutoSkipped(false);
+    detectionRef.current = null;
+    setDnsStatus(null);
+    setStatusError(null);
+    setPaymentCardDismissed(false);
+    setCheckoutError(null);
+    onClose();
+  };
+
   const handleFinish = () => {
     if (createdDomain) {
       onDomainAdded(createdDomain);
@@ -298,7 +365,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleFinish}
+              onClick={handleClose}
               className="p-2 -ml-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               aria-label="Close"
             >
@@ -379,7 +446,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
             {/* STEP 2: PLAN */}
             {step === 'plan' && (
-              <form onSubmit={handleCreateDomain} className="mt-8 flex flex-col gap-8">
+              <form onSubmit={handlePlanSubmit} className="mt-8 flex flex-col gap-8">
                 {plansLoading && plans.length === 0 ? (
                   <p className="text-xs text-slate-400 py-2">Loading plans…</p>
                 ) : plans.length === 0 ? (
@@ -541,12 +608,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                 <button
                   type="button"
                   aria-label="Manual DNS Setup"
-                  onClick={() => {
-                    setMethod('manual');
-                    setMethodAutoSkipped(false);
-                    setError(null);
-                    goToStatus();
-                  }}
+                  onClick={handleChooseManualSetup}
                   className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
                 >
                   <div className="flex items-center gap-3.5">
@@ -604,14 +666,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       </div>
                     )}
 
-                    {createdDomain && (
-                      <DnsProviderCredentialForm
-                        domainId={createdDomain.id}
-                        domainName={createdDomain.domainName}
-                        provider="godaddy"
-                        onSuccess={() => setConnected(true)}
-                      />
-                    )}
+                    <DnsProviderCredentialForm
+                      domainId={createdDomain?.id}
+                      domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
+                      planId={selectedPlanId || undefined}
+                      provider="godaddy"
+                      onSuccess={(info, newDom) => {
+                        setConnected(true);
+                        if (newDom) setCreatedDomain(newDom);
+                      }}
+                    />
                   </>
                 )}
 
@@ -619,7 +683,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <div>
                     <button
                       type="button"
-                      onClick={() => goToStatus()}
+                      onClick={() => goToStatus(createdDomain)}
                       className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span>Continue</span>
@@ -667,14 +731,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       </div>
                     )}
 
-                    {createdDomain && (
-                      <DnsProviderCredentialForm
-                        domainId={createdDomain.id}
-                        domainName={createdDomain.domainName}
-                        provider="hostinger"
-                        onSuccess={() => setConnected(true)}
-                      />
-                    )}
+                    <DnsProviderCredentialForm
+                      domainId={createdDomain?.id}
+                      domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
+                      planId={selectedPlanId || undefined}
+                      provider="hostinger"
+                      onSuccess={(info, newDom) => {
+                        setConnected(true);
+                        if (newDom) setCreatedDomain(newDom);
+                      }}
+                    />
                   </>
                 )}
 
@@ -682,7 +748,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <div>
                     <button
                       type="button"
-                      onClick={() => goToStatus()}
+                      onClick={() => goToStatus(createdDomain)}
                       className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span>Continue</span>
@@ -730,14 +796,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       </div>
                     )}
 
-                    {createdDomain && (
-                      <DnsProviderCredentialForm
-                        domainId={createdDomain.id}
-                        domainName={createdDomain.domainName}
-                        provider="cloudflare"
-                        onSuccess={() => setConnected(true)}
-                      />
-                    )}
+                    <DnsProviderCredentialForm
+                      domainId={createdDomain?.id}
+                      domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
+                      planId={selectedPlanId || undefined}
+                      provider="cloudflare"
+                      onSuccess={(info, newDom) => {
+                        setConnected(true);
+                        if (newDom) setCreatedDomain(newDom);
+                      }}
+                    />
                   </>
                 )}
 
@@ -745,7 +813,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <div>
                     <button
                       type="button"
-                      onClick={() => goToStatus()}
+                      onClick={() => goToStatus(createdDomain)}
                       className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span>Continue</span>

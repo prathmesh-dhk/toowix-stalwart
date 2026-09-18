@@ -110,10 +110,8 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(await screen.findByText('25 Seats'));
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
-    expect(api.createTenantDomain).toHaveBeenCalledWith({
-      domainName: 'newbrand.io',
-      planId: 'plan-25',
-    });
+    // Before credentials are submitted, domain is NOT created yet (avoids orphan domains on cancel/interrupt)
+    expect(api.createTenantDomain).not.toHaveBeenCalled();
 
     // Step 3 (method picker) is skipped — GoDaddy was auto-detected from
     // nameservers, so the wizard lands directly on its credential form.
@@ -123,6 +121,11 @@ describe('DomainSetupModal Component', () => {
     await userEvent.type(screen.getByLabelText(/GoDaddy API Key/i), 'test-key');
     await userEvent.type(screen.getByLabelText(/GoDaddy API Secret/i), 'test-secret');
     await userEvent.click(screen.getByRole('button', { name: /verify . connect/i }));
+
+    expect(api.createTenantDomain).toHaveBeenCalledWith({
+      domainName: 'newbrand.io',
+      planId: 'plan-25',
+    });
 
     expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
       'dom-new-1',

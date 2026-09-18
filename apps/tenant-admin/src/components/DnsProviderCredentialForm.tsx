@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { TenantDnsCredentialSummary } from '../types';
+import { TenantDnsCredentialSummary, DomainItem } from '../types';
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
 import { AlertTriangle, AlertCircle, Loader2, Key, ShieldCheck, ArrowRight } from 'lucide-react';
 
@@ -32,9 +32,10 @@ interface DnsProviderCredentialFormProps {
   /** Omit to save straight into the tenant's credential vault (API Keys tab) instead of connecting a domain. */
   domainId?: string;
   domainName?: string;
+  planId?: string;
   /** Forces a single provider and hides the picker — used when embedded in a wizard step already scoped to one provider. */
   provider?: DnsProvider;
-  onSuccess: (info: SuccessInfo) => void;
+  onSuccess: (info: SuccessInfo, createdDomain?: DomainItem) => void;
   onCancel?: () => void;
 }
 
@@ -50,6 +51,7 @@ function formatDate(iso?: string | null): string {
 export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps> = ({
   domainId,
   domainName,
+  planId,
   provider: forcedProvider,
   onSuccess,
   onCancel,
@@ -88,12 +90,12 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
   useEffect(() => {
     // Only domain-connect mode offers "use saved key" — vault-only saves are
     // always a fresh manual entry (that IS the save).
-    if (domainId && savedForProvider) {
+    if ((domainId || domainName) && savedForProvider) {
       setEntryChoice('pending');
     } else {
       setEntryChoice('manual');
     }
-  }, [provider, domainId, savedForProvider]);
+  }, [provider, domainId, domainName, savedForProvider]);
 
   const cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^['"]|['"]$/g, '');
   const looksLikeCloudflareGlobalKey = provider === 'cloudflare' && cleanToken.length === 37 && /^[0-9a-fA-F]{37}$/.test(cleanToken);
@@ -106,18 +108,43 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       : token.trim().length > 0);
 
   const handleUseSaved = async () => {
-    if (!domainId || !provider) return;
+    if (!provider) return;
     setError(null);
     setConnectingStage('verifying_cred');
+
+    let createdDomainItem: DomainItem | undefined;
     try {
-      const res = await api.useSavedDnsProviderCredential(domainId, provider);
-      const info: SuccessInfo = {
-        verifiedProviderDomain: res.verifiedProviderDomain,
-        recordsSynced: res.recordsSynced,
-        syncPending: res.syncPending,
-      };
-      setSuccessInfo(info);
-      onSuccess(info);
+      let targetDomainId = domainId;
+      if (!targetDomainId && domainName && planId) {
+        const createRes = await api.createTenantDomain({ domainName, planId });
+        targetDomainId = createRes.domain.id;
+        createdDomainItem = createRes.domain;
+      }
+      if (!targetDomainId) return;
+
+      try {
+        const res = await api.useSavedDnsProviderCredential(targetDomainId, provider);
+        const info: SuccessInfo = {
+          verifiedProviderDomain: res.verifiedProviderDomain,
+          recordsSynced: res.recordsSynced,
+          syncPending: res.syncPending,
+        };
+        setSuccessInfo(info);
+        if (createdDomainItem) {
+          onSuccess(info, createdDomainItem);
+        } else {
+          onSuccess(info);
+        }
+      } catch (useErr: any) {
+        if (createdDomainItem) {
+          try {
+            await api.deleteDomain(createdDomainItem.id);
+          } catch (delErr) {
+            console.warn('[DomainSetup] Rollback failed after saved key error:', delErr);
+          }
+        }
+        throw useErr;
+      }
     } catch (err: any) {
       setError(err.message || `Could not use the saved ${PROVIDER_LABELS[provider]} key. It may have been revoked — try entering it again.`);
       setEntryChoice('manual');
@@ -152,6 +179,30 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         };
         setSuccessInfo(info);
         onSuccess(info);
+      } else if (domainName && planId) {
+        // Create the domain first
+        const createRes = await api.createTenantDomain({ domainName, planId });
+        const newDomain = createRes.domain;
+
+        try {
+          // Connect provider credentials and sync records
+          const res = await api.connectDnsProviderCredential(newDomain.id, credential, saveForFuture);
+          const info: SuccessInfo = {
+            verifiedProviderDomain: res.verifiedProviderDomain,
+            recordsSynced: res.recordsSynced,
+            syncPending: res.syncPending,
+          };
+          setSuccessInfo(info);
+          onSuccess(info, newDomain);
+        } catch (connectErr: any) {
+          // If verification or connection fails: immediately rollback so no dead domain remains!
+          try {
+            await api.deleteDomain(newDomain.id);
+          } catch (delErr) {
+            console.warn('[DomainSetup] Rollback failed after provider connect failure:', delErr);
+          }
+          throw connectErr;
+        }
       } else {
         const res = await api.saveTenantDnsCredential(credential);
         const info: SuccessInfo = {
@@ -412,7 +463,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         </div>
       )}
 
-      {domainId && (
+      {(domainId || domainName) && (
         <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -456,8 +507,8 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             </>
           ) : (
             <>
-              <span>{domainId ? 'Verify & Connect' : 'Save API Key'}</span>
-              {domainId ? <ShieldCheck className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
+              <span>{(domainId || domainName) ? 'Verify & Connect' : 'Save API Key'}</span>
+              {(domainId || domainName) ? <ShieldCheck className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
             </>
           )}
         </button>
