@@ -137,7 +137,6 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({
               <DnsProviderCredentialForm
                 domainId={domain.id}
                 domainName={domain.domainName}
-                compact
                 onSuccess={() => {
                   refresh();
                 }}

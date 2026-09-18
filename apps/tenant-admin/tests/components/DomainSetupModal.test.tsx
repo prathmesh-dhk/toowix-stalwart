@@ -8,6 +8,10 @@ vi.mock('../../src/api', () => ({
   api: {
     createTenantDomain: vi.fn(),
     connectDnsProviderCredential: vi.fn(),
+    useSavedDnsProviderCredential: vi.fn(),
+    listTenantDnsCredentials: vi.fn(),
+    saveTenantDnsCredential: vi.fn(),
+    deleteTenantDnsCredential: vi.fn(),
     getDomainDnsStatus: vi.fn(),
     listPlans: vi.fn(),
     startDomainCheckout: vi.fn(),
@@ -37,6 +41,7 @@ describe('DomainSetupModal Component', () => {
     vi.clearAllMocks();
     Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
     vi.mocked(api.listPlans).mockResolvedValue({ plans: MOCK_PLANS });
+    vi.mocked(api.listTenantDnsCredentials).mockResolvedValue({ credentials: [] });
     vi.mocked(api.getDomainDnsStatus).mockResolvedValue({
       dnsStatus: 'not_started',
       dnsRecords: [],
@@ -117,13 +122,17 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText(/we detected/i)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/GoDaddy API Key/i), 'test-key');
     await userEvent.type(screen.getByLabelText(/GoDaddy API Secret/i), 'test-secret');
-    await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
+    await userEvent.click(screen.getByRole('button', { name: /connect dns provider/i }));
 
-    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith('dom-new-1', {
-      provider: 'godaddy',
-      apiKey: 'test-key',
-      apiSecret: 'test-secret',
-    });
+    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
+      'dom-new-1',
+      {
+        provider: 'godaddy',
+        apiKey: 'test-key',
+        apiSecret: 'test-secret',
+      },
+      true
+    );
     expect(await screen.findByText(/GoDaddy connected and verified/i)).toBeInTheDocument();
 
     // Step 5: status
@@ -177,12 +186,16 @@ describe('DomainSetupModal Component', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^hostinger$/i }));
     await userEvent.type(screen.getByLabelText(/Hostinger API Token/i), 'hostinger-tok');
-    await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
+    await userEvent.click(screen.getByRole('button', { name: /connect dns provider/i }));
 
-    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith('dom-new-2', {
-      provider: 'hostinger',
-      token: 'hostinger-tok',
-    });
+    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
+      'dom-new-2',
+      {
+        provider: 'hostinger',
+        token: 'hostinger-tok',
+      },
+      true
+    );
     expect(await screen.findByText(/Hostinger connected and verified/i)).toBeInTheDocument();
   });
 
@@ -220,12 +233,16 @@ describe('DomainSetupModal Component', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^cloudflare$/i }));
     await userEvent.type(screen.getByLabelText(/Cloudflare API Token/i), 'cf-tok');
-    await userEvent.click(screen.getByRole('button', { name: /verify & connect/i }));
+    await userEvent.click(screen.getByRole('button', { name: /connect dns provider/i }));
 
-    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith('dom-new-3', {
-      provider: 'cloudflare',
-      token: 'cf-tok',
-    });
+    expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
+      'dom-new-3',
+      {
+        provider: 'cloudflare',
+        token: 'cf-tok',
+      },
+      true
+    );
     expect(await screen.findByText(/Cloudflare connected and verified/i)).toBeInTheDocument();
   });
 

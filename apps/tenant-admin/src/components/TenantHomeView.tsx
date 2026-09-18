@@ -7,6 +7,7 @@ import { DomainSetupModal } from './DomainSetupModal';
 import { SecurityView } from './SecurityView';
 import { ActiveDevicesView } from './ActiveDevicesView';
 import { TenantBillingSummary } from './TenantBillingSummary';
+import { ApiKeysView } from './ApiKeysView';
 import {
   Loader2,
   LogOut,
@@ -28,6 +29,7 @@ import {
   ChevronUp,
   CheckCircle2,
   AlertTriangle,
+  Key,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,7 +39,7 @@ interface TenantHomeViewProps {
   onNavigateToDomain: (domainId: string) => void;
 }
 
-type HomeTab = 'overview' | 'domains' | 'billing' | 'security' | 'audit' | 'devices';
+type HomeTab = 'overview' | 'domains' | 'apikeys' | 'billing' | 'security' | 'audit' | 'devices';
 
 function formatAuditAction(action: string, metadata?: any) {
   switch (action) {
@@ -139,6 +141,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   const TABS: Array<{ key: HomeTab; label: string; icon: LucideIcon }> = [
     { key: 'overview', label: 'Overview', icon: LayoutDashboard },
     { key: 'domains', label: 'Domains', icon: Globe },
+    { key: 'apikeys', label: 'API Keys', icon: Key },
     { key: 'billing', label: 'Billing', icon: CreditCard },
     { key: 'security', label: 'Security', icon: Shield },
     { key: 'audit', label: 'Audit Log', icon: FileText },
@@ -507,29 +510,55 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
           {activeTab === 'domains' && (
             <>
               {domains.length === 0 ? (
-                <section className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                  <div className="flex flex-col gap-3 max-w-2xl">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
-                        Setup Required
-                      </span>
+                <div className="flex flex-col gap-4">
+                  <section className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex flex-col gap-3 max-w-2xl">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+                          Setup Required
+                        </span>
+                      </div>
+                      <h2 className="text-xl font-bold tracking-tight text-slate-900">Connect your first domain to get started</h2>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Add an authoritative domain to allocate employee mailbox seats. Once added, your DNS records
+                        (MX, SPF, DKIM) will be generated automatically so you can start provisioning team accounts.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowDomainModal(true)}
+                        className="self-start px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                        id="btn-add-first-domain-home"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Add Your First Domain</span>
+                      </button>
                     </div>
-                    <h2 className="text-xl font-bold tracking-tight text-slate-900">Connect your first domain to get started</h2>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Add an authoritative domain to allocate employee mailbox seats. Once added, your DNS records
-                      (MX, SPF, DKIM) will be generated automatically so you can start provisioning team accounts.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setShowDomainModal(true)}
-                      className="self-start px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-                      id="btn-add-first-domain-home"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add Your First Domain</span>
-                    </button>
-                  </div>
-                </section>
+                  </section>
+
+                  <section className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex flex-col gap-3 max-w-2xl">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200">
+                          Optional, saves time later
+                        </span>
+                      </div>
+                      <h2 className="text-xl font-bold tracking-tight text-slate-900">Save your DNS provider API key</h2>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        If you manage domains with GoDaddy, Hostinger, or Cloudflare, save your API key once and
+                        it'll be offered automatically every time you add a domain — no re-entering it each time.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('apikeys')}
+                        className="self-start px-4 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                        id="btn-add-api-key-nudge"
+                      >
+                        <Key className="w-4 h-4" />
+                        <span>Add API Key</span>
+                      </button>
+                    </div>
+                  </section>
+                </div>
               ) : (
                 <section className="flex flex-col gap-4">
                   <div className="flex items-center justify-between">
@@ -645,6 +674,8 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
               )}
             </>
           )}
+
+          {activeTab === 'apikeys' && <ApiKeysView />}
 
           {activeTab === 'billing' && <TenantBillingSummary domains={domains} />}
 

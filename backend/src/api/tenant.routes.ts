@@ -9,6 +9,13 @@ import { AdminUserModel } from '../db/models/AdminUser';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { connectDnsProviderCredential, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
+import {
+  listTenantDnsCredentials,
+  saveTenantDnsCredential,
+  deleteTenantDnsCredential,
+  getDecryptedTenantDnsCredential,
+} from '../services/tenant-dns-credential.service';
+import { isKnownProvider } from '../dns-providers/dispatch';
 import { requestDomainDeletion, getDomainDeletionRequest, DomainDeletionError } from '../services/domain-deletion.service';
 import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/errors';
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
@@ -345,6 +352,28 @@ const dnsProviderCredentialSchema = z.discriminatedUnion('provider', [
   }),
 ]);
 
+const dnsProviderCredentialWithSaveSchema = z.intersection(
+  dnsProviderCredentialSchema,
+  z.object({ saveForFuture: z.boolean().optional() })
+);
+
+function mapDnsProviderError(err: any, res: Response): void {
+  if (err instanceof GoDaddyAuthError || err instanceof HostingerAuthError || err instanceof CloudflareAuthError) {
+    res.status(401).json({ error: 'DNS_PROVIDER_AUTH_ERROR', message: err.message });
+  } else if (
+    err instanceof GoDaddyDomainNotManagedError ||
+    err instanceof HostingerDomainNotManagedError ||
+    err instanceof CloudflareDomainNotManagedError
+  ) {
+    res.status(422).json({ error: 'DNS_PROVIDER_DOMAIN_NOT_MANAGED', message: err.message });
+  } else if (err instanceof DomainActivationError) {
+    res.status(err.statusCode).json({ error: err.code, message: err.message });
+  } else {
+    console.error('[DNS Provider Error]:', err);
+    res.status(502).json({ error: 'DNS_PROVIDER_UNAVAILABLE', message: 'Could not verify the DNS provider credential.' });
+  }
+}
+
 tenantMeRouter.post(
   '/me/domains/:domainId/dns-provider-credential',
   async (req: Request, res: Response): Promise<void> => {
@@ -358,13 +387,13 @@ tenantMeRouter.post(
       return;
     }
 
-    const parseResult = dnsProviderCredentialSchema.safeParse(req.body);
+    const parseResult = dnsProviderCredentialWithSaveSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
       return;
     }
 
-    const { provider, ...credential } = parseResult.data;
+    const { provider, saveForFuture, ...credential } = parseResult.data;
 
     // Scoping the lookup by tenantId (not just domainId) is the IDOR guard here —
     // a domain belonging to another tenant simply won't be found.
@@ -378,27 +407,142 @@ tenantMeRouter.post(
           id: req.adminUser!.id,
           email: req.adminUser!.email,
           role: req.adminUser!.role,
+        },
+        saveForFuture === true
+      );
+      res.status(200).json({ success: true, ...result });
+    } catch (err: any) {
+      mapDnsProviderError(err, res);
+    }
+  }
+);
+
+// ==========================================
+// USE A SAVED DNS PROVIDER CREDENTIAL FOR THIS DOMAIN
+// (/api/tenants/me/domains/:domainId/dns-provider-credential/use-saved)
+// ==========================================
+const useSavedCredentialSchema = z.object({
+  provider: z.enum(['godaddy', 'hostinger', 'cloudflare']),
+});
+
+tenantMeRouter.post(
+  '/me/domains/:domainId/dns-provider-credential/use-saved',
+  async (req: Request, res: Response): Promise<void> => {
+    const tenantId = req.adminUser?.tenantId;
+    if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+      res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+      return;
+    }
+    if (!req.params.domainId || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+      res.status(400).json({ error: 'INVALID_DOMAIN_ID', message: 'Domain ID is missing or malformed' });
+      return;
+    }
+
+    const parseResult = useSavedCredentialSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
+      return;
+    }
+
+    try {
+      const credential = await getDecryptedTenantDnsCredential(tenantId, parseResult.data.provider);
+      if (!credential) {
+        res.status(404).json({ error: 'NO_SAVED_CREDENTIAL', message: `No saved ${parseResult.data.provider} credential found for this tenant.` });
+        return;
+      }
+      // connectDnsProviderCredential re-verifies against this specific domain
+      // as its own first step — that IS the "re-verify a saved key at time
+      // of use" safety net, no separate verify call needed here.
+      const result = await connectDnsProviderCredential(
+        req.params.domainId,
+        tenantId,
+        parseResult.data.provider,
+        credential,
+        {
+          id: req.adminUser!.id,
+          email: req.adminUser!.email,
+          role: req.adminUser!.role,
         }
       );
       res.status(200).json({ success: true, ...result });
     } catch (err: any) {
-      if (err instanceof GoDaddyAuthError || err instanceof HostingerAuthError || err instanceof CloudflareAuthError) {
-        res.status(401).json({ error: 'DNS_PROVIDER_AUTH_ERROR', message: err.message });
-      } else if (
-        err instanceof GoDaddyDomainNotManagedError ||
-        err instanceof HostingerDomainNotManagedError ||
-        err instanceof CloudflareDomainNotManagedError
-      ) {
-        res.status(422).json({ error: 'DNS_PROVIDER_DOMAIN_NOT_MANAGED', message: err.message });
-      } else if (err instanceof DomainActivationError) {
-        res.status(err.statusCode).json({ error: err.code, message: err.message });
-      } else {
-        console.error('[DNS Provider Credential Connect Error]:', err);
-        res.status(502).json({ error: 'DNS_PROVIDER_UNAVAILABLE', message: 'Could not verify the DNS provider credential.' });
-      }
+      mapDnsProviderError(err, res);
     }
   }
 );
+
+// ==========================================
+// SAVED DNS PROVIDER CREDENTIALS VAULT (/api/tenants/me/dns-credentials)
+// ==========================================
+tenantMeRouter.get('/me/dns-credentials', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+  try {
+    const credentials = await listTenantDnsCredentials(tenantId);
+    res.status(200).json({ credentials });
+  } catch (err: any) {
+    console.error('[Tenant DNS Credentials List Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to list saved DNS credentials.' });
+  }
+});
+
+tenantMeRouter.post('/me/dns-credentials', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+
+  const parseResult = dnsProviderCredentialSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
+    return;
+  }
+
+  const { provider, ...credential } = parseResult.data;
+
+  try {
+    const result = await saveTenantDnsCredential(tenantId, provider, credential as any, {
+      id: req.adminUser!.id,
+      email: req.adminUser!.email,
+      role: req.adminUser!.role,
+    });
+    res.status(200).json({ success: true, credential: result });
+  } catch (err: any) {
+    mapDnsProviderError(err, res);
+  }
+});
+
+tenantMeRouter.delete('/me/dns-credentials/:provider', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+  if (!isKnownProvider(req.params.provider)) {
+    res.status(400).json({ error: 'INVALID_PROVIDER', message: 'Unknown DNS provider.' });
+    return;
+  }
+
+  try {
+    const deleted = await deleteTenantDnsCredential(tenantId, req.params.provider, {
+      id: req.adminUser!.id,
+      email: req.adminUser!.email,
+      role: req.adminUser!.role,
+    });
+    if (!deleted) {
+      res.status(404).json({ error: 'NOT_FOUND', message: 'No saved credential found for that provider.' });
+      return;
+    }
+    res.status(200).json({ success: true });
+  } catch (err: any) {
+    console.error('[Tenant DNS Credential Delete Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to delete saved DNS credential.' });
+  }
+});
 
 // ==========================================
 // DOMAIN DNS ACTIVATION STATUS (/api/tenants/me/domains/:domainId/dns-status)

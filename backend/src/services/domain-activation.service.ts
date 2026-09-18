@@ -27,6 +27,7 @@ import {
   replaceProviderDnsRecordGroup,
 } from '../dns-providers/dispatch';
 import { buildRequiredDnsRecords, buildFullDnsRecords, buildZoneFileText } from './dns-records.service';
+import { saveAlreadyVerifiedTenantDnsCredential } from './tenant-dns-credential.service';
 import { encrypt, decrypt } from '../utils/crypto';
 import { logAudit } from '../audit/service';
 import { emailService } from './email.service';
@@ -123,7 +124,8 @@ export async function connectDnsProviderCredential(
   tenantId: string,
   provider: DnsProviderName,
   credential: ProviderCredential,
-  actor: ActivationActor
+  actor: ActivationActor,
+  saveForFuture: boolean = false
 ): Promise<{
   verifiedProviderDomain: string;
   connectedAt: Date;
@@ -156,6 +158,12 @@ export async function connectDnsProviderCredential(
     },
     { upsert: true, setDefaultsOnInsert: true }
   );
+
+  if (saveForFuture) {
+    // Already verified above against this domain — reuse that result rather
+    // than making a second, redundant provider call.
+    await saveAlreadyVerifiedTenantDnsCredential(String(domain.tenantId), provider, credential, info.domain, actor);
+  }
 
   await logAudit({
     actorId: actor.id,

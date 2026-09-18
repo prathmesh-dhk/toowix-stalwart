@@ -14,6 +14,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
+import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
 
 interface DomainSetupModalProps {
   isOpen: boolean;
@@ -70,10 +71,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [createdDomain, setCreatedDomain] = useState<DomainItem | null>(null);
   const [method, setMethod] = useState<SetupMethod>(null);
   const [provider, setProvider] = useState<DnsProvider>('godaddy');
-  const [apiKey, setApiKey] = useState('');
-  const [apiSecret, setApiSecret] = useState('');
-  const [token, setToken] = useState('');
-  const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
 
   const [dnsStatus, setDnsStatus] = useState<DomainDnsStatus | null>(null);
@@ -193,30 +190,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     }
   };
 
-  const handleConnectProvider = async (e: React.FormEvent, targetProvider: DnsProvider) => {
-    e.preventDefault();
-    if (!createdDomain) return;
-    setConnecting(true);
-    setError(null);
-    try {
-      const cleanToken = token
-        .trim()
-        .replace(/^['"]+|['"]+$/g, '')
-        .replace(/^bearer\s+/i, '')
-        .trim();
-      const credential =
-        targetProvider === 'godaddy'
-          ? { provider: 'godaddy' as const, apiKey: apiKey.trim(), apiSecret: apiSecret.trim() }
-          : { provider: targetProvider, token: cleanToken };
-      await api.connectDnsProviderCredential(createdDomain.id, credential);
-      setConnected(true);
-    } catch (err: any) {
-      setError(err.message || `Could not verify this ${PROVIDER_LABEL[targetProvider]} credential against the domain.`);
-    } finally {
-      setConnecting(false);
-    }
-  };
-
   const refreshDnsStatus = async (targetDomain?: DomainItem | null) => {
     const dom = targetDomain || createdDomain;
     if (!dom) return;
@@ -284,10 +257,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setCreatedDomain(null);
     setMethod(null);
     setProvider('godaddy');
-    setApiKey('');
-    setApiSecret('');
-    setToken('');
-    setConnecting(false);
     setConnected(false);
     setMethodAutoSkipped(false);
     detectionRef.current = null;
@@ -640,59 +609,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       </div>
                     )}
 
-                    <form onSubmit={(e) => handleConnectProvider(e, 'godaddy')} className="flex flex-col gap-4">
-                      <p className="text-xs text-slate-500 leading-relaxed">
-                        Generate a Personal Access Token / API key+secret at{' '}
-                        <span className="font-mono text-slate-700">developer.godaddy.com</span>. We discard it once
-                        activation succeeds.
-                      </p>
-                      <div className="flex flex-col gap-1.5">
-                        <label htmlFor="input-godaddy-key" className="text-xs font-semibold text-slate-700">
-                          GoDaddy API Key
-                        </label>
-                        <input
-                          id="input-godaddy-key"
-                          type="text"
-                          required
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          className={`${inputClass} font-mono`}
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <label htmlFor="input-godaddy-secret" className="text-xs font-semibold text-slate-700">
-                          GoDaddy API Secret
-                        </label>
-                        <input
-                          id="input-godaddy-secret"
-                          type="password"
-                          required
-                          value={apiSecret}
-                          onChange={(e) => setApiSecret(e.target.value)}
-                          className={`${inputClass} font-mono`}
-                        />
-                      </div>
-
-                      <div>
-                        <button
-                          type="submit"
-                          disabled={connecting || !apiKey.trim() || !apiSecret.trim()}
-                          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {connecting ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Verifying...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Verify &amp; Connect</span>
-                              <ShieldCheck className="w-3.5 h-3.5" />
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
+                    {createdDomain && (
+                      <DnsProviderCredentialForm
+                        domainId={createdDomain.id}
+                        domainName={createdDomain.domainName}
+                        provider="godaddy"
+                        onSuccess={() => setConnected(true)}
+                      />
+                    )}
                   </>
                 )}
 
@@ -700,7 +624,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <div>
                     <button
                       type="button"
-                      onClick={goToStatus}
+                      onClick={() => goToStatus()}
                       className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span>Continue</span>
@@ -748,46 +672,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       </div>
                     )}
 
-                    <form onSubmit={(e) => handleConnectProvider(e, 'hostinger')} className="flex flex-col gap-4">
-                      <p className="text-xs text-slate-500 leading-relaxed">
-                        Generate an API token in hPanel at <span className="font-mono text-slate-700">hostinger.com</span>{' '}
-                        (Profile &rarr; Business &amp; Dev Tools &rarr; API Access). We discard it once
-                        activation succeeds.
-                      </p>
-                      <div className="flex flex-col gap-1.5">
-                        <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-700">
-                          Hostinger API Token
-                        </label>
-                        <input
-                          id="input-provider-token"
-                          type="password"
-                          required
-                          value={token}
-                          onChange={(e) => setToken(e.target.value)}
-                          className={`${inputClass} font-mono`}
-                        />
-                      </div>
-
-                      <div>
-                        <button
-                          type="submit"
-                          disabled={connecting || !token.trim()}
-                          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {connecting ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Verifying...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Verify &amp; Connect</span>
-                              <ShieldCheck className="w-3.5 h-3.5" />
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
+                    {createdDomain && (
+                      <DnsProviderCredentialForm
+                        domainId={createdDomain.id}
+                        domainName={createdDomain.domainName}
+                        provider="hostinger"
+                        onSuccess={() => setConnected(true)}
+                      />
+                    )}
                   </>
                 )}
 
@@ -795,7 +687,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <div>
                     <button
                       type="button"
-                      onClick={goToStatus}
+                      onClick={() => goToStatus()}
                       className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span>Continue</span>
@@ -843,69 +735,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       </div>
                     )}
 
-                    <form onSubmit={(e) => handleConnectProvider(e, 'cloudflare')} className="flex flex-col gap-4">
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-1.5 text-xs text-slate-600 leading-relaxed">
-                        <span className="font-semibold text-slate-800">Creating your Cloudflare API Token:</span>
-                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
-                          <li>
-                            Go to <span className="font-mono font-medium">dash.cloudflare.com</span> &rarr; My
-                            Profile &rarr; <strong>API Tokens</strong>
-                          </li>
-                          <li>
-                            Click <strong>Create Token</strong> &rarr; use the <strong>Edit zone DNS</strong>{' '}
-                            template
-                          </li>
-                          <li>
-                            Zone Resources: <strong>Include &rarr; Specific zone &rarr; {createdDomain?.domainName || domainName}</strong>
-                          </li>
-                          <li>
-                            Confirm permissions: <strong>Zone: DNS: Edit</strong> and <strong>Zone: Zone: Read</strong>
-                          </li>
-                          <li>Copy the 40-character token below (not the Global API Key)</li>
-                        </ol>
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <label htmlFor="input-provider-token" className="text-xs font-semibold text-slate-700">
-                          Cloudflare API Token
-                        </label>
-                        <input
-                          id="input-provider-token"
-                          type="password"
-                          required
-                          placeholder="Paste 40-character API Token"
-                          value={token}
-                          onChange={(e) => setToken(e.target.value)}
-                          className={`${inputClass} font-mono`}
-                        />
-                        {/^[a-f0-9]{37}$/i.test(token.trim()) && (
-                          <p className="text-[11px] text-amber-600 font-medium">
-                            That looks like a Global API Key (37 hex chars). Cloudflare needs an{' '}
-                            <strong>API Token</strong> instead — My Profile &rarr; API Tokens &rarr; Create
-                            Token &rarr; "Edit zone DNS".
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <button
-                          type="submit"
-                          disabled={connecting || !token.trim()}
-                          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {connecting ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Verifying...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Verify &amp; Connect</span>
-                              <ShieldCheck className="w-3.5 h-3.5" />
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
+                    {createdDomain && (
+                      <DnsProviderCredentialForm
+                        domainId={createdDomain.id}
+                        domainName={createdDomain.domainName}
+                        provider="cloudflare"
+                        onSuccess={() => setConnected(true)}
+                      />
+                    )}
                   </>
                 )}
 
@@ -913,7 +750,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <div>
                     <button
                       type="button"
-                      onClick={goToStatus}
+                      onClick={() => goToStatus()}
                       className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span>Continue</span>

@@ -3,6 +3,7 @@ export * from './Plan';
 export * from './DomainSubscription';
 export * from './Domain';
 export * from './DomainDnsCredential';
+export * from './TenantDnsCredential';
 export * from './AdminUser';
 export * from './Mailbox';
 export * from './RegistrationApplication';

@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem, DnsProviderName, TenantDnsCredentialSummary } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -261,15 +261,42 @@ export const api = {
     credential:
       | { provider: 'godaddy'; apiKey: string; apiSecret: string }
       | { provider: 'hostinger'; token: string }
-      | { provider: 'cloudflare'; token: string }
+      | { provider: 'cloudflare'; token: string },
+    saveForFuture?: boolean
   ) =>
     request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string; verifiedInProvider?: boolean; recordsSynced?: number; syncPending?: boolean }>(
       `/api/tenants/me/domains/${domainId}/dns-provider-credential`,
       {
         method: 'POST',
-        body: JSON.stringify(credential),
+        body: JSON.stringify(saveForFuture === undefined ? credential : { ...credential, saveForFuture }),
       }
     ),
+
+  useSavedDnsProviderCredential: (domainId: string, provider: DnsProviderName) =>
+    request<{ success: boolean; verifiedProviderDomain: string; connectedAt: string; verifiedInProvider?: boolean; recordsSynced?: number; syncPending?: boolean }>(
+      `/api/tenants/me/domains/${domainId}/dns-provider-credential/use-saved`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ provider }),
+      }
+    ),
+
+  listTenantDnsCredentials: () =>
+    request<{ credentials: TenantDnsCredentialSummary[] }>('/api/tenants/me/dns-credentials'),
+
+  saveTenantDnsCredential: (
+    credential:
+      | { provider: 'godaddy'; apiKey: string; apiSecret: string }
+      | { provider: 'hostinger'; token: string }
+      | { provider: 'cloudflare'; token: string }
+  ) =>
+    request<{ success: boolean; credential: TenantDnsCredentialSummary }>('/api/tenants/me/dns-credentials', {
+      method: 'POST',
+      body: JSON.stringify(credential),
+    }),
+
+  deleteTenantDnsCredential: (provider: DnsProviderName) =>
+    request<{ success: boolean }>(`/api/tenants/me/dns-credentials/${provider}`, { method: 'DELETE' }),
 
   getDomainDnsStatus: (domainId: string) =>
     request<DomainDnsStatus>(`/api/tenants/me/domains/${domainId}/dns-status`),

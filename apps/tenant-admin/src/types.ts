@@ -76,6 +76,16 @@ export interface DnsLiveCheckResult {
   results: DnsRecordCheckResult[];
 }
 
+export type DnsProviderName = 'godaddy' | 'hostinger' | 'cloudflare';
+
+export interface TenantDnsCredentialSummary {
+  provider: DnsProviderName;
+  verified: boolean;
+  verifiedProviderDomain: string | null;
+  connectedAt: string | null;
+  lastUsedAt: string | null;
+}
+
 export interface DomainItem {
   id: string;
   domainName: string;

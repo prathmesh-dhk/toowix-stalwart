@@ -17,6 +17,9 @@ vi.mock('../../src/api', () => ({
     createTenantDomain: vi.fn(),
     detectDnsProvider: vi.fn(),
     listPlans: vi.fn(),
+    listTenantDnsCredentials: vi.fn(),
+    saveTenantDnsCredential: vi.fn(),
+    deleteTenantDnsCredential: vi.fn(),
     // SecurityView's subtree (mounted on the Security tab)
     checkIpStatus: vi.fn(),
     getBlockedIps: vi.fn(),
@@ -107,6 +110,7 @@ describe('TenantHomeView Component', () => {
     });
     vi.mocked(api.listBillingInvoices).mockResolvedValue({ invoices: [] });
     vi.mocked(api.listSessions).mockResolvedValue({ sessions: [] });
+    vi.mocked(api.listTenantDnsCredentials).mockResolvedValue({ credentials: [] });
   });
 
   it('lists every domain and navigates to a Domain Dashboard when one is clicked', async () => {
@@ -143,6 +147,35 @@ describe('TenantHomeView Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
 
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
+
+    // A second onboarding card nudges saving a DNS provider API key too,
+    // and clicking it takes the tenant to the API Keys tab.
+    expect(screen.getByText(/save your dns provider api key/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^add api key$/i }));
+    expect(await screen.findByRole('heading', { name: 'API Keys' })).toBeInTheDocument();
+  });
+
+  it('lists saved API keys with a nav tab, and removes one when deleted', async () => {
+    vi.mocked(api.listTenantDnsCredentials)
+      .mockResolvedValueOnce({
+        credentials: [
+          { provider: 'godaddy', verified: true, verifiedProviderDomain: 'acmecorp.com', connectedAt: '2026-01-01T00:00:00.000Z', lastUsedAt: null },
+        ],
+      })
+      .mockResolvedValueOnce({ credentials: [] });
+    vi.mocked(api.deleteTenantDnsCredential).mockResolvedValue({ success: true });
+
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(screen.getByRole('button', { name: /^api keys$/i }));
+
+    expect(await screen.findByText('GoDaddy')).toBeInTheDocument();
+    expect(screen.getByText('Verified')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^remove$/i }));
+
+    await waitFor(() => expect(api.deleteTenantDnsCredential).toHaveBeenCalledWith('godaddy'));
+    expect(await screen.findByText(/no saved api keys yet/i)).toBeInTheDocument();
   });
 
   it('shows tenant-wide stats and a domain preview (with plan + seat usage) on the Overview tab, with no Recent Activity panel', async () => {
