@@ -15,7 +15,6 @@ import {
   Globe,
   Plus,
   Shield,
-  ShieldCheck,
   FileText,
   Laptop,
   CreditCard,
@@ -294,222 +293,204 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
           {activeTab === 'overview' && (
             <>
+              <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
+                  <p className="text-xs text-slate-500">
+                    {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDomainModal(true)}
+                  className="self-start sm:self-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer shrink-0"
+                  id="btn-add-domain-overview"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Domain</span>
+                </button>
+              </section>
+
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</span>
+                    <Globe className="w-[18px] h-[18px] text-slate-400" />
+                  </div>
+                  <span className="text-2xl font-semibold text-slate-900">{domains.length}</span>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailboxes</span>
+                    <Mail className="w-[18px] h-[18px] text-slate-400" />
+                  </div>
+                  <span className="text-2xl font-semibold text-slate-900">
+                    {domains.reduce((sum, d) => sum + d.mailboxCount, 0)}
+                    <span className="text-sm font-normal text-slate-500">
+                      {' '}
+                      / {domains.reduce((sum, d) => sum + d.mailboxLimit, 0)}
+                    </span>
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('billing')}
+                  className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Billing</span>
+                    <CreditCard className="w-[18px] h-[18px] text-slate-400" />
+                  </div>
+                  <span className="text-sm font-semibold text-slate-900 capitalize">
+                    {billingSummary?.hasSubscription ? billingSummary.status?.replace(/_/g, ' ') : 'Not started'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('apikeys')}
+                  className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">API Keys</span>
+                    <Key className="w-[18px] h-[18px] text-slate-400" />
+                  </div>
+                  <span className={`text-sm font-semibold ${hasSavedDnsCredential ? 'text-emerald-700' : 'text-slate-500'}`}>
+                    {hasSavedDnsCredential ? 'Saved' : 'Not saved'}
+                  </span>
+                </button>
+              </section>
+
               {domains.length === 0 ? (
-                (() => {
-                  return (
-                    <div className="max-w-2xl mx-auto w-full flex flex-col gap-6 pt-2">
-                      <div className="flex flex-col gap-1">
-                        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                          Set up {tenant?.name || 'your organization'}
-                        </h1>
-                        <p className="text-xs text-slate-500">Get everything ready to start creating mailboxes.</p>
-                      </div>
-
-                      <div className="flex flex-col gap-4">
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                            <Globe className="w-5 h-5" />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <h2 className="text-sm font-semibold text-slate-900">Add your first domain</h2>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                              Point a domain you own at Toowix. DNS records are generated automatically — you only paste them into your registrar.
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setShowDomainModal(true)}
-                              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                              id="btn-add-first-domain-overview"
-                            >
-                              <span>Add domain</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </button>
-                            <span className="text-xs text-slate-400">Takes about two minutes.</span>
-                          </div>
-                        </div>
-
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
-                          <div className="flex items-start justify-between">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-                              <Key className="w-4 h-4" />
-                            </div>
-                            <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
-                              Optional
-                            </span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <h2 className="text-sm font-semibold text-slate-900">Save a DNS provider API key</h2>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                              Store the key once and Toowix writes DNS records for you on every future domain — no manual copying.
-                            </p>
-                          </div>
-                          {hasSavedDnsCredential ? (
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Saved</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => setActiveTab('apikeys')}
-                                className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 rounded-lg shadow-xs transition-colors cursor-pointer"
-                              >
-                                Add API key
-                              </button>
-                              <span className="text-xs text-slate-400">Cloudflare, Route 53, GoDaddy and more.</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
-                          <div className="flex items-start justify-between">
-                            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                              <Shield className="w-5 h-5" />
-                            </div>
-                            <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 rounded-full">
-                              Recommended
-                            </span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <h2 className="text-sm font-semibold text-slate-900">Turn on two-factor authentication</h2>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                              Protect administrative controls and every organization mailbox from unauthorized access with a second factor.
-                            </p>
-                          </div>
-                          {is2FaEnabled ? (
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Enabled</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => setActiveTab('security')}
-                                className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 rounded-lg shadow-xs transition-colors cursor-pointer"
-                              >
-                                Set up 2FA
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleDismiss2FaBanner}
-                                className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
-                              >
-                                Remind me later
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                <section className="flex flex-col gap-4">
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                      <Globe className="w-5 h-5" />
                     </div>
-                  );
-                })()
-              ) : (
-                <>
-                  <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex flex-col gap-1">
-                      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
-                      <p className="text-xs text-slate-500">
-                        {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
+                      <h2 className="text-sm font-semibold text-slate-900">Add your first domain</h2>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Point a domain you own at Toowix. DNS records are generated automatically — you only paste them into your registrar.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowDomainModal(true)}
-                      className="self-start sm:self-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer shrink-0"
-                      id="btn-add-domain-overview"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add Domain</span>
-                    </button>
-                  </section>
-
-                  <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</span>
-                        <Globe className="w-[18px] h-[18px] text-slate-400" />
-                      </div>
-                      <span className="text-2xl font-semibold text-slate-900">{domains.length}</span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowDomainModal(true)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+                        id="btn-add-first-domain-overview"
+                      >
+                        <span>Add domain</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-xs text-slate-400">Takes about two minutes.</span>
                     </div>
+                  </div>
 
-                    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailboxes</span>
-                        <Mail className="w-[18px] h-[18px] text-slate-400" />
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
+                    <div className="flex items-start justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                        <Key className="w-4 h-4" />
                       </div>
-                      <span className="text-2xl font-semibold text-slate-900">
-                        {domains.reduce((sum, d) => sum + d.mailboxCount, 0)}
-                        <span className="text-sm font-normal text-slate-500">
-                          {' '}
-                          / {domains.reduce((sum, d) => sum + d.mailboxLimit, 0)}
-                        </span>
+                      <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full">
+                        Optional
                       </span>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('billing')}
-                      className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Billing</span>
-                        <CreditCard className="w-[18px] h-[18px] text-slate-400" />
+                    <div className="flex flex-col gap-1">
+                      <h2 className="text-sm font-semibold text-slate-900">Save a DNS provider API key</h2>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Store the key once and Toowix writes DNS records for you on every future domain — no manual copying.
+                      </p>
+                    </div>
+                    {hasSavedDnsCredential ? (
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Saved</span>
                       </div>
-                      <span className="text-sm font-semibold text-slate-900 capitalize">
-                        {billingSummary?.hasSubscription ? billingSummary.status?.replace(/_/g, ' ') : 'Not started'}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('security')}
-                      className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">2FA</span>
-                        {is2FaEnabled ? (
-                          <ShieldCheck className="w-[18px] h-[18px] text-emerald-500" />
-                        ) : (
-                          <Shield className="w-[18px] h-[18px] text-amber-500" />
-                        )}
-                      </div>
-                      <span className={`text-sm font-semibold ${is2FaEnabled ? 'text-emerald-700' : 'text-amber-700'}`}>
-                        {is2FaEnabled ? 'Enabled' : 'Not enabled'}
-                      </span>
-                    </button>
-                  </section>
-
-                  <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <Globe className="w-[18px] h-[18px] text-slate-400" />
-                        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
-                      </div>
+                    ) : (
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          onClick={() => setShowDomainModal(true)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg transition-colors cursor-pointer"
+                          onClick={() => setActiveTab('apikeys')}
+                          className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 rounded-lg shadow-xs transition-colors cursor-pointer"
                         >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Domain</span>
+                          Add API key
+                        </button>
+                        <span className="text-xs text-slate-400">Cloudflare, Route 53, GoDaddy and more.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-6 flex flex-col gap-4">
+                    <div className="flex items-start justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                        <Shield className="w-5 h-5" />
+                      </div>
+                      <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 rounded-full">
+                        Recommended
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <h2 className="text-sm font-semibold text-slate-900">Turn on two-factor authentication</h2>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Protect administrative controls and every organization mailbox from unauthorized access with a second factor.
+                      </p>
+                    </div>
+                    {is2FaEnabled ? (
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Enabled</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('security')}
+                          className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 rounded-lg shadow-xs transition-colors cursor-pointer"
+                        >
+                          Set up 2FA
                         </button>
                         <button
-                          onClick={() => setActiveTab('domains')}
-                          className="text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                          type="button"
+                          onClick={handleDismiss2FaBanner}
+                          className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
                         >
-                          <span>View all domains</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
+                          Remind me later
                         </button>
                       </div>
+                    )}
+                  </div>
+                </section>
+              ) : (
+                <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-[18px] h-[18px] text-slate-400" />
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
                     </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowDomainModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Domain</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('domains')}
+                        className="text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>View all domains</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="data-table">
+                  <div className="overflow-x-auto">
+                    <table className="data-table">
                       <thead>
                         <tr>
                           <th>Domain</th>
@@ -608,8 +589,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                       </div>
                     </div>
                   </div>
-                  </section>
-                </>
+                </section>
               )}
             </>
           )}

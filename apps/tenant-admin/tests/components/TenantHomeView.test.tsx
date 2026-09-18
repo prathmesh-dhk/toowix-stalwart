@@ -139,25 +139,28 @@ describe('TenantHomeView Component', () => {
     expect(screen.getByText('Showing 1 of 2')).toBeInTheDocument();
   });
 
-  it('shows a dedicated first-run setup screen on Overview instead of the full dashboard when the tenant has zero domains', async () => {
+  it('shows the setup task cards on Overview instead of the domains table when the tenant has zero domains', async () => {
     vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
 
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 
-    expect(await screen.findByRole('heading', { name: /set up/i })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Overview' })).not.toBeInTheDocument();
-    expect(screen.getByText(/add your first domain/i)).toBeInTheDocument();
+    // Overview keeps its normal header + stat-card row (including the API
+    // Keys card in place of 2FA) even with zero domains — only the content
+    // area below switches from the domains table to the setup tasks.
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getByText('Not saved')).toBeInTheDocument();
+    expect(screen.getByText('Add your first domain')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
   });
 
-  it('nudges saving a DNS provider API key from the first-run setup screen when the tenant has zero domains', async () => {
+  it('nudges saving a DNS provider API key from the zero-domains setup tasks', async () => {
     vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
 
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 
-    await screen.findByRole('heading', { name: /set up/i });
+    await screen.findByText('Save a DNS provider API key');
     fireEvent.click(screen.getByRole('button', { name: /^add api key$/i }));
     expect(await screen.findByRole('heading', { name: 'API Keys' })).toBeInTheDocument();
   });
@@ -172,8 +175,9 @@ describe('TenantHomeView Component', () => {
 
     render(<TenantHomeView user={{ ...mockUser, twoFactorEnabled: true }} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 
-    await screen.findByRole('heading', { name: /set up/i });
-    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Overview' });
+    // "Saved" appears both on the API Keys stat card and the task card.
+    expect((await screen.findAllByText('Saved')).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Enabled')).toBeInTheDocument();
   });
 
