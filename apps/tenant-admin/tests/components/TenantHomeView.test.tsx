@@ -139,25 +139,34 @@ describe('TenantHomeView Component', () => {
     expect(screen.getByText('Showing 1 of 2')).toBeInTheDocument();
   });
 
-  it('shows the "connect your first domain" onboarding state when the tenant has zero domains', async () => {
+  it('shows a dedicated first-run setup screen on Overview instead of the full dashboard when the tenant has zero domains', async () => {
     vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
 
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
-    await screen.findByRole('heading', { name: 'Overview' });
-    fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
 
+    expect(await screen.findByRole('heading', { name: /set up/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Overview' })).not.toBeInTheDocument();
+    expect(screen.getByText(/add your first domain/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
     expect(await screen.findByText(/connect your first domain to get started/i)).toBeInTheDocument();
   });
 
-  it('nudges saving a DNS provider API key on the Overview landing page when the tenant has zero domains', async () => {
+  it('nudges saving a DNS provider API key from the first-run setup screen when the tenant has zero domains', async () => {
     vi.mocked(api.listTenantDomains).mockResolvedValue({ domains: [] });
 
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
-    await screen.findByRole('heading', { name: 'Overview' });
 
-    expect(await screen.findByText(/add your first domain to start provisioning mailboxes/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /or save a dns provider api key first/i }));
+    await screen.findByRole('heading', { name: /set up/i });
+    fireEvent.click(screen.getByRole('button', { name: /save a dns provider api key/i }));
     expect(await screen.findByRole('heading', { name: 'API Keys' })).toBeInTheDocument();
+  });
+
+  it('shows the full Overview dashboard once the tenant has at least one domain', async () => {
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /set up/i })).not.toBeInTheDocument();
   });
 
   it('lists saved API keys with a nav tab, and removes one when deleted', async () => {

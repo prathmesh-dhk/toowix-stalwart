@@ -291,153 +291,157 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
           {activeTab === 'overview' && (
             <>
-              {domains.length === 0 && (
-                <div className="relative overflow-hidden bg-gradient-to-r from-indigo-50/90 via-blue-50/40 to-white border border-indigo-100/90 rounded-2xl p-4 sm:p-5 shadow-xs">
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <Globe className="w-5 h-5 text-indigo-600" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <h3 className="text-sm font-semibold text-slate-900">Add your first domain to start provisioning mailboxes</h3>
-                      <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
-                        DNS records (MX, SPF, DKIM) are generated automatically the moment you add a domain.
-                      </p>
-                      <div className="mt-2.5 flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowDomainModal(true)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
-                          id="btn-add-first-domain-overview"
-                        >
-                          <span>Add Domain</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('apikeys')}
-                          className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 transition-colors"
-                        >
-                          Or save a DNS provider API key first
-                        </button>
-                      </div>
-                    </div>
+              {domains.length === 0 ? (
+                <div className="max-w-lg mx-auto w-full flex flex-col gap-7 pt-6">
+                  <div className="flex flex-col gap-1.5 text-center">
+                    <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+                      Set up {tenant?.name || 'your organization'}
+                    </h1>
+                    <p className="text-xs text-slate-500">Two quick steps and you're ready to create mailboxes.</p>
                   </div>
-                </div>
-              )}
 
-              <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
-                  <p className="text-xs text-slate-500">
-                    {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowDomainModal(true)}
-                  className="self-start sm:self-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer shrink-0"
-                  id="btn-add-domain-overview"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Domain</span>
-                </button>
-              </section>
-
-              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</span>
-                    <Globe className="w-[18px] h-[18px] text-slate-400" />
-                  </div>
-                  <span className="text-2xl font-semibold text-slate-900">{domains.length}</span>
-                </div>
-
-                <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailboxes</span>
-                    <Mail className="w-[18px] h-[18px] text-slate-400" />
-                  </div>
-                  <span className="text-2xl font-semibold text-slate-900">
-                    {domains.reduce((sum, d) => sum + d.mailboxCount, 0)}
-                    <span className="text-sm font-normal text-slate-500">
-                      {' '}
-                      / {domains.reduce((sum, d) => sum + d.mailboxLimit, 0)}
-                    </span>
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('billing')}
-                  className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Billing</span>
-                    <CreditCard className="w-[18px] h-[18px] text-slate-400" />
-                  </div>
-                  <span className="text-sm font-semibold text-slate-900 capitalize">
-                    {billingSummary?.hasSubscription ? billingSummary.status?.replace(/_/g, ' ') : 'Not started'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('security')}
-                  className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">2FA</span>
-                    {is2FaEnabled ? (
-                      <ShieldCheck className="w-[18px] h-[18px] text-emerald-500" />
-                    ) : (
-                      <Shield className="w-[18px] h-[18px] text-amber-500" />
-                    )}
-                  </div>
-                  <span className={`text-sm font-semibold ${is2FaEnabled ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {is2FaEnabled ? 'Enabled' : 'Not enabled'}
-                  </span>
-                </button>
-              </section>
-
-              <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-[18px] h-[18px] text-slate-400" />
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
-                  </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-3">
                     <button
                       type="button"
                       onClick={() => setShowDomainModal(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg transition-colors cursor-pointer"
+                      className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
+                      id="btn-add-first-domain-overview"
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Domain</span>
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                          1
+                        </div>
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-slate-900 block">Add your first domain</span>
+                          <span className="text-xs text-slate-500 block">DNS records (MX, SPF, DKIM) are generated automatically</span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
                     </button>
+
                     <button
-                      onClick={() => setActiveTab('domains')}
-                      className="text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      type="button"
+                      onClick={() => setActiveTab('apikeys')}
+                      className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
                     >
-                      <span>View all domains</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                          <Key className="w-4 h-4" />
+                        </div>
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-slate-900 block">
+                            Save a DNS provider API key <span className="text-slate-400 font-normal">— optional</span>
+                          </span>
+                          <span className="text-xs text-slate-500 block">Reuse it automatically for every future domain</span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
                     </button>
                   </div>
                 </div>
-
-                {domains.length === 0 ? (
-                  <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-                    <Globe className="w-7 h-7 text-slate-300" />
-                    <p className="text-xs text-slate-500">No domains yet.</p>
+              ) : (
+                <>
+                  <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
+                      <p className="text-xs text-slate-500">
+                        {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
+                      </p>
+                    </div>
                     <button
+                      type="button"
                       onClick={() => setShowDomainModal(true)}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                      className="self-start sm:self-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer shrink-0"
+                      id="btn-add-domain-overview"
                     >
-                      + Add your first domain
+                      <Plus className="w-4 h-4" />
+                      <span>Add Domain</span>
                     </button>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="data-table">
+                  </section>
+
+                  <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</span>
+                        <Globe className="w-[18px] h-[18px] text-slate-400" />
+                      </div>
+                      <span className="text-2xl font-semibold text-slate-900">{domains.length}</span>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailboxes</span>
+                        <Mail className="w-[18px] h-[18px] text-slate-400" />
+                      </div>
+                      <span className="text-2xl font-semibold text-slate-900">
+                        {domains.reduce((sum, d) => sum + d.mailboxCount, 0)}
+                        <span className="text-sm font-normal text-slate-500">
+                          {' '}
+                          / {domains.reduce((sum, d) => sum + d.mailboxLimit, 0)}
+                        </span>
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('billing')}
+                      className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Billing</span>
+                        <CreditCard className="w-[18px] h-[18px] text-slate-400" />
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900 capitalize">
+                        {billingSummary?.hasSubscription ? billingSummary.status?.replace(/_/g, ' ') : 'Not started'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('security')}
+                      className="text-left bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">2FA</span>
+                        {is2FaEnabled ? (
+                          <ShieldCheck className="w-[18px] h-[18px] text-emerald-500" />
+                        ) : (
+                          <Shield className="w-[18px] h-[18px] text-amber-500" />
+                        )}
+                      </div>
+                      <span className={`text-sm font-semibold ${is2FaEnabled ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {is2FaEnabled ? 'Enabled' : 'Not enabled'}
+                      </span>
+                    </button>
+                  </section>
+
+                  <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-[18px] h-[18px] text-slate-400" />
+                        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setShowDomainModal(true)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Domain</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('domains')}
+                          className="text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>View all domains</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="data-table">
                       <thead>
                         <tr>
                           <th>Domain</th>
@@ -536,8 +540,9 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                       </div>
                     </div>
                   </div>
-                )}
-              </section>
+                  </section>
+                </>
+              )}
             </>
           )}
 
