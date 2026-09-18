@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 import { TenantDnsCredentialSummary, DomainItem } from '../types';
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
-import { AlertTriangle, AlertCircle, Loader2, Key, ShieldCheck, ArrowRight } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Loader2, Key, ShieldCheck, ArrowRight, ExternalLink } from 'lucide-react';
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
 
@@ -367,10 +367,21 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       {/* Credential Inputs */}
       {provider === 'godaddy' ? (
         <div className="flex flex-col gap-4">
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Generate a Personal Access Token / API key+secret at{' '}
-            <span className="font-mono text-slate-700">developer.godaddy.com</span>.
-          </p>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col gap-1 text-xs text-slate-600 leading-relaxed">
+            <span className="font-semibold text-slate-800">GoDaddy API Key Setup:</span>
+            <p className="text-[11px] text-slate-600">
+              Create a <strong>Production</strong> API Key &amp; Secret at{' '}
+              <a
+                href="https://classic-developer.godaddy.com/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-600 hover:text-indigo-800 font-medium underline inline-flex items-center gap-1"
+              >
+                <span>classic-developer.godaddy.com/keys</span>
+                <ExternalLink className="w-3 h-3 shrink-0" />
+              </a>
+            </p>
+          </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="dns-cred-godaddy-key" className="text-xs font-semibold text-slate-700">GoDaddy API Key</label>
             <input
@@ -401,10 +412,22 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         </div>
       ) : provider === 'hostinger' ? (
         <div className="flex flex-col gap-4">
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Generate an API token in hPanel at <span className="font-mono text-slate-700">hostinger.com</span>{' '}
-            (Profile &rarr; Business &amp; Dev Tools &rarr; API Access).
-          </p>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col gap-1 text-xs text-slate-600 leading-relaxed">
+            <span className="font-semibold text-slate-800">Hostinger API Token Setup:</span>
+            <p className="text-[11px] text-slate-600">
+              Generate an API token in hPanel at{' '}
+              <a
+                href="https://hpanel.hostinger.com/api"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-600 hover:text-indigo-800 font-medium underline inline-flex items-center gap-1"
+              >
+                <span>hpanel.hostinger.com/api</span>
+                <ExternalLink className="w-3 h-3 shrink-0" />
+              </a>{' '}
+              (or Account &rarr; API).
+            </p>
+          </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="dns-cred-hostinger-token" className="text-xs font-semibold text-slate-700">Hostinger API Token</label>
             <input
@@ -423,8 +446,17 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             <span className="font-semibold text-slate-800">Creating your Cloudflare API Token:</span>
             <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
               <li>
-                Go to <span className="font-mono font-medium">dash.cloudflare.com</span> &rarr; My Profile &rarr;{' '}
-                <strong>API Tokens</strong>
+                Go to{' '}
+                <a
+                  href="https://dash.cloudflare.com/profile/api-tokens"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-600 hover:text-indigo-800 font-medium underline inline-flex items-center gap-1"
+                >
+                  <span>dash.cloudflare.com/profile/api-tokens</span>
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                </a>{' '}
+                (or My Profile &rarr; API Tokens)
               </li>
               <li>
                 Click <strong>Create Token</strong> &rarr; use the <strong>Edit zone DNS</strong> template
@@ -455,7 +487,16 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>
                   That looks like a Global API Key (37 hex chars). Cloudflare needs an <strong>API Token</strong>{' '}
-                  instead — My Profile &rarr; API Tokens &rarr; Create Token &rarr; "Edit zone DNS".
+                  instead — visit{' '}
+                  <a
+                    href="https://dash.cloudflare.com/profile/api-tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline font-semibold"
+                  >
+                    API Tokens
+                  </a>{' '}
+                  &rarr; Create Token &rarr; "Edit zone DNS".
                 </span>
               </p>
             )}
