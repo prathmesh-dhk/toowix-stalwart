@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
-import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDeletionRequestItem, DomainDnsStatus, DnsLiveCheckResult } from '../types';
+import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDnsStatus, DnsLiveCheckResult } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
@@ -2174,17 +2174,15 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
       />
 
       {/* ========================================================================= */}
-      {/* MODAL: DOMAIN DELETION CONFIRMATION & REQUEST FLOW                         */}
+      {/* MODAL: DOMAIN DELETION CONFIRMATION                                        */}
       {/* ========================================================================= */}
       <DomainDeletionModal
         domain={activeDomain}
         isOpen={showDomainDeletionModal}
         onClose={() => setShowDomainDeletionModal(false)}
-        onRequestSubmitted={() => {
-          if (activeDomain) {
-            loadDeletionRequest(activeDomain.id);
-            loadTenantData();
-          }
+        onDeleted={() => {
+          setShowDomainDeletionModal(false);
+          onNavigateHome();
         }}
       />
     </div>

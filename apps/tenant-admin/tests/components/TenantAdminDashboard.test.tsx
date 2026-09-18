@@ -20,6 +20,7 @@ vi.mock('../../src/api', () => ({
     createTenantDomain: vi.fn(),
     requestDomainDeletion: vi.fn(),
     getDomainDeletionRequest: vi.fn().mockResolvedValue({ request: null }),
+    deleteDomain: vi.fn(),
     getDomainDnsStatus: vi.fn().mockResolvedValue({
       dnsStatus: 'active',
       dnsRecords: [],
