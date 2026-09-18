@@ -136,10 +136,8 @@ describe('DomainSetupModal Component', () => {
       },
       true
     );
-    expect(await screen.findByText(/GoDaddy connected and verified/i)).toBeInTheDocument();
 
-    // Step 5: status
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    // Wizard auto-advances to status step immediately after credential verification
     expect(await screen.findByText('DNS Setup — newbrand.io')).toBeInTheDocument();
 
     const completeBtn = screen.getByRole('button', { name: /^done$/i });
@@ -199,7 +197,8 @@ describe('DomainSetupModal Component', () => {
       },
       true
     );
-    expect(await screen.findByText(/Hostinger connected and verified/i)).toBeInTheDocument();
+    // Wizard auto-advances to status step — no intermediate "connected" screen
+    expect(await screen.findByText(/DNS Setup/i)).toBeInTheDocument();
   });
 
   it('switches to Cloudflare and connects with a single API token', async () => {
@@ -246,7 +245,8 @@ describe('DomainSetupModal Component', () => {
       },
       true
     );
-    expect(await screen.findByText(/Cloudflare connected and verified/i)).toBeInTheDocument();
+    // Wizard auto-advances to status step — no intermediate "connected" screen
+    expect(await screen.findByText(/DNS Setup/i)).toBeInTheDocument();
   });
 
   it('supports the manual DNS setup path with no credential, showing zone file', async () => {

@@ -639,58 +639,36 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   </span>
                 </div>
 
-                {connected ? (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-3">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span className="text-xs font-medium text-emerald-800">
-                      GoDaddy connected and verified. Records will publish automatically once this domain is activated.
+                {methodAutoSkipped && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                    <span>
+                      We detected <strong>GoDaddy</strong> manages this domain's DNS.
                     </span>
-                  </div>
-                ) : (
-                  <>
-                    {methodAutoSkipped && (
-                      <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
-                        <span>
-                          We detected <strong>GoDaddy</strong> manages this domain's DNS.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMethodAutoSkipped(false);
-                            navigateBack('method');
-                          }}
-                          className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
-                        >
-                          Switch provider
-                        </button>
-                      </div>
-                    )}
-
-                    <DnsProviderCredentialForm
-                      domainId={createdDomain?.id}
-                      domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
-                      planId={selectedPlanId || undefined}
-                      provider="godaddy"
-                      onSuccess={(info, newDom) => {
-                        setConnected(true);
-                        if (newDom) setCreatedDomain(newDom);
-                      }}
-                    />
-                  </>
-                )}
-
-                {connected && (
-                  <div>
                     <button
                       type="button"
-                      onClick={() => goToStatus(createdDomain)}
-                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
+                      onClick={() => {
+                        setMethodAutoSkipped(false);
+                        navigateBack('method');
+                      }}
+                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                     >
-                      <span>Continue</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      Switch provider
                     </button>
                   </div>
                 )}
+
+                <DnsProviderCredentialForm
+                  domainId={createdDomain?.id}
+                  domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
+                  planId={selectedPlanId || undefined}
+                  provider="godaddy"
+                  onSuccess={(info, newDom) => {
+                    const dom = newDom ?? createdDomain;
+                    if (dom) setCreatedDomain(dom);
+                    setConnected(true);
+                    goToStatus(dom);
+                  }}
+                />
               </div>
             )}
 
@@ -704,58 +682,36 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   </span>
                 </div>
 
-                {connected ? (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-3">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span className="text-xs font-medium text-emerald-800">
-                      Hostinger connected and verified. Records will publish automatically once this domain is activated.
+                {methodAutoSkipped && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                    <span>
+                      We detected <strong>Hostinger</strong> manages this domain's DNS.
                     </span>
-                  </div>
-                ) : (
-                  <>
-                    {methodAutoSkipped && (
-                      <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
-                        <span>
-                          We detected <strong>Hostinger</strong> manages this domain's DNS.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMethodAutoSkipped(false);
-                            navigateBack('method');
-                          }}
-                          className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
-                        >
-                          Switch provider
-                        </button>
-                      </div>
-                    )}
-
-                    <DnsProviderCredentialForm
-                      domainId={createdDomain?.id}
-                      domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
-                      planId={selectedPlanId || undefined}
-                      provider="hostinger"
-                      onSuccess={(info, newDom) => {
-                        setConnected(true);
-                        if (newDom) setCreatedDomain(newDom);
-                      }}
-                    />
-                  </>
-                )}
-
-                {connected && (
-                  <div>
                     <button
                       type="button"
-                      onClick={() => goToStatus(createdDomain)}
-                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
+                      onClick={() => {
+                        setMethodAutoSkipped(false);
+                        navigateBack('method');
+                      }}
+                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                     >
-                      <span>Continue</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      Switch provider
                     </button>
                   </div>
                 )}
+
+                <DnsProviderCredentialForm
+                  domainId={createdDomain?.id}
+                  domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
+                  planId={selectedPlanId || undefined}
+                  provider="hostinger"
+                  onSuccess={(info, newDom) => {
+                    const dom = newDom ?? createdDomain;
+                    if (dom) setCreatedDomain(dom);
+                    setConnected(true);
+                    goToStatus(dom);
+                  }}
+                />
               </div>
             )}
 
@@ -769,58 +725,36 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   </span>
                 </div>
 
-                {connected ? (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center gap-3">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span className="text-xs font-medium text-emerald-800">
-                      Cloudflare connected and verified. Records will publish automatically once this domain is activated.
+                {methodAutoSkipped && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
+                    <span>
+                      We detected <strong>Cloudflare</strong> manages this domain's DNS.
                     </span>
-                  </div>
-                ) : (
-                  <>
-                    {methodAutoSkipped && (
-                      <div className="p-3 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-800 flex items-center justify-between">
-                        <span>
-                          We detected <strong>Cloudflare</strong> manages this domain's DNS.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMethodAutoSkipped(false);
-                            navigateBack('method');
-                          }}
-                          className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
-                        >
-                          Switch provider
-                        </button>
-                      </div>
-                    )}
-
-                    <DnsProviderCredentialForm
-                      domainId={createdDomain?.id}
-                      domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
-                      planId={selectedPlanId || undefined}
-                      provider="cloudflare"
-                      onSuccess={(info, newDom) => {
-                        setConnected(true);
-                        if (newDom) setCreatedDomain(newDom);
-                      }}
-                    />
-                  </>
-                )}
-
-                {connected && (
-                  <div>
                     <button
                       type="button"
-                      onClick={() => goToStatus(createdDomain)}
-                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-sm font-semibold shadow-xs hover:shadow transition-all inline-flex items-center gap-2 cursor-pointer"
+                      onClick={() => {
+                        setMethodAutoSkipped(false);
+                        navigateBack('method');
+                      }}
+                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
                     >
-                      <span>Continue</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      Switch provider
                     </button>
                   </div>
                 )}
+
+                <DnsProviderCredentialForm
+                  domainId={createdDomain?.id}
+                  domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
+                  planId={selectedPlanId || undefined}
+                  provider="cloudflare"
+                  onSuccess={(info, newDom) => {
+                    const dom = newDom ?? createdDomain;
+                    if (dom) setCreatedDomain(dom);
+                    setConnected(true);
+                    goToStatus(dom);
+                  }}
+                />
               </div>
             )}
 
