@@ -276,7 +276,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
 
   if (!provider) return null;
 
-  if (domainId && entryChoice === 'pending' && savedForProvider) {
+  if ((domainId || domainName) && entryChoice === 'pending' && savedForProvider) {
     return (
       <div className="flex flex-col gap-5">
         <div className="p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-xl flex items-start gap-3">
@@ -352,7 +352,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
         </div>
       )}
 
-      {domainId && savedForProvider && (
+      {(domainId || domainName) && savedForProvider && (
         <p className="text-xs text-slate-500 -mt-3">
           This replaces your saved {PROVIDER_LABELS[provider]} key.{' '}
           <button type="button" onClick={() => setEntryChoice('pending')} className="text-indigo-600 hover:underline cursor-pointer">
@@ -360,7 +360,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
           </button>
         </p>
       )}
-      {!domainId && savedForProvider && (
+      {!domainId && !domainName && savedForProvider && (
         <p className="text-xs text-slate-500 -mt-3">You already have a saved {PROVIDER_LABELS[provider]} key — saving will replace it.</p>
       )}
 
