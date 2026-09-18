@@ -374,8 +374,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const selectedPlan = plans.find((p) => p.id === selectedPlanId);
 
   return (
-    <div className="fixed inset-0 z-50 bg-white overflow-y-auto" role="dialog" aria-modal="true">
-      <div className="min-h-screen flex flex-col bg-white">
+    <div className="fixed inset-0 z-50 bg-white overflow-y-auto overflow-x-hidden" role="dialog" aria-modal="true">
+      <div className="min-h-screen flex flex-col bg-white overflow-x-hidden">
         {/* Top bar: close, title, back */}
         <div className="flex items-center justify-between px-6 sm:px-8 md:px-10 lg:px-12 pt-7 pb-4 shrink-0 bg-white sticky top-0 z-20">
           <div className="flex items-center gap-3.5">
@@ -404,8 +404,13 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         </div>
 
         {/* Unified Single-Focus Layout across all wizard pages */}
-        <div className="flex-1 flex flex-col w-full bg-white">
-          <main className="w-full max-w-2xl sm:max-w-3xl pl-8 sm:pl-16 md:pl-24 lg:pl-32 xl:pl-[7vw] pr-8 py-10 sm:py-16 my-auto flex flex-col text-left">
+        <div
+          key={step}
+          className={`flex-1 flex flex-col w-full bg-white pl-6 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] pr-6 sm:pr-8 ${
+            direction === 'backward' ? 'animate-slide-in-left' : 'animate-slide-in-right'
+          }`}
+        >
+          <main className="w-full max-w-2xl sm:max-w-3xl pt-24 sm:pt-36 lg:pt-48 xl:pt-[26vh] pb-16 flex flex-col text-left">
             {error && (
               <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />

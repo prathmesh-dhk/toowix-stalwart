@@ -764,12 +764,12 @@ body {
 }
 
 /* ==========================================================================
-   WIZARD SLIDE ANIMATIONS (Right-to-Left & Left-to-Right)
+   WIZARD SLIDE ANIMATIONS (Gentle Full-Page Slide & Fade)
    ========================================================================== */
 @keyframes slideInFromRight {
   0% {
     opacity: 0;
-    transform: translate3d(40px, 0, 0);
+    transform: translate3d(min(100%, 720px), 0, 0);
   }
   100% {
     opacity: 1;
@@ -780,7 +780,7 @@ body {
 @keyframes slideInFromLeft {
   0% {
     opacity: 0;
-    transform: translate3d(-40px, 0, 0);
+    transform: translate3d(max(-100%, -720px), 0, 0);
   }
   100% {
     opacity: 1;
@@ -789,10 +789,21 @@ body {
 }
 
 .animate-slide-in-right {
-  animation: slideInFromRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: slideInFromRight 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
 }
 
 .animate-slide-in-left {
-  animation: slideInFromLeft 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: slideInFromLeft 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-in-right,
+  .animate-slide-in-left {
+    animation: none;
+    transform: none;
+    opacity: 1;
+  }
 }
 
