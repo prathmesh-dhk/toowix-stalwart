@@ -16,6 +16,7 @@ import {
   approveDomainDeletion,
   rejectDomainDeletion,
   listDomainDeletionRequests,
+  deleteDomainDirectly,
   DomainDeletionError,
 } from '../src/services/domain-deletion.service';
 import { stripeClient } from '../src/stripe/client';
@@ -256,6 +257,82 @@ describe('Domain Deletion Service & Cascades', () => {
       // Domain still exists
       const domInDb = await DomainModel.findById(domainId);
       expect(domInDb).not.toBeNull();
+    });
+  });
+
+  describe('deleteDomainDirectly', () => {
+    it('rejects deletion if mailboxes exist on the domain', async () => {
+      await MailboxModel.create({
+        tenantId,
+        domainId,
+        address: 'ceo@acme.com',
+        localPart: 'ceo',
+        domain: 'acme.com',
+        status: 'active',
+        storageUsedBytes: 0,
+      });
+
+      await expect(deleteDomainDirectly(domainId, tenantId, tenantActor)).rejects.toMatchObject({
+        code: 'MAILBOXES_EXIST',
+        statusCode: 400,
+      });
+
+      const domInDb = await DomainModel.findById(domainId);
+      expect(domInDb).not.toBeNull();
+    });
+
+    it('executes the full cascade immediately with no Super Admin approval, and resolves any pending request', async () => {
+      const cancelSubSpy = vi.spyOn(stripeClient, 'cancelSubscription').mockResolvedValue({} as any);
+      const deleteStalwartSpy = vi.spyOn(stalwartClient, 'deleteDomain').mockResolvedValue();
+
+      await DomainSubscriptionModel.create({
+        domainId,
+        tenantId,
+        planId: new mongoose.Types.ObjectId(),
+        stripeSubscriptionId: 'sub_live_98765',
+        stripeSubscriptionItemId: 'si_98765',
+        status: 'active',
+        cancelAtPeriodEnd: false,
+        peakMailboxCountThisPeriod: 0,
+      });
+
+      await DomainDnsCredentialModel.create({
+        domainId,
+        tenantId,
+        provider: 'cloudflare',
+        credentialEncrypted: 'mock_encrypted_secret',
+        verifiedProviderDomain: 'acme.com',
+        connectedAt: new Date(),
+        connectedBy: tenantActor.id,
+      });
+
+      // A pending request already exists from an earlier attempt (e.g. the
+      // tenant requested review before this feature existed, or a mailbox
+      // was later removed making instant delete available).
+      const pendingReq = await requestDomainDeletion(domainId, tenantId, tenantActor, 'Earlier attempt');
+
+      const result = await deleteDomainDirectly(domainId, tenantId, tenantActor);
+      expect(result.success).toBe(true);
+      expect(result.domainName).toBe('acme.com');
+
+      expect(cancelSubSpy).toHaveBeenCalledWith('sub_live_98765');
+      expect(await DomainSubscriptionModel.findOne({ domainId })).toBeNull();
+      expect(await DomainDnsCredentialModel.findOne({ domainId })).toBeNull();
+      expect(deleteStalwartSpy).toHaveBeenCalledWith('stalwart-dom-1');
+      expect(await DomainModel.findById(domainId)).toBeNull();
+
+      const secondaryDom = await DomainModel.findById(domain2Id);
+      expect(secondaryDom?.isPrimary).toBe(true);
+
+      const updatedPendingReq = await DomainDeletionRequestModel.findById(pendingReq._id);
+      expect(updatedPendingReq?.status).toBe('approved');
+    });
+
+    it('rejects deletion for a domain not owned by the tenant', async () => {
+      const otherTenant = await TenantModel.create({ name: 'Other Co', status: 'active', mailboxLimit: 5, mailboxCount: 0 });
+      await expect(
+        deleteDomainDirectly(domainId, otherTenant._id.toString(), tenantActor)
+      ).rejects.toMatchObject({ code: 'DOMAIN_NOT_FOUND', statusCode: 404 });
     });
   });
 

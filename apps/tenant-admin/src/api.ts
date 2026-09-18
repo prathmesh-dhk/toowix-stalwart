@@ -225,7 +225,7 @@ export const api = {
   listPlans: () => request<{ plans: Plan[] }>('/api/plans'),
 
   // Billing (Stripe — one Subscription per Domain, see backend/src/services/billing.service.ts)
-  getBillingConfig: () => request<{ publishableKey: string }>('/api/tenants/me/billing/config'),
+  getBillingConfig: () => request<{ publishableKey: string; billingEnabled?: boolean }>('/api/tenants/me/billing/config'),
   // Combined-billing model: every domain after a tenant's first shares one
   // Stripe subscription, so checkout for domain #2+ attaches directly with
   // no redirect (`attached: true`) instead of returning a Checkout `url`.
@@ -317,6 +317,12 @@ export const api = {
     request<{ request: DomainDeletionRequestItem | null }>(
       `/api/tenants/me/domains/${domainId}/deletion-request`
     ),
+
+  /** Deletes a domain immediately — allowed only when it has zero mailboxes, no Super Admin approval needed. */
+  deleteDomain: (domainId: string) =>
+    request<{ success: boolean; domainName: string }>(`/api/tenants/me/domains/${domainId}`, {
+      method: 'DELETE',
+    }),
 
   // Mailboxes (Domain Scoped)
   listMyMailboxes: (domainId?: string) => {

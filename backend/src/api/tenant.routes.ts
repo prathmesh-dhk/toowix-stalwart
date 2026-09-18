@@ -8,6 +8,8 @@ import { PlanModel } from '../db/models/Plan';
 import { AdminUserModel } from '../db/models/AdminUser';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
+import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
+import { isBillingEnabled } from '../config';
 import { connectDnsProviderCredential, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
 import {
   listTenantDnsCredentials,
@@ -16,7 +18,7 @@ import {
   getDecryptedTenantDnsCredential,
 } from '../services/tenant-dns-credential.service';
 import { isKnownProvider } from '../dns-providers/dispatch';
-import { requestDomainDeletion, getDomainDeletionRequest, DomainDeletionError } from '../services/domain-deletion.service';
+import { requestDomainDeletion, getDomainDeletionRequest, deleteDomainDirectly, DomainDeletionError } from '../services/domain-deletion.service';
 import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/errors';
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
 import { CloudflareAuthError, CloudflareDomainNotManagedError } from '../cloudflare/errors';
@@ -283,6 +285,20 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       dkimSelector: rsaKey?.selector || null,
       dkimPublicKey: rsaKey?.publicKey || null,
     });
+
+    if (!isBillingEnabled()) {
+      await DomainSubscriptionModel.findOneAndUpdate(
+        { domainId: newDomain._id },
+        {
+          domainId: newDomain._id,
+          tenantId: tenant._id,
+          planId: plan._id,
+          status: 'active',
+          cancelAtPeriodEnd: false,
+        },
+        { upsert: true }
+      );
+    }
 
     // Audit log
     const actorId = req.adminUser?.id || req.user?.id;
@@ -683,6 +699,36 @@ tenantMeRouter.get('/me/domains/:domainId/deletion-request', async (req: Request
   } catch (err: any) {
     console.error('[Get Domain Deletion Request Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve domain deletion request.' });
+  }
+});
+
+// ==========================================
+// DIRECT DOMAIN DELETE — zero mailboxes, no Super Admin approval needed
+// (/api/tenants/me/domains/:domainId)
+// ==========================================
+tenantMeRouter.delete('/me/domains/:domainId', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+
+  const actor = {
+    id: req.adminUser!.id,
+    email: req.adminUser!.email,
+    role: req.adminUser!.role,
+  };
+
+  try {
+    const result = await deleteDomainDirectly(req.params.domainId, tenantId, actor);
+    res.status(200).json(result);
+  } catch (err: any) {
+    if (err instanceof DomainDeletionError) {
+      res.status(err.statusCode).json({ error: err.code, message: err.message });
+      return;
+    }
+    console.error('[Domain Direct Delete Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to delete domain.' });
   }
 });
 

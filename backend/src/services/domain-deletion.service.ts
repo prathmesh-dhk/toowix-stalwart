@@ -103,14 +103,71 @@ export async function getDomainDeletionRequest(
 }
 
 /**
- * Executes the full deletion cascade when a Super Admin approves a deletion request:
+ * The destructive cascade shared by both the Super-Admin-approved deletion
+ * flow and the tenant's own zero-mailbox instant delete:
  * 1. Cancels live Stripe subscription (if one exists).
  * 2. Purges DomainSubscription document.
  * 3. Purges DomainDnsCredential document.
  * 4. Deletes domain from Stalwart mail server.
  * 5. Deletes Domain document from MongoDB.
  * 6. If primary domain was deleted, reassigns another domain as primary.
+ * Caller is responsible for re-verifying the mailbox count is zero
+ * immediately before invoking this — it does no such check itself.
  */
+async function executeDeletionCascade(domainId: mongoose.Types.ObjectId | string, tenantId: mongoose.Types.ObjectId | string): Promise<{ wasPrimary: boolean }> {
+  const domain = await DomainModel.findById(domainId);
+
+  // 1. Cancel live Stripe subscription if present
+  const subscription = await DomainSubscriptionModel.findOne({ domainId });
+  if (subscription?.stripeSubscriptionId) {
+    try {
+      await stripeClient.cancelSubscription(subscription.stripeSubscriptionId);
+    } catch (err: any) {
+      console.warn(`[Domain Deletion] Stripe cancel skipped/failed for ${subscription.stripeSubscriptionId}:`, err.message);
+    }
+  }
+
+  // 2. Delete DomainSubscription
+  await DomainSubscriptionModel.deleteOne({ domainId });
+
+  // 3. Delete DomainDnsCredential
+  await DomainDnsCredentialModel.deleteOne({ domainId });
+
+  // 4. Delete Stalwart domain & DKIM keys
+  if (domain?.stalwartDomainId) {
+    try {
+      await stalwartClient.deleteDomain(domain.stalwartDomainId);
+    } catch (err: any) {
+      console.warn(`[Domain Deletion] Stalwart deleteDomain failed for ${domain.stalwartDomainId}:`, err.message);
+    }
+  } else if (domain) {
+    try {
+      const liveDomains = await stalwartClient.listDomains();
+      const match = liveDomains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
+      if (match?.id) {
+        await stalwartClient.deleteDomain(match.id);
+      }
+    } catch (err: any) {
+      console.warn(`[Domain Deletion] Stalwart domain lookup/delete failed for ${domain.domainName}:`, err.message);
+    }
+  }
+
+  // 5. Delete Domain from MongoDB
+  const wasPrimary = Boolean(domain?.isPrimary);
+  await DomainModel.deleteOne({ _id: domainId });
+
+  // 6. Reassign primary domain if deleted domain was primary
+  if (wasPrimary) {
+    const nextDomain = await DomainModel.findOne({ tenantId }).sort({ createdAt: 1 });
+    if (nextDomain) {
+      nextDomain.isPrimary = true;
+      await nextDomain.save();
+    }
+  }
+
+  return { wasPrimary };
+}
+
 export async function approveDomainDeletion(
   requestId: string,
   reviewer: DeletionActor
@@ -141,65 +198,17 @@ export async function approveDomainDeletion(
     );
   }
 
-  const domain = await DomainModel.findById(request.domainId);
   const domainName = request.domainName;
+  const { wasPrimary } = await executeDeletionCascade(request.domainId, request.tenantId);
 
-  // 1. Cancel live Stripe subscription if present
-  const subscription = await DomainSubscriptionModel.findOne({ domainId: request.domainId });
-  if (subscription?.stripeSubscriptionId) {
-    try {
-      await stripeClient.cancelSubscription(subscription.stripeSubscriptionId);
-    } catch (err: any) {
-      console.warn(`[Domain Deletion] Stripe cancel skipped/failed for ${subscription.stripeSubscriptionId}:`, err.message);
-    }
-  }
-
-  // 2. Delete DomainSubscription
-  await DomainSubscriptionModel.deleteOne({ domainId: request.domainId });
-
-  // 3. Delete DomainDnsCredential
-  await DomainDnsCredentialModel.deleteOne({ domainId: request.domainId });
-
-  // 4. Delete Stalwart domain & DKIM keys
-  if (domain?.stalwartDomainId) {
-    try {
-      await stalwartClient.deleteDomain(domain.stalwartDomainId);
-    } catch (err: any) {
-      console.warn(`[Domain Deletion] Stalwart deleteDomain failed for ${domain.stalwartDomainId}:`, err.message);
-    }
-  } else if (domain) {
-    try {
-      const liveDomains = await stalwartClient.listDomains();
-      const match = liveDomains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
-      if (match?.id) {
-        await stalwartClient.deleteDomain(match.id);
-      }
-    } catch (err: any) {
-      console.warn(`[Domain Deletion] Stalwart domain lookup/delete failed for ${domain.domainName}:`, err.message);
-    }
-  }
-
-  // 5. Delete Domain from MongoDB
-  const wasPrimary = domain?.isPrimary;
-  await DomainModel.deleteOne({ _id: request.domainId });
-
-  // 6. Reassign primary domain if deleted domain was primary
-  if (wasPrimary) {
-    const nextDomain = await DomainModel.findOne({ tenantId: request.tenantId }).sort({ createdAt: 1 });
-    if (nextDomain) {
-      nextDomain.isPrimary = true;
-      await nextDomain.save();
-    }
-  }
-
-  // 7. Update Deletion Request status
+  // Update Deletion Request status
   request.status = 'approved';
   request.reviewedBy = new mongoose.Types.ObjectId(reviewer.id);
   request.reviewedByEmail = reviewer.email;
   request.reviewedAt = new Date();
   await request.save();
 
-  // 8. Audit logs
+  // Audit logs
   await logAudit({
     actorId: reviewer.id,
     actorRole: reviewer.role,
@@ -222,6 +231,63 @@ export async function approveDomainDeletion(
     action: 'DOMAIN_DELETED',
     resource: 'DOMAIN',
     resourceId: request.domainId.toString(),
+    metadata: {
+      domainName,
+      wasPrimary,
+    },
+  });
+
+  return { success: true, domainName };
+}
+
+/**
+ * Lets a tenant delete a domain immediately, with no Super Admin approval —
+ * allowed only when the domain currently has zero mailboxes, the same bar
+ * requestDomainDeletion already enforces before a request can even be
+ * created. Also resolves (auto-approves) any pending deletion request for
+ * this domain so it doesn't linger in the Super Admin queue for a domain
+ * that no longer exists.
+ */
+export async function deleteDomainDirectly(
+  domainId: string,
+  tenantId: string,
+  actor: DeletionActor
+): Promise<{ success: boolean; domainName: string }> {
+  const domain = await DomainModel.findOne({ _id: domainId, tenantId });
+  if (!domain) {
+    throw new DomainDeletionError('Domain not found or unauthorized', 'DOMAIN_NOT_FOUND', 404);
+  }
+
+  const mailboxCount = await MailboxModel.countDocuments({ domainId: domain._id, tenantId });
+  if (mailboxCount > 0) {
+    throw new DomainDeletionError(
+      `Cannot delete domain '${domain.domainName}': ${mailboxCount} mailbox(es) still exist. Remove all mailboxes first.`,
+      'MAILBOXES_EXIST',
+      400
+    );
+  }
+
+  const domainName = domain.domainName;
+  const { wasPrimary } = await executeDeletionCascade(domain._id, domain.tenantId);
+
+  await DomainDeletionRequestModel.updateMany(
+    { domainId: domain._id, status: 'pending' },
+    {
+      status: 'approved',
+      reviewedBy: new mongoose.Types.ObjectId(actor.id),
+      reviewedByEmail: actor.email,
+      reviewedAt: new Date(),
+    }
+  );
+
+  await logAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actorEmail: actor.email,
+    tenantId,
+    action: 'DOMAIN_DELETED_DIRECT',
+    resource: 'DOMAIN',
+    resourceId: domainId,
     metadata: {
       domainName,
       wasPrimary,

@@ -8,7 +8,7 @@ import { stripeClient, meterEventNameForPlan } from '../stripe/client';
 import { stalwartClient } from '../stalwart/client';
 import { logAudit } from '../audit/service';
 import { emailService } from './email.service';
-import { config } from '../config';
+import { config, isBillingEnabled } from '../config';
 
 const TRIAL_DAYS = 30;
 const GRACE_DAYS = 7;
@@ -58,6 +58,21 @@ export async function startCheckout(
 ): Promise<{ url: string } | { attached: true }> {
   const domain = await loadDomainForActor(domainId, tenantId);
   if (!domain.planId) throw new BillingError('This domain has no plan selected', 'NO_PLAN_SELECTED', 400);
+
+  if (!isBillingEnabled()) {
+    await DomainSubscriptionModel.findOneAndUpdate(
+      { domainId: domain._id },
+      {
+        domainId: domain._id,
+        tenantId,
+        planId: domain.planId,
+        status: 'active',
+        cancelAtPeriodEnd: false,
+      },
+      { upsert: true }
+    );
+    return { attached: true };
+  }
 
   const existing = await DomainSubscriptionModel.findOne({ domainId: domain._id });
   if (existing && !['canceled', 'incomplete'].includes(existing.status)) {
@@ -141,6 +156,9 @@ export async function createPaymentMethodSetupIntent(
   tenantId: string
 ): Promise<{ clientSecret: string }> {
   await loadDomainForActor(domainId, tenantId);
+  if (!isBillingEnabled()) {
+    return { clientSecret: 'bypassed' };
+  }
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
 
@@ -153,6 +171,22 @@ export async function createPaymentMethodSetupIntent(
 export async function getDomainBillingStatus(domainId: string, tenantId: string) {
   const domain = await loadDomainForActor(domainId, tenantId);
   const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id }).populate('planId');
+  if (!sub && !isBillingEnabled()) {
+    return {
+      domain,
+      subscription: {
+        domainId: domain._id,
+        tenantId,
+        planId: domain.planId,
+        status: 'active' as DomainSubscriptionStatus,
+        currentPeriodEnd: null,
+        trialEnd: null,
+        gracePeriodEndsAt: null,
+        cancelAtPeriodEnd: false,
+        pendingDowngradePlanId: null,
+      },
+    };
+  }
   return { domain, subscription: sub };
 }
 
@@ -181,6 +215,22 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     .populate('domainId');
 
   if (subs.length === 0) {
+    if (!isBillingEnabled()) {
+      const allDomains = await DomainModel.find({ tenantId });
+      return {
+        hasSubscription: true,
+        status: 'active',
+        currentPeriodEnd: null,
+        trialEnd: null,
+        cancelAtPeriodEnd: false,
+        domains: allDomains.map((d) => ({
+          domainId: d._id.toString(),
+          domainName: d.domainName,
+          planName: d.planName || null,
+          seatCount: d.mailboxLimit || null,
+        })),
+      };
+    }
     return { hasSubscription: false, status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, domains: [] };
   }
 
@@ -282,6 +332,7 @@ export async function reactivateDomainForPayment(domainId: string): Promise<void
  * API). Call after every mailbox create/delete. No-ops for fixed plans.
  */
 export async function reportMeteredUsage(domainId: string): Promise<void> {
+  if (!isBillingEnabled()) return;
   const sub = await DomainSubscriptionModel.findOne({ domainId });
   if (!sub) return;
 
@@ -305,11 +356,44 @@ export async function reportMeteredUsage(domainId: string): Promise<void> {
 
 export async function requestUpgrade(domainId: string, tenantId: string, newPlanId: string, actor: BillingActor): Promise<void> {
   const domain = await loadDomainForActor(domainId, tenantId);
-  const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
-  if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
-
   const newPlan = await PlanModel.findOne({ _id: newPlanId, isActive: true });
   if (!newPlan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
+
+  if (!isBillingEnabled()) {
+    let sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+    if (!sub) {
+      sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: newPlan._id,
+        status: 'active',
+        cancelAtPeriodEnd: false,
+      });
+    } else {
+      sub.planId = newPlan._id as any;
+      await sub.save();
+    }
+    domain.planId = newPlan._id as any;
+    domain.planName = newPlan.name;
+    domain.mailboxLimit = newPlan.seatCount;
+    domain.employeeCount = newPlan.seatCount;
+    await domain.save();
+
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId,
+      action: 'BILLING_PLAN_UPGRADED',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { newPlanId },
+    });
+    return;
+  }
+
+  const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+  if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
 
   const newPriceId = await stripeClient.getOrCreatePrice(newPlan);
   await stripeClient.updateSubscriptionItemPrice(
@@ -341,11 +425,45 @@ export async function requestUpgrade(domainId: string, tenantId: string, newPlan
 
 export async function requestDowngrade(domainId: string, tenantId: string, newPlanId: string, actor: BillingActor): Promise<void> {
   const domain = await loadDomainForActor(domainId, tenantId);
-  const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
-  if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
-
   const newPlan = await PlanModel.findOne({ _id: newPlanId, isActive: true });
   if (!newPlan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
+
+  if (!isBillingEnabled()) {
+    let sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+    if (!sub) {
+      sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: newPlan._id,
+        status: 'active',
+        cancelAtPeriodEnd: false,
+      });
+    } else {
+      sub.planId = newPlan._id as any;
+      sub.pendingDowngradePlanId = null;
+      await sub.save();
+    }
+    domain.planId = newPlan._id as any;
+    domain.planName = newPlan.name;
+    domain.mailboxLimit = newPlan.seatCount;
+    domain.employeeCount = newPlan.seatCount;
+    await domain.save();
+
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId,
+      action: 'BILLING_PLAN_DOWNGRADE_SCHEDULED',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { newPlanId },
+    });
+    return;
+  }
+
+  const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+  if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
 
   const newPriceId = await stripeClient.getOrCreatePrice(newPlan);
   await stripeClient.scheduleDowngrade(
@@ -380,6 +498,20 @@ export async function requestDowngrade(domainId: string, tenantId: string, newPl
  */
 export async function cancelSubscription(domainId: string, tenantId: string, actor: BillingActor): Promise<void> {
   const domain = await loadDomainForActor(domainId, tenantId);
+  if (!isBillingEnabled()) {
+    await DomainSubscriptionModel.deleteOne({ domainId: domain._id });
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId,
+      action: 'BILLING_CANCEL_REQUESTED',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { bypassed: true },
+    });
+    return;
+  }
   const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
   if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
 

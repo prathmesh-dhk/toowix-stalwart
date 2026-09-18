@@ -155,6 +155,30 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(res.body.error).toBe('PAYMENT_REQUIRED');
   });
 
+  it('allows mailbox creation without subscription when SKIP_BILLING is true', async () => {
+    process.env.SKIP_BILLING = 'true';
+    try {
+      const { stalwartClient } = await import('../src/stalwart/client');
+      vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([{ id: 'stalwart-dom-1', name: 'acme.com' } as any]);
+      vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({
+        id: 'acc-skip-bill',
+        name: 'freeuser',
+        domainId: 'stalwart-dom-1',
+        emailAddress: 'freeuser@acme.com',
+      } as any);
+
+      const res = await request(app)
+        .post('/api/tenants/me/mailboxes')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ localPart: 'freeuser', password: 'Password123!', domainId });
+
+      expect(res.status).toBe(201);
+      expect(res.body.address).toBe('freeuser@acme.com');
+    } finally {
+      delete process.env.SKIP_BILLING;
+    }
+  });
+
   it('allows mailbox creation once the domain has a trialing subscription', async () => {
     await DomainSubscriptionModel.create({
       domainId,

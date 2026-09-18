@@ -65,6 +65,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [paymentCardDismissed, setPaymentCardDismissed] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [billingEnabled, setBillingEnabled] = useState(true);
 
   const detectionRef = useRef<Promise<{ provider: DnsProvider | null; nameservers: string[] }> | null>(null);
   const [methodAutoSkipped, setMethodAutoSkipped] = useState(false);
@@ -72,6 +73,15 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setPlansLoading(true);
+    Promise.resolve()
+      .then(() => api.getBillingConfig?.())
+      .then((cfg) => {
+        if (cfg && cfg.billingEnabled !== undefined) {
+          setBillingEnabled(cfg.billingEnabled);
+        }
+      })
+      .catch(() => {});
+
     api
       .listPlans()
       .then((res) => {
@@ -775,7 +785,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   connectedProviderLabel={method === 'provider' && connected ? PROVIDER_LABEL[provider] : null}
                 />
 
-                {!paymentCardDismissed && (
+                {billingEnabled && !paymentCardDismissed && (
                   <div className="p-4 bg-indigo-50 border border-indigo-200/80 rounded-xl">
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">

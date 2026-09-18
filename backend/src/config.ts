@@ -33,4 +33,23 @@ export const config = {
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   },
+  billing: {
+    get enabled() {
+      return isBillingEnabled();
+    },
+  },
 };
+
+export function isBillingEnabled(): boolean {
+  if (process.env.SKIP_BILLING === 'true' || process.env.SKIP_BILLING === '1') {
+    return false;
+  }
+  if (process.env.ENABLE_BILLING === 'false' || process.env.ENABLE_BILLING === '0') {
+    return false;
+  }
+  if (process.env.ENABLE_BILLING === 'true') {
+    return true;
+  }
+  // Default to enabled only in vitest test environment if not explicitly set
+  return process.env.VITEST === 'true';
+}

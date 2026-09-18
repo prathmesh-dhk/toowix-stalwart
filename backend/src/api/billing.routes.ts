@@ -12,7 +12,7 @@ import {
   cancelSubscription,
   BillingError,
 } from '../services/billing.service';
-import { config } from '../config';
+import { config, isBillingEnabled } from '../config';
 
 export const tenantBillingRouter = Router();
 
@@ -36,7 +36,10 @@ function handleBillingError(res: Response, err: any) {
 }
 
 tenantBillingRouter.get('/config', async (_req: Request, res: Response): Promise<void> => {
-  res.json({ publishableKey: config.stripe.publishableKey });
+  res.json({
+    publishableKey: config.stripe.publishableKey,
+    billingEnabled: isBillingEnabled(),
+  });
 });
 
 tenantBillingRouter.post('/domains/:domainId/checkout', async (req: Request, res: Response): Promise<void> => {

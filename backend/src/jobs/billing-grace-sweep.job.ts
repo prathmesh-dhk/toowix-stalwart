@@ -1,6 +1,7 @@
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { suspendDomainForNonPayment } from '../services/billing.service';
 import { logAudit } from '../audit/service';
+import { isBillingEnabled } from '../config';
 
 /**
  * Suspends any domain whose 7-day grace period (started on a failed
@@ -22,6 +23,7 @@ export interface GraceSweepResult {
 }
 
 export async function runGraceSweepOnce(): Promise<GraceSweepResult> {
+  if (!isBillingEnabled()) return { suspended: 0 };
   if (isSweeping) return { suspended: 0 };
   isSweeping = true;
   try {

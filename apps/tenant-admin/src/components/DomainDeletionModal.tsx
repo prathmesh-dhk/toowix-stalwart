@@ -1,23 +1,22 @@
 import React, { useState } from 'react';
 import { DomainItem } from '../types';
 import { api } from '../api';
-import { AlertTriangle, Loader2, X, Trash2, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Loader2, X, Trash2 } from 'lucide-react';
 
 interface DomainDeletionModalProps {
   domain: DomainItem | null;
   isOpen: boolean;
   onClose: () => void;
-  onRequestSubmitted: () => void;
+  onDeleted: () => void;
 }
 
 export const DomainDeletionModal: React.FC<DomainDeletionModalProps> = ({
   domain,
   isOpen,
   onClose,
-  onRequestSubmitted,
+  onDeleted,
 }) => {
   const [confirmationInput, setConfirmationInput] = useState('');
-  const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,11 +33,11 @@ export const DomainDeletionModal: React.FC<DomainDeletionModalProps> = ({
     setError(null);
 
     try {
-      await api.requestDomainDeletion(domain.id, reason.trim() || undefined);
-      onRequestSubmitted();
+      await api.deleteDomain(domain.id);
+      onDeleted();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to submit domain deletion request.');
+      setError(err.message || 'Failed to delete domain.');
     } finally {
       setLoading(false);
     }
@@ -62,7 +61,7 @@ export const DomainDeletionModal: React.FC<DomainDeletionModalProps> = ({
               <Trash2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Request Domain Deletion</h3>
+              <h3 className="text-base font-bold text-slate-900">Delete Domain</h3>
               <p className="text-xs text-slate-500 font-mono mt-0.5">{domain.domainName}</p>
             </div>
           </div>
@@ -77,15 +76,15 @@ export const DomainDeletionModal: React.FC<DomainDeletionModalProps> = ({
         </div>
 
         {/* Warning Callout */}
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-col gap-2">
-          <div className="flex items-center gap-2 font-semibold text-amber-800">
-            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Admin Review & Cascading Removal</span>
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 flex flex-col gap-2">
+          <div className="flex items-center gap-2 font-semibold text-rose-800">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>This deletes the domain immediately</span>
           </div>
-          <p className="leading-relaxed text-amber-700">
-            Submitting this request will send it to the platform administrators for review. Once approved:
+          <p className="leading-relaxed text-rose-700">
+            No Super Admin review needed since this domain has no mailboxes. This cannot be undone.
           </p>
-          <ul className="list-disc pl-4 text-amber-800 space-y-1">
+          <ul className="list-disc pl-4 text-rose-800 space-y-1">
             <li>Any active Stripe subscription for this domain will be <strong>permanently cancelled</strong>.</li>
             <li>Stored DNS provider credentials and zone records will be purged.</li>
             <li>Stalwart mail routing rules and DKIM keys for <strong>{domain.domainName}</strong> will be erased.</li>
@@ -97,7 +96,7 @@ export const DomainDeletionModal: React.FC<DomainDeletionModalProps> = ({
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div>
               <strong className="font-semibold block mb-0.5">Cannot Delete Active Mailboxes</strong>
-              This domain currently has {mailboxCount} active {mailboxCount === 1 ? 'mailbox' : 'mailboxes'}. You must remove all mailboxes before requesting deletion.
+              This domain currently has {mailboxCount} active {mailboxCount === 1 ? 'mailbox' : 'mailboxes'}. You must remove all mailboxes before deleting it.
             </div>
           </div>
         ) : (
@@ -108,20 +107,6 @@ export const DomainDeletionModal: React.FC<DomainDeletionModalProps> = ({
                 <span>{error}</span>
               </div>
             )}
-
-            {/* Reason field */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700">
-                Reason for deletion <span className="text-slate-400 font-normal">(optional)</span>
-              </label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g., Domain is migrating away or no longer needed"
-                rows={2}
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all placeholder:text-slate-400 resize-none"
-              />
-            </div>
 
             {/* Confirmation typing */}
             <div className="flex flex-col gap-1.5">
@@ -156,12 +141,12 @@ export const DomainDeletionModal: React.FC<DomainDeletionModalProps> = ({
                 {loading ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Submitting Request…</span>
+                    <span>Deleting…</span>
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Submit Deletion Request</span>
+                    <span>Delete Domain</span>
                   </>
                 )}
               </button>

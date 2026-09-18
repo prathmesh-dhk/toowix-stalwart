@@ -7,6 +7,7 @@ import { logAudit } from '../audit/service';
 import { StalwartAccountExistsError, StalwartError } from '../stalwart/errors';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { reportMeteredUsage } from './billing.service';
+import { isBillingEnabled } from '../config';
 
 export interface CreateMailboxInput {
   localPart: string;
@@ -133,20 +134,19 @@ export class MailboxService {
     }
 
     // 2c. Billing gate: a domain must have a non-incomplete/canceled/suspended
-    // subscription before its first mailbox can be created. Domain setup and
-    // DNS activation never require this — only actually provisioning a
-    // mailbox does (see backend/src/services/billing.service.ts). 'trialing',
-    // 'active', and 'grace' (7-day full-access window on a failed payment)
-    // all still allow mailbox creation.
-    const subscription = await DomainSubscriptionModel.findOne({ domainId: domain._id });
-    if (!subscription || ['incomplete', 'canceled', 'suspended'].includes(subscription.status)) {
-      // Rollback quota
-      await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
-      throw {
-        status: 402,
-        code: 'PAYMENT_REQUIRED',
-        message: `Add a payment method for domain '${domain.domainName}' before creating mailboxes.`,
-      };
+    // subscription before its first mailbox can be created when billing is enabled.
+    // When billing is bypassed/skipped, this check is skipped entirely.
+    if (isBillingEnabled()) {
+      const subscription = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+      if (!subscription || ['incomplete', 'canceled', 'suspended'].includes(subscription.status)) {
+        // Rollback quota
+        await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
+        throw {
+          status: 402,
+          code: 'PAYMENT_REQUIRED',
+          message: `Add a payment method for domain '${domain.domainName}' before creating mailboxes.`,
+        };
+      }
     }
 
     // Check domain-level mailboxLimit if configured

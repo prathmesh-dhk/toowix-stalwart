@@ -54,14 +54,30 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
   const [setupClientSecret, setSetupClientSecret] = useState<string | null>(null);
   const [paymentFormLoading, setPaymentFormLoading] = useState(false);
   const [paymentFormError, setPaymentFormError] = useState<string | null>(null);
+  const [billingEnabled, setBillingEnabled] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [summaryRes, invoicesRes] = await Promise.all([api.getTenantBillingSummary(), api.listBillingInvoices()]);
+      const configPromise = Promise.resolve()
+        .then(() => api.getBillingConfig?.())
+        .catch(() => ({ publishableKey: '', billingEnabled: true }));
+
+      const invoicesPromise = Promise.resolve()
+        .then(() => api.listBillingInvoices?.())
+        .catch(() => ({ invoices: [] }));
+
+      const [summaryRes, invoicesRes, configRes] = await Promise.all([
+        api.getTenantBillingSummary(),
+        invoicesPromise,
+        configPromise,
+      ]);
       setSummary(summaryRes);
-      setInvoices(invoicesRes.invoices);
+      setInvoices(invoicesRes?.invoices || []);
+      if (configRes && configRes.billingEnabled !== undefined) {
+        setBillingEnabled(configRes.billingEnabled);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load billing information.');
     } finally {
@@ -92,7 +108,9 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
     }
   };
 
-  const badge = statusBadge(summary?.status);
+  const badge = !billingEnabled
+    ? { label: 'Active (Free Tier)', bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' }
+    : statusBadge(summary?.status);
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,7 +120,11 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
             <CreditCard className="w-6 h-6 text-indigo-600" />
             <span>Billing</span>
           </h1>
-          <p className="text-xs text-slate-500">One combined bill covers every domain on this account.</p>
+          <p className="text-xs text-slate-500">
+            {!billingEnabled
+              ? 'Billing is bypassed — all domains and mailboxes have full access with no payment required.'
+              : 'One combined bill covers every domain on this account.'}
+          </p>
         </div>
         <button
           type="button"
@@ -142,7 +164,9 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
 
         {!summary?.hasSubscription && !loading && (
           <p className="text-xs text-slate-500">
-            No domain has an active subscription yet. Add a payment method from a domain's Billing tab to get started.
+            {!billingEnabled
+              ? 'Billing is currently bypassed for your account. All domains and mailboxes have full access with no payment required.'
+              : "No domain has an active subscription yet. Add a payment method from a domain's Billing tab to get started."}
           </p>
         )}
 
@@ -151,20 +175,26 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
                 <span className="text-slate-400 block mb-0.5">
-                  {summary.status === 'trialing' ? 'Trial Ends' : 'Next Charge'}
+                  {!billingEnabled
+                    ? 'Renewal / Expiry'
+                    : summary.status === 'trialing'
+                    ? 'Trial Ends'
+                    : 'Next Charge'}
                 </span>
                 <span className="font-semibold text-slate-800 tabular-nums">
-                  {formatDate(summary.status === 'trialing' ? summary.trialEnd : summary.currentPeriodEnd)}
+                  {!billingEnabled
+                    ? 'Never (Free / Bypassed)'
+                    : formatDate(summary.status === 'trialing' ? summary.trialEnd : summary.currentPeriodEnd)}
                 </span>
               </div>
               <div>
-                <span className="text-slate-400 block mb-0.5">Domains on this bill</span>
+                <span className="text-slate-400 block mb-0.5">Domains on this account</span>
                 <span className="font-semibold text-slate-800 tabular-nums">{summary.domains.length}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2 pt-1">
-              {!showPaymentForm && (
+              {!showPaymentForm && billingEnabled && (
                 <button
                   type="button"
                   onClick={handleOpenPaymentForm}

@@ -57,20 +57,33 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
   const [publishableKey, setPublishableKey] = useState<string | null>(null);
   const [setupClientSecret, setSetupClientSecret] = useState<string | null>(null);
   const [paymentFormLoading, setPaymentFormLoading] = useState(false);
+  const [billingEnabled, setBillingEnabled] = useState(true);
 
   const loadBilling = useCallback(async () => {
     if (!activeDomain) return;
     setLoading(true);
     setError(null);
     try {
-      const [billingRes, plansRes, invoicesRes] = await Promise.all([
+      const configPromise = Promise.resolve()
+        .then(() => api.getBillingConfig?.())
+        .catch(() => ({ publishableKey: '', billingEnabled: true }));
+
+      const invoicesPromise = Promise.resolve()
+        .then(() => api.listBillingInvoices?.())
+        .catch(() => ({ invoices: [] }));
+
+      const [billingRes, plansRes, invoicesRes, configRes] = await Promise.all([
         api.getDomainBillingStatus(activeDomain.id),
         api.listPlans(),
-        api.listBillingInvoices(),
+        invoicesPromise,
+        configPromise,
       ]);
       setBilling(billingRes);
-      setPlans(plansRes.plans);
-      setInvoices(invoicesRes.invoices);
+      setPlans(plansRes?.plans || []);
+      setInvoices(invoicesRes?.invoices || []);
+      if (configRes && configRes.billingEnabled !== undefined) {
+        setBillingEnabled(configRes.billingEnabled);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load billing information.');
     } finally {
@@ -101,7 +114,9 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
   }
 
   const sub = billing?.subscription || null;
-  const badge = statusBadge(sub?.status);
+  const badge = !billingEnabled
+    ? { label: 'Active (Free Tier)', bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' }
+    : statusBadge(sub?.status);
   const currentPlan = plans.find((p) => p.id === sub?.planId);
   const pendingDowngradePlan = plans.find((p) => p.id === sub?.pendingDowngradePlanId);
   const otherPlans = plans.filter((p) => p.id !== sub?.planId && p.isActive);
@@ -225,17 +240,20 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
         {!sub && !loading && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-slate-600 leading-relaxed">
-              This domain has no active subscription. Add a payment method to get 1 month free, then monthly
-              billing begins automatically.
+              {!billingEnabled
+                ? 'Billing is currently bypassed for this platform. All domains and mailboxes have full access with no payment required.'
+                : 'This domain has no active subscription. Add a payment method to get 1 month free, then monthly billing begins automatically.'}
             </p>
-            <button
-              type="button"
-              onClick={handleStartCheckout}
-              disabled={actionLoading === 'checkout' || !activeDomain.planId}
-              className="self-start px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50"
-            >
-              {actionLoading === 'checkout' ? 'Redirecting...' : 'Add Payment Method'}
-            </button>
+            {billingEnabled && (
+              <button
+                type="button"
+                onClick={handleStartCheckout}
+                disabled={actionLoading === 'checkout' || !activeDomain.planId}
+                className="self-start px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                {actionLoading === 'checkout' ? 'Redirecting...' : 'Add Payment Method'}
+              </button>
+            )}
           </div>
         )}
 
@@ -248,15 +266,21 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
               </div>
               <div>
                 <span className="text-slate-400 block mb-0.5">
-                  {sub.status === 'trialing' ? 'Trial Ends' : 'Next Charge'}
+                  {!billingEnabled
+                    ? 'Renewal'
+                    : sub.status === 'trialing'
+                    ? 'Trial Ends'
+                    : 'Next Charge'}
                 </span>
                 <span className="font-semibold text-slate-800 tabular-nums">
-                  {formatDate(sub.status === 'trialing' ? sub.trialEnd : sub.currentPeriodEnd)}
+                  {!billingEnabled
+                    ? 'Never (Free / Bypassed)'
+                    : formatDate(sub.status === 'trialing' ? sub.trialEnd : sub.currentPeriodEnd)}
                 </span>
               </div>
             </div>
 
-            {(sub.status === 'grace' || sub.status === 'past_due') && (
+            {billingEnabled && (sub.status === 'grace' || sub.status === 'past_due') && (
               <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs">
                 <AlertTriangle size={14} className="shrink-0" />
                 <span>
@@ -266,21 +290,25 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
               </div>
             )}
 
-            {sub.status === 'suspended' && (
+            {billingEnabled && sub.status === 'suspended' && (
               <div className="flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl text-xs">
                 <XCircle size={14} className="shrink-0" />
                 <span>Mail service for this domain is suspended due to non-payment.</span>
               </div>
             )}
 
-            {sub.status === 'active' && !sub.cancelAtPeriodEnd && (
+            {(!billingEnabled || (sub.status === 'active' && !sub.cancelAtPeriodEnd)) && (
               <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs">
                 <CheckCircle2 size={14} className="shrink-0" />
-                <span>Subscription is active and in good standing.</span>
+                <span>
+                  {!billingEnabled
+                    ? 'Domain has full active access with no billing required.'
+                    : 'Subscription is active and in good standing.'}
+                </span>
               </div>
             )}
 
-            {sub.cancelAtPeriodEnd && (
+            {billingEnabled && sub.cancelAtPeriodEnd && (
               <div className="flex items-center gap-2 text-slate-600 bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs">
                 <AlertTriangle size={14} className="shrink-0" />
                 <span>Cancels at the end of the current period ({formatDate(sub.currentPeriodEnd)}).</span>
@@ -294,28 +322,30 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
               </p>
             )}
 
-            <div className="flex items-center gap-2 pt-1">
-              {!showPaymentForm && (
-                <button
-                  type="button"
-                  onClick={handleOpenPaymentForm}
-                  disabled={paymentFormLoading}
-                  className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 rounded-lg text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {paymentFormLoading ? 'Loading...' : 'Update Payment Method'}
-                </button>
-              )}
-              {!sub.cancelAtPeriodEnd && sub.status !== 'canceled' && (
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  disabled={actionLoading === 'cancel'}
-                  className="px-3.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {actionLoading === 'cancel' ? 'Canceling...' : 'Cancel Subscription'}
-                </button>
-              )}
-            </div>
+            {billingEnabled && (
+              <div className="flex items-center gap-2 pt-1">
+                {!showPaymentForm && (
+                  <button
+                    type="button"
+                    onClick={handleOpenPaymentForm}
+                    disabled={paymentFormLoading}
+                    className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 rounded-lg text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {paymentFormLoading ? 'Loading...' : 'Update Payment Method'}
+                  </button>
+                )}
+                {!sub.cancelAtPeriodEnd && sub.status !== 'canceled' && (
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    disabled={actionLoading === 'cancel'}
+                    className="px-3.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {actionLoading === 'cancel' ? 'Canceling...' : 'Cancel Subscription'}
+                  </button>
+                )}
+              </div>
+            )}
 
             {showPaymentForm && publishableKey && setupClientSecret && (
               <div className="pt-3 border-t border-slate-100">
@@ -334,7 +364,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
       </div>
 
       {/* Plan picker */}
-      {sub && sub.status !== 'canceled' && otherPlans.length > 0 && (
+      {((sub && sub.status !== 'canceled') || !billingEnabled) && otherPlans.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
           <span className="text-xs font-semibold text-slate-500 block mb-3">Change Plan</span>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
