@@ -292,51 +292,58 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
           {activeTab === 'overview' && (
             <>
               {domains.length === 0 ? (
-                <div className="max-w-lg mx-auto w-full flex flex-col gap-7 pt-6">
-                  <div className="flex flex-col gap-1.5 text-center">
-                    <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-                      Set up {tenant?.name || 'your organization'}
-                    </h1>
-                    <p className="text-xs text-slate-500">Two quick steps and you're ready to create mailboxes.</p>
-                  </div>
-
-                  <div className="flex flex-col gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowDomainModal(true)}
-                      className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
-                      id="btn-add-first-domain-overview"
-                    >
-                      <div className="flex items-center gap-3.5">
-                        <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                          1
-                        </div>
-                        <div className="text-left">
-                          <span className="text-sm font-semibold text-slate-900 block">Add your first domain</span>
-                          <span className="text-xs text-slate-500 block">DNS records (MX, SPF, DKIM) are generated automatically</span>
-                        </div>
+                <div className="min-h-[60vh] flex items-center justify-center">
+                  <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xs p-8 flex flex-col gap-6">
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
+                        <Building2 className="w-5 h-5" />
                       </div>
-                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('apikeys')}
-                      className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
-                    >
-                      <div className="flex items-center gap-3.5">
-                        <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-                          <Key className="w-4 h-4" />
-                        </div>
-                        <div className="text-left">
-                          <span className="text-sm font-semibold text-slate-900 block">
-                            Save a DNS provider API key <span className="text-slate-400 font-normal">— optional</span>
-                          </span>
-                          <span className="text-xs text-slate-500 block">Reuse it automatically for every future domain</span>
-                        </div>
+                      <div className="flex flex-col gap-1">
+                        <h1 className="text-base font-semibold tracking-tight text-slate-900">
+                          Set up {tenant?.name || 'your organization'}
+                        </h1>
+                        <p className="text-xs text-slate-500">Two quick steps and you're ready to create mailboxes.</p>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
-                    </button>
+                    </div>
+
+                    <div className="flex flex-col gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowDomainModal(true)}
+                        className="w-full group px-4 py-3.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 transition-all cursor-pointer flex items-center justify-between"
+                        id="btn-add-first-domain-overview"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                            1
+                          </div>
+                          <div className="text-left">
+                            <span className="text-sm font-semibold text-slate-900 block">Add your first domain</span>
+                            <span className="text-[11px] text-slate-500 block">DNS records generated automatically</span>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('apikeys')}
+                        className="w-full group px-4 py-3.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                            <Key className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="text-left">
+                            <span className="text-sm font-semibold text-slate-900 block">
+                              Save a DNS provider API key <span className="text-slate-400 font-normal">— optional</span>
+                            </span>
+                            <span className="text-[11px] text-slate-500 block">Reuse it for every future domain</span>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
