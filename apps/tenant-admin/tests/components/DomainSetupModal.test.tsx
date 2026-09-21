@@ -307,6 +307,39 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText(/manualbrand\.io\. IN MX 10 mail\.toowix\.com\./)).toBeInTheDocument();
   });
 
+  it('refreshes DNS status for the created domain when the refresh button is clicked (not with the click event)', async () => {
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: '64b7f0f0f0f0f0f0f0f0f0a1',
+        domainName: 'refreshme.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+
+    render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+    await enterDomainAndContinue('refreshme.io');
+    await screen.findByText('10 Seats');
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByText('DNS Setup — refreshme.io');
+
+    vi.mocked(api.getDomainDnsStatus).mockClear();
+    await userEvent.click(screen.getByRole('button', { name: /refresh status/i }));
+
+    // The id must be the domain's id — a click event here becomes "/domains/[object PointerEvent]/…",
+    // which the server rejects as "Domain ID is missing or malformed".
+    await waitFor(() => expect(api.getDomainDnsStatus).toHaveBeenCalledWith('64b7f0f0f0f0f0f0f0f0f0a1'));
+    for (const [arg] of vi.mocked(api.getDomainDnsStatus).mock.calls) expect(typeof arg).toBe('string');
+    expect(screen.queryByText(/missing or malformed/i)).not.toBeInTheDocument();
+  });
+
   it('offers a skippable "Add Payment Method" card on the status step that never blocks finishing', async () => {
     const onDomainAdded = vi.fn();
     const onClose = vi.fn();

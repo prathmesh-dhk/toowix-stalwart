@@ -943,7 +943,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   status={dnsStatus}
                   loading={statusLoading}
                   error={statusError}
-                  onRefresh={refreshDnsStatus}
+                  onRefresh={() => refreshDnsStatus()}
                   connectedProviderLabel={method === 'provider' && connected ? PROVIDER_LABEL[provider] : null}
                   theme="light"
                 />
