@@ -33,7 +33,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.message || data.error || `Request failed with status ${res.status}`);
+    throw Object.assign(new Error(data.message || data.error || `Request failed with status ${res.status}`), { code: data.error });
   }
 
   return data as T;

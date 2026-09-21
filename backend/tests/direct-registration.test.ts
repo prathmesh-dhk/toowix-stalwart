@@ -195,6 +195,22 @@ describe('Direct Self-Service Registration (username on the platform domain)', (
       expect(await MailboxModel.countDocuments({})).toBe(0);
     });
 
+    it.each([
+      ['no uppercase letter', 'alllowercase1!'],
+      ['no lowercase letter', 'ALLUPPERCASE1!'],
+      ['no number', 'NoNumbersHere!'],
+      ['no special character', 'NoSpecial1234'],
+      ['shorter than 8 characters', 'Ab1!'],
+    ])('refuses a weak password (%s) before creating anything', async (_label, password) => {
+      const res = await request(app).post('/api/public/register').send(body('prathmesh', { password }));
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('VALIDATION_ERROR');
+      expect(await AdminUserModel.countDocuments({})).toBe(0);
+      expect(await MailboxModel.countDocuments({})).toBe(0);
+      expect(stalwartClient.createAccount).not.toHaveBeenCalled();
+    });
+
     it('refuses a taken username without touching the existing account', async () => {
       expect((await request(app).post('/api/public/register').send(body('prathmesh'))).status).toBe(201);
 

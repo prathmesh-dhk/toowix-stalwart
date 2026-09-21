@@ -324,7 +324,15 @@ publicRouter.get('/username-availability', async (req: Request, res: Response) =
 
 const directRegisterSchema = z.object({
   username: z.string().min(1, 'Username is required'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  // The same rules the signup form shows live. The password also becomes the mailbox credential,
+  // and the mail server rejects weak ones only at the very last step — so fail early and clearly.
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[a-z]/, 'Password needs a lowercase letter')
+    .regex(/[A-Z]/, 'Password needs an uppercase letter')
+    .regex(/[0-9]/, 'Password needs a number')
+    .regex(/[^A-Za-z0-9]/, 'Password needs a special character'),
   recoveryEmail: z.string().email('Valid recovery email is required'),
   recoveryEmailVerificationToken: z.string().min(1, 'Recovery email verification token is required'),
   organizationName: z.string().trim().min(2, 'Organization name must be at least 2 characters').max(100).optional(),

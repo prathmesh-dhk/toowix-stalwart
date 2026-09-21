@@ -6,6 +6,8 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
+  Circle,
+  KeyRound,
 } from 'lucide-react';
 
 interface RegisterViewProps {
@@ -19,6 +21,38 @@ type UsernameCheck =
   | { state: 'idle' | 'checking' }
   | { state: 'available'; address: string }
   | { state: 'taken'; reason: string };
+
+// Mirrors the API's password rules (backend/src/api/public.routes.ts) so users see exactly what is
+// required before they submit. The mail server may still reject very common passwords.
+const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
+  { label: 'At least 8 characters', test: (p) => p.length >= 8 },
+  { label: 'A lowercase letter', test: (p) => /[a-z]/.test(p) },
+  { label: 'An uppercase letter', test: (p) => /[A-Z]/.test(p) },
+  { label: 'A number', test: (p) => /[0-9]/.test(p) },
+  { label: 'A special character', test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
+const LOWER = 'abcdefghijkmnopqrstuvwxyz'; // no 'l', which reads as 1 or I
+const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no 'I' or 'O'
+const DIGITS = '23456789'; // no 0/1
+const SPECIAL = '!@#$%^&*-_+=?';
+
+/** Random password with at least one of every class, using the browser's CSPRNG. */
+function generateStrongPassword(length = 16): string {
+  const randomInt = (max: number) => crypto.getRandomValues(new Uint32Array(1))[0] % max;
+  const pick = (chars: string) => chars[randomInt(chars.length)];
+  const all = LOWER + UPPER + DIGITS + SPECIAL;
+
+  const chars = [pick(LOWER), pick(UPPER), pick(DIGITS), pick(SPECIAL)];
+  while (chars.length < length) chars.push(pick(all));
+
+  // Fisher–Yates, so the guaranteed characters don't always sit at the front.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
 
 const SECURITY_QUESTIONS_POOL = [
   'What was the name of your first pet?',
@@ -102,6 +136,17 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
   };
 
   const passwordStrength = getPasswordStrength(password);
+  const unmetRules = PASSWORD_RULES.filter((r) => !r.test(password));
+
+  const handleGeneratePassword = () => {
+    const generated = generateStrongPassword();
+    setPassword(generated);
+    setConfirmPassword(generated);
+    // Shown on purpose: the user has to be able to read and save what was generated.
+    setShowPassword(true);
+    setShowConfirmPassword(true);
+    setError(null);
+  };
   const loginAddress = `${username.trim().toLowerCase()}@${PLATFORM_MAIL_DOMAIN}`;
 
   // Probe availability while they type. Guidance only — /register re-checks server-side.
@@ -166,8 +211,8 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.');
+    if (unmetRules.length > 0) {
+      setError(`Password needs: ${unmetRules.map((r) => r.label.toLowerCase()).join(', ')}.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -319,6 +364,12 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
       });
       setCurrentStep(6);
     } catch (err: any) {
+      if (err.code === 'PASSWORD_TOO_WEAK') {
+        // The mail server has its own strength policy; show the message where the password is fixed.
+        setError(err.message);
+        setCurrentStep(2);
+        return;
+      }
       setError(err.message || 'Registration failed. Please check your details and try again.');
     } finally {
       setLoading(false);
@@ -636,6 +687,31 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                         </button>
                       </div>
 
+                      <ul className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1" aria-label="Password requirements">
+                        {PASSWORD_RULES.map((rule) => {
+                          const met = rule.test(password);
+                          return (
+                            <li
+                              key={rule.label}
+                              data-met={met}
+                              className={`flex items-center gap-1.5 text-[11px] transition-colors ${met ? 'text-emerald-600' : 'text-slate-400'}`}
+                            >
+                              {met ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <Circle className="w-3 h-3 shrink-0" />}
+                              <span>{rule.label}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+
+                      <button
+                        type="button"
+                        onClick={handleGeneratePassword}
+                        className="inline-flex items-center gap-1.5 pt-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        Generate strong password
+                      </button>
+
                       {password && (
                         <div className="pt-1 space-y-1">
                           <div className="flex items-center justify-between text-[11px]">
@@ -686,7 +762,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                       <button
                         className="btn btn-primary btn-lg w-full"
                         type="submit"
-                        disabled={password.length < 8 || password !== confirmPassword}
+                        disabled={unmetRules.length > 0 || password !== confirmPassword}
                       >
                         <span>Next</span>
                       </button>
