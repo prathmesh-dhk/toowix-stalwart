@@ -534,6 +534,62 @@ This code expires in ${expiresMinutes} minutes. If you did not request this veri
   }
 
   /**
+   * Final-confirmation OTP for permanently deleting an organisation. Sent only to the
+   * acting admin's own email, and worded so it is unmistakable what the code authorises.
+   */
+  // (organisationName / recipientName are user-controlled, so they are escaped before entering HTML)
+  async sendOrganisationDeletionOtpEmail(
+    params: OtpEmailParams & { organisationName: string }
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const expiresMinutes = params.expiresMinutes || 10;
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const orgHtml = esc(params.organisationName);
+    const nameHtml = esc(params.recipientName || 'Administrator');
+    const subject = `Organisation deletion code: ${params.otpCode}`;
+    const text = `TOOWIX MAIL PLATFORM — ORGANISATION DELETION
+
+Hello ${params.recipientName || 'Administrator'},
+
+Use the 6-digit code below to authorise the PERMANENT deletion of "${params.organisationName}", including all of its domains, mailboxes and administrator accounts:
+
+${params.otpCode}
+
+This code expires in ${expiresMinutes} minutes. If you did not request this, do not share the code — sign in and cancel the deletion, then change your password.
+
+— The Toowix Security Team`.trim();
+
+    const contentHtml = `
+      <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px;">Confirm organisation deletion</h1>
+      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+        Hello ${nameHtml}, use the code below to authorise the <strong>permanent deletion</strong> of <strong>${orgHtml}</strong>, including all of its domains, mailboxes and administrator accounts.
+      </p>
+
+      <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 22px 16px; text-align: center; margin: 24px 0;">
+        <span class="email-code-text" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #7F1D1D; display: inline-block;">${params.otpCode}</span>
+      </div>
+
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #64748B;">
+        This code expires in <strong>${expiresMinutes} minutes</strong>. If you did not request this, do not share the code — sign in, cancel the deletion and change your password.
+      </p>
+    `;
+
+    const html = renderEmailShell({
+      title: 'Confirm Organisation Deletion',
+      previewText: `Your organisation deletion code is ${params.otpCode}.`,
+      contentHtml,
+    });
+
+    try {
+      const transporter = this.getTransporter();
+      const info = await transporter.sendMail({ from: config.smtp.from, to: params.to, subject, text, html });
+      return { success: true, messageId: info.messageId };
+    } catch (err: any) {
+      console.warn(`[EMAIL DISPATCH: FAILED] Could not deliver organisation deletion OTP to ${params.to}: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
    * Dispatches a 6-digit one-time code to authenticate login via email 2FA.
    */
   async sendLogin2FaOtpEmail(params: OtpEmailParams): Promise<{ success: boolean; messageId?: string; error?: string }> {

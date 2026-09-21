@@ -11,10 +11,14 @@ import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { MailboxModel } from '../db/models/Mailbox';
 import { hashPassword } from '../auth/service';
-import { stalwartClient } from '../stalwart/client';
 import { activateDomain, retryVerify, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
+import { suspendTenantInfrastructure, restoreTenantInfrastructure } from '../services/tenant-lifecycle.service';
+import { forceDeleteOrganisation, OrganisationDeletionError } from '../services/organisation-deletion.service';
+import { captureRequestContext } from '../services/request-context.service';
+import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
+import { platformDeletionRouter } from './organisation-deletion.routes';
 
 export const platformTenantRouter = Router();
 
@@ -543,73 +547,16 @@ platformTenantRouter.post('/:id/suspend', async (req: Request, res: Response) =>
   const tenant = await TenantModel.findById(req.params.id);
   if (!tenant) return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
 
+  if (tenant.status === 'pending_deletion') {
+    return res.status(409).json({
+      error: 'DELETION_IN_PROGRESS',
+      message: 'This organisation is in its deletion timeline. Cancel the deletion first.',
+    });
+  }
+
   tenant.status = 'suspended';
   await tenant.save();
-
-  const domain = await DomainModel.findOneAndUpdate(
-    { tenantId: tenant._id },
-    { status: 'suspended' },
-    { returnDocument: 'after' }
-  );
-
-  // 1. Resolve Stalwart domain ID if missing, and disable domain
-  let stalwartDomainId = domain?.stalwartDomainId;
-  if (!stalwartDomainId && domain?.domainName) {
-    try {
-      const liveDomains = await stalwartClient.listDomains();
-      const match = liveDomains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
-      if (match) {
-        stalwartDomainId = match.id;
-        domain.stalwartDomainId = match.id;
-        await domain.save();
-      }
-    } catch (err: any) {
-      console.warn(`[PlatformTenantRouter] Could not query Stalwart live domains for ${domain.domainName}:`, err.message);
-    }
-  }
-
-  if (stalwartDomainId) {
-    try {
-      await stalwartClient.updateDomainStatus(stalwartDomainId, false);
-    } catch (err: any) {
-      console.warn(`[PlatformTenantRouter] Failed to disable Stalwart domain ${stalwartDomainId}:`, err.message);
-    }
-  }
-
-  // 2. Cascade suspension to all mailboxes in MongoDB and freeze Stalwart accounts
-  const mailboxes = await MailboxModel.find({ tenantId: tenant._id });
-  await MailboxModel.updateMany({ tenantId: tenant._id }, { status: 'suspended' });
-
-  let liveAccounts: any[] = [];
-  try {
-    liveAccounts = await stalwartClient.listAccounts();
-  } catch (err: any) {
-    console.warn('[PlatformTenantRouter] Could not list Stalwart accounts during suspend:', err.message);
-  }
-
-  for (const mailbox of mailboxes) {
-    let accountId = mailbox.stalwartAccountId;
-    if (!accountId) {
-      const match = liveAccounts.find(
-        (a) =>
-          a.emailAddress?.toLowerCase() === mailbox.address.toLowerCase() ||
-          (a.name?.toLowerCase() === mailbox.localPart.toLowerCase() && (!stalwartDomainId || a.domainId === stalwartDomainId))
-      );
-      if (match) {
-        accountId = match.id;
-        mailbox.stalwartAccountId = match.id;
-        await mailbox.save();
-      }
-    }
-
-    if (accountId) {
-      try {
-        await stalwartClient.updateAccountStatus(accountId, true);
-      } catch (err: any) {
-        console.warn(`[PlatformTenantRouter] Failed to freeze Stalwart account ${accountId} (${mailbox.address}):`, err.message);
-      }
-    }
-  }
+  await suspendTenantInfrastructure(tenant._id);
 
   await AuditLogModel.create({
     actorId: req.adminUser!.id,
@@ -636,52 +583,16 @@ platformTenantRouter.post('/:id/reactivate', async (req: Request, res: Response)
   const tenant = await TenantModel.findById(req.params.id);
   if (!tenant) return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
 
+  if (tenant.status === 'pending_deletion') {
+    return res.status(409).json({
+      error: 'DELETION_IN_PROGRESS',
+      message: 'This organisation is in its deletion timeline. Cancel the deletion to restore it.',
+    });
+  }
+
   tenant.status = 'active';
   await tenant.save();
-
-  const domain = await DomainModel.findOneAndUpdate(
-    { tenantId: tenant._id },
-    { status: 'active' },
-    { returnDocument: 'after' }
-  );
-
-  // 1. Resolve Stalwart domain ID if missing, and re-enable domain
-  let stalwartDomainId = domain?.stalwartDomainId;
-  if (!stalwartDomainId && domain?.domainName) {
-    try {
-      const liveDomains = await stalwartClient.listDomains();
-      const match = liveDomains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
-      if (match) {
-        stalwartDomainId = match.id;
-        domain.stalwartDomainId = match.id;
-        await domain.save();
-      }
-    } catch (err: any) {
-      console.warn(`[PlatformTenantRouter] Could not query Stalwart live domains for ${domain.domainName}:`, err.message);
-    }
-  }
-
-  if (stalwartDomainId) {
-    try {
-      await stalwartClient.updateDomainStatus(stalwartDomainId, true);
-    } catch (err: any) {
-      console.warn(`[PlatformTenantRouter] Failed to enable Stalwart domain ${stalwartDomainId}:`, err.message);
-    }
-  }
-
-  // 2. Restore mailboxes in MongoDB and unfreeze Stalwart accounts
-  const mailboxes = await MailboxModel.find({ tenantId: tenant._id });
-  await MailboxModel.updateMany({ tenantId: tenant._id }, { status: 'active' });
-
-  for (const mailbox of mailboxes) {
-    if (mailbox.stalwartAccountId) {
-      try {
-        await stalwartClient.updateAccountStatus(mailbox.stalwartAccountId, false);
-      } catch (err: any) {
-        console.warn(`[PlatformTenantRouter] Failed to unfreeze Stalwart account ${mailbox.stalwartAccountId} (${mailbox.address}):`, err.message);
-      }
-    }
-  }
+  await restoreTenantInfrastructure(tenant._id);
 
   await AuditLogModel.create({
     actorId: req.adminUser!.id,
@@ -774,6 +685,11 @@ platformTenantRouter.post('/:id/admins', async (req: Request, res: Response) => 
   }
 
   const normalizedEmail = parsed.data.email.toLowerCase().trim();
+
+  if (await isRegistrationEmailBlocked(normalizedEmail, { ip: req.ip || 'unknown', source: 'platform-add-admin' })) {
+    return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
+  }
+
   const existing = await AdminUserModel.findOne({ email: normalizedEmail });
   if (existing) {
     return res.status(409).json({
@@ -859,7 +775,11 @@ platformTenantRouter.post('/:id/admins/:adminId/reset-password', async (req: Req
   return res.status(200).json({ message: 'Password successfully reset' });
 });
 
-// 9. Cascade Delete Tenant
+// 9. Organisation deletion flow (request / name / OTPs / cancel / complete) for any tenant
+platformTenantRouter.use('/:id/deletion', platformDeletionRouter);
+
+// 10. Immediate ("forced") delete. Skips the security timeline, so it is Super-Admin-only, but it still
+// writes the permanent Deleted Organisations record (actor, IP, device...) and blocks the registration email.
 platformTenantRouter.delete('/:id', async (req: Request, res: Response) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant ID' });
@@ -868,48 +788,25 @@ platformTenantRouter.delete('/:id', async (req: Request, res: Response) => {
   const tenant = await TenantModel.findById(req.params.id);
   if (!tenant) return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
 
-  // 1. Delete all Stalwart mailbox accounts
-  const mailboxes = await MailboxModel.find({ tenantId: tenant._id });
-  for (const m of mailboxes) {
-    if (m.stalwartAccountId) {
-      try {
-        await stalwartClient.deleteAccount(m.stalwartAccountId);
-      } catch (err: any) {
-        console.warn(`[Cascade Delete] Failed to delete Stalwart account ${m.stalwartAccountId}:`, err.message);
-      }
+  const tenantName = tenant.name;
+  const domainNames = (await DomainModel.find({ tenantId: tenant._id })).map((d) => d.domainName);
+  const mailboxesDeleted = await MailboxModel.countDocuments({ tenantId: tenant._id });
+
+  try {
+    const [admin, context] = await Promise.all([AdminUserModel.findById(req.adminUser!.id).select('name'), captureRequestContext(req)]);
+    await forceDeleteOrganisation({
+      tenantId: tenant._id.toString(),
+      actor: { id: req.adminUser!.id, name: admin?.name ?? null, email: req.adminUser!.email, role: 'SUPER_ADMIN', tenantId: null },
+      context,
+      reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 500) : null,
+    });
+  } catch (err) {
+    if (err instanceof OrganisationDeletionError) {
+      return res.status(err.statusCode).json({ error: err.code, message: err.message });
     }
+    throw err;
   }
 
-  // 2. Delete Stalwart domain and linked DKIM signatures
-  const domain = await DomainModel.findOne({ tenantId: tenant._id });
-  if (domain) {
-    let domainIdToDelete = domain.stalwartDomainId;
-    if (!domainIdToDelete) {
-      try {
-        const liveDomains = await stalwartClient.listDomains();
-        const match = liveDomains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
-        if (match) domainIdToDelete = match.id;
-      } catch {
-        // ignore list failure
-      }
-    }
-    if (domainIdToDelete) {
-      try {
-        await stalwartClient.deleteDomain(domainIdToDelete);
-      } catch (err: any) {
-        console.warn(`[Cascade Delete] Failed to delete Stalwart domain ${domainIdToDelete}:`, err.message);
-      }
-    }
-  }
-
-  // 3. Purge all related MongoDB records
-  await MailboxModel.deleteMany({ tenantId: tenant._id });
-  await DomainModel.deleteMany({ tenantId: tenant._id });
-  await AdminUserModel.deleteMany({ tenantId: tenant._id });
-  await ActivationTokenModel.deleteMany({ tenantId: tenant._id });
-  await TenantModel.deleteOne({ _id: tenant._id });
-
-  // 4. Audit deletion
   await AuditLogModel.create({
     actorId: req.adminUser!.id,
     actorRole: req.adminUser!.role,
@@ -921,15 +818,16 @@ platformTenantRouter.delete('/:id', async (req: Request, res: Response) => {
     resourceId: tenant._id.toString(),
     status: 'SUCCESS',
     metadata: {
-      tenantName: tenant.name,
-      domainName: domain?.domainName,
-      mailboxesDeleted: mailboxes.length,
+      tenantName,
+      domainName: domainNames[0],
+      domainNames,
+      mailboxesDeleted,
     },
     timestamp: new Date(),
   });
 
   return res.status(200).json({
     success: true,
-    message: `Tenant "${tenant.name}" and all associated mailboxes and domains have been permanently deleted.`,
+    message: `Tenant "${tenantName}" and all associated mailboxes and domains have been permanently deleted.`,
   });
 });

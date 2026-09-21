@@ -5,6 +5,7 @@ import toowixLogo from '../assets/toowix-logo.svg';
 import { dnsStatusPill } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
 import { SecurityView } from './SecurityView';
+import { OrganisationDeletionPanel } from './OrganisationDeletionPanel';
 import { ActiveDevicesView } from './ActiveDevicesView';
 import { TenantBillingSummary } from './TenantBillingSummary';
 import { ApiKeysView } from './ApiKeysView';
@@ -237,6 +238,20 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
       <main className="pl-60 pt-16 min-h-screen">
         <div className="page-content-scaled w-full max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
+          {tenant?.status === 'pending_deletion' && (
+            <div role="alert" className="flex items-center justify-between gap-4 p-4 bg-rose-50 border border-rose-200 rounded-xl">
+              <p className="text-sm text-rose-900">
+                <strong>{tenant.name}</strong> is suspended and scheduled for deletion. Nothing can be changed until the deletion is cancelled or completes.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('security')}
+                className="shrink-0 px-3.5 py-1.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded-full text-xs font-semibold cursor-pointer"
+              >
+                Manage deletion
+              </button>
+            </div>
+          )}
           {!is2FaEnabled && !dismissed2FaBanner && activeTab !== 'security' && !(activeTab === 'overview' && domains.length === 0) && (
             <div
               role="region"
@@ -741,7 +756,10 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
           {activeTab === 'billing' && <TenantBillingSummary domains={domains} />}
 
           {activeTab === 'security' && user && (
-            <SecurityView user={user} on2FaStatusChange={setIs2FaEnabled} />
+            <div className="flex flex-col gap-6">
+              <SecurityView user={user} on2FaStatusChange={setIs2FaEnabled} />
+              <OrganisationDeletionPanel organisationName={tenant?.name ?? ''} onDeleted={() => onLogout?.()} />
+            </div>
           )}
 
           {activeTab === 'audit' && (

@@ -35,6 +35,7 @@ import {
   Printer,
   Layers,
   Trash2,
+  Archive,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
@@ -44,6 +45,7 @@ import { Alert } from './ui/Alert';
 import { DashboardOverviewView } from './views/DashboardOverviewView';
 import { TenantApplicationsView } from './views/TenantApplicationsView';
 import { DomainDeletionsView } from './views/DomainDeletionsView';
+import { DeletedOrganisationsView } from './views/DeletedOrganisationsView';
 import { TenantsManagementView } from './views/TenantsManagementView';
 import { TenantDetailView } from './views/TenantDetailView';
 import { SystemOperationsView } from './views/SystemOperationsView';
@@ -62,7 +64,7 @@ import { ManageAdminsModal } from './modals/ManageAdminsModal';
 import { UpdateQuotaModal } from './modals/UpdateQuotaModal';
 import { PlanFormModal } from './modals/PlanFormModal';
 
-export type DashboardTab = 'dashboard' | 'applications' | 'deletions' | 'tenants' | 'plans' | 'analytics' | 'operations' | 'audit' | 'devices';
+export type DashboardTab = 'dashboard' | 'applications' | 'deletions' | 'deleted-organisations' | 'tenants' | 'plans' | 'analytics' | 'operations' | 'audit' | 'devices';
 
 export interface PlatformAdminDashboardProps {
   user?: UserContext | null;
@@ -387,18 +389,12 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   };
 
-  const handleDeleteTenant = async (tenant: TenantSummary) => {
-    if (!confirm(`CAUTION: Are you sure you want to permanently delete tenant "${tenant.name}" and all associated mailboxes? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      await api.deleteTenant(tenant.id);
-      showAlert('success', `Tenant "${tenant.name}" and all records permanently removed.`);
-      await loadTenantsAndMetrics();
-    } catch (err: any) {
-      showAlert('error', err.message || 'Failed to delete tenant.');
-    }
+  // Organisation deletion is a multi-day security flow (suspension, name, OTPs) with a permanent
+  // audit record, so "Delete" opens the organisation's Danger Zone instead of deleting on one click.
+  const handleDeleteTenant = (tenant: TenantSummary) => {
+    setDetailTenant(null);
+    setActiveTab('tenants');
+    setSelectedTenantId(tenant.id);
   };
 
   // 2FA Setup Handlers
@@ -736,6 +732,25 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               )}
             </button>
 
+            {/* Deleted Organisations (permanent audit records) */}
+            <button
+              onClick={() => setActiveTab('deleted-organisations')}
+              className={`w-full h-10 px-4 flex items-center gap-3.5 rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeTab === 'deleted-organisations'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-deleted-organisations"
+            >
+              <Archive
+                className={`w-5 h-5 shrink-0 transition-colors ${
+                  activeTab === 'deleted-organisations' ? 'text-rose-600' : 'text-slate-500 group-hover:text-slate-700'
+                }`}
+                strokeWidth={1.75}
+              />
+              <span className="truncate">Deleted Organisations</span>
+            </button>
+
             {/* Tenants */}
             <button
               onClick={() => {
@@ -984,6 +999,8 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               onReviewRequest={(req) => setReviewingDeletionRequest(req)}
             />
           )}
+
+          {activeTab === 'deleted-organisations' && <DeletedOrganisationsView />}
 
           {activeTab === 'tenants' && (
             selectedTenantId ? (

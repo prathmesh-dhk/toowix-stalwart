@@ -83,7 +83,7 @@ export class MailboxService {
       if (!existingTenant) {
         throw { status: 404, code: 'TENANT_NOT_FOUND', message: 'Tenant not found' };
       }
-      if (existingTenant.status === 'suspended') {
+      if ((existingTenant.status === 'suspended' || existingTenant.status === 'pending_deletion')) {
         throw {
           status: 403,
           code: 'TENANT_SUSPENDED',
@@ -382,7 +382,7 @@ export class MailboxService {
 
     // Tenant check: block if tenant is suspended
     const tenant = await TenantModel.findById(mailbox.tenantId);
-    if (tenant?.status === 'suspended') {
+    if ((tenant?.status === 'suspended' || tenant?.status === 'pending_deletion')) {
       throw {
         status: 403,
         code: 'TENANT_SUSPENDED',
@@ -431,7 +431,7 @@ export class MailboxService {
 
     // Tenant check: block if tenant is suspended
     const tenant = await TenantModel.findById(mailbox.tenantId);
-    if (tenant?.status === 'suspended') {
+    if ((tenant?.status === 'suspended' || tenant?.status === 'pending_deletion')) {
       throw {
         status: 403,
         code: 'TENANT_SUSPENDED',
@@ -488,7 +488,7 @@ export class MailboxService {
     }
 
     const tenant = await TenantModel.findById(mailbox.tenantId);
-    if (tenant?.status === 'suspended') {
+    if ((tenant?.status === 'suspended' || tenant?.status === 'pending_deletion')) {
       throw {
         status: 403,
         code: 'TENANT_SUSPENDED',
@@ -553,7 +553,7 @@ export class MailboxService {
     }
 
     const tenant = await TenantModel.findById(mailbox.tenantId);
-    if (tenant?.status === 'suspended') {
+    if ((tenant?.status === 'suspended' || tenant?.status === 'pending_deletion')) {
       throw {
         status: 403,
         code: 'TENANT_SUSPENDED',

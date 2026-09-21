@@ -114,7 +114,7 @@ export async function getDomainDeletionRequest(
  * Caller is responsible for re-verifying the mailbox count is zero
  * immediately before invoking this — it does no such check itself.
  */
-async function executeDeletionCascade(domainId: mongoose.Types.ObjectId | string, tenantId: mongoose.Types.ObjectId | string): Promise<{ wasPrimary: boolean }> {
+export async function executeDeletionCascade(domainId: mongoose.Types.ObjectId | string, tenantId: mongoose.Types.ObjectId | string): Promise<{ wasPrimary: boolean }> {
   const domain = await DomainModel.findById(domainId);
 
   // 1. Cancel live Stripe subscription if present

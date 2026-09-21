@@ -11,6 +11,7 @@ import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
 import { getDefaultPlanSeatCount } from '../services/plan.service';
+import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
 import {
   listDomainDeletionRequests,
   approveDomainDeletion,
@@ -101,9 +102,16 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
     });
   }
 
+  // An application submitted before its email's previous organisation was deleted must not slip through.
+  if (await isRegistrationEmailBlocked(application.contactEmail, { ip: req.ip || 'unknown', source: 'application-approval' })) {
+    return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
+  }
+
   // 1. Create the Tenant in 'approved_pending_setup' status
   const tenant = await TenantModel.create({
     name: application.companyName,
+    // The registration identity — what gets permanently blocked if this organisation is ever deleted.
+    contactEmail: application.contactEmail,
     status: 'approved_pending_setup',
     mailboxLimit: await getDefaultPlanSeatCount(),
     mailboxCount: 0,

@@ -10,6 +10,8 @@ import { AuditLogModel } from '../db/models/AuditLog';
 import { emailService } from '../services/email.service';
 import { getDefaultPlanSeatCount } from '../services/plan.service';
 import { checkAndIncrementRateLimit, resetAllRateLimits } from '../utils/rate-limit';
+import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
+import { cleanIpAddress } from '../services/session.service';
 import {
   hashPassword,
   verifyPassword,
@@ -52,6 +54,10 @@ export function registrationRateLimiter(windowMs: number = 60 * 60 * 1000, maxAt
 
     next();
   };
+}
+
+function requestIp(req: Request): string {
+  return cleanIpAddress(req.ip || req.socket.remoteAddress);
 }
 
 export async function resetRegistrationRateLimitStore(): Promise<void> {
@@ -173,6 +179,11 @@ publicRouter.post('/contact-email/send-otp', async (req: Request, res: Response)
 
   const normalizedEmail = parseResult.data.email.trim().toLowerCase();
 
+  // A deleted organisation's registration email is permanently barred from registering again.
+  if (await isRegistrationEmailBlocked(normalizedEmail, { ip: requestIp(req), source: 'contact-email/send-otp' })) {
+    return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
+  }
+
   // Check if account already exists with this email
   const existingUser = await AdminUserModel.findOne({ email: normalizedEmail });
   if (existingUser) {
@@ -287,6 +298,11 @@ publicRouter.post('/register', registrationRateLimiter(), async (req: Request, r
 
   const { email, emailVerificationToken, password, securityQuestions } = parseResult.data;
   const normalizedEmail = email.trim().toLowerCase();
+
+  // Checked before the token so a still-valid verification token can't be used to slip past the block.
+  if (await isRegistrationEmailBlocked(normalizedEmail, { ip: requestIp(req), source: 'register' })) {
+    return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
+  }
 
   // 1. Verify email verification token
   const tokenPayload = verifyContactEmailVerificationToken(emailVerificationToken);
@@ -502,6 +518,11 @@ publicRouter.post('/register-tenant', registrationRateLimiter(), async (req: Req
   const normalizedEmail = contactEmail.trim().toLowerCase();
   const normalizedRecoveryEmail = recoveryEmail ? recoveryEmail.trim().toLowerCase() : null;
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+
+  // Blocked on the registration email identity only — org name and domain are irrelevant to this check.
+  if (await isRegistrationEmailBlocked(normalizedEmail, { ip: requestIp(req), source: 'register-tenant' })) {
+    return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
+  }
 
   // 1. Check if domain is already actively provisioned
   const existingDomain = await DomainModel.findOne({ domainName: normalizedDomain });
@@ -796,6 +817,10 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
   }
 
   const normalizedEmail = email.toLowerCase().trim();
+
+  if (await isRegistrationEmailBlocked(normalizedEmail, { ip: requestIp(req), source: 'activate' })) {
+    return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
+  }
 
   // Ensure no existing admin user with this email
   const existingUser = await AdminUserModel.findOne({ email: normalizedEmail });

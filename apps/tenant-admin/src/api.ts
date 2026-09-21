@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem, DnsProviderName, TenantDnsCredentialSummary } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -328,6 +328,24 @@ export const api = {
     request<{ success: boolean; domainName: string }>(`/api/tenants/me/domains/${domainId}`, {
       method: 'DELETE',
     }),
+
+  // Organisation deletion flow
+  getOrganisationDeletion: () =>
+    request<OrganisationDeletionState>(`/api/tenants/me/deletion`),
+  requestOrganisationDeletion: (reason?: string) =>
+    request<OrganisationDeletionState>(`/api/tenants/me/deletion`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  cancelOrganisationDeletion: () =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/cancel`, { method: 'POST' }),
+  confirmOrganisationName: (organisationName: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/confirm-name`, { method: 'POST', body: JSON.stringify({ organisationName }) }),
+  initiateOrganisationOtp: () =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/otp/initiate`, { method: 'POST' }),
+  generateOrganisationOtp: () =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/otp/generate`, { method: 'POST' }),
+  verifyOrganisationOtp: (code: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/otp/verify`, { method: 'POST', body: JSON.stringify({ code }) }),
+  completeOrganisationDeletion: () =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/complete`, { method: 'POST' }),
 
   // Mailboxes (Domain Scoped)
   listMyMailboxes: (domainId?: string) => {

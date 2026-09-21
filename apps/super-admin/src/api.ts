@@ -17,6 +17,9 @@ import {
   Plan,
   DomainDeletionRequest,
   TenantFullDetails,
+  OrganisationDeletionState,
+  OrganisationDeletionView,
+  DeletedOrganisationRecord,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -242,6 +245,38 @@ export const api = {
     }),
   deleteTenant: (id: string) =>
     request<{ message: string }>(`/api/platform/tenants/${id}`, { method: 'DELETE' }),
+
+  // Organisation deletion flow
+  getOrganisationDeletion: (tenantId: string) =>
+    request<OrganisationDeletionState>(`/api/platform/tenants/${tenantId}/deletion`),
+  requestOrganisationDeletion: (tenantId: string, reason?: string) =>
+    request<OrganisationDeletionState>(`/api/platform/tenants/${tenantId}/deletion`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  cancelOrganisationDeletion: (tenantId: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/cancel`, { method: 'POST' }),
+  confirmOrganisationName: (tenantId: string, organisationName: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/confirm-name`, { method: 'POST', body: JSON.stringify({ organisationName }) }),
+  initiateOrganisationOtp: (tenantId: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/otp/initiate`, { method: 'POST' }),
+  generateOrganisationOtp: (tenantId: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/otp/generate`, { method: 'POST' }),
+  verifyOrganisationOtp: (tenantId: string, code: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/otp/verify`, { method: 'POST', body: JSON.stringify({ code }) }),
+  completeOrganisationDeletion: (tenantId: string) =>
+    request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/complete`, { method: 'POST' }),
+  // Deleted Organisations (permanent audit records)
+  listDeletedOrganisations: (params?: { stage?: 'completed' | 'active' | 'all'; search?: string; page?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.stage) query.set('stage', params.stage);
+    if (params?.search) query.set('search', params.search);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return request<{ items: DeletedOrganisationRecord[]; total: number; page: number; limit: number }>(
+      `/api/platform/deleted-organisations${qs ? `?${qs}` : ''}`
+    );
+  },
+  getDeletedOrganisation: (id: string) =>
+    request<{ record: DeletedOrganisationRecord }>(`/api/platform/deleted-organisations/${id}`),
 
   // Platform Admin - Domain DNS Activation (Stalwart + GoDaddy)
   activateDomainDns: (tenantId: string, domainId: string) =>

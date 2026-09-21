@@ -457,3 +457,117 @@ export interface TenantFullDetails {
     usagePercent: number;
   };
 }
+
+// ---- Organisation deletion (7-day suspension → name → OTPs → permanent delete) ----
+export type OrganisationDeletionStage =
+  | 'requested'
+  | 'name_confirmed'
+  | 'otp_initiated'
+  | 'final_otp_sent'
+  | 'otp_verified'
+  | 'completed'
+  | 'cancelled'
+  | 'expired';
+
+export type OrganisationDeletionNextAction =
+  | 'confirm_name'
+  | 'initiate_otp'
+  | 'generate_final_otp'
+  | 'verify_final_otp'
+  | 'final_confirmation'
+  | null;
+
+export interface OrganisationDeletionView {
+  id: string;
+  tenantId: string;
+  organisationName: string;
+  stage: OrganisationDeletionStage;
+  path: 'standard' | 'forced';
+  initiatedAt: string;
+  suspensionEndsAt: string;
+  nameConfirmedAt: string | null;
+  securityWaitEndsAt: string | null;
+  otpWindowEndsAt: string | null;
+  otpInitiatedAt: string | null;
+  finalLockEndsAt: string | null;
+  otpVerifiedAt: string | null;
+  otpVerification: 'not_started' | 'pending' | 'verified' | 'failed';
+  finalOtpExpiresAt: string | null;
+  completedAt: string | null;
+  nextAction: OrganisationDeletionNextAction;
+  /** null = the next step is available right now. */
+  nextActionAvailableAt: string | null;
+}
+
+export interface OrganisationDeletionTimings {
+  suspensionDays: number;
+  securityWaitHours: number;
+  otpWindowHours: number;
+  finalLockHours: number;
+  finalOtpMinutes: number;
+}
+
+export interface OrganisationDeletionState {
+  deletion: OrganisationDeletionView | null;
+  timings: OrganisationDeletionTimings;
+}
+
+export interface DeletionActorSnapshot {
+  userId: string;
+  name: string | null;
+  email: string;
+  role: 'SUPER_ADMIN' | 'TENANT_ADMIN';
+  organisationId: string;
+  organisationName: string;
+}
+
+export interface DeletionNetworkSnapshot {
+  ip: string;
+  ipVersion: 4 | 6 | null;
+  location: string;
+  countryCode?: string | null;
+  deviceType: string;
+  os: string;
+  browser: string;
+  browserVersion: string;
+  sessionId?: string | null;
+}
+
+export interface DeletionTimelineEntry {
+  stage: string;
+  action: string;
+  success: boolean;
+  at: string;
+  message?: string | null;
+  /** null = the system itself (e.g. the OTP window lapsing). */
+  actor: DeletionActorSnapshot | null;
+  network: DeletionNetworkSnapshot | null;
+}
+
+/** One row of "Deleted Organisations" — the permanent audit record, list shape (no timeline). */
+export interface DeletedOrganisationRecord {
+  id: string;
+  organisationId: string;
+  organisationName: string;
+  registrationEmail: string | null;
+  domains: string[];
+  organisationCreatedAt: string;
+  path: 'standard' | 'forced';
+  reason: string | null;
+  stage: OrganisationDeletionStage;
+  initiatedAt: string;
+  initiatedBy: DeletionActorSnapshot;
+  initiatedNetwork: DeletionNetworkSnapshot;
+  completedAt: string | null;
+  completedBy: DeletionActorSnapshot | null;
+  completedNetwork: DeletionNetworkSnapshot | null;
+  otpVerification: 'not_started' | 'pending' | 'verified' | 'failed';
+  otpVerifiedAt: string | null;
+  reRegistration: {
+    status: 'none' | 'blocked';
+    blockedAttempts: { at: string; ip: string; location: string; source: string }[];
+  };
+  emailRestriction: { email: string | null; normalized: string | null; blockedAt: string | null; permanent: boolean };
+  timelineLength?: number;
+  timeline?: DeletionTimelineEntry[];
+}

@@ -34,6 +34,7 @@ import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
 import { DomainActivationModal } from '../modals/DomainActivationModal';
+import { OrganisationDeletionPanel } from '../OrganisationDeletionPanel';
 import { dnsStatusBadgeProps } from '../../utils/dnsStatus';
 
 function formatBytes(bytes: number): string {
@@ -1143,15 +1144,28 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
             </div>
           </section>
 
-          {/* Permanent Deletion Danger Zone */}
+          {/* Permanent deletion: the secure timeline flow first, then an emergency bypass */}
+          <OrganisationDeletionPanel
+            tenantId={tenant.id}
+            organisationName={tenant.name}
+            onChanged={() => {
+              fetchTenantDetails();
+              onTenantUpdated?.();
+            }}
+            onDeleted={() => {
+              onTenantUpdated?.();
+              onBack();
+            }}
+          />
+
           <section className="bg-white border border-rose-200 rounded-xl p-6 shadow-xs space-y-4">
             <div className="flex items-center gap-2.5 text-rose-600">
               <AlertTriangle className="w-5 h-5" />
-              <h3 className="text-sm font-bold text-rose-700">Permanent Tenant Deletion (Danger Zone)</h3>
+              <h3 className="text-sm font-bold text-rose-700">Emergency immediate delete</h3>
             </div>
             <p className="text-xs text-rose-600/90 leading-relaxed">
-              Permanently cascades and deletes this organization, completely purging all domains, mailboxes,
-              Stalwart account registrations, and assigned administrators. This action is irreversible.
+              Skips the 7-day suspension, name confirmation and OTP steps and deletes this organization straight away. It is still recorded in
+              Deleted Organisations with your name, IP and device, and the registration email is still permanently blocked. Irreversible.
             </p>
 
             <div className="p-4 bg-rose-50/50 border border-rose-200/80 rounded-lg space-y-3">

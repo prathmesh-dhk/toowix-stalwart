@@ -165,7 +165,7 @@ export interface TenantSummary {
   id: string;
   name: string;
   mailboxLimit: number;
-  status: 'active' | 'suspended' | 'approved_pending_setup';
+  status: 'active' | 'suspended' | 'approved_pending_setup' | 'pending_deletion';
   createdAt: string;
   updatedAt: string;
   domain: {
@@ -304,3 +304,56 @@ export interface DomainDeletionRequestItem {
   createdAt: string;
 }
 
+// ---- Organisation deletion (7-day suspension → name → OTPs → permanent delete) ----
+export type OrganisationDeletionStage =
+  | 'requested'
+  | 'name_confirmed'
+  | 'otp_initiated'
+  | 'final_otp_sent'
+  | 'otp_verified'
+  | 'completed'
+  | 'cancelled'
+  | 'expired';
+
+export type OrganisationDeletionNextAction =
+  | 'confirm_name'
+  | 'initiate_otp'
+  | 'generate_final_otp'
+  | 'verify_final_otp'
+  | 'final_confirmation'
+  | null;
+
+export interface OrganisationDeletionView {
+  id: string;
+  tenantId: string;
+  organisationName: string;
+  stage: OrganisationDeletionStage;
+  path: 'standard' | 'forced';
+  initiatedAt: string;
+  suspensionEndsAt: string;
+  nameConfirmedAt: string | null;
+  securityWaitEndsAt: string | null;
+  otpWindowEndsAt: string | null;
+  otpInitiatedAt: string | null;
+  finalLockEndsAt: string | null;
+  otpVerifiedAt: string | null;
+  otpVerification: 'not_started' | 'pending' | 'verified' | 'failed';
+  finalOtpExpiresAt: string | null;
+  completedAt: string | null;
+  nextAction: OrganisationDeletionNextAction;
+  /** null = the next step is available right now. */
+  nextActionAvailableAt: string | null;
+}
+
+export interface OrganisationDeletionTimings {
+  suspensionDays: number;
+  securityWaitHours: number;
+  otpWindowHours: number;
+  finalLockHours: number;
+  finalOtpMinutes: number;
+}
+
+export interface OrganisationDeletionState {
+  deletion: OrganisationDeletionView | null;
+  timings: OrganisationDeletionTimings;
+}

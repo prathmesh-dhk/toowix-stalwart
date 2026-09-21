@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { requireTenantAdmin } from '../auth/middleware';
+import { tenantDeletionRouter } from './organisation-deletion.routes';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainModel } from '../db/models/Domain';
 import { PlanModel } from '../db/models/Plan';
@@ -37,6 +38,29 @@ export const tenantMeRouter = Router();
 // ==========================================
 
 tenantMeRouter.use(requireTenantAdmin);
+
+// The organisation-deletion flow itself (request, name, OTPs, cancel, complete).
+tenantMeRouter.use('/me/deletion', tenantDeletionRouter);
+
+// An organisation inside its deletion timeline is suspended: reads and the deletion flow above stay
+// available, every other change — including mailbox and billing writes mounted after this router —
+// is refused until the deletion is cancelled, lapses or completes.
+tenantMeRouter.use(async (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  try {
+    const tenant = await TenantModel.findById(req.adminUser!.tenantId).select('status').lean();
+    if (tenant?.status === 'pending_deletion') {
+      res.status(423).json({
+        error: 'ORGANISATION_PENDING_DELETION',
+        message: 'This organisation is suspended while it is being deleted. Cancel the deletion to make changes.',
+      });
+      return;
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.adminUser?.tenantId;

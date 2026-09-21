@@ -113,6 +113,10 @@ describe('TenantDetailView Component in Super Admin', () => {
     vi.spyOn(api, 'getTenantDetails').mockResolvedValue(mockTenantDetails);
     vi.spyOn(api, 'updateMailboxLimit').mockResolvedValue(mockTenantDetails.tenant as any);
     vi.spyOn(api, 'suspendTenant').mockResolvedValue(mockTenantDetails.tenant as any);
+    vi.spyOn(api, 'getOrganisationDeletion').mockResolvedValue({
+      deletion: null,
+      timings: { suspensionDays: 7, securityWaitHours: 24, otpWindowHours: 24, finalLockHours: 24, finalOtpMinutes: 10 },
+    });
     vi.spyOn(api, 'reactivateTenant').mockResolvedValue(mockTenantDetails.tenant as any);
     vi.spyOn(api, 'resetTenantAdminPassword').mockResolvedValue({ success: true, message: 'Password reset' } as any);
   });
@@ -188,7 +192,9 @@ describe('TenantDetailView Component in Super Admin', () => {
     fireEvent.click(govTab);
     expect(screen.getByText('Mailbox Quota Limit')).toBeInTheDocument();
     expect(screen.getByText('Organization Access & Lifecycle')).toBeInTheDocument();
-    expect(screen.getByText(/permanent tenant deletion/i)).toBeInTheDocument();
+    // The secure, timeline-driven flow is the primary path; the immediate delete is an explicit emergency bypass.
+    expect(await screen.findByText(/^Delete organisation$/)).toBeInTheDocument();
+    expect(screen.getByText('Emergency immediate delete')).toBeInTheDocument();
   });
 
   it('allows inline administrator password reset', async () => {
