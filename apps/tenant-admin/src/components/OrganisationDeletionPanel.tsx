@@ -153,7 +153,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
               )}
             </div>
           ) : (
-            <div className="mx-auto w-full max-w-2xl">
+            <div className="mx-auto w-full max-w-2xl flex justify-start">
               <button type="button" onClick={() => setAskingReason(true)} className="btn btn-danger btn-sm flex items-center gap-1.5" id="btn-start-organisation-deletion">
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Delete organisation…</span>
