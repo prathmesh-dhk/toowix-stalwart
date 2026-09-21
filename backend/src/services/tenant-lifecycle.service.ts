@@ -5,7 +5,6 @@ import { AdminUserModel } from '../db/models/AdminUser';
 import { AdminSessionModel } from '../db/models/AdminSession';
 import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { TenantDnsCredentialModel } from '../db/models/TenantDnsCredential';
-import { DomainDeletionRequestModel } from '../db/models/DomainDeletionRequest';
 import { TenantModel } from '../db/models/Tenant';
 import { stalwartClient } from '../stalwart/client';
 import { executeDeletionCascade } from './domain-deletion.service';
@@ -149,7 +148,6 @@ export async function purgeTenant(tenantId: string | Types.ObjectId): Promise<Pu
   await AdminUserModel.deleteMany({ tenantId });
   await ActivationTokenModel.deleteMany({ tenantId });
   await TenantDnsCredentialModel.deleteMany({ tenantId });
-  await DomainDeletionRequestModel.deleteMany({ tenantId });
   await TenantModel.deleteOne({ _id: tenantId });
 
   return { mailboxesDeleted: mailboxes.length, domainNames: domains.map((d) => d.domainName) };

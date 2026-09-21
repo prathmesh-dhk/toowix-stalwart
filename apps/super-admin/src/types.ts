@@ -369,29 +369,6 @@ export interface PlatformAnalytics {
   };
 }
 
-export type DomainDeletionStatus = 'pending' | 'approved' | 'rejected';
-
-export interface DomainDeletionRequest {
-  id: string;
-  domainId: string;
-  domainName: string;
-  tenantId: string;
-  tenantName?: string;
-  requestedBy: {
-    id: string;
-    email: string;
-  };
-  reason?: string;
-  status: DomainDeletionStatus;
-  reviewedBy?: {
-    id: string;
-    email: string;
-  } | null;
-  reviewedAt?: string | null;
-  rejectionReason?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface TenantFullDetails {
   tenant: {

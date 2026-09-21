@@ -15,7 +15,6 @@ import {
   DomainDnsStatus,
   DnsLiveCheckResult,
   Plan,
-  DomainDeletionRequest,
   TenantFullDetails,
   OrganisationDeletionState,
   OrganisationDeletionView,
@@ -503,32 +502,6 @@ export const api = {
   getAnalytics: () =>
     request<PlatformAnalytics>('/api/system/analytics'),
 
-  // Domain Deletions
-  listDomainDeletionRequests: (params?: { status?: string; page?: number; limit?: number }) => {
-    const query = new URLSearchParams();
-    if (params?.status) query.set('status', params.status);
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.limit) query.set('limit', String(params.limit));
-    const qs = query.toString();
-    return request<{ requests: DomainDeletionRequest[]; total: number; page: number; limit: number }>(
-      `/api/super-admin/domain-deletion-requests${qs ? `?${qs}` : ''}`
-    );
-  },
-
-  approveDomainDeletionRequest: (id: string) =>
-    request<{ success: boolean; message: string; domainId: string; domainName: string; cascade: any }>(
-      `/api/super-admin/domain-deletion-requests/${id}/approve`,
-      { method: 'POST' }
-    ),
-
-  rejectDomainDeletionRequest: (id: string, reason?: string) =>
-    request<{ success: boolean; message: string; request: DomainDeletionRequest }>(
-      `/api/super-admin/domain-deletion-requests/${id}/reject`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ reason }),
-      }
-    ),
 };
 
 

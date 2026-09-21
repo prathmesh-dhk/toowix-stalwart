@@ -293,16 +293,6 @@ export interface IpCheckResult {
   allowedEntry: AllowedIpItem | null;
 }
 
-export interface DomainDeletionRequestItem {
-  id: string;
-  domainId: string;
-  domainName: string;
-  status: 'pending' | 'approved' | 'rejected';
-  reason?: string | null;
-  rejectionReason?: string | null;
-  reviewedAt?: string | null;
-  createdAt: string;
-}
 
 // ---- Organisation deletion (7-day suspension → name → OTPs → permanent delete) ----
 export type OrganisationDeletionStage =

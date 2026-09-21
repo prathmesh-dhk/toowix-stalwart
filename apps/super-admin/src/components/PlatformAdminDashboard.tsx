@@ -12,7 +12,6 @@ import {
   UserContext,
   PlatformAnalytics,
   Plan,
-  DomainDeletionRequest,
 } from '../types';
 import {
   CheckCircle2,
@@ -34,7 +33,6 @@ import {
   Check,
   Printer,
   Layers,
-  Trash2,
   Archive,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
@@ -44,7 +42,6 @@ import { Alert } from './ui/Alert';
 // Views
 import { DashboardOverviewView } from './views/DashboardOverviewView';
 import { TenantApplicationsView } from './views/TenantApplicationsView';
-import { DomainDeletionsView } from './views/DomainDeletionsView';
 import { DeletedOrganisationsView } from './views/DeletedOrganisationsView';
 import { TenantsManagementView } from './views/TenantsManagementView';
 import { TenantDetailView } from './views/TenantDetailView';
@@ -56,7 +53,6 @@ import { PlansManagementView } from './views/PlansManagementView';
 
 // Modals
 import { ApplicationReviewModal } from './modals/ApplicationReviewModal';
-import { DomainDeletionReviewModal } from './modals/DomainDeletionReviewModal';
 import { TenantDetailModal } from './modals/TenantDetailModal';
 import { TenantActivationModal } from './modals/TenantActivationModal';
 import { CreateTenantModal } from './modals/CreateTenantModal';
@@ -64,7 +60,7 @@ import { ManageAdminsModal } from './modals/ManageAdminsModal';
 import { UpdateQuotaModal } from './modals/UpdateQuotaModal';
 import { PlanFormModal } from './modals/PlanFormModal';
 
-export type DashboardTab = 'dashboard' | 'applications' | 'deletions' | 'deleted-organisations' | 'tenants' | 'plans' | 'analytics' | 'operations' | 'audit' | 'devices';
+export type DashboardTab = 'dashboard' | 'applications' | 'deleted-organisations' | 'tenants' | 'plans' | 'analytics' | 'operations' | 'audit' | 'devices';
 
 export interface PlatformAdminDashboardProps {
   user?: UserContext | null;
@@ -134,9 +130,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   const [applications, setApplications] = useState<RegistrationApplication[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
 
-  const [deletionRequests, setDeletionRequests] = useState<DomainDeletionRequest[]>([]);
-  const [deletionRequestsLoading, setDeletionRequestsLoading] = useState(false);
-  const [reviewingDeletionRequest, setReviewingDeletionRequest] = useState<DomainDeletionRequest | null>(null);
 
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -210,18 +203,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   }, []);
 
-  const loadDeletionRequests = useCallback(async () => {
-    setDeletionRequestsLoading(true);
-    try {
-      const res = await api.listDomainDeletionRequests({ limit: 100 });
-      setDeletionRequests(res.requests || []);
-    } catch (err) {
-      console.error('Failed to load domain deletion requests:', err);
-    } finally {
-      setDeletionRequestsLoading(false);
-    }
-  }, []);
-
   const loadOperationsData = useCallback(async () => {
     setOperationsLoading(true);
     try {
@@ -280,19 +261,17 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       await Promise.all([
         loadTenantsAndMetrics(),
         loadApplications(),
-        loadDeletionRequests(),
         loadOperationsData(),
         loadAuditLogs(),
       ]);
       setInitialLoading(false);
     };
     init();
-  }, [loadTenantsAndMetrics, loadApplications, loadDeletionRequests, loadOperationsData, loadAuditLogs]);
+  }, [loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs]);
 
   // Tab change refreshes
   useEffect(() => {
     if (activeTab === 'applications') loadApplications();
-    if (activeTab === 'deletions') loadDeletionRequests();
     if (activeTab === 'tenants') loadTenantsAndMetrics();
     if (activeTab === 'plans') loadPlans();
     if (activeTab === 'operations') loadOperationsData();
@@ -302,10 +281,9 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       loadTenantsAndMetrics();
       loadOperationsData();
       loadApplications();
-      loadDeletionRequests();
       loadAnalytics();
     }
-  }, [activeTab, loadTenantsAndMetrics, loadApplications, loadDeletionRequests, loadOperationsData, loadAuditLogs, loadAnalytics, loadPlans]);
+  }, [activeTab, loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs, loadAnalytics, loadPlans]);
 
 
 
@@ -343,30 +321,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   };
 
-  const handleApproveDeletionRequest = async (requestId: string) => {
-    setActionAlert(null);
-    try {
-      const res = await api.approveDomainDeletionRequest(requestId);
-      showAlert('success', `Domain "${res.domainName}" deleted successfully. Cascading cleanup executed.`);
-      await Promise.all([loadDeletionRequests(), loadTenantsAndMetrics()]);
-    } catch (err: any) {
-      showAlert('error', err.message || 'Failed to approve domain deletion.');
-      throw err;
-    }
-  };
-
-  const handleRejectDeletionRequest = async (requestId: string, reason: string) => {
-    setActionAlert(null);
-    try {
-      await api.rejectDomainDeletionRequest(requestId, reason);
-      showAlert('success', 'Domain deletion request rejected.');
-      await loadDeletionRequests();
-    } catch (err: any) {
-      showAlert('error', err.message || 'Failed to reject domain deletion request.');
-      throw err;
-    }
-  };
-
   const handleToggleSuspend = async (tenant: TenantSummary) => {
     const isSuspending = tenant.status === 'active';
     const confirmPrompt = isSuspending
@@ -389,7 +343,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   };
 
-  // Organisation deletion is a multi-day security flow (suspension, name, OTPs) with a permanent
+  // Organisation deletion is a multi-day security flow (reason, name, OTP) with a permanent
   // audit record, so "Delete" opens the organisation's Danger Zone instead of deleting on one click.
   const handleDeleteTenant = (tenant: TenantSummary) => {
     setDetailTenant(null);
@@ -547,7 +501,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
   // Operational badges
   const pendingAppsCount = applications.filter((a) => a.status === 'PENDING_REVIEW').length;
-  const pendingDeletionsCount = deletionRequests.filter((d) => d.status === 'pending').length;
   const activeTenantsCount = tenants.filter((t) => t.status === 'active').length;
 
   const mongoStatus = healthDetails?.services?.mongodb?.status || 'healthy';
@@ -694,36 +647,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               {pendingAppsCount > 0 ? (
                 <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/60">
                   {pendingAppsCount}
-                </span>
-              ) : (
-                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
-                  0
-                </span>
-              )}
-            </button>
-
-            {/* Domain Deletions */}
-            <button
-              onClick={() => setActiveTab('deletions')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeTab === 'deletions'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-deletions"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <Trash2
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeTab === 'deletions' ? 'text-rose-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Domain Deletions</span>
-              </div>
-              {pendingDeletionsCount > 0 ? (
-                <span className="text-xs font-semibold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-200/60">
-                  {pendingDeletionsCount}
                 </span>
               ) : (
                 <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
@@ -991,15 +914,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             />
           )}
 
-          {activeTab === 'deletions' && (
-            <DomainDeletionsView
-              requests={deletionRequests}
-              loading={deletionRequestsLoading}
-              onRefresh={loadDeletionRequests}
-              onReviewRequest={(req) => setReviewingDeletionRequest(req)}
-            />
-          )}
-
           {activeTab === 'deleted-organisations' && <DeletedOrganisationsView />}
 
           {activeTab === 'tenants' && (
@@ -1093,14 +1007,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         onClose={() => setReviewApp(null)}
         onApprove={handleApproveApplication}
         onReject={handleRejectApplication}
-      />
-
-      <DomainDeletionReviewModal
-        request={reviewingDeletionRequest}
-        isOpen={Boolean(reviewingDeletionRequest)}
-        onClose={() => setReviewingDeletionRequest(null)}
-        onApprove={handleApproveDeletionRequest}
-        onReject={handleRejectDeletionRequest}
       />
 
       <TenantDetailModal

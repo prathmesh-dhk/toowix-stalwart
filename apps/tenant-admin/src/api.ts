@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DomainDeletionRequestItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -308,20 +308,6 @@ export const api = {
 
   checkDnsRecordsLive: (domainId: string) =>
     request<DnsLiveCheckResult>(`/api/tenants/me/domains/${domainId}/dns-check`),
-
-  requestDomainDeletion: (domainId: string, reason?: string) =>
-    request<{ success: boolean; message: string; request: DomainDeletionRequestItem }>(
-      `/api/tenants/me/domains/${domainId}/deletion-request`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ reason }),
-      }
-    ),
-
-  getDomainDeletionRequest: (domainId: string) =>
-    request<{ request: DomainDeletionRequestItem | null }>(
-      `/api/tenants/me/domains/${domainId}/deletion-request`
-    ),
 
   /** Deletes a domain immediately — allowed only when it has zero mailboxes, no Super Admin approval needed. */
   deleteDomain: (domainId: string) =>

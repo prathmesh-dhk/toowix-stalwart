@@ -13,7 +13,6 @@ vi.mock('../../src/api', () => ({
     getAuditLogs: vi.fn(),
     getAlertConfig: vi.fn(),
     listBackups: vi.fn(),
-    listDomainDeletionRequests: vi.fn().mockResolvedValue({ requests: [] }),
     getReconciliationReport: vi.fn(),
     getAnalytics: vi.fn().mockResolvedValue(null),
     setup2Fa: vi.fn().mockResolvedValue({ secret: 'MOCKSECRET', qrCodeDataUrl: 'data:image/png;base64,mock' }),

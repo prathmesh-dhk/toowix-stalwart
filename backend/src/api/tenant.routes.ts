@@ -19,7 +19,7 @@ import {
   getDecryptedTenantDnsCredential,
 } from '../services/tenant-dns-credential.service';
 import { isKnownProvider } from '../dns-providers/dispatch';
-import { requestDomainDeletion, getDomainDeletionRequest, deleteDomainDirectly, DomainDeletionError } from '../services/domain-deletion.service';
+import { deleteDomainDirectly, DomainDeletionError } from '../services/domain-deletion.service';
 import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/errors';
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
 import { CloudflareAuthError, CloudflareDomainNotManagedError } from '../cloudflare/errors';
@@ -39,12 +39,12 @@ export const tenantMeRouter = Router();
 
 tenantMeRouter.use(requireTenantAdmin);
 
-// The organisation-deletion flow itself (request, name, OTPs, cancel, complete).
+// The organisation-deletion flow itself (reason, name, OTP, restore).
 tenantMeRouter.use('/me/deletion', tenantDeletionRouter);
 
 // An organisation inside its deletion timeline is suspended: reads and the deletion flow above stay
 // available, every other change — including mailbox and billing writes mounted after this router —
-// is refused until the deletion is cancelled, lapses or completes.
+// is refused until the deletion is cancelled or completes.
 tenantMeRouter.use(async (req: Request, res: Response, next: NextFunction) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   try {
@@ -677,81 +677,7 @@ tenantMeRouter.get('/me/domains/:domainId/dns-check', async (req: Request, res: 
 });
 
 // ==========================================
-// DOMAIN DELETION REQUESTS (/api/tenants/me/domains/:domainId/deletion-request)
-// ==========================================
-tenantMeRouter.post('/me/domains/:domainId/deletion-request', async (req: Request, res: Response): Promise<void> => {
-  const tenantId = req.adminUser?.tenantId;
-  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
-    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
-    return;
-  }
-
-  const actor = {
-    id: req.adminUser!.id,
-    email: req.adminUser!.email,
-    role: req.adminUser!.role,
-  };
-
-  const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
-
-  try {
-    const deletionRequest = await requestDomainDeletion(req.params.domainId, tenantId, actor, reason);
-    res.status(201).json({
-      success: true,
-      message: `Domain deletion requested for ${deletionRequest.domainName}. Pending Super Admin review.`,
-      request: {
-        id: deletionRequest._id.toString(),
-        domainId: deletionRequest.domainId.toString(),
-        domainName: deletionRequest.domainName,
-        status: deletionRequest.status,
-        reason: deletionRequest.reason,
-        createdAt: deletionRequest.createdAt.toISOString(),
-      },
-    });
-  } catch (err: any) {
-    if (err instanceof DomainDeletionError) {
-      res.status(err.statusCode).json({ error: err.code, message: err.message });
-      return;
-    }
-    console.error('[Domain Deletion Request Error]:', err);
-    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to submit domain deletion request.' });
-  }
-});
-
-tenantMeRouter.get('/me/domains/:domainId/deletion-request', async (req: Request, res: Response): Promise<void> => {
-  const tenantId = req.adminUser?.tenantId;
-  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
-    res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
-    return;
-  }
-
-  try {
-    const deletionRequest = await getDomainDeletionRequest(req.params.domainId, tenantId);
-    if (!deletionRequest) {
-      res.status(200).json({ request: null });
-      return;
-    }
-
-    res.status(200).json({
-      request: {
-        id: deletionRequest._id.toString(),
-        domainId: deletionRequest.domainId.toString(),
-        domainName: deletionRequest.domainName,
-        status: deletionRequest.status,
-        reason: deletionRequest.reason,
-        rejectionReason: deletionRequest.rejectionReason,
-        reviewedAt: deletionRequest.reviewedAt ? deletionRequest.reviewedAt.toISOString() : null,
-        createdAt: deletionRequest.createdAt.toISOString(),
-      },
-    });
-  } catch (err: any) {
-    console.error('[Get Domain Deletion Request Error]:', err);
-    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve domain deletion request.' });
-  }
-});
-
-// ==========================================
-// DIRECT DOMAIN DELETE — zero mailboxes, no Super Admin approval needed
+// DOMAIN DELETE — instant, zero mailboxes required, no Super Admin approval
 // (/api/tenants/me/domains/:domainId)
 // ==========================================
 tenantMeRouter.delete('/me/domains/:domainId', async (req: Request, res: Response): Promise<void> => {
