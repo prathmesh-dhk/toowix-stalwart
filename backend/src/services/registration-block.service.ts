@@ -8,7 +8,7 @@ const MAX_LOGGED_ATTEMPTS = 100;
 
 export const REGISTRATION_EMAIL_BLOCKED_RESPONSE = {
   error: 'REGISTRATION_EMAIL_BLOCKED',
-  message: 'This email address cannot be used to register. Please contact support if you believe this is a mistake.',
+  message: 'This email address was used for an account in the past and can’t be used to register again. Please try a different email address.',
 } as const;
 
 /**
