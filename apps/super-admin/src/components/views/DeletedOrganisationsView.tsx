@@ -229,28 +229,62 @@ export const DeletedOrganisationsView: React.FC = () => {
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-slate-900">Security timeline</span>
               {detailLoading && !selected.timeline && <span className="text-xs text-slate-500">Loading timeline…</span>}
-              <ol className="flex flex-col gap-2">
-                {(selected.timeline ?? []).map((entry: DeletionTimelineEntry, i: number) => (
-                  <li key={i} className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg">
-                    <span className="mt-0.5 shrink-0">
-                      {entry.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
-                    </span>
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-xs font-semibold text-slate-900">
-                        {STAGE_LABEL[entry.stage] ?? entry.stage}
-                        {!entry.success && <span className="ml-2 text-rose-600 font-medium">failed</span>}
+              <ol className="flex flex-col">
+                {(selected.timeline ?? []).map((entry: DeletionTimelineEntry, i: number, all: DeletionTimelineEntry[]) => {
+                  const last = i === all.length - 1;
+                  const n = entry.network;
+                  return (
+                    <li key={i} className="relative pl-8 pb-5 last:pb-0">
+                      {/* connecting line between steps */}
+                      {!last && <span className="absolute left-[8px] top-5 bottom-0 w-px bg-slate-200" aria-hidden="true" />}
+                      <span className="absolute left-0 top-0.5 bg-white">
+                        {entry.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
                       </span>
-                      <span className="text-[11px] text-slate-600">{formatDateTime(entry.at)} · {actorLine(entry.actor)}</span>
-                      {entry.network && (
-                        <span className="text-[11px] text-slate-500">
-                          <span className="font-mono">{entry.network.ip}</span> (IPv{entry.network.ipVersion ?? '?'}) · {entry.network.location} · {deviceLine(entry.network)}
-                          {entry.network.sessionId ? ` · session ${entry.network.sessionId.slice(0, 8)}…` : ''}
+
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+                        <span className="text-xs font-semibold text-slate-900">
+                          {STAGE_LABEL[entry.stage] ?? entry.stage}
+                          {!entry.success && <span className="ml-2 text-rose-600 font-medium">failed</span>}
                         </span>
+                        <span className="text-[11px] text-slate-500">{formatDateTime(entry.at)}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-0.5">{actorLine(entry.actor)}</div>
+                      {entry.message && <div className="text-[11px] text-slate-500 italic mt-0.5">“{entry.message}”</div>}
+
+                      {n && (
+                        <dl className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                          <div className="min-w-0">
+                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">IP address</dt>
+                            <dd className="text-[11px] text-slate-800 font-mono break-all">
+                              {n.ip}
+                              {n.ipVersion ? <span className="ml-1 font-sans text-slate-400">IPv{n.ipVersion}</span> : null}
+                            </dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">Location</dt>
+                            <dd className="text-[11px] text-slate-800">{n.location}</dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">Device</dt>
+                            <dd className="text-[11px] text-slate-800 capitalize">{n.deviceType}</dd>
+                            <dd className="text-[11px] text-slate-500">{n.os}</dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">Browser</dt>
+                            <dd className="text-[11px] text-slate-800">{n.browser}</dd>
+                            {n.browserVersion && <dd className="text-[11px] text-slate-500">v{n.browserVersion}</dd>}
+                          </div>
+                          {n.sessionId && (
+                            <div className="col-span-2 sm:col-span-4 min-w-0">
+                              <dt className="text-[10px] uppercase tracking-wide text-slate-400">Session</dt>
+                              <dd className="text-[11px] text-slate-600 font-mono break-all">{n.sessionId}</dd>
+                            </div>
+                          )}
+                        </dl>
                       )}
-                      {entry.message && <span className="text-[11px] text-slate-500 italic">{entry.message}</span>}
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ol>
             </div>
           </div>
