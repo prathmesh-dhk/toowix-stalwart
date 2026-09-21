@@ -209,7 +209,12 @@ tenantMeRouter.get('/me/domains/check-availability', async (req: Request, res: R
 
   try {
     const existing = await DomainModel.findOne({ domainName: domain });
-    res.status(200).json({ available: !existing });
+    // ownedByYou lets the wizard tell "you already added this" apart from "another organization has it" —
+    // the fix for each is completely different, and only the latter needs support.
+    res.status(200).json({
+      available: !existing,
+      ownedByYou: Boolean(existing && existing.tenantId.toString() === req.adminUser?.tenantId),
+    });
   } catch (err: any) {
     console.error('[Domain Availability Check Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to check domain availability.' });

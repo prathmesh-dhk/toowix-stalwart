@@ -105,12 +105,30 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.available).toBe(false);
+      // Claimed by the caller's own tenant — the wizard must not treat that as "someone else has it".
+      expect(res.body.ownedByYou).toBe(true);
 
       // Case-insensitive, matching the same normalization domain creation uses.
       const resUpper = await request(app)
         .get('/api/tenants/me/domains/check-availability?domain=TakenBrand.com')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(resUpper.body.available).toBe(false);
+    });
+
+    it('tells apart a domain another organization owns from one you already added', async () => {
+      const other = await TenantModel.create({ name: 'Rival Inc', contactEmail: 'x@rival.com', status: 'active', mailboxLimit: 5, mailboxCount: 0 });
+      await DomainModel.create({ tenantId: other._id, domainName: 'rivalbrand.com', status: 'active', dnsStatus: 'active', isPrimary: true });
+
+      const res = await request(app)
+        .get('/api/tenants/me/domains/check-availability?domain=rivalbrand.com')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.body).toMatchObject({ available: false, ownedByYou: false });
+
+      const free = await request(app)
+        .get('/api/tenants/me/domains/check-availability?domain=freshbrand.com')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(free.body).toMatchObject({ available: true, ownedByYou: false });
     });
 
     it('rejects a malformed domain name', async () => {

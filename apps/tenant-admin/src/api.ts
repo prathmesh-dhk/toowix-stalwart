@@ -257,7 +257,7 @@ export const api = {
     ),
 
   checkDomainAvailability: (domain: string) =>
-    request<{ available: boolean }>(
+    request<{ available: boolean; ownedByYou?: boolean }>(
       `/api/tenants/me/domains/check-availability?domain=${encodeURIComponent(domain)}`
     ),
 

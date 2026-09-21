@@ -228,15 +228,34 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setCheckingAvailability(true);
     setError(null);
 
-    try {
-      const avail = await api.checkDomainAvailability(clean);
-      if (!avail.available) {
-        setError('This domain is already registered on Toowix by another organization. If you own it, contact support.');
-        setCheckingAvailability(false);
-        return;
+    // Coming back to this step after the wizard already created a domain. Same name: it is ours, and
+    // asking "is it taken?" would answer yes — by us. A different name replaces it, so the old one is
+    // deleted rather than left behind in Stalwart.
+    const keepingCreated = createdDomain?.domainName === clean;
+    if (createdDomain && !keepingCreated) {
+      discardDomain(createdDomain);
+      createdRef.current = null;
+      setCreatedDomain(null);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      setDnsStatus(null);
+      setConnected(false);
+    }
+
+    if (!keepingCreated) {
+      try {
+        const avail = await api.checkDomainAvailability(clean);
+        if (!avail.available) {
+          setError(
+            avail.ownedByYou
+              ? "You've already added this domain to your organization. Manage it from the Domains tab."
+              : 'This domain is already registered on Toowix by another organization. If you own it, contact support.'
+          );
+          setCheckingAvailability(false);
+          return;
+        }
+      } catch {
+        // If check fails, allow continuing
       }
-    } catch {
-      // If check fails, allow continuing
     }
 
     detectedProviderPromiseRef.current = api.detectDnsProvider(clean).catch(() => null);

@@ -554,4 +554,122 @@ describe('DomainSetupModal Component', () => {
       expect(onDomainAdded).not.toHaveBeenCalled();
     });
   });
+
+  describe('going back to the domain step', () => {
+    const domainField = () => screen.getByPlaceholderText(/enter your domain name|acme-tech.com/i);
+
+    /** Goes forward to the DNS status step, where the wizard has already created the domain. */
+    const reachStatusStep = async (domain: string) => {
+      await enterDomainAndContinue(domain);
+      await screen.findByText('10 Seats');
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await screen.findByText(`DNS Setup — ${domain}`);
+    };
+
+    const backToDomainStep = async () => {
+      for (let i = 0; i < 6 && !screen.queryByText(/name for your domain/i); i++) {
+        await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
+      }
+      expect(screen.getByText(/name for your domain/i)).toBeInTheDocument();
+    };
+
+    it('continues with the same domain again — your own domain is not "taken by another organization"', async () => {
+      vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-back-1',
+        domainName: 'again.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+      // Free the first time; once created it exists — and it is yours.
+      vi.mocked(api.checkDomainAvailability)
+        .mockResolvedValueOnce({ available: true })
+        .mockResolvedValue({ available: false, ownedByYou: true });
+
+      render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+      await reachStatusStep('again.io');
+      await backToDomainStep();
+
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+      expect(await screen.findByText('Choose a plan')).toBeInTheDocument();
+      expect(screen.queryByText(/already registered/i)).not.toBeInTheDocument();
+
+      // Same domain: it is kept and reused, not deleted and not created a second time.
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await screen.findByText('DNS Setup — again.io');
+      expect(api.deleteDomain).not.toHaveBeenCalled();
+      expect(api.createTenantDomain).toHaveBeenCalledTimes(1);
+    });
+
+    it('discards the old domain and sets up the new name when the domain is changed', async () => {
+      vi.mocked(api.createTenantDomain)
+        .mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-first-1',
+        domainName: 'first.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    })
+        .mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-second-1',
+        domainName: 'second.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+
+      render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+      await reachStatusStep('first.io');
+      await backToDomainStep();
+
+      await userEvent.clear(domainField());
+      await userEvent.type(domainField(), 'second.io');
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await screen.findByText('Choose a plan');
+
+      // first.io must not linger in Stalwart under a wizard that has moved on to second.io.
+      expect(api.deleteDomain).toHaveBeenCalledWith('dom-first-1');
+
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      expect(await screen.findByText('DNS Setup — second.io')).toBeInTheDocument();
+      expect(api.createTenantDomain).toHaveBeenLastCalledWith(expect.objectContaining({ domainName: 'second.io' }));
+    });
+
+    it('says a domain you already added is yours, instead of blaming another organization', async () => {
+      vi.mocked(api.checkDomainAvailability).mockResolvedValue({ available: false, ownedByYou: true });
+
+      render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+      await userEvent.type(domainField(), 'mine.io');
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+      expect(await screen.findByText(/already added this domain/i)).toBeInTheDocument();
+      expect(screen.queryByText(/another organization/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('Choose a plan')).not.toBeInTheDocument();
+    });
+  });
 });
