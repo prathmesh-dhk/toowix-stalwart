@@ -152,7 +152,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
           <label htmlFor="deletion-reason" className="text-xs font-semibold text-slate-900">
             Reason for deletion <span className="font-normal text-slate-500">(optional, kept in the audit record)</span>
           </label>
-          <textarea id="deletion-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} className="form-input text-xs w-full" />
+          <input id="deletion-reason" type="text" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} placeholder="e.g. Closing the company" className="form-input text-xs" autoComplete="off" />
           <div className="flex items-center gap-2">
             <button
               type="button"
