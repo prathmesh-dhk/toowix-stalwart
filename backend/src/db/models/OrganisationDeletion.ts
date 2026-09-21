@@ -14,21 +14,18 @@ export type DeletionStage =
   | 'name_confirmed'
   | 'otp_initiated'
   | 'final_otp_sent'
-  | 'otp_verified'
   | 'completed'
-  | 'cancelled'
-  | 'expired';
+  | 'cancelled';
 
 export const ACTIVE_DELETION_STAGES: DeletionStage[] = [
   'requested',
   'name_confirmed',
   'otp_initiated',
   'final_otp_sent',
-  'otp_verified',
 ];
 
 /** Timeline stages — the spec's security steps, in order, plus the failure-only/terminal ones. */
-export type TimelineStage = DeletionStage | 'otp_generation' | 'final_confirmation';
+export type TimelineStage = DeletionStage | 'otp_generation' | 'otp_verified' | 'final_confirmation';
 
 export interface IDeletionActor {
   userId: string;
@@ -81,12 +78,10 @@ export interface IOrganisationDeletion extends Document {
   completedBy: IDeletionActor | null;
   completedNetwork: IDeletionNetwork | null;
   cancelledAt: Date | null;
-  expiredAt: Date | null;
 
-  suspensionEndsAt: Date;
+  /** Set when the name is confirmed (that is what suspends the organisation). */
+  suspensionEndsAt: Date | null;
   nameConfirmedAt: Date | null;
-  securityWaitEndsAt: Date | null;
-  otpWindowEndsAt: Date | null;
   otpInitiatedAt: Date | null;
   finalLockEndsAt: Date | null;
   otpVerifiedAt: Date | null;
@@ -170,7 +165,7 @@ const OrganisationDeletionSchema = new Schema<IOrganisationDeletion>(
 
     stage: {
       type: String,
-      enum: ['requested', 'name_confirmed', 'otp_initiated', 'final_otp_sent', 'otp_verified', 'completed', 'cancelled', 'expired'],
+      enum: ['requested', 'name_confirmed', 'otp_initiated', 'final_otp_sent', 'completed', 'cancelled'],
       default: 'requested',
       index: true,
     },
@@ -181,12 +176,9 @@ const OrganisationDeletionSchema = new Schema<IOrganisationDeletion>(
     completedBy: { type: ActorSchema, default: null },
     completedNetwork: { type: NetworkSchema, default: null },
     cancelledAt: { type: Date, default: null },
-    expiredAt: { type: Date, default: null },
 
-    suspensionEndsAt: { type: Date, required: true },
+    suspensionEndsAt: { type: Date, default: null },
     nameConfirmedAt: { type: Date, default: null },
-    securityWaitEndsAt: { type: Date, default: null },
-    otpWindowEndsAt: { type: Date, default: null },
     otpInitiatedAt: { type: Date, default: null },
     finalLockEndsAt: { type: Date, default: null },
     otpVerifiedAt: { type: Date, default: null },

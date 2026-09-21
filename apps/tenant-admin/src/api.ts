@@ -344,8 +344,6 @@ export const api = {
     request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/otp/generate`, { method: 'POST' }),
   verifyOrganisationOtp: (code: string) =>
     request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/otp/verify`, { method: 'POST', body: JSON.stringify({ code }) }),
-  completeOrganisationDeletion: () =>
-    request<{ deletion: OrganisationDeletionView }>(`/api/tenants/me/deletion/complete`, { method: 'POST' }),
 
   // Mailboxes (Domain Scoped)
   listMyMailboxes: (domainId?: string) => {
@@ -414,6 +412,7 @@ export const api = {
     emailVerificationToken: string;
     password: string;
     securityQuestions: Array<{ question: string; answer: string }>;
+    organizationName?: string;
   }) =>
     request<{
       success: boolean;

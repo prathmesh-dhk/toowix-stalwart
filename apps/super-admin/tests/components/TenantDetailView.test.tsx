@@ -115,7 +115,7 @@ describe('TenantDetailView Component in Super Admin', () => {
     vi.spyOn(api, 'suspendTenant').mockResolvedValue(mockTenantDetails.tenant as any);
     vi.spyOn(api, 'getOrganisationDeletion').mockResolvedValue({
       deletion: null,
-      timings: { suspensionDays: 7, securityWaitHours: 24, otpWindowHours: 24, finalLockHours: 24, finalOtpMinutes: 10 },
+      timings: { suspensionDays: 7, otpWaitHours: 24, finalOtpMinutes: 10 },
     });
     vi.spyOn(api, 'reactivateTenant').mockResolvedValue(mockTenantDetails.tenant as any);
     vi.spyOn(api, 'resetTenantAdminPassword').mockResolvedValue({ success: true, message: 'Password reset' } as any);

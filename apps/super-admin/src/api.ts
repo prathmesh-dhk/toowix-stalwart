@@ -261,8 +261,6 @@ export const api = {
     request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/otp/generate`, { method: 'POST' }),
   verifyOrganisationOtp: (tenantId: string, code: string) =>
     request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/otp/verify`, { method: 'POST', body: JSON.stringify({ code }) }),
-  completeOrganisationDeletion: (tenantId: string) =>
-    request<{ deletion: OrganisationDeletionView }>(`/api/platform/tenants/${tenantId}/deletion/complete`, { method: 'POST' }),
   // Deleted Organisations (permanent audit records)
   listDeletedOrganisations: (params?: { stage?: 'completed' | 'active' | 'all'; search?: string; page?: number; limit?: number }) => {
     const query = new URLSearchParams();

@@ -19,10 +19,8 @@ import {
   initiateOtpProcess,
   generateFinalOtp,
   verifyFinalOtp,
-  completeDeletion,
   cancelDeletion,
   getActiveDeletion,
-  expireStaleDeletions,
   type DeletionActor,
   type RequestContext,
 } from '../src/services/organisation-deletion.service';
@@ -63,6 +61,23 @@ describe('organisation deletion state machine', () => {
     throw new Error('expected the call to fail');
   };
 
+  // Each step at the earliest moment it unlocks: name right after the reason, OTP request after
+  // the 7-day suspension, the code 24h after that.
+  const NAME_AT = HOUR;
+  const INITIATE_AT = NAME_AT + 7 * DAY;
+  const GENERATE_AT = INITIATE_AT + DAY;
+  const VERIFY_AT = GENERATE_AT + 60 * 1000;
+
+  const advanceTo = async (stage: 'requested' | 'name_confirmed' | 'otp_initiated' | 'final_otp_sent') => {
+    await requestDeletion(input(t0, { reason: 'Closing the company' }));
+    if (stage === 'requested') return;
+    await confirmOrganisationName(input(at(NAME_AT), { organisationName: 'Acme Corp' }));
+    if (stage === 'name_confirmed') return;
+    await initiateOtpProcess(input(at(INITIATE_AT)));
+    if (stage === 'otp_initiated') return;
+    await generateFinalOtp(input(at(GENERATE_AT)));
+  };
+
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     await connectDatabase({ uri: mongoServer.getUri(), autoIndex: true });
@@ -99,13 +114,7 @@ describe('organisation deletion state machine', () => {
 
     t0 = new Date('2026-09-21T10:00:00.000Z');
 
-    const tenant = await TenantModel.create({
-      name: 'Acme Corp',
-      contactEmail: 'owner@acme.com',
-      status: 'active',
-      mailboxLimit: 50,
-      mailboxCount: 0,
-    });
+    const tenant = await TenantModel.create({ name: 'Acme Corp', contactEmail: 'owner@acme.com', status: 'active', mailboxLimit: 50, mailboxCount: 0 });
     tenantId = tenant._id.toString();
 
     const admin = await AdminUserModel.create({
@@ -122,25 +131,26 @@ describe('organisation deletion state machine', () => {
     await DomainModel.create({ tenantId, domainName: 'acme.com', status: 'active', dnsStatus: 'active', isPrimary: true });
   });
 
-  describe('requesting deletion', () => {
-    it('suspends the organisation for 7 days and records who asked, from where', async () => {
+  describe('step 1 — asking to delete, with a reason', () => {
+    it('records who asked and why, from where — without suspending anything yet', async () => {
       const deletion = await requestDeletion(input(t0, { reason: 'Closing the company' }));
 
       expect(deletion.stage).toBe('requested');
-      expect(deletion.suspensionEndsAt.toISOString()).toBe(at(7 * DAY).toISOString());
-
-      const tenant = await TenantModel.findById(tenantId);
-      expect(tenant!.status).toBe('pending_deletion');
-      expect((await DomainModel.findOne({ tenantId }))!.status).toBe('suspended');
+      expect(deletion.nextAction).toBe('confirm_name');
+      expect(deletion.suspensionEndsAt).toBeNull();
+      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
+      expect((await DomainModel.findOne({ tenantId }))!.status).toBe('active');
 
       const record = await OrganisationDeletionModel.findById(deletion.id);
-      expect(record!.organisationName).toBe('Acme Corp');
-      expect(record!.registrationEmail).toBe('owner@acme.com');
-      expect(record!.domains).toEqual(['acme.com']);
+      expect(record).toMatchObject({
+        organisationName: 'Acme Corp',
+        registrationEmail: 'owner@acme.com',
+        domains: ['acme.com'],
+        reason: 'Closing the company',
+      });
       expect(record!.timeline).toHaveLength(1);
       const entry = record!.timeline[0];
-      expect(entry.stage).toBe('requested');
-      expect(entry.success).toBe(true);
+      expect(entry).toMatchObject({ stage: 'requested', success: true });
       expect(entry.actor).toMatchObject({
         userId: owner.id,
         name: 'Olivia Owner',
@@ -167,7 +177,7 @@ describe('organisation deletion state machine', () => {
       expect(err.code).toBe('DELETION_ALREADY_IN_PROGRESS');
     });
 
-    it('does not let a tenant admin act on someone else\'s organisation', async () => {
+    it("does not let a tenant admin act on someone else's organisation", async () => {
       const other = await TenantModel.create({ name: 'Other Org', contactEmail: 'x@other.com', status: 'active', mailboxLimit: 5, mailboxCount: 0 });
       const err = await failure(requestDeletion({ tenantId: other._id.toString(), actor: owner, context: CONTEXT, now: t0 }));
       expect(err.code).toBe('FORBIDDEN');
@@ -175,76 +185,57 @@ describe('organisation deletion state machine', () => {
     });
   });
 
-  describe('confirming the organisation name', () => {
-    it('is locked until the 7-day suspension has passed, and records the failed attempt', async () => {
-      const deletion = await requestDeletion(input(t0));
-
-      const err = await failure(confirmOrganisationName(input(at(6 * DAY), { organisationName: 'Acme Corp' })));
-      expect(err.code).toBe('STEP_NOT_AVAILABLE_YET');
-      expect(err.availableAt?.toISOString()).toBe(at(7 * DAY).toISOString());
-
-      const record = await OrganisationDeletionModel.findById(deletion.id);
-      const last = record!.timeline[record!.timeline.length - 1];
-      expect(last).toMatchObject({ stage: 'name_confirmed', success: false });
-    });
-
-    it('requires the exact organisation name', async () => {
+  describe('step 2 — entering the organisation name suspends the organisation', () => {
+    it('requires the exact name and records each wrong attempt', async () => {
       const deletion = await requestDeletion(input(t0));
 
       for (const wrong of ['acme corp', 'Acme Corp ', 'Acme', '']) {
-        const err = await failure(confirmOrganisationName(input(at(7 * DAY), { organisationName: wrong })));
+        const err = await failure(confirmOrganisationName(input(at(NAME_AT), { organisationName: wrong })));
         expect(err.code).toBe('ORGANISATION_NAME_MISMATCH');
       }
 
       const record = await OrganisationDeletionModel.findById(deletion.id);
       expect(record!.stage).toBe('requested');
       expect(record!.timeline.filter((e) => e.stage === 'name_confirmed' && !e.success)).toHaveLength(4);
+      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
     });
 
-    it('starts the 24-hour security wait once the exact name is entered', async () => {
+    it('suspends the organisation and starts the 7-day wait as soon as the exact name is entered', async () => {
       await requestDeletion(input(t0));
-      const confirmed = await confirmOrganisationName(input(at(7 * DAY), { organisationName: 'Acme Corp' }));
+      const confirmed = await confirmOrganisationName(input(at(NAME_AT), { organisationName: 'Acme Corp' }));
 
       expect(confirmed.stage).toBe('name_confirmed');
-      expect(confirmed.securityWaitEndsAt!.toISOString()).toBe(at(8 * DAY).toISOString());
-      expect(confirmed.otpWindowEndsAt!.toISOString()).toBe(at(9 * DAY).toISOString());
+      expect(confirmed.nextAction).toBe('initiate_otp');
+      expect(confirmed.suspensionEndsAt!.toISOString()).toBe(at(NAME_AT + 7 * DAY).toISOString());
+      expect((await TenantModel.findById(tenantId))!.status).toBe('pending_deletion');
+      expect((await DomainModel.findOne({ tenantId }))!.status).toBe('suspended');
+    });
+
+    it('is not available before a deletion has been requested', async () => {
+      const err = await failure(confirmOrganisationName(input(at(NAME_AT), { organisationName: 'Acme Corp' })));
+      expect(err.code).toBe('NO_ACTIVE_DELETION');
     });
   });
 
-  // Walks the happy path up to (and including) `stage`, at the earliest moment each step unlocks.
-  const NAME_AT = 7 * DAY;
-  const INITIATE_AT = 8 * DAY;
-  const GENERATE_AT = 9 * DAY;
-  const VERIFY_AT = 9 * DAY + 60 * 1000;
-  const COMPLETE_AT = 9 * DAY + 2 * 60 * 1000;
-
-  const advanceTo = async (stage: 'requested' | 'name_confirmed' | 'otp_initiated' | 'final_otp_sent' | 'otp_verified') => {
-    await requestDeletion(input(t0));
-    if (stage === 'requested') return;
-    await confirmOrganisationName(input(at(NAME_AT), { organisationName: 'Acme Corp' }));
-    if (stage === 'name_confirmed') return;
-    await initiateOtpProcess(input(at(INITIATE_AT)));
-    if (stage === 'otp_initiated') return;
-    await generateFinalOtp(input(at(GENERATE_AT)));
-    if (stage === 'final_otp_sent') return;
-    await verifyFinalOtp(input(at(VERIFY_AT), { code: sentOtps[sentOtps.length - 1] }));
-  };
-
-  describe('initiating the OTP deletion process', () => {
-    it('stays locked through the 24-hour security wait', async () => {
+  describe('step 3 — requesting the OTP after the 7-day wait', () => {
+    it('stays locked for the whole 7 days, and records the attempt', async () => {
       await advanceTo('name_confirmed');
 
-      const err = await failure(initiateOtpProcess(input(at(NAME_AT + 23 * HOUR))));
+      const err = await failure(initiateOtpProcess(input(at(NAME_AT + 7 * DAY - HOUR))));
       expect(err.code).toBe('STEP_NOT_AVAILABLE_YET');
       expect(err.availableAt?.toISOString()).toBe(at(INITIATE_AT).toISOString());
+
+      const record = await OrganisationDeletionModel.findOne({ tenantId });
+      expect(record!.timeline[record!.timeline.length - 1]).toMatchObject({ stage: 'otp_initiated', success: false });
     });
 
-    it('opens after the wait and starts the second 24-hour lock, capturing context again', async () => {
+    it('opens after 7 days, starts the 24-hour wait, and captures the context again', async () => {
       await advanceTo('name_confirmed');
       const started = await initiateOtpProcess(input(at(INITIATE_AT + 5 * HOUR)));
 
       expect(started.stage).toBe('otp_initiated');
-      expect(started.finalLockEndsAt!.toISOString()).toBe(at(INITIATE_AT + 5 * HOUR + DAY).toISOString());
+      expect(started.nextAction).toBe('generate_final_otp');
+      expect(started.nextActionAvailableAt!.toISOString()).toBe(at(INITIATE_AT + 5 * HOUR + DAY).toISOString());
 
       const record = await OrganisationDeletionModel.findOne({ tenantId });
       const entry = record!.timeline[record!.timeline.length - 1];
@@ -252,36 +243,32 @@ describe('organisation deletion state machine', () => {
       expect(entry.network).toMatchObject({ ip: '203.0.113.7', browser: 'Google Chrome', sessionId: 'session-abc' });
     });
 
-    it('lapses if nobody starts it inside the 24-hour window, and the organisation is restored', async () => {
+    it('has no deadline — the deletion waits for as long as the admin does', async () => {
       await advanceTo('name_confirmed');
+      await expect(initiateOtpProcess(input(at(NAME_AT + 60 * DAY)))).resolves.toMatchObject({ stage: 'otp_initiated' });
+    });
 
-      const err = await failure(initiateOtpProcess(input(at(NAME_AT + 2 * DAY + HOUR))));
-      expect(err.code).toBe('OTP_WINDOW_EXPIRED');
-
-      const record = await OrganisationDeletionModel.findOne({ tenantId });
-      expect(record!.stage).toBe('expired');
-      expect(record!.timeline[record!.timeline.length - 1]).toMatchObject({ stage: 'expired', actor: null });
-      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
-      expect((await DomainModel.findOne({ tenantId }))!.status).toBe('active');
-
-      // A fresh deletion can be started afterwards.
-      await expect(requestDeletion(input(at(NAME_AT + 3 * DAY)))).resolves.toMatchObject({ stage: 'requested' });
+    it('cannot be requested before the name was confirmed', async () => {
+      await advanceTo('requested');
+      const err = await failure(initiateOtpProcess(input(at(INITIATE_AT))));
+      expect(err.code).toBe('INVALID_STAGE');
     });
   });
 
-  describe('final OTP', () => {
-    it('cannot be generated during the second 24-hour lock', async () => {
+  describe('step 4 — sending the code and entering it', () => {
+    it('cannot be sent during the 24-hour wait', async () => {
       await advanceTo('otp_initiated');
       const err = await failure(generateFinalOtp(input(at(INITIATE_AT + 23 * HOUR))));
       expect(err.code).toBe('STEP_NOT_AVAILABLE_YET');
       expect(sentOtps).toHaveLength(0);
     });
 
-    it('is emailed to the acting admin as a 6-digit code once the lock ends', async () => {
+    it('is emailed to the acting admin as a 6-digit code once the wait ends', async () => {
       await advanceTo('otp_initiated');
       const view = await generateFinalOtp(input(at(GENERATE_AT)));
 
       expect(view.stage).toBe('final_otp_sent');
+      expect(view.nextAction).toBe('verify_final_otp');
       expect(sentOtps).toHaveLength(1);
       expect(sentOtps[0]).toMatch(/^\d{6}$/);
       expect(emailService.sendOrganisationDeletionOtpEmail).toHaveBeenCalledWith(
@@ -304,38 +291,31 @@ describe('organisation deletion state machine', () => {
       expect((await OrganisationDeletionModel.findOne({ tenantId }))!.stage).toBe('otp_initiated');
     });
 
-    it('rejects a wrong code, records the failure, and accepts the right one', async () => {
+    it('rejects a wrong code and records the failure', async () => {
       await advanceTo('final_otp_sent');
-      const good = sentOtps[0];
-      const bad = good === '000000' ? '111111' : '000000';
+      const bad = sentOtps[0] === '000000' ? '111111' : '000000';
 
       const err = await failure(verifyFinalOtp(input(at(VERIFY_AT), { code: bad })));
       expect(err.code).toBe('INVALID_OTP');
-      let record = await OrganisationDeletionModel.findOne({ tenantId });
+
+      const record = await OrganisationDeletionModel.findOne({ tenantId });
+      expect(record!.stage).toBe('final_otp_sent');
       expect(record!.otpVerification).toBe('failed');
       expect(record!.timeline[record!.timeline.length - 1]).toMatchObject({ stage: 'otp_verified', success: false });
-
-      const ok = await verifyFinalOtp(input(at(VERIFY_AT), { code: good }));
-      expect(ok.stage).toBe('otp_verified');
-      expect(ok.otpVerification).toBe('verified');
-      record = await OrganisationDeletionModel.findOne({ tenantId });
-      expect(record!.finalOtp.codeHash).toBeNull();
+      expect(await TenantModel.findById(tenantId)).not.toBeNull();
     });
 
-    it('locks after five wrong attempts, even for the correct code, until a new one is generated', async () => {
+    it('locks after five wrong attempts, even for the correct code, until a new one is sent', async () => {
       await advanceTo('final_otp_sent');
       const good = sentOtps[0];
       const bad = good === '000000' ? '111111' : '000000';
 
-      for (let i = 0; i < 5; i++) {
-        await failure(verifyFinalOtp(input(at(VERIFY_AT), { code: bad })));
-      }
+      for (let i = 0; i < 5; i++) await failure(verifyFinalOtp(input(at(VERIFY_AT), { code: bad })));
       const locked = await failure(verifyFinalOtp(input(at(VERIFY_AT), { code: good })));
       expect(locked.code).toBe('OTP_LOCKED');
 
       await generateFinalOtp(input(at(VERIFY_AT)));
-      const fresh = sentOtps[sentOtps.length - 1];
-      await expect(verifyFinalOtp(input(at(VERIFY_AT), { code: fresh }))).resolves.toMatchObject({ stage: 'otp_verified' });
+      await expect(verifyFinalOtp(input(at(VERIFY_AT), { code: sentOtps[sentOtps.length - 1] }))).resolves.toMatchObject({ stage: 'completed' });
     });
 
     it('cannot be brute-forced by firing guesses in parallel', async () => {
@@ -351,30 +331,24 @@ describe('organisation deletion state machine', () => {
       expect(locked.code).toBe('OTP_LOCKED');
     });
 
-    it('expires ten minutes after it was generated', async () => {
+    it('expires ten minutes after it was sent', async () => {
       await advanceTo('final_otp_sent');
       const err = await failure(verifyFinalOtp(input(at(GENERATE_AT + 11 * 60 * 1000), { code: sentOtps[0] })));
       expect(err.code).toBe('OTP_EXPIRED');
     });
 
-    it('can only be verified by the admin it was issued to', async () => {
+    it('can only be entered by the admin it was sent to', async () => {
       await advanceTo('final_otp_sent');
-      const otherAdmin: DeletionActor = { id: new Date().getTime().toString(16).padStart(24, '0'), email: 'root@toowix.com', role: 'SUPER_ADMIN' };
+      const otherAdmin: DeletionActor = { id: '64b7f0f0f0f0f0f0f0f0f0f1', email: 'root@toowix.com', role: 'SUPER_ADMIN' };
 
       const err = await failure(verifyFinalOtp({ tenantId, actor: otherAdmin, context: CONTEXT, now: at(VERIFY_AT), code: sentOtps[0] }));
       expect(err.code).toBe('OTP_ISSUED_TO_ANOTHER_USER');
+      expect(await TenantModel.findById(tenantId)).not.toBeNull();
     });
   });
 
-  describe('final confirmation and permanent deletion', () => {
-    it('is refused until the final OTP has been verified', async () => {
-      await advanceTo('final_otp_sent');
-      const err = await failure(completeDeletion(input(at(COMPLETE_AT))));
-      expect(err.code).toBe('INVALID_STAGE');
-      expect(await TenantModel.findById(tenantId)).not.toBeNull();
-    });
-
-    it('purges the organisation, keeps the audit record, and blocks the registration email', async () => {
+  describe('entering the correct code deletes the organisation', () => {
+    it('purges everything, keeps the audit record, and blocks the registration email', async () => {
       const mailboxAccountId = 'stalwart-acc-1';
       await MailboxModel.create({
         tenantId,
@@ -384,10 +358,11 @@ describe('organisation deletion state machine', () => {
         stalwartAccountId: mailboxAccountId,
         status: 'active',
       });
-      await advanceTo('otp_verified');
+      await advanceTo('final_otp_sent');
 
-      const done = await completeDeletion(input(at(COMPLETE_AT)));
+      const done = await verifyFinalOtp(input(at(VERIFY_AT), { code: sentOtps[0] }));
       expect(done.stage).toBe('completed');
+      expect(done.nextAction).toBeNull();
 
       expect(await TenantModel.findById(tenantId)).toBeNull();
       expect(await AdminUserModel.countDocuments({ tenantId })).toBe(0);
@@ -404,10 +379,11 @@ describe('organisation deletion state machine', () => {
         domains: ['acme.com'],
         otpVerification: 'verified',
       });
-      expect(record!.completedAt!.toISOString()).toBe(at(COMPLETE_AT).toISOString());
+      expect(record!.completedAt!.toISOString()).toBe(at(VERIFY_AT).toISOString());
       expect(record!.completedBy).toMatchObject({ email: 'owner@acme.com', role: 'TENANT_ADMIN', organisationName: 'Acme Corp' });
       expect(record!.completedNetwork).toMatchObject({ ip: '203.0.113.7', location: 'Mumbai, Maharashtra' });
       expect(record!.initiatedBy).toMatchObject({ email: 'owner@acme.com', role: 'TENANT_ADMIN' });
+      expect(record!.finalOtp.codeHash).toBeNull();
       expect(record!.timeline.filter((e) => e.success).map((e) => e.stage)).toEqual([
         'requested',
         'name_confirmed',
@@ -434,7 +410,6 @@ describe('organisation deletion state machine', () => {
       await generateFinalOtp(run(at(GENERATE_AT)));
       expect(emailService.sendOrganisationDeletionOtpEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'root@toowix.com' }));
       await verifyFinalOtp(run(at(VERIFY_AT), { code: sentOtps[0] }));
-      await completeDeletion(run(at(COMPLETE_AT)));
 
       const record = await OrganisationDeletionModel.findOne({ tenantId });
       expect(record!.initiatedBy).toMatchObject({ role: 'SUPER_ADMIN', email: 'root@toowix.com', name: 'Priya Root', organisationId: tenantId });
@@ -442,47 +417,54 @@ describe('organisation deletion state machine', () => {
     });
   });
 
-  describe('cancelling', () => {
-    it('restores the organisation and leaves the registration email unblocked', async () => {
-      await advanceTo('name_confirmed');
-      const cancelled = await cancelDeletion(input(at(NAME_AT + HOUR)));
+  describe('restoring the organisation before the code is entered', () => {
+    it.each(['requested', 'name_confirmed', 'otp_initiated', 'final_otp_sent'] as const)(
+      'is possible at the "%s" step, and leaves the registration email unblocked',
+      async (stage) => {
+        await advanceTo(stage);
+        const cancelled = await cancelDeletion(input(at(GENERATE_AT + HOUR)));
 
-      expect(cancelled.stage).toBe('cancelled');
-      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
-      expect((await DomainModel.findOne({ tenantId }))!.status).toBe('active');
-      expect(await BlockedRegistrationIdentityModel.countDocuments({})).toBe(0);
-      expect(await getActiveDeletion(input(at(NAME_AT + 2 * HOUR)))).toBeNull();
+        expect(cancelled.stage).toBe('cancelled');
+        expect((await TenantModel.findById(tenantId))!.status).toBe('active');
+        expect((await DomainModel.findOne({ tenantId }))!.status).toBe('active');
+        expect(await BlockedRegistrationIdentityModel.countDocuments({})).toBe(0);
+        expect(await getActiveDeletion(input(at(GENERATE_AT + 2 * HOUR)))).toBeNull();
 
-      const record = await OrganisationDeletionModel.findOne({ tenantId });
-      expect(record!.timeline[record!.timeline.length - 1]).toMatchObject({ stage: 'cancelled', success: true });
+        const record = await OrganisationDeletionModel.findOne({ tenantId });
+        expect(record!.timeline[record!.timeline.length - 1]).toMatchObject({ stage: 'cancelled', success: true });
+        expect(record!.finalOtp.codeHash).toBeNull();
+      }
+    );
+
+    it('makes an already-emailed code useless, and lets a fresh deletion start later', async () => {
+      await advanceTo('final_otp_sent');
+      const code = sentOtps[0];
+      await cancelDeletion(input(at(VERIFY_AT)));
+
+      const err = await failure(verifyFinalOtp(input(at(VERIFY_AT), { code })));
+      expect(err.code).toBe('NO_ACTIVE_DELETION');
+      expect(await TenantModel.findById(tenantId)).not.toBeNull();
+
+      await expect(requestDeletion(input(at(VERIFY_AT + HOUR)))).resolves.toMatchObject({ stage: 'requested' });
     });
 
-    it('cannot cancel a deletion that has already completed', async () => {
-      await advanceTo('otp_verified');
-      await completeDeletion(input(at(COMPLETE_AT)));
-      const err = await failure(cancelDeletion(input(at(COMPLETE_AT + HOUR))));
+    it('is no longer possible once the deletion has completed', async () => {
+      await advanceTo('final_otp_sent');
+      await verifyFinalOtp(input(at(VERIFY_AT), { code: sentOtps[0] }));
+      const err = await failure(cancelDeletion(input(at(VERIFY_AT + HOUR))));
       expect(err.code).toBe('NO_ACTIVE_DELETION');
     });
 
     it('returns to the previous status when the org was already suspended before deletion was requested', async () => {
       await TenantModel.updateOne({ _id: tenantId }, { status: 'suspended' });
       await requestDeletion(input(t0));
-      await cancelDeletion(input(at(HOUR)));
+      await confirmOrganisationName(input(at(NAME_AT), { organisationName: 'Acme Corp' }));
+      await cancelDeletion(input(at(HOUR * 2)));
       expect((await TenantModel.findById(tenantId))!.status).toBe('suspended');
     });
   });
 
-  it('the background sweep lapses a missed OTP window even when nobody calls in', async () => {
-    await advanceTo('name_confirmed');
-    expect(await expireStaleDeletions(at(NAME_AT + DAY + HOUR))).toBe(0); // window still open
-    expect(await expireStaleDeletions(at(NAME_AT + 2 * DAY + HOUR))).toBe(1);
-
-    expect((await OrganisationDeletionModel.findOne({ tenantId }))!.stage).toBe('expired');
-    expect((await TenantModel.findById(tenantId))!.status).toBe('active');
-  });
-
   it('exposes the timings as the single source of truth', () => {
-    expect(DELETION_TIMINGS).toMatchObject({ suspensionMs: 7 * DAY, securityWaitMs: DAY, otpWindowMs: DAY, finalLockMs: DAY });
+    expect(DELETION_TIMINGS).toMatchObject({ suspensionMs: 7 * DAY, finalLockMs: DAY, finalOtpTtlMs: 10 * 60 * 1000 });
   });
 });
-

@@ -14,7 +14,6 @@ import {
   initiateOtpProcess,
   generateFinalOtp,
   verifyFinalOtp,
-  completeDeletion,
   cancelDeletion,
   getActiveDeletion,
   listDeletionRecords,
@@ -25,9 +24,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const timingsForClient = {
   suspensionDays: DELETION_TIMINGS.suspensionMs / (24 * HOUR_MS),
-  securityWaitHours: DELETION_TIMINGS.securityWaitMs / HOUR_MS,
-  otpWindowHours: DELETION_TIMINGS.otpWindowMs / HOUR_MS,
-  finalLockHours: DELETION_TIMINGS.finalLockMs / HOUR_MS,
+  otpWaitHours: DELETION_TIMINGS.finalLockMs / HOUR_MS,
   finalOtpMinutes: DELETION_TIMINGS.finalOtpTtlMs / 60000,
 };
 
@@ -124,11 +121,6 @@ export function buildOrganisationDeletionRouter(resolveTenantId: (req: Request) 
       if (!parsed.success) return validation(res, parsed.error);
       return res.status(200).json({ deletion: await verifyFinalOtp({ ...input, code: parsed.data.code }) });
     })
-  );
-
-  router.post(
-    '/complete',
-    step(async (input, _req, res) => res.status(200).json({ deletion: await completeDeletion(input) }))
   );
 
   return router;

@@ -310,17 +310,14 @@ export type OrganisationDeletionStage =
   | 'name_confirmed'
   | 'otp_initiated'
   | 'final_otp_sent'
-  | 'otp_verified'
   | 'completed'
-  | 'cancelled'
-  | 'expired';
+  | 'cancelled';
 
 export type OrganisationDeletionNextAction =
   | 'confirm_name'
   | 'initiate_otp'
   | 'generate_final_otp'
   | 'verify_final_otp'
-  | 'final_confirmation'
   | null;
 
 export interface OrganisationDeletionView {
@@ -330,10 +327,9 @@ export interface OrganisationDeletionView {
   stage: OrganisationDeletionStage;
   path: 'standard' | 'forced';
   initiatedAt: string;
-  suspensionEndsAt: string;
+  /** null until the organisation name is confirmed (that is what suspends it). */
+  suspensionEndsAt: string | null;
   nameConfirmedAt: string | null;
-  securityWaitEndsAt: string | null;
-  otpWindowEndsAt: string | null;
   otpInitiatedAt: string | null;
   finalLockEndsAt: string | null;
   otpVerifiedAt: string | null;
@@ -347,9 +343,7 @@ export interface OrganisationDeletionView {
 
 export interface OrganisationDeletionTimings {
   suspensionDays: number;
-  securityWaitHours: number;
-  otpWindowHours: number;
-  finalLockHours: number;
+  otpWaitHours: number;
   finalOtpMinutes: number;
 }
 

@@ -108,53 +108,65 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
     vi.restoreAllMocks();
   });
 
+  // Steps 1 + 2: give a reason, then type the exact name — which is what suspends the organisation.
+  const requestAndConfirmName = async () => {
+    expect((await tenantCall('post', '', { reason: 'Winding down' })).status).toBe(201);
+    return tenantCall('post', '/confirm-name', { organisationName: 'Acme Corp' });
+  };
+
   const runFullDeletionAsTenantAdmin = async () => {
     setNow(0);
-    expect((await tenantCall('post', '', { reason: 'Winding down' })).status).toBe(201);
+    expect((await requestAndConfirmName()).status).toBe(200);
     setNow(7 * DAY);
-    expect((await tenantCall('post', '/confirm-name', { organisationName: 'Acme Corp' })).status).toBe(200);
-    setNow(8 * DAY);
     expect((await tenantCall('post', '/otp/initiate')).status).toBe(200);
-    setNow(9 * DAY);
+    setNow(8 * DAY);
     expect((await tenantCall('post', '/otp/generate')).status).toBe(200);
-    expect((await tenantCall('post', '/otp/verify', { code: sentOtps[0] })).status).toBe(200);
-    return tenantCall('post', '/complete');
+    // Entering the correct code is the final step: it deletes the organisation.
+    return tenantCall('post', '/otp/verify', { code: sentOtps[0] });
   };
 
   describe('tenant admin drives the flow', () => {
-    it('walks the whole timeline over HTTP, gating each step on the clock', async () => {
+    it('walks the flow over HTTP: reason, then name (suspends), then the 7-day and 24-hour waits', async () => {
       const started = await tenantCall('post', '', { reason: 'Winding down' });
       expect(started.status).toBe(201);
-      expect(started.body.deletion).toMatchObject({ stage: 'requested', nextAction: 'confirm_name' });
+      expect(started.body.deletion).toMatchObject({ stage: 'requested', nextAction: 'confirm_name', suspensionEndsAt: null });
+      expect(started.body.timings).toMatchObject({ suspensionDays: 7, otpWaitHours: 24, finalOtpMinutes: 10 });
+      // Asking is not suspending.
+      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
+
+      const wrong = await tenantCall('post', '/confirm-name', { organisationName: 'acme corp' });
+      expect(wrong.status).toBe(400);
+      expect(wrong.body.error).toBe('ORGANISATION_NAME_MISMATCH');
+      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
+
+      const confirmed = await tenantCall('post', '/confirm-name', { organisationName: 'Acme Corp' });
+      expect(confirmed.status).toBe(200);
+      expect(confirmed.body.deletion).toMatchObject({ stage: 'name_confirmed', nextAction: 'initiate_otp' });
       expect((await TenantModel.findById(tenantId))!.status).toBe('pending_deletion');
 
       const status = await tenantCall('get', '');
-      expect(status.status).toBe(200);
-      expect(status.body.deletion.stage).toBe('requested');
-      expect(status.body.timings).toMatchObject({ suspensionDays: 7, securityWaitHours: 24, otpWindowHours: 24, finalLockHours: 24 });
+      expect(status.body.deletion.stage).toBe('name_confirmed');
 
+      // The 7-day wait applies to requesting the OTP.
       setNow(6 * DAY);
-      const early = await tenantCall('post', '/confirm-name', { organisationName: 'Acme Corp' });
+      const early = await tenantCall('post', '/otp/initiate');
       expect(early.status).toBe(409);
       expect(early.body.error).toBe('STEP_NOT_AVAILABLE_YET');
       expect(new Date(early.body.availableAt).toISOString()).toBe(new Date(T0.getTime() + 7 * DAY).toISOString());
 
       setNow(7 * DAY);
-      const wrong = await tenantCall('post', '/confirm-name', { organisationName: 'acme corp' });
-      expect(wrong.status).toBe(400);
-      expect(wrong.body.error).toBe('ORGANISATION_NAME_MISMATCH');
+      const initiated = await tenantCall('post', '/otp/initiate');
+      expect(initiated.status).toBe(200);
+      expect(initiated.body.deletion).toMatchObject({ stage: 'otp_initiated', nextAction: 'generate_final_otp' });
 
-      const confirmed = await tenantCall('post', '/confirm-name', { organisationName: 'Acme Corp' });
-      expect(confirmed.status).toBe(200);
-      expect(confirmed.body.deletion).toMatchObject({ stage: 'name_confirmed', nextAction: 'initiate_otp' });
-
-      // The 24-hour security wait now applies to the next step.
-      const tooSoon = await tenantCall('post', '/otp/initiate');
+      // ...and the 24-hour wait applies to the code being sent.
+      const tooSoon = await tenantCall('post', '/otp/generate');
       expect(tooSoon.status).toBe(409);
       expect(tooSoon.body.error).toBe('STEP_NOT_AVAILABLE_YET');
 
-      const cancelled = await tenantCall('post', '/cancel');
-      expect(cancelled.status).toBe(200);
+      // Restoring is possible right up until the code is entered.
+      const restored = await tenantCall('post', '/cancel');
+      expect(restored.status).toBe(200);
       expect((await TenantModel.findById(tenantId))!.status).toBe('active');
       expect((await tenantCall('get', '')).body.deletion).toBeNull();
     });
@@ -198,7 +210,7 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
       const record = detail.body.record;
 
       expect(new Date(record.initiatedAt).toISOString()).toBe(T0.toISOString());
-      expect(new Date(record.completedAt).toISOString()).toBe(new Date(T0.getTime() + 9 * DAY).toISOString());
+      expect(new Date(record.completedAt).toISOString()).toBe(new Date(T0.getTime() + 8 * DAY).toISOString());
       expect(record.organisationCreatedAt).toBeTruthy();
       expect(record.emailRestriction).toMatchObject({ email: 'owner@acme.com', permanent: true });
       expect(record.reRegistration.status).toBe('blocked');
@@ -206,7 +218,7 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
       // Every security step carries the actor plus full network/device context, IPv6 included.
       expect(record.timeline.map((e: any) => e.stage)).toEqual([
         'requested',
-        'name_confirmed', // the wrong-name attempt is not in this run; only the successful one
+        'name_confirmed',
         'otp_initiated',
         'otp_generation',
         'otp_verified',
@@ -247,7 +259,6 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
 
     it('captures the device of whoever performs a step — a different device mid-flow is recorded as such', async () => {
       await tenantCall('post', '', {});
-      setNow(7 * DAY);
       const res = await request(app)
         .post('/api/tenants/me/deletion/confirm-name')
         .set('Authorization', `Bearer ${tenantToken()}`)
@@ -292,7 +303,7 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
 
   describe('while the organisation is suspended for deletion', () => {
     it('refuses changes through the tenant API but still allows reads and the deletion flow', async () => {
-      await tenantCall('post', '');
+      await requestAndConfirmName();
 
       const write = await request(app)
         .post('/api/tenants/me/domains')
@@ -309,7 +320,7 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
     it('also keeps mailboxes frozen — the separate mailbox API cannot reactivate them mid-suspension', async () => {
       const domain = await DomainModel.findOne({ tenantId });
       const mailbox = await MailboxModel.create({ tenantId, domainId: domain!._id, localPart: 'ceo', address: 'ceo@acme.com', stalwartAccountId: 'acc-1', status: 'active' });
-      await tenantCall('post', '');
+      await requestAndConfirmName();
       expect((await MailboxModel.findById(mailbox._id))!.status).toBe('suspended');
 
       const res = await request(app).post(`/api/mailboxes/${mailbox._id}/reactivate`).set('Authorization', `Bearer ${tenantToken()}`);
@@ -325,7 +336,7 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
     });
 
     it('stops a super admin from suspending or reactivating it out from under the flow', async () => {
-      await tenantCall('post', '');
+      await requestAndConfirmName();
       for (const action of ['suspend', 'reactivate']) {
         const res = await request(app).post(`/api/platform/tenants/${tenantId}/${action}`).set('Authorization', `Bearer ${superToken()}`);
         expect(res.status, action).toBe(409);
