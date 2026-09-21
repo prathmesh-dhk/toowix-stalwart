@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { TenantModel, ITenant } from '../db/models/Tenant';
 import { DomainModel } from '../db/models/Domain';
 import { AdminUserModel } from '../db/models/AdminUser';
+import { AuditLogModel } from '../db/models/AuditLog';
 import {
   OrganisationDeletionModel,
   IOrganisationDeletion,
@@ -230,6 +231,21 @@ export function toDeletionView(deletion: IOrganisationDeletion): DeletionView {
   };
 }
 
+/**
+ * An organisation can only be deleted once every one of its domains has been deleted (which itself
+ * requires the domains to be empty). Checked when the deletion is requested and again before it
+ * suspends the organisation — a suspended org can no longer delete anything.
+ */
+async function domainsStillPresent(tenantId: string | Types.ObjectId): Promise<OrganisationDeletionError | null> {
+  const count = await DomainModel.countDocuments({ tenantId });
+  if (count === 0) return null;
+  return new OrganisationDeletionError(
+    `This organisation still has ${count} domain${count === 1 ? '' : 's'}. Delete all of its domains before deleting the organisation.`,
+    'DOMAINS_EXIST',
+    409
+  );
+}
+
 function requireAvailable(availableAt: Date | null, now: Date): OrganisationDeletionError | null {
   if (availableAt && now < availableAt) {
     return new OrganisationDeletionError(
@@ -269,7 +285,13 @@ async function createDeletionRecord(
     const firstAdmin = await AdminUserModel.findOne({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).sort({ createdAt: 1 });
     registrationEmail = firstAdmin?.email ?? null;
   }
-  const domains = (await DomainModel.find({ tenantId: tenant._id }).sort({ createdAt: 1 })).map((d) => d.domainName);
+  // Domains must be deleted before the organisation, so they are usually gone by now — recover their
+  // names from the domain-deletion audit trail (plus anything still present, e.g. on the forced path).
+  const deletedEarlier = (await AuditLogModel.find({ tenantId: tenant._id, action: 'DOMAIN_DELETED_DIRECT' }).sort({ timestamp: 1 }))
+    .map((entry) => entry.metadata?.domainName as string | undefined)
+    .filter((name): name is string => Boolean(name));
+  const stillPresent = (await DomainModel.find({ tenantId: tenant._id }).sort({ createdAt: 1 })).map((d) => d.domainName);
+  const domains = Array.from(new Set([...deletedEarlier, ...stillPresent]));
 
   try {
     return await OrganisationDeletionModel.create({
@@ -307,6 +329,9 @@ export async function requestDeletion(input: StageInput & { reason?: string | nu
     throw new OrganisationDeletionError('A deletion is already in progress for this organisation.', 'DELETION_ALREADY_IN_PROGRESS', 409);
   }
 
+  const blocking = await domainsStillPresent(tenantId);
+  if (blocking) throw blocking;
+
   const deletion = await createDeletionRecord(tenant, input, now, 'standard');
 
   await record(deletion, { stage: 'requested', action: 'requested', success: true, message: input.reason?.trim() || undefined }, actor, context, now);
@@ -326,6 +351,9 @@ export async function confirmOrganisationName(input: StageInput & { organisation
 
   const deletion = await loadActive(tenantId);
   if (deletion.stage !== 'requested') throw wrongStage(deletion, 'requested');
+
+  const blocking = await domainsStillPresent(tenantId);
+  if (blocking) return failStep(deletion, 'name_confirmed', 'name_confirmation_failed', actor, context, now, blocking);
 
   if (input.organisationName !== deletion.organisationName) {
     return failStep(

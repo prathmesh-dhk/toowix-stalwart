@@ -757,7 +757,12 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
           {activeTab === 'security' && user && (
             <SecurityView user={user} on2FaStatusChange={setIs2FaEnabled}>
-              <OrganisationDeletionPanel organisationName={tenant?.name ?? ''} onDeleted={() => onLogout?.()} />
+              <OrganisationDeletionPanel
+                organisationName={tenant?.name ?? ''}
+                domainCount={domains.length}
+                onGoToDomains={() => setActiveTab('domains')}
+                onDeleted={() => onLogout?.()}
+              />
             </SecurityView>
           )}
 

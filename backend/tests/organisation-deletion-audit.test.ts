@@ -100,7 +100,6 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
     await AdminSessionModel.create({ userId: owner._id, sessionId: 'sess-tenant-1', expiresAt: new Date('2030-01-01') });
     const root = await AdminUserModel.create({ email: 'root@toowix.com', name: 'Priya Root', passwordHash: 'x', role: 'SUPER_ADMIN', status: 'active', twoFactorEnabled: false });
     superAdminId = root._id.toString();
-    await DomainModel.create({ tenantId, domainName: 'acme.com', status: 'active', dnsStatus: 'active', isPrimary: true });
   });
 
   afterEach(() => {
@@ -186,6 +185,11 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
 
   describe('permanent audit record', () => {
     it('answers who deleted the org, with what role, when, from which IP/location/device, and which steps they passed', async () => {
+      // Domains must be deleted first; the record still remembers which ones the org had.
+      const domain = await DomainModel.create({ tenantId, domainName: 'acme.com', status: 'active', dnsStatus: 'active', isPrimary: true });
+      const domainDeleted = await request(app).delete(`/api/tenants/me/domains/${domain._id}`).set('Authorization', `Bearer ${tenantToken()}`);
+      expect(domainDeleted.status).toBe(200);
+
       const final = await runFullDeletionAsTenantAdmin();
       expect(final.status).toBe(200);
       expect(final.body.deletion.stage).toBe('completed');
@@ -317,15 +321,16 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
       expect((await tenantCall('post', '/cancel')).status).toBe(200);
     });
 
-    it('also keeps mailboxes frozen — the separate mailbox API cannot reactivate them mid-suspension', async () => {
-      const domain = await DomainModel.findOne({ tenantId });
-      const mailbox = await MailboxModel.create({ tenantId, domainId: domain!._id, localPart: 'ceo', address: 'ceo@acme.com', stalwartAccountId: 'acc-1', status: 'active' });
-      await requestAndConfirmName();
-      expect((await MailboxModel.findById(mailbox._id))!.status).toBe('suspended');
+    it('cannot be started while the organisation still has domains', async () => {
+      await DomainModel.create({ tenantId, domainName: 'acme.com', status: 'active', dnsStatus: 'active', isPrimary: true });
 
-      const res = await request(app).post(`/api/mailboxes/${mailbox._id}/reactivate`).set('Authorization', `Bearer ${tenantToken()}`);
-      expect(res.status).toBeGreaterThanOrEqual(400);
-      expect((await MailboxModel.findById(mailbox._id))!.status).toBe('suspended');
+      const res = await tenantCall('post', '', { reason: 'Winding down' });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('DOMAINS_EXIST');
+      expect(res.body.message).toMatch(/domain/i);
+
+      expect((await tenantCall('get', '')).body.deletion).toBeNull();
+      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
     });
 
     it('does not claim the registration email is blocked until the deletion actually completes', async () => {
@@ -373,6 +378,10 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
 
   describe('legacy immediate super-admin delete', () => {
     it('still works, but now leaves the same permanent record and blocks the email', async () => {
+      // Emergency path: no "delete your domains first" precondition, and it purges what is there.
+      const domain = await DomainModel.create({ tenantId, domainName: 'acme.com', status: 'active', dnsStatus: 'active', isPrimary: true });
+      await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'ceo', address: 'ceo@acme.com', stalwartAccountId: 'acc-1', status: 'active' });
+
       const res = await request(app)
         .delete(`/api/platform/tenants/${tenantId}`)
         .set('Authorization', `Bearer ${superToken()}`)
@@ -382,7 +391,10 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
       expect(await TenantModel.findById(tenantId)).toBeNull();
 
       const record = await OrganisationDeletionModel.findOne({ tenantId });
-      expect(record).toMatchObject({ stage: 'completed', path: 'forced', organisationName: 'Acme Corp', registrationEmail: 'owner@acme.com' });
+      expect(record).toMatchObject({ stage: 'completed', path: 'forced', organisationName: 'Acme Corp', registrationEmail: 'owner@acme.com', domains: ['acme.com'] });
+      expect(await DomainModel.countDocuments({ tenantId })).toBe(0);
+      expect(await MailboxModel.countDocuments({ tenantId })).toBe(0);
+      expect(stalwartClient.deleteAccount).toHaveBeenCalledWith('acc-1');
       expect(record!.completedBy).toMatchObject({ role: 'SUPER_ADMIN', email: 'root@toowix.com' });
       expect(record!.completedNetwork).toMatchObject({ ip: '10.9.9.9', browser: 'Google Chrome' });
       expect(await BlockedRegistrationIdentityModel.findOne({ emailNormalized: 'owner@acme.com' })).not.toBeNull();

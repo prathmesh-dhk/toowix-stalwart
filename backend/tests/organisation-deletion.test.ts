@@ -11,6 +11,7 @@ import {
 } from '../src/db/models';
 import { stalwartClient } from '../src/stalwart/client';
 import { emailService } from '../src/services/email.service';
+import { deleteDomainDirectly } from '../src/services/domain-deletion.service';
 import {
   DELETION_TIMINGS,
   OrganisationDeletionError,
@@ -78,6 +79,8 @@ describe('organisation deletion state machine', () => {
     await generateFinalOtp(input(at(GENERATE_AT)));
   };
 
+  const addDomain = () => DomainModel.create({ tenantId, domainName: 'acme.com', status: 'active', dnsStatus: 'active', isPrimary: true });
+
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     await connectDatabase({ uri: mongoServer.getUri(), autoIndex: true });
@@ -128,7 +131,6 @@ describe('organisation deletion state machine', () => {
     });
     owner = { id: admin._id.toString(), name: 'Olivia Owner', email: 'owner@acme.com', role: 'TENANT_ADMIN', tenantId };
 
-    await DomainModel.create({ tenantId, domainName: 'acme.com', status: 'active', dnsStatus: 'active', isPrimary: true });
   });
 
   describe('step 1 — asking to delete, with a reason', () => {
@@ -139,13 +141,12 @@ describe('organisation deletion state machine', () => {
       expect(deletion.nextAction).toBe('confirm_name');
       expect(deletion.suspensionEndsAt).toBeNull();
       expect((await TenantModel.findById(tenantId))!.status).toBe('active');
-      expect((await DomainModel.findOne({ tenantId }))!.status).toBe('active');
 
       const record = await OrganisationDeletionModel.findById(deletion.id);
       expect(record).toMatchObject({
         organisationName: 'Acme Corp',
         registrationEmail: 'owner@acme.com',
-        domains: ['acme.com'],
+        domains: [],
         reason: 'Closing the company',
       });
       expect(record!.timeline).toHaveLength(1);
@@ -169,6 +170,24 @@ describe('organisation deletion state machine', () => {
         browserVersion: '126.0.0.0',
         sessionId: 'session-abc',
       });
+    });
+
+    it('refuses to start while the organisation still has domains', async () => {
+      await addDomain();
+      const err = await failure(requestDeletion(input(t0)));
+      expect(err.code).toBe('DOMAINS_EXIST');
+      expect(err.message).toMatch(/1 domain/);
+      expect(await OrganisationDeletionModel.countDocuments({ tenantId })).toBe(0);
+      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
+    });
+
+    it('keeps a record of the domains the organisation deleted beforehand', async () => {
+      const domain = await addDomain();
+      await deleteDomainDirectly(domain._id.toString(), tenantId, { id: owner.id, email: owner.email, role: 'TENANT_ADMIN' });
+
+      const deletion = await requestDeletion(input(t0));
+      const record = await OrganisationDeletionModel.findById(deletion.id);
+      expect(record!.domains).toEqual(['acme.com']);
     });
 
     it('refuses a second request while one is already in progress', async () => {
@@ -208,7 +227,19 @@ describe('organisation deletion state machine', () => {
       expect(confirmed.nextAction).toBe('initiate_otp');
       expect(confirmed.suspensionEndsAt!.toISOString()).toBe(at(NAME_AT + 7 * DAY).toISOString());
       expect((await TenantModel.findById(tenantId))!.status).toBe('pending_deletion');
-      expect((await DomainModel.findOne({ tenantId }))!.status).toBe('suspended');
+    });
+
+    it('will not suspend if a domain was added after the deletion was requested', async () => {
+      const deletion = await requestDeletion(input(t0));
+      await addDomain();
+
+      const err = await failure(confirmOrganisationName(input(at(NAME_AT), { organisationName: 'Acme Corp' })));
+      expect(err.code).toBe('DOMAINS_EXIST');
+      expect((await TenantModel.findById(tenantId))!.status).toBe('active');
+
+      const record = await OrganisationDeletionModel.findById(deletion.id);
+      expect(record!.stage).toBe('requested');
+      expect(record!.timeline[record!.timeline.length - 1]).toMatchObject({ stage: 'name_confirmed', success: false });
     });
 
     it('is not available before a deletion has been requested', async () => {
@@ -349,15 +380,6 @@ describe('organisation deletion state machine', () => {
 
   describe('entering the correct code deletes the organisation', () => {
     it('purges everything, keeps the audit record, and blocks the registration email', async () => {
-      const mailboxAccountId = 'stalwart-acc-1';
-      await MailboxModel.create({
-        tenantId,
-        domainId: (await DomainModel.findOne({ tenantId }))!._id,
-        localPart: 'ceo',
-        address: 'ceo@acme.com',
-        stalwartAccountId: mailboxAccountId,
-        status: 'active',
-      });
       await advanceTo('final_otp_sent');
 
       const done = await verifyFinalOtp(input(at(VERIFY_AT), { code: sentOtps[0] }));
@@ -366,9 +388,6 @@ describe('organisation deletion state machine', () => {
 
       expect(await TenantModel.findById(tenantId)).toBeNull();
       expect(await AdminUserModel.countDocuments({ tenantId })).toBe(0);
-      expect(await DomainModel.countDocuments({ tenantId })).toBe(0);
-      expect(await MailboxModel.countDocuments({ tenantId })).toBe(0);
-      expect(stalwartClient.deleteAccount).toHaveBeenCalledWith(mailboxAccountId);
 
       // The permanent record survives, and answers who / when / where / which steps.
       const record = await OrganisationDeletionModel.findOne({ tenantId });
@@ -376,7 +395,7 @@ describe('organisation deletion state machine', () => {
         stage: 'completed',
         organisationName: 'Acme Corp',
         registrationEmail: 'owner@acme.com',
-        domains: ['acme.com'],
+        domains: [],
         otpVerification: 'verified',
       });
       expect(record!.completedAt!.toISOString()).toBe(at(VERIFY_AT).toISOString());
@@ -426,7 +445,6 @@ describe('organisation deletion state machine', () => {
 
         expect(cancelled.stage).toBe('cancelled');
         expect((await TenantModel.findById(tenantId))!.status).toBe('active');
-        expect((await DomainModel.findOne({ tenantId }))!.status).toBe('active');
         expect(await BlockedRegistrationIdentityModel.countDocuments({})).toBe(0);
         expect(await getActiveDeletion(input(at(GENERATE_AT + 2 * HOUR)))).toBeNull();
 

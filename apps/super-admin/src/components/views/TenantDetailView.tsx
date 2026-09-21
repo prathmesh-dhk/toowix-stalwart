@@ -1148,6 +1148,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
           <OrganisationDeletionPanel
             tenantId={tenant.id}
             organisationName={tenant.name}
+            domainCount={details.domains.length}
             onChanged={() => {
               fetchTenantDetails();
               onTenantUpdated?.();

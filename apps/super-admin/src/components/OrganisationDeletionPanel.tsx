@@ -6,6 +6,8 @@ import { OrganisationDeletionState, OrganisationDeletionView } from '../types';
 interface OrganisationDeletionPanelProps {
   tenantId: string;
   organisationName: string;
+  /** How many domains the organisation still has — all of them must be deleted first. */
+  domainCount: number;
   /** Called once the organisation has been permanently deleted — the caller should leave this (now gone) tenant. */
   onDeleted: () => void;
   /** Called whenever the deletion state changes, so the surrounding tenant view can refresh its status. */
@@ -21,7 +23,7 @@ const formatWhen = (iso: string) =>
  * (deletes the org). The organisation can be restored at any step before the code is entered.
  * Every wait is enforced by the server; the dates shown here only reflect it.
  */
-export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps> = ({ tenantId, organisationName, onDeleted, onChanged }) => {
+export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps> = ({ tenantId, organisationName, domainCount, onDeleted, onChanged }) => {
   const [state, setState] = useState<OrganisationDeletionState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -137,12 +139,23 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
               at any point before the final code is entered.
             </p>
           </div>
-          <div className="mx-auto w-full max-w-2xl">
-            <button type="button" onClick={() => setAskingReason(true)} className="btn btn-danger btn-sm flex items-center gap-1.5" id="btn-start-organisation-deletion">
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Delete organisation…</span>
-            </button>
-          </div>
+          {domainCount > 0 ? (
+            <div className="mx-auto w-full max-w-2xl flex flex-col gap-3">
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900" id="organisation-deletion-domains-notice">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  This organisation still has <strong>{domainCount} domain{domainCount === 1 ? '' : 's'}</strong>. Every domain must be deleted before the organisation can be deleted.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="mx-auto w-full max-w-2xl">
+              <button type="button" onClick={() => setAskingReason(true)} className="btn btn-danger btn-sm flex items-center gap-1.5" id="btn-start-organisation-deletion">
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete organisation…</span>
+              </button>
+            </div>
+          )}
         </>
       )}
 
