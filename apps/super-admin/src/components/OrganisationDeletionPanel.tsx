@@ -91,7 +91,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
   };
 
   if (loading) {
-    return <div className="bg-white border border-rose-200 rounded-xl p-6 shadow-xs text-xs text-slate-500">Loading deletion status…</div>;
+    return <div className="bg-white border border-rose-200 rounded-2xl p-6 sm:p-7 shadow-xs text-xs text-slate-500">Loading deletion status…</div>;
   }
 
   const unlocked = !deletion?.nextActionAvailableAt || new Date(deletion.nextActionAvailableAt).getTime() <= now;
@@ -113,10 +113,10 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
   );
 
   return (
-    <div className="bg-white border border-rose-200 rounded-xl p-6 shadow-xs flex flex-col gap-4" id="organisation-deletion-panel">
-      <div className="flex items-center gap-2 pb-3 border-b border-rose-100">
-        <Trash2 className="w-5 h-5 text-rose-600" />
-        <h3 className="text-sm font-semibold text-rose-950">Delete organisation</h3>
+    <div className="bg-white border border-rose-200 rounded-2xl p-6 sm:p-7 shadow-xs flex flex-col gap-5" id="organisation-deletion-panel">
+      <div className="pb-4 border-b border-rose-100">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-rose-950">Delete organisation</h2>
+        <p className="text-xs text-slate-500 mt-1">Permanently remove this organisation and everything in it.</p>
       </div>
 
       {error && (
@@ -171,7 +171,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
 
       {/* Step 2: exact name — this is what suspends the organisation */}
       {deletion?.nextAction === 'confirm_name' && (
-        <div className="flex flex-col gap-3 max-w-md">
+        <div className="flex flex-col gap-3 max-w-xl">
           <label htmlFor="deletion-name" className="text-xs font-semibold text-slate-900">
             Type <span className="underline">{deletion.organisationName}</span> exactly to confirm
           </label>
@@ -240,7 +240,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
 
       {/* Step 4b: enter the code — this deletes the organisation */}
       {deletion?.nextAction === 'verify_final_otp' && (
-        <div className="flex flex-col gap-3 max-w-sm">
+        <div className="flex flex-col gap-3 max-w-xl">
           <label htmlFor="deletion-otp" className="text-xs font-semibold text-slate-900">
             Enter the 6-digit code emailed to your address
           </label>
@@ -252,7 +252,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
             value={otpCode}
             onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             inputMode="numeric"
-            className="form-input text-sm tracking-[0.4em] font-mono"
+            className="form-input w-48 text-center text-sm tracking-[0.4em] font-mono"
             autoComplete="one-time-code"
           />
           <div className="flex flex-wrap items-center gap-2">

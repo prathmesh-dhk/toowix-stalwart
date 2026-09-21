@@ -756,10 +756,9 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
           {activeTab === 'billing' && <TenantBillingSummary domains={domains} />}
 
           {activeTab === 'security' && user && (
-            <div className="flex flex-col gap-6">
-              <SecurityView user={user} on2FaStatusChange={setIs2FaEnabled} />
+            <SecurityView user={user} on2FaStatusChange={setIs2FaEnabled}>
               <OrganisationDeletionPanel organisationName={tenant?.name ?? ''} onDeleted={() => onLogout?.()} />
-            </div>
+            </SecurityView>
           )}
 
           {activeTab === 'audit' && (

@@ -436,7 +436,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
   );
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-4xl mx-auto py-2">
+    <div className="flex flex-col gap-6 w-full">
       {/* Page Header */}
       <div className="pb-1">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Account Security</h1>
@@ -760,20 +760,6 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
           </div>
         )}
       </section>
-
-      {/* Footer */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 text-xs text-slate-400 font-normal">
-        <div>
-          Toowix Mail Server & Admin Suite · Build 2026.9.1
-        </div>
-        <div className="flex items-center gap-3 text-slate-400">
-          <span className="hover:text-slate-600 transition-colors cursor-pointer">Security Guide</span>
-          <span>·</span>
-          <span className="hover:text-slate-600 transition-colors cursor-pointer">RFC 6238</span>
-          <span>·</span>
-          <span className="hover:text-slate-600 transition-colors cursor-pointer">Support</span>
-        </div>
-      </div>
 
       {/* ===================================================================== */}
       {/* POPUP MODAL: AUTHENTICATOR APP SETUP (2-STEP)                         */}
