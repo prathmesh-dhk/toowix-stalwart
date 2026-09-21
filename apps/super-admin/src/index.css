@@ -572,6 +572,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Never taller than the screen: the header/footer stay put and only the body scrolls.
+     (`.modal-card` is zoomed 1.12x above, so the limit is divided by the zoom.) */
+  max-height: calc((100vh - 48px) / 1.12);
+  overflow: hidden;
   animation: modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -584,6 +588,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -613,6 +618,10 @@ body {
   font-size: 14px;
   line-height: 22px;
   color: var(--slate-600);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-footer {
@@ -620,6 +629,7 @@ body {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 8px;
+  flex-shrink: 0;
 }
 
 /* 7. ALERTS & NOTIFICATIONS */
