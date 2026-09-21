@@ -279,12 +279,12 @@ async function createDeletionRecord(
 ): Promise<IOrganisationDeletion> {
   const { actor, context } = input;
 
-  // The identity that will be blocked: the registration email, falling back to the earliest admin.
-  let registrationEmail: string | null = tenant.contactEmail || null;
-  if (!registrationEmail) {
-    const firstAdmin = await AdminUserModel.findOne({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).sort({ createdAt: 1 });
-    registrationEmail = firstAdmin?.email ?? null;
-  }
+  // The identity that gets burned is the admin's LOGIN identity (their username@platform address),
+  // not tenant.contactEmail — that now holds the external recovery email, which must stay usable so
+  // the same person can register a fresh organisation later. For legacy tenants that registered with
+  // an external address the admin email IS that address, so this is unchanged for them.
+  const firstAdmin = await AdminUserModel.findOne({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).sort({ createdAt: 1 });
+  const registrationEmail: string | null = firstAdmin?.email ?? tenant.contactEmail ?? null;
   // Domains must be deleted before the organisation, so they are usually gone by now — recover their
   // names from the domain-deletion audit trail (plus anything still present, e.g. on the forced path).
   const deletedEarlier = (await AuditLogModel.find({ tenantId: tenant._id, action: 'DOMAIN_DELETED_DIRECT' }).sort({ timestamp: 1 }))

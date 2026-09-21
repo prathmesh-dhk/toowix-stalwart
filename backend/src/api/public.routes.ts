@@ -12,6 +12,10 @@ import { getDefaultPlanSeatCount } from '../services/plan.service';
 import { checkAndIncrementRateLimit, resetAllRateLimits } from '../utils/rate-limit';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
 import { cleanIpAddress } from '../services/session.service';
+import { BlockedRegistrationIdentityModel } from '../db/models/BlockedRegistrationIdentity';
+import { normalizeRegistrationEmail } from '../utils/email-identity';
+import { MailboxService } from '../services/mailbox.service';
+import { config } from '../config';
 import {
   hashPassword,
   verifyPassword,
@@ -266,10 +270,64 @@ publicRouter.post('/contact-email/verify-otp', async (req: Request, res: Respons
   });
 });
 
+// Usernames become a real mailbox local part, so they follow the mailbox charset
+// (services/mailbox.service.ts) but tightened: lowercase, 3-30 chars, must start alphanumeric.
+// '+' is excluded deliberately — normalizeRegistrationEmail() strips +tags, so allowing it would
+// let two different usernames collapse to the same blocked identity.
+const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{2,29}$/;
+
+// Addresses RFC 2142 requires, plus the ones that would let someone impersonate the platform.
+const RESERVED_USERNAMES = new Set([
+  'postmaster', 'abuse', 'hostmaster', 'webmaster', 'root', 'admin', 'administrator',
+  'noreply', 'no-reply', 'mailer-daemon', 'daemon', 'support', 'help', 'info', 'mail',
+  'security', 'billing', 'sales', 'api', 'system', 'test', 'toowix', 'dhkmail',
+]);
+
+/** Format/reserved rules only — no DB access, so both the probe and registration share them. */
+function validateUsername(raw: string): { username: string } | { error: string } {
+  const username = (raw || '').trim().toLowerCase();
+  if (!USERNAME_REGEX.test(username)) {
+    return {
+      error:
+        'Use 3-30 characters: lowercase letters, numbers, dots, dashes or underscores, starting with a letter or number.',
+    };
+  }
+  if (RESERVED_USERNAMES.has(username)) {
+    return { error: 'That username is reserved. Please choose another.' };
+  }
+  return { username };
+}
+
+const platformAddress = (username: string) => `${username}@${config.platformMailDomain}`;
+
+// 2c-i. Username availability for the signup wizard.
+// Deliberately checks BlockedRegistrationIdentity directly instead of isRegistrationEmailBlocked():
+// the wizard probes this on every keystroke, and the logging variant would bury genuine refused
+// re-registration attempts under typing noise.
+publicRouter.get('/username-availability', async (req: Request, res: Response) => {
+  const checked = validateUsername(String(req.query.username || ''));
+  if ('error' in checked) {
+    return res.status(200).json({ available: false, reason: checked.error });
+  }
+
+  const address = platformAddress(checked.username);
+  const [taken, blocked] = await Promise.all([
+    AdminUserModel.exists({ email: address }),
+    BlockedRegistrationIdentityModel.exists({ emailNormalized: normalizeRegistrationEmail(address) }),
+  ]);
+
+  if (taken || blocked) {
+    return res.status(200).json({ available: false, reason: 'That username is already taken.' });
+  }
+  return res.status(200).json({ available: true, address });
+});
+
 const directRegisterSchema = z.object({
-  email: z.string().email('Valid email is required'),
-  emailVerificationToken: z.string().min(1, 'Email verification token is required'),
+  username: z.string().min(1, 'Username is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
+  recoveryEmail: z.string().email('Valid recovery email is required'),
+  recoveryEmailVerificationToken: z.string().min(1, 'Recovery email verification token is required'),
+  organizationName: z.string().trim().min(2, 'Organization name must be at least 2 characters').max(100).optional(),
   securityQuestions: z
     .array(
       z.object({
@@ -289,36 +347,51 @@ const directRegisterSchema = z.object({
     ),
 });
 
-// 2d. Direct Self-Service Registration (Email -> OTP -> Password -> Security Questions)
+// 2d. Direct self-service registration: username -> password -> recovery email -> OTP -> questions.
+// The username becomes BOTH the login (AdminUser.email) and a real mailbox on the platform domain.
 publicRouter.post('/register', registrationRateLimiter(), async (req: Request, res: Response) => {
   const parseResult = directRegisterSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
   }
 
-  const { email, emailVerificationToken, password, securityQuestions } = parseResult.data;
-  const normalizedEmail = email.trim().toLowerCase();
+  const {
+    username: rawUsername,
+    password,
+    recoveryEmail,
+    recoveryEmailVerificationToken,
+    securityQuestions,
+    organizationName,
+  } = parseResult.data;
 
-  // Checked before the token so a still-valid verification token can't be used to slip past the block.
-  if (await isRegistrationEmailBlocked(normalizedEmail, { ip: requestIp(req), source: 'register' })) {
+  const checked = validateUsername(rawUsername);
+  if ('error' in checked) {
+    return res.status(400).json({ error: 'INVALID_USERNAME', message: checked.error });
+  }
+  const { username } = checked;
+  const loginEmail = platformAddress(username);
+  const normalizedRecoveryEmail = recoveryEmail.trim().toLowerCase();
+
+  // Checked before the token so a still-valid verification token can't slip past a burned username.
+  if (await isRegistrationEmailBlocked(loginEmail, { ip: requestIp(req), source: 'register' })) {
     return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
   }
 
-  // 1. Verify email verification token
-  const tokenPayload = verifyContactEmailVerificationToken(emailVerificationToken);
-  if (!tokenPayload || tokenPayload.email !== normalizedEmail) {
+  // 1. The recovery email must have been OTP-verified in this same flow. It is the only address we
+  //    can reach this user on if they ever lose access to their platform mailbox.
+  const tokenPayload = verifyRecoveryEmailVerificationToken(recoveryEmailVerificationToken);
+  if (!tokenPayload || tokenPayload.email !== normalizedRecoveryEmail) {
     return res.status(400).json({
       error: 'INVALID_VERIFICATION_TOKEN',
-      message: 'Email verification code has expired or is invalid. Please verify your email again.',
+      message: 'Recovery email verification has expired or is invalid. Please verify your recovery email again.',
     });
   }
 
-  // 2. Check if email already registered
-  const existingUser = await AdminUserModel.findOne({ email: normalizedEmail });
-  if (existingUser) {
+  // 2. Username still free? (The unique index on Mailbox.address is the real race guard below.)
+  if (await AdminUserModel.exists({ email: loginEmail })) {
     return res.status(409).json({
-      error: 'EMAIL_ALREADY_EXISTS',
-      message: 'An account with this email address already exists. Please sign in instead.',
+      error: 'USERNAME_TAKEN',
+      message: 'That username is already taken. Please choose another.',
     });
   }
 
@@ -329,31 +402,52 @@ publicRouter.post('/register', registrationRateLimiter(), async (req: Request, r
     answerHash: hashSecurityAnswer(sq.answer),
   }));
 
-  // 4. Create Tenant with active status
-  const baseName = normalizedEmail.split('@')[0];
-  const formattedName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-  const tenant = await TenantModel.create({
-    name: `${formattedName}'s Organization`,
-    contactEmail: normalizedEmail,
-    status: 'active',
-    mailboxLimit: await getDefaultPlanSeatCount(),
-    mailboxCount: 0,
-  });
+  // 4. Provision the mailbox FIRST: it is the only step touching an external system, so it is the
+  //    cheapest point to fail — nothing else has been written yet.
+  try {
+    await MailboxService.createPlatformIdentityMailbox(username, password);
+  } catch (err: any) {
+    if (err?.status && err?.code) {
+      return res.status(err.status).json({ error: err.code, message: err.message });
+    }
+    throw err;
+  }
 
-  // 5. Create Tenant Admin User (active, 2FA disabled initially, with security questions)
-  const adminUser = await AdminUserModel.create({
-    email: normalizedEmail,
-    name: formattedName,
-    passwordHash,
-    role: 'TENANT_ADMIN',
-    tenantId: tenant._id,
-    status: 'active',
-    twoFactorEnabled: false,
-    recoveryEmail: normalizedEmail,
-    securityQuestions: processedSecurityQuestions,
-  });
+  const formattedName = username.charAt(0).toUpperCase() + username.slice(1);
+  let tenant;
+  let adminUser;
 
-  // 6. Audit log
+  try {
+    // 5. Tenant. contactEmail is the RECOVERY address, not the platform one — Stripe receipts,
+    //    dunning and domain-activation notices must reach an inbox outside this platform.
+    tenant = await TenantModel.create({
+      name: organizationName?.trim() || `${formattedName}'s Organization`,
+      contactEmail: normalizedRecoveryEmail,
+      status: 'active',
+      mailboxLimit: await getDefaultPlanSeatCount(),
+      mailboxCount: 0,
+    });
+
+    // 6. Tenant admin. Login identity is the platform address; recovery is the verified external one.
+    adminUser = await AdminUserModel.create({
+      email: loginEmail,
+      name: formattedName,
+      passwordHash,
+      role: 'TENANT_ADMIN',
+      tenantId: tenant._id,
+      status: 'active',
+      twoFactorEnabled: false,
+      recoveryEmail: normalizedRecoveryEmail,
+      securityQuestions: processedSecurityQuestions,
+    });
+  } catch (err) {
+    // Never strand a username on a half-finished signup.
+    await MailboxService.deletePlatformIdentityMailbox(loginEmail);
+    if (tenant) await TenantModel.deleteOne({ _id: tenant._id });
+    throw err;
+  }
+
+  // 7. Audit log
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
   await AuditLogModel.create({
     actorId: adminUser._id,

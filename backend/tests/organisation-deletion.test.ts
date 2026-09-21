@@ -419,6 +419,45 @@ describe('organisation deletion state machine', () => {
       expect(record!.reRegistration.status).toBe('blocked');
     });
 
+    it('burns the admin\'s username, not the external recovery email, and purges the platform mailbox', async () => {
+      // A tenant registered the new way: login identity on the platform domain, contactEmail is the
+      // external recovery address, and the identity mailbox hangs off the platform tenant.
+      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active', mailboxLimit: 1000, mailboxCount: 0 });
+      const platformDomain = await DomainModel.create({ tenantId: platformTenant._id, domainName: 'dhkmail.com', status: 'active', dnsStatus: 'active', isPrimary: true, mailboxLimit: 1000 });
+
+      await TenantModel.updateOne({ _id: tenantId }, { contactEmail: 'olivia.personal@gmail.com' });
+      await AdminUserModel.updateOne({ tenantId }, { email: 'olivia@dhkmail.com' });
+      await MailboxModel.create({
+        tenantId: platformTenant._id,
+        domainId: platformDomain._id,
+        localPart: 'olivia',
+        address: 'olivia@dhkmail.com',
+        stalwartAccountId: 'stalwart-platform-1',
+        status: 'active',
+      });
+
+      const actor: DeletionActor = { id: owner.id, name: 'Olivia Owner', email: 'olivia@dhkmail.com', role: 'TENANT_ADMIN', tenantId };
+      const run = (now: Date, extra: Record<string, unknown> = {}) => ({ tenantId, actor, context: CONTEXT, now, ...extra });
+
+      await requestDeletion(run(t0));
+      await confirmOrganisationName(run(at(NAME_AT), { organisationName: 'Acme Corp' }));
+      await initiateOtpProcess(run(at(INITIATE_AT)));
+      await generateFinalOtp(run(at(GENERATE_AT)));
+      await verifyFinalOtp(run(at(VERIFY_AT), { code: sentOtps[0] }));
+
+      // The username is burned...
+      const record = await OrganisationDeletionModel.findOne({ tenantId });
+      expect(record!.registrationEmail).toBe('olivia@dhkmail.com');
+      expect(await BlockedRegistrationIdentityModel.findOne({ emailNormalized: 'olivia@dhkmail.com' })).not.toBeNull();
+
+      // ...but the external recovery address stays usable for a future organisation.
+      expect(await BlockedRegistrationIdentityModel.findOne({ emailNormalized: 'olivia.personal@gmail.com' })).toBeNull();
+
+      // The identity mailbox lives under the platform tenant, so a plain {tenantId} sweep would miss it.
+      expect(await MailboxModel.findOne({ address: 'olivia@dhkmail.com' })).toBeNull();
+      expect(stalwartClient.deleteAccount).toHaveBeenCalledWith('stalwart-platform-1');
+    });
+
     it('records the super admin, not the tenant, when a super admin drives the flow', async () => {
       const superAdmin: DeletionActor = { id: '64b7f0f0f0f0f0f0f0f0f0f0', name: 'Priya Root', email: 'root@toowix.com', role: 'SUPER_ADMIN' };
       const run = (now: Date, extra: Record<string, unknown> = {}) => ({ tenantId, actor: superAdmin, context: CONTEXT, now, ...extra });

@@ -6,14 +6,19 @@ import { app } from '../src/app';
 import {
   TenantModel,
   AdminUserModel,
+  DomainModel,
+  MailboxModel,
   OrganisationDeletionModel,
   BlockedRegistrationIdentityModel,
   RegistrationApplicationModel,
 } from '../src/db/models';
-import { generateContactEmailVerificationToken, generateOidcToken } from '../src/auth/service';
+import { generateOidcToken, generateRecoveryEmailVerificationToken } from '../src/auth/service';
 import { emailService } from '../src/services/email.service';
 import { resetRegistrationRateLimitStore } from '../src/api/public.routes';
 import { normalizeRegistrationEmail } from '../src/utils/email-identity';
+import { seedPlatformIdentityDomain } from '../src/db/seed';
+import { stalwartClient } from '../src/stalwart/client';
+import { config } from '../src/config';
 
 const SECURITY_QUESTIONS = [
   { question: 'First pet name?', answer: 'rex' },
@@ -110,27 +115,53 @@ describe('permanent registration-email block after an organisation is deleted', 
     });
   });
 
-  describe('direct self-service registration', () => {
-    const register = (email: string, token = generateContactEmailVerificationToken(email)) =>
-      request(app).post('/api/public/register').send({ email, emailVerificationToken: token, password: 'Password123!', securityQuestions: SECURITY_QUESTIONS });
+  // Self-service signup no longer uses an external email as the registration identity — the identity
+  // is now the username on the platform domain, so that is what a deletion burns.
+  describe('direct self-service registration (username identity)', () => {
+    const register = (username: string, recoveryEmail: string) =>
+      request(app)
+        .post('/api/public/register')
+        .send({
+          username,
+          password: 'Password123!',
+          recoveryEmail,
+          recoveryEmailVerificationToken: generateRecoveryEmailVerificationToken(recoveryEmail),
+          securityQuestions: SECURITY_QUESTIONS,
+        });
 
-    it('refuses a blocked email even when it presents a valid verification token', async () => {
-      const res = await register('Owner+again@ACME.com');
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe('REGISTRATION_EMAIL_BLOCKED');
-      expect(await TenantModel.countDocuments({})).toBe(0);
-      expect(await AdminUserModel.countDocuments({})).toBe(0);
+    beforeEach(async () => {
+      await Promise.all([DomainModel.deleteMany({}), MailboxModel.deleteMany({})]);
+      vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([]);
+      vi.spyOn(stalwartClient, 'createDomain').mockResolvedValue({ id: 'dom-1', name: config.platformMailDomain });
+      vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({ id: 'acc-1', name: 'x' } as any);
+      await seedPlatformIdentityDomain();
     });
 
-    it('lets a different email register as a completely new organisation, unlinked from the deleted one', async () => {
-      const res = await register('new.founder@fresh.com');
+    it('refuses a username burned by an earlier deletion', async () => {
+      await BlockedRegistrationIdentityModel.create({
+        emailNormalized: `oldowner@${config.platformMailDomain}`,
+        originalEmail: `oldowner@${config.platformMailDomain}`,
+        deletionId,
+      });
+
+      const res = await register('oldowner', 'someone@fresh.com');
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('REGISTRATION_EMAIL_BLOCKED');
+      expect(await AdminUserModel.countDocuments({})).toBe(0);
+      expect(await MailboxModel.countDocuments({})).toBe(0);
+    });
+
+    it('lets the deleted org\'s recovery email start a brand-new organisation under a new username', async () => {
+      // Deliberate: only the username is burned. The person behind it can come back, and the new
+      // organisation must be entirely unlinked from the old record.
+      const res = await register('newowner', 'Owner@Acme.com');
       expect(res.status).toBe(201);
 
-      const tenant = await TenantModel.findOne({ contactEmail: 'new.founder@fresh.com' });
+      const tenant = await TenantModel.findOne({ contactEmail: 'owner@acme.com' });
       expect(tenant).not.toBeNull();
+
       const before = await OrganisationDeletionModel.findById(deletionId);
       expect(tenant!._id.toString()).not.toBe(before!.tenantId.toString());
-      // The old record is untouched by the new registration.
       expect(before!.stage).toBe('completed');
       expect(before!.reRegistration.blockedAttempts).toHaveLength(0);
       expect(before!.registrationEmail).toBe('Owner@Acme.com');

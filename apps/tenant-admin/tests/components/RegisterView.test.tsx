@@ -5,8 +5,9 @@ import { RegisterView } from '../../src/components/RegisterView';
 
 vi.mock('../../src/api', () => ({
   api: {
-    publicSendContactEmailOtp: vi.fn(),
-    publicVerifyContactEmailOtp: vi.fn(),
+    checkUsernameAvailability: vi.fn(),
+    publicSendRecoveryEmailOtp: vi.fn(),
+    publicVerifyRecoveryEmailOtp: vi.fn(),
     publicRegister: vi.fn(),
   },
 }));
@@ -16,104 +17,138 @@ import { api } from '../../src/api';
 describe('RegisterView Component', () => {
   const onBackToLogin = vi.fn();
 
+  const orgInput = () => screen.getByPlaceholderText(/e\.g\. Acme Corporation/i);
+  const usernameInput = () => screen.getByPlaceholderText(/yourname/i);
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(api.checkUsernameAvailability).mockResolvedValue({ available: true, address: 'prathmesh@dhkmail.com' });
   });
 
-  it('renders Step 1 (Create your account) matching Sign In theme', () => {
+  /** Steps 1-2: org + username, then password. Leaves the wizard on the recovery-email step. */
+  const fillUsernameAndPassword = async (orgName = 'Wayne Enterprises') => {
+    await userEvent.type(orgInput(), orgName);
+    await userEvent.type(usernameInput(), 'prathmesh');
+    await waitFor(() => expect(screen.getByText(/prathmesh@dhkmail\.com is available/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+
+    await waitFor(() => expect(screen.getByText('Set your password')).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'Password123!');
+    await userEvent.type(screen.getByLabelText(/^confirm password$/i), 'Password123!');
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+
+    await waitFor(() => expect(screen.getByText('Add a recovery email')).toBeInTheDocument());
+  };
+
+  it('renders Step 1 with organization name and username inputs', () => {
     render(<RegisterView onBackToLogin={onBackToLogin} />);
 
     expect(screen.getByText('Create your account')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/abc@mail\.com/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^next/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+    expect(orgInput()).toBeInTheDocument();
+    expect(usernameInput()).toBeInTheDocument();
+    // The address they are about to claim is shown next to the field.
+    expect(screen.getByText('@dhkmail.com')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument();
   });
 
   it('calls onBackToLogin when clicking Sign in link', () => {
     render(<RegisterView onBackToLogin={onBackToLogin} />);
-
-    const signInBtn = screen.getByRole('button', { name: /^sign in$/i });
-    fireEvent.click(signInBtn);
-
+    fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
     expect(onBackToLogin).toHaveBeenCalled();
   });
 
-  it('advances to Step 2 (Verify your email) after entering email and clicking Next', async () => {
-    vi.mocked(api.publicSendContactEmailOtp).mockResolvedValueOnce({
+  it('validates organization name before checking anything else', async () => {
+    render(<RegisterView onBackToLogin={onBackToLogin} />);
+
+    const form = screen.getByRole('button', { name: /^next$/i }).closest('form')!;
+    fireEvent.submit(form);
+    expect(screen.getByText(/please enter your organization name/i)).toBeInTheDocument();
+
+    await userEvent.type(orgInput(), 'A');
+    fireEvent.submit(form);
+    expect(screen.getByText(/organization name must be at least 2 characters/i)).toBeInTheDocument();
+  });
+
+  it('shows a taken username and refuses to advance', async () => {
+    vi.mocked(api.checkUsernameAvailability).mockResolvedValue({
+      available: false,
+      reason: 'That username is already taken.',
+    });
+
+    render(<RegisterView onBackToLogin={onBackToLogin} />);
+    await userEvent.type(orgInput(), 'Wayne Enterprises');
+    await userEvent.type(usernameInput(), 'postmaster');
+
+    await waitFor(() => expect(screen.getByText(/already taken/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+    // Still on step 1 — the password step never appears.
+    expect(screen.queryByText('Set your password')).not.toBeInTheDocument();
+  });
+
+  it('sends the verification code to the recovery email, not the new address', async () => {
+    vi.mocked(api.publicSendRecoveryEmailOtp).mockResolvedValueOnce({
       success: true,
-      message: 'Verification code sent',
+      message: 'sent',
       expiresMinutes: 10,
     });
 
     render(<RegisterView onBackToLogin={onBackToLogin} />);
+    await fillUsernameAndPassword();
 
-    const emailInput = screen.getByPlaceholderText(/abc@mail\.com/i);
-    await userEvent.type(emailInput, 'admin@mycompany.com');
-
-    const nextBtn = screen.getByRole('button', { name: /^next/i });
-    fireEvent.click(nextBtn);
+    await userEvent.type(screen.getByPlaceholderText(/you@example\.com/i), 'personal@gmail.com');
+    fireEvent.click(screen.getByRole('button', { name: /send verification code/i }));
 
     await waitFor(() => {
-      expect(api.publicSendContactEmailOtp).toHaveBeenCalledWith('admin@mycompany.com');
-      expect(screen.getByText('Verify your email')).toBeInTheDocument();
-      expect(screen.getByText('admin@mycompany.com')).toBeInTheDocument();
+      expect(api.publicSendRecoveryEmailOtp).toHaveBeenCalledWith('personal@gmail.com');
+      expect(screen.getByText('personal@gmail.com')).toBeInTheDocument();
     });
   });
 
-  it('allows 1-character security question answers and calls publicRegister', async () => {
-    vi.mocked(api.publicSendContactEmailOtp).mockResolvedValueOnce({
+  it('walks the whole wizard and registers with the username and verified recovery email', async () => {
+    vi.mocked(api.publicSendRecoveryEmailOtp).mockResolvedValueOnce({ success: true, message: 'sent', expiresMinutes: 10 });
+    vi.mocked(api.publicVerifyRecoveryEmailOtp).mockResolvedValueOnce({
       success: true,
-      message: 'Verification code sent',
-      expiresMinutes: 10,
-    });
-    vi.mocked(api.publicVerifyContactEmailOtp).mockResolvedValueOnce({
-      success: true,
-      verificationToken: 'test-otp-token-xyz',
-      message: 'Email verified',
+      verificationToken: 'recovery-token-xyz',
+      message: 'verified',
     });
     vi.mocked(api.publicRegister).mockResolvedValueOnce({
       success: true,
-      user: { id: 'user-1', email: 'admin@mycompany.com', role: 'TENANT_ADMIN' },
+      user: { id: 'user-1', email: 'prathmesh@dhkmail.com' },
       message: 'Account created successfully',
-    });
+    } as any);
 
     render(<RegisterView onBackToLogin={onBackToLogin} />);
+    await fillUsernameAndPassword();
 
-    // Step 1: Email
-    await userEvent.type(screen.getByPlaceholderText(/abc@mail\.com/i), 'admin@mycompany.com');
-    fireEvent.click(screen.getByRole('button', { name: /^next/i }));
+    // Step 3 -> 4: recovery email
+    await userEvent.type(screen.getByPlaceholderText(/you@example\.com/i), 'personal@gmail.com');
+    fireEvent.click(screen.getByRole('button', { name: /send verification code/i }));
 
-    // Step 2: OTP
+    // Step 4: the 6-digit code
     await waitFor(() => expect(screen.getByText('Verify your email')).toBeInTheDocument());
-    const digitInputs = screen.getAllByRole('textbox');
+    const digits = screen.getAllByRole('textbox');
     for (let i = 0; i < 6; i++) {
-      fireEvent.change(digitInputs[i], { target: { value: String(i + 1) } });
+      fireEvent.change(digits[i], { target: { value: String(i + 1) } });
     }
     fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
 
-    // Step 3: Password
-    await waitFor(() => expect(screen.getByText('Set your password')).toBeInTheDocument());
-    const pwdInput = screen.getByLabelText(/^password$/i);
-    const confirmPwdInput = screen.getByLabelText(/^confirm password$/i);
-    await userEvent.type(pwdInput, 'Password123!');
-    await userEvent.type(confirmPwdInput, 'Password123!');
-    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+    await waitFor(() => expect(api.publicVerifyRecoveryEmailOtp).toHaveBeenCalledWith('personal@gmail.com', '123456'));
 
-    // Step 4: Security questions - single character answers
+    // Step 5: security questions (single-character answers are allowed)
     await waitFor(() => expect(screen.getByText('Security questions')).toBeInTheDocument());
     await userEvent.type(screen.getByPlaceholderText('Answer 1'), 'A');
     await userEvent.type(screen.getByPlaceholderText('Answer 2'), 'B');
     await userEvent.type(screen.getByPlaceholderText('Answer 3'), 'C');
-
-    const submitBtn = screen.getByRole('button', { name: /complete registration/i });
-    expect(submitBtn).not.toBeDisabled();
-    fireEvent.click(submitBtn);
+    fireEvent.click(screen.getByRole('button', { name: /complete registration/i }));
 
     await waitFor(() => {
       expect(api.publicRegister).toHaveBeenCalledWith({
-        email: 'admin@mycompany.com',
-        emailVerificationToken: 'test-otp-token-xyz',
+        username: 'prathmesh',
         password: 'Password123!',
+        recoveryEmail: 'personal@gmail.com',
+        recoveryEmailVerificationToken: 'recovery-token-xyz',
+        organizationName: 'Wayne Enterprises',
         securityQuestions: [
           { question: expect.any(String), answer: 'A' },
           { question: expect.any(String), answer: 'B' },

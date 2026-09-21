@@ -393,10 +393,17 @@ export const api = {
       body: JSON.stringify({ email, code }),
     }),
 
+  /** Probes a username on the platform mail domain. Safe to call while the user types. */
+  checkUsernameAvailability: (username: string) =>
+    request<{ available: boolean; reason?: string; address?: string }>(
+      `/api/public/username-availability?username=${encodeURIComponent(username)}`
+    ),
+
   publicRegister: (body: {
-    email: string;
-    emailVerificationToken: string;
+    username: string;
     password: string;
+    recoveryEmail: string;
+    recoveryEmailVerificationToken: string;
     securityQuestions: Array<{ question: string; answer: string }>;
     organizationName?: string;
   }) =>

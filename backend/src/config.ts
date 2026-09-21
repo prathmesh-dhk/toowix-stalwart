@@ -28,6 +28,9 @@ export const config = {
   },
   mailServerIps: process.env.MAIL_SERVER_IPS || '103.13.114.138 103.13.114.227',
   mailHostname: process.env.MAIL_HOSTNAME || 'mail.toowix.com',
+  // Platform-owned domain every self-service signup gets their login identity on
+  // (username@<this>). Seeded as a real Domain + Stalwart domain — see db/seed.ts.
+  platformMailDomain: (process.env.PLATFORM_MAIL_DOMAIN || 'dhkmail.com').trim().toLowerCase(),
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',

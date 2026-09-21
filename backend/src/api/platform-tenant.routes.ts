@@ -17,6 +17,7 @@ import { config } from '../config';
 import { suspendTenantInfrastructure, restoreTenantInfrastructure } from '../services/tenant-lifecycle.service';
 import { forceDeleteOrganisation, OrganisationDeletionError } from '../services/organisation-deletion.service';
 import { captureRequestContext } from '../services/request-context.service';
+import { MailboxService } from '../services/mailbox.service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
 import { platformDeletionRouter } from './organisation-deletion.routes';
 
@@ -757,6 +758,9 @@ platformTenantRouter.post('/:id/admins/:adminId/reset-password', async (req: Req
 
   admin.passwordHash = await hashPassword(parsed.data.newPassword);
   await admin.save();
+  // An admin's login email is also their platform mailbox address, so the mail credential has to
+  // move with it — otherwise login and IMAP/webmail drift apart.
+  await MailboxService.syncLoginMailboxPassword(admin.email, parsed.data.newPassword);
 
   await AuditLogModel.create({
     actorId: req.adminUser!.id,

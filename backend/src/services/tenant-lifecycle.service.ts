@@ -113,6 +113,20 @@ export async function restoreTenantInfrastructure(tenantId: string | Types.Objec
   }
 }
 
+/** Groups deleted mailboxes that belonged to a DIFFERENT tenant (the platform one) by owner. */
+function countByForeignTenant(
+  mailboxes: { tenantId: Types.ObjectId }[],
+  ownTenantId: string | Types.ObjectId
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const m of mailboxes) {
+    const owner = m.tenantId.toString();
+    if (owner === ownTenantId.toString()) continue;
+    counts.set(owner, (counts.get(owner) || 0) + 1);
+  }
+  return counts;
+}
+
 export interface PurgeSummary {
   mailboxesDeleted: number;
   domainNames: string[];
@@ -125,7 +139,13 @@ export interface PurgeSummary {
  * those must outlive the organisation.
  */
 export async function purgeTenant(tenantId: string | Types.ObjectId): Promise<PurgeSummary> {
-  const mailboxes = await MailboxModel.find({ tenantId });
+  // Admins' platform identity mailboxes (username@<platformMailDomain>) live under the platform
+  // tenant, not this one, so a plain {tenantId} sweep would leave them orphaned on the mail server.
+  // Collect the addresses before the admin rows are deleted below.
+  const adminEmails = (await AdminUserModel.find({ tenantId }).select('email')).map((u) => u.email);
+  const mailboxFilter = { $or: [{ tenantId }, { address: { $in: adminEmails } }] };
+
+  const mailboxes = await MailboxModel.find(mailboxFilter);
   for (const m of mailboxes) {
     if (!m.stalwartAccountId) continue;
     try {
@@ -134,7 +154,13 @@ export async function purgeTenant(tenantId: string | Types.ObjectId): Promise<Pu
       console.warn(`[TenantLifecycle] Failed to delete Stalwart account ${m.stalwartAccountId}:`, err.message);
     }
   }
-  await MailboxModel.deleteMany({ tenantId });
+  await MailboxModel.deleteMany(mailboxFilter);
+
+  // Identity mailboxes were counted against the platform tenant, so give those seats back —
+  // this tenant's own counter dies with it below, but the platform tenant outlives every customer.
+  for (const [platformTenantId, count] of countByForeignTenant(mailboxes, tenantId)) {
+    await TenantModel.updateOne({ _id: platformTenantId }, { $inc: { mailboxCount: -count } });
+  }
 
   const domains = await DomainModel.find({ tenantId });
   for (const domain of domains) {

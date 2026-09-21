@@ -5,6 +5,8 @@ import { AdminUserModel } from './models/AdminUser';
 import { SystemSettingsModel } from './models/SystemSettings';
 import { AuditLogModel } from './models/AuditLog';
 import { PlanModel } from './models/Plan';
+import { TenantModel } from './models/Tenant';
+import { DomainModel } from './models/Domain';
 
 export async function seedInitialAdmin(): Promise<void> {
   try {
@@ -127,11 +129,61 @@ export async function seedDefaultPlans(): Promise<void> {
   }
 }
 
+/** Name of the tenant that owns the platform identity domain. Not a customer — it exists so the
+ *  globally-unique Domain row has an owner, since Domain.tenantId is required. */
+export const PLATFORM_TENANT_NAME = 'Toowix Platform Identities';
+
+/**
+ * Every self-service signup gets a login identity at `username@<config.platformMailDomain>`,
+ * which is a real mailbox. That needs a Domain row, and Domain.domainName is globally unique
+ * with a required tenantId — so one system tenant owns it and every signup mailbox hangs off it.
+ * Mailboxes here deliberately sit outside any customer tenant: no seat billing, no quota, and
+ * they survive a customer's suspension so recovery mail still arrives.
+ */
+export async function seedPlatformIdentityDomain(): Promise<void> {
+  try {
+    const tenant = await TenantModel.findOneAndUpdate(
+      { name: PLATFORM_TENANT_NAME },
+      {
+        $setOnInsert: {
+          status: 'active',
+          // Not a real quota — the platform provisioner bypasses the seat gate entirely.
+          mailboxLimit: 1_000_000,
+          mailboxCount: 0,
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    await DomainModel.findOneAndUpdate(
+      { domainName: config.platformMailDomain },
+      {
+        $setOnInsert: {
+          tenantId: tenant!._id,
+          status: 'active',
+          // Real deliverability still depends on DNS (MX/SPF/DKIM/DMARC) being published for
+          // this domain; 'active' here only stops internal gates from blocking provisioning.
+          dnsStatus: 'active',
+          isPrimary: true,
+          mailboxLimit: 1_000_000,
+        },
+      },
+      { upsert: true }
+    );
+
+    console.log(`[Seed] Platform identity domain ready: ${config.platformMailDomain}`);
+  } catch (err) {
+    console.error('[Seed Platform Identity Domain Error]:', err);
+    throw err;
+  }
+}
+
 export async function seedAll(): Promise<void> {
   console.log('[Seed] Seeding database defaults...');
   await seedInitialAdmin();
   await seedSystemSettings();
   await seedDefaultPlans();
+  await seedPlatformIdentityDomain();
   console.log('[Seed] Database defaults seeded successfully.');
 }
 

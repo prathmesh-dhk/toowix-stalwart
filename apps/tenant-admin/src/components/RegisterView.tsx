@@ -12,6 +12,14 @@ interface RegisterViewProps {
   onBackToLogin: () => void;
 }
 
+/** Display only — the server is authoritative and returns the full address it will create. */
+const PLATFORM_MAIL_DOMAIN = 'dhkmail.com';
+
+type UsernameCheck =
+  | { state: 'idle' | 'checking' }
+  | { state: 'available'; address: string }
+  | { state: 'taken'; reason: string };
+
 const SECURITY_QUESTIONS_POOL = [
   'What was the name of your first pet?',
   'In what city were you born?',
@@ -24,27 +32,32 @@ const SECURITY_QUESTIONS_POOL = [
 ];
 
 export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => {
-  // Wizard steps: 1 = Email, 2 = OTP, 3 = Password, 4 = Security Questions, 5 = Success
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  // Wizard: 1 = Org + Username, 2 = Password, 3 = Recovery email, 4 = OTP, 5 = Security questions, 6 = Done
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
-  // Step 1: Email
-  const [email, setEmail] = useState('');
+  // Step 1: Organization & Username
+  const [organizationName, setOrganizationName] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameCheck, setUsernameCheck] = useState<UsernameCheck>({ state: 'idle' });
+
+  // Step 2: Password
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Step 3: Recovery email — the only address we can reach them on if they lose their mailbox
+  const [recoveryEmail, setRecoveryEmail] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
 
-  // Step 2: OTP
+  // Step 4: OTP
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [otpToken, setOtpToken] = useState<string | null>(null);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Step 3: Password
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  // Step 4: Security Questions
+  // Step 5: Security Questions
   const [sq1Question, setSq1Question] = useState(SECURITY_QUESTIONS_POOL[0]);
   const [sq1Answer, setSq1Answer] = useState('');
   const [sq2Question, setSq2Question] = useState(SECURITY_QUESTIONS_POOL[1]);
@@ -63,9 +76,9 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     return () => clearTimeout(timer);
   }, [cooldown]);
 
-  // Focus first OTP box on Step 2
+  // Focus first OTP box when the code step opens
   useEffect(() => {
-    if (currentStep === 2) {
+    if (currentStep === 4) {
       setTimeout(() => {
         otpRefs.current[0]?.focus();
       }, 100);
@@ -89,26 +102,99 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
   };
 
   const passwordStrength = getPasswordStrength(password);
+  const loginAddress = `${username.trim().toLowerCase()}@${PLATFORM_MAIL_DOMAIN}`;
 
-  // STEP 1: Submit Email
-  const handleStep1Submit = async (e: React.FormEvent) => {
+  // Probe availability while they type. Guidance only — /register re-checks server-side.
+  useEffect(() => {
+    const candidate = username.trim().toLowerCase();
+    if (!candidate) {
+      setUsernameCheck({ state: 'idle' });
+      return;
+    }
+
+    setUsernameCheck({ state: 'checking' });
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.checkUsernameAvailability(candidate);
+        setUsernameCheck(
+          res.available
+            ? { state: 'available', address: res.address || `${candidate}@${PLATFORM_MAIL_DOMAIN}` }
+            : { state: 'taken', reason: res.reason || 'That username is not available.' }
+        );
+      } catch {
+        // Offline or server hiccup: stay quiet and let the final submit surface the real error.
+        setUsernameCheck({ state: 'idle' });
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [username]);
+
+  // STEP 1: Organization & Username
+  const handleStep1Submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const cleanOrgName = organizationName.trim();
+    if (!cleanOrgName) {
+      setError('Please enter your organization name.');
+      return;
+    }
+    if (cleanOrgName.length < 2) {
+      setError('Organization name must be at least 2 characters.');
+      return;
+    }
+
+    if (!username.trim()) {
+      setError('Please choose a username.');
+      return;
+    }
+    if (usernameCheck.state === 'taken') {
+      setError(usernameCheck.reason);
+      return;
+    }
+    if (usernameCheck.state !== 'available') {
+      setError('Just a moment while we check that username.');
+      return;
+    }
+
+    setCurrentStep(2);
+  };
+
+  // STEP 2: Password
+  const handleStep2Submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please verify both fields.');
+      return;
+    }
+    setCurrentStep(3);
+  };
+
+  // STEP 3: Recovery email -> send the code
+  const handleStep3Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const cleanEmail = email.trim().toLowerCase();
-
-    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
-      setError('Please enter a valid administrator email address.');
+    const cleanRecovery = recoveryEmail.trim().toLowerCase();
+    if (!cleanRecovery || !emailRegex.test(cleanRecovery)) {
+      setError('Please enter a valid recovery email address.');
       return;
     }
 
     setSendingOtp(true);
     try {
-      await api.publicSendContactEmailOtp(cleanEmail);
+      await api.publicSendRecoveryEmailOtp(cleanRecovery);
       setCooldown(60);
       setOtpDigits(['', '', '', '', '', '']);
-      setCurrentStep(2);
+      setCurrentStep(4);
     } catch (err: any) {
       setError(err.message || 'Failed to send verification code. Please try again.');
     } finally {
@@ -116,7 +202,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     }
   };
 
-  // STEP 2: OTP Handling
+  // STEP 4: OTP Handling
   const handleOtpChange = (index: number, val: string) => {
     const char = val.slice(-1);
     const newDigits = [...otpDigits];
@@ -154,7 +240,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     setError(null);
     setSendingOtp(true);
     try {
-      await api.publicSendContactEmailOtp(email.trim().toLowerCase());
+      await api.publicSendRecoveryEmailOtp(recoveryEmail.trim().toLowerCase());
       setCooldown(60);
       setOtpDigits(['', '', '', '', '', '']);
       otpRefs.current[0]?.focus();
@@ -165,7 +251,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     }
   };
 
-  const handleStep2Submit = async (e: React.FormEvent) => {
+  const handleStep4Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -177,9 +263,9 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
 
     setVerifyingOtp(true);
     try {
-      const res = await api.publicVerifyContactEmailOtp(email.trim().toLowerCase(), fullCode);
+      const res = await api.publicVerifyRecoveryEmailOtp(recoveryEmail.trim().toLowerCase(), fullCode);
       setOtpToken(res.verificationToken);
-      setCurrentStep(3);
+      setCurrentStep(5);
     } catch (err: any) {
       setError(err.message || 'Invalid or expired verification code.');
     } finally {
@@ -187,24 +273,8 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     }
   };
 
-  // STEP 3: Password Submit
-  const handleStep3Submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match. Please verify both fields.');
-      return;
-    }
-    setCurrentStep(4);
-  };
-
-  // STEP 4: Security Questions Submit
-  const handleStep4Submit = async (e: React.FormEvent) => {
+  // STEP 5: Security Questions Submit
+  const handleStep5Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -228,24 +298,26 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
     }
 
     if (!otpToken) {
-      setError('Email verification expired. Please start again.');
-      setCurrentStep(1);
+      setError('Recovery email verification expired. Please verify it again.');
+      setCurrentStep(3);
       return;
     }
 
     setLoading(true);
     try {
       await api.publicRegister({
-        email: email.trim().toLowerCase(),
-        emailVerificationToken: otpToken,
+        username: username.trim().toLowerCase(),
         password,
+        recoveryEmail: recoveryEmail.trim().toLowerCase(),
+        recoveryEmailVerificationToken: otpToken,
+        organizationName: organizationName.trim(),
         securityQuestions: [
           { question: sq1Question, answer: sq1Answer.trim() },
           { question: sq2Question, answer: sq2Answer.trim() },
           { question: sq3Question, answer: sq3Answer.trim() },
         ],
       });
-      setCurrentStep(5);
+      setCurrentStep(6);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check your details and try again.');
     } finally {
@@ -313,45 +385,78 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
               )}
 
               {/* ==================================================== */}
-              {/* STEP 1: Enter Email                                  */}
+              {/* STEP 1: Enter Organization & Email                   */}
               {/* ==================================================== */}
               {currentStep === 1 && (
                 <>
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Create your account</h2>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                      Enter your email address to get started with your organization.
+                      Set up your organization and pick your Toowix address to get started.
                     </p>
                   </div>
 
                   <form className="space-y-4" onSubmit={handleStep1Submit}>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-slate-600" htmlFor="regEmail">
-                        Email
+                      <label className="text-xs font-medium text-slate-600" htmlFor="regOrgName">
+                        Organization name
                       </label>
                       <div className="relative">
                         <input
                           className="w-full h-11 px-4 bg-slate-50/90 border border-slate-200/80 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
-                          id="regEmail"
-                          name="email"
-                          placeholder="abc@mail.com"
+                          id="regOrgName"
+                          name="organizationName"
+                          placeholder="e.g. Acme Corporation"
                           required
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          type="text"
+                          value={organizationName}
+                          onChange={(e) => setOrganizationName(e.target.value)}
                           autoFocus
                         />
                       </div>
                     </div>
 
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600" htmlFor="regUsername">
+                        Choose your username
+                      </label>
+                      <div className="flex items-stretch">
+                        <input
+                          className="w-full h-11 px-4 bg-slate-50/90 border border-slate-200/80 rounded-l-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+                          id="regUsername"
+                          name="username"
+                          placeholder="yourname"
+                          required
+                          type="text"
+                          autoComplete="username"
+                          spellCheck={false}
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                        />
+                        <span className="inline-flex items-center px-3 h-11 rounded-r-xl border border-l-0 border-slate-200/80 bg-slate-100 text-sm text-slate-500 select-none">
+                          @{PLATFORM_MAIL_DOMAIN}
+                        </span>
+                      </div>
+                      <p className="text-xs min-h-[1rem]" role="status" aria-live="polite">
+                        {usernameCheck.state === 'checking' && <span className="text-slate-400">Checking availability…</span>}
+                        {usernameCheck.state === 'available' && (
+                          <span className="text-emerald-600 font-medium">{usernameCheck.address} is available</span>
+                        )}
+                        {usernameCheck.state === 'taken' && <span className="text-rose-600">{usernameCheck.reason}</span>}
+                        {usernameCheck.state === 'idle' && (
+                          <span className="text-slate-400">This becomes your sign-in address and your mailbox.</span>
+                        )}
+                      </p>
+                    </div>
+
                     <div className="pt-2">
                       <button
                         className="btn btn-primary btn-lg w-full"
-                        id="submitEmailBtn"
+                        id="submitUsernameBtn"
                         type="submit"
-                        disabled={sendingOtp}
+                        disabled={usernameCheck.state === 'checking'}
                       >
-                        <span>{sendingOtp ? 'Sending code...' : 'Next'}</span>
+                        <span>Next</span>
                       </button>
                     </div>
 
@@ -372,18 +477,71 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
               )}
 
               {/* ==================================================== */}
-              {/* STEP 2: Email OTP Verification                       */}
+              {/* STEP 3: Recovery email                               */}
               {/* ==================================================== */}
-              {currentStep === 2 && (
+              {currentStep === 3 && (
+                <>
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Add a recovery email</h2>
+                    <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                      Use an address outside Toowix. It is how we reach you if you ever lose access to{' '}
+                      <span className="font-semibold text-slate-700">{loginAddress}</span>.
+                    </p>
+                  </div>
+
+                  <form className="space-y-4" onSubmit={handleStep3Submit}>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-slate-600" htmlFor="regRecoveryEmail">
+                        Recovery email
+                      </label>
+                      <div className="relative">
+                        <input
+                          className="w-full h-11 px-4 bg-slate-50/90 border border-slate-200/80 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+                          id="regRecoveryEmail"
+                          name="recoveryEmail"
+                          placeholder="you@example.com"
+                          required
+                          type="email"
+                          autoComplete="email"
+                          value={recoveryEmail}
+                          onChange={(e) => setRecoveryEmail(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button className="btn btn-primary btn-lg w-full" id="submitRecoveryEmailBtn" type="submit" disabled={sendingOtp}>
+                        <span>{sendingOtp ? 'Sending code...' : 'Send verification code'}</span>
+                      </button>
+                    </div>
+
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(2)}
+                        className="text-xs text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
+
+              {/* ==================================================== */}
+              {/* STEP 4: Recovery email OTP verification              */}
+              {/* ==================================================== */}
+              {currentStep === 4 && (
                 <>
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Verify your email</h2>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                      Enter the 6-digit code sent to <span className="font-semibold text-slate-800">{email}</span>.
+                      Enter the 6-digit code sent to <span className="font-semibold text-slate-800">{recoveryEmail}</span>.
                     </p>
                   </div>
 
-                  <form className="space-y-4" onSubmit={handleStep2Submit}>
+                  <form className="space-y-4" onSubmit={handleStep4Submit}>
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <label className="text-xs font-semibold text-slate-700">Verification code</label>
@@ -443,7 +601,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
               {/* ==================================================== */}
               {/* STEP 3: Set Password                                 */}
               {/* ==================================================== */}
-              {currentStep === 3 && (
+              {currentStep === 2 && (
                 <>
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Set your password</h2>
@@ -452,7 +610,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                     </p>
                   </div>
 
-                  <form className="space-y-4" onSubmit={handleStep3Submit}>
+                  <form className="space-y-4" onSubmit={handleStep2Submit}>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-slate-600" htmlFor="newPassword">
                         Password
@@ -553,7 +711,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
               {/* ==================================================== */}
               {/* STEP 4: Security Questions                           */}
               {/* ==================================================== */}
-              {currentStep === 4 && (
+              {currentStep === 5 && (
                 <>
                   <div className="mb-5">
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Security questions</h2>
@@ -562,7 +720,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                     </p>
                   </div>
 
-                  <form className="space-y-3.5" onSubmit={handleStep4Submit}>
+                  <form className="space-y-3.5" onSubmit={handleStep5Submit}>
                     {/* Question 1 */}
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-slate-600">Question 1</label>
@@ -664,7 +822,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
               {/* ==================================================== */}
               {/* STEP 5: Success & Direct Login                       */}
               {/* ==================================================== */}
-              {currentStep === 5 && (
+              {currentStep === 6 && (
                 <div className="text-center py-2 space-y-4">
                   <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mx-auto shadow-xs">
                     <CheckCircle2 className="w-7 h-7" />
@@ -672,7 +830,15 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Registration successful!</h2>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
-                      Your administrator account for <span className="font-semibold text-slate-800">{email}</span> has been created.
+                      {organizationName ? (
+                        <>
+                          Your organization <span className="font-semibold text-slate-800">{organizationName}</span> and administrator account for <span className="font-semibold text-slate-800">{loginAddress}</span> have been created.
+                        </>
+                      ) : (
+                        <>
+                          Your administrator account for <span className="font-semibold text-slate-800">{loginAddress}</span> have been created.
+                        </>
+                      )}
                     </p>
                   </div>
 

@@ -23,6 +23,7 @@ import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { emailService } from '../services/email.service';
 import { sessionService } from '../services/session.service';
+import { MailboxService } from '../services/mailbox.service';
 import { stalwartClient } from '../stalwart/client';
 
 export const authRouter = Router();
@@ -918,15 +919,8 @@ authRouter.post('/forgot-password/reset', async (req: Request, res: Response) =>
   user.passwordResetOtp = null;
   await user.save();
 
-  // If user has associated mailbox in Stalwart, update password on Stalwart as well
-  try {
-    const mailbox = await MailboxModel.findOne({ address: user.email });
-    if (mailbox?.stalwartAccountId) {
-      await stalwartClient.updateAccountPassword(mailbox.stalwartAccountId, newPassword);
-    }
-  } catch {
-    // mailbox may not exist yet or Super Admin without mailbox
-  }
+  // The login email is also the platform mailbox address, so the mail credential moves with it.
+  await MailboxService.syncLoginMailboxPassword(user.email, newPassword);
 
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
   await AuditLogModel.create({

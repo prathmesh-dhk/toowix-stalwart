@@ -7,7 +7,7 @@ import { logAudit } from '../audit/service';
 import { StalwartAccountExistsError, StalwartError } from '../stalwart/errors';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { reportMeteredUsage } from './billing.service';
-import { isBillingEnabled } from '../config';
+import { config, isBillingEnabled } from '../config';
 
 export interface CreateMailboxInput {
   localPart: string;
@@ -598,5 +598,156 @@ export class MailboxService {
       updatedAt: updatedDoc!.updatedAt.toISOString(),
     };
   }
+
+  /**
+   * Provisions the login identity mailbox for a self-service signup: `username@<platformMailDomain>`.
+   *
+   * Deliberately not createMailbox(): that gates on an active tenant with seat quota, a domain the
+   * caller's tenant owns, dnsStatus, and a live billing subscription. At signup the tenant does not
+   * exist yet, and none of those should apply to a free login identity anyway. The Mongo row is
+   * written first as the reservation — Mailbox.address is globally unique, so two simultaneous
+   * signups for the same username produce one winner and one E11000, never two Stalwart accounts.
+   */
+  static async createPlatformIdentityMailbox(
+    localPart: string,
+    password: string
+  ): Promise<{ id: string; address: string; stalwartAccountId: string | null }> {
+    const domain = await DomainModel.findOne({ domainName: config.platformMailDomain });
+    if (!domain) {
+      throw {
+        status: 503,
+        code: 'PLATFORM_DOMAIN_MISSING',
+        message: `Platform identity domain '${config.platformMailDomain}' is not provisioned yet.`,
+      };
+    }
+
+    const address = `${localPart}@${config.platformMailDomain}`;
+
+    const mailboxDoc = await MailboxModel.create({
+      tenantId: domain.tenantId,
+      domainId: domain._id,
+      localPart,
+      address,
+      status: 'active',
+    }).catch((err: any) => {
+      if (err?.code === 11000) {
+        throw { status: 409, code: 'USERNAME_TAKEN', message: `'${address}' is already taken.` };
+      }
+      throw err;
+    });
+
+    try {
+      let account;
+      try {
+        account = await stalwartClient.createAccount({
+          name: localPart,
+          domainId: await resolvePlatformStalwartDomainId(domain),
+          password,
+          description: address,
+        });
+      } catch (err: any) {
+        // Cached Stalwart domain id is stale (domain recreated server-side) — re-resolve once.
+        if (err.message && err.message.includes('invalidForeignKey')) {
+          account = await stalwartClient.createAccount({
+            name: localPart,
+            domainId: await resolvePlatformStalwartDomainId(domain, true),
+            password,
+            description: address,
+          });
+        } else {
+          throw err;
+        }
+      }
+      mailboxDoc.stalwartAccountId = account.id;
+      await mailboxDoc.save();
+    } catch (err: any) {
+      await MailboxModel.deleteOne({ _id: mailboxDoc._id });
+
+      if (err instanceof StalwartAccountExistsError || err.code === 'ACCOUNT_EXISTS') {
+        throw { status: 409, code: 'USERNAME_TAKEN', message: `'${address}' is already taken.` };
+      }
+      if (err.message && err.message.toLowerCase().includes('password is too weak')) {
+        throw {
+          status: 400,
+          code: 'PASSWORD_TOO_WEAK',
+          message: 'That password was rejected as too weak or too common. Please choose a stronger one.',
+        };
+      }
+      throw {
+        status: 503,
+        code: 'STALWART_UNAVAILABLE',
+        message: `Could not create your mailbox on the mail server: ${err.message}`,
+      };
+    }
+
+    // Counter only — the platform tenant's mailboxLimit is never enforced against these.
+    await TenantModel.updateOne({ _id: domain.tenantId }, { $inc: { mailboxCount: 1 } });
+
+    await logAudit({
+      actorRole: 'SYSTEM',
+      tenantId: domain.tenantId.toString(),
+      action: 'PLATFORM_IDENTITY_MAILBOX_CREATED',
+      resource: 'MAILBOX',
+      resourceId: mailboxDoc._id.toString(),
+      metadata: { address },
+      success: true,
+    });
+
+    return {
+      id: mailboxDoc._id.toString(),
+      address,
+      stalwartAccountId: mailboxDoc.stalwartAccountId,
+    };
+  }
+
+  /**
+   * Undo for createPlatformIdentityMailbox, used when the rest of a signup fails after the mailbox
+   * was provisioned. Without it a half-finished signup strands the username forever.
+   */
+  static async deletePlatformIdentityMailbox(address: string): Promise<void> {
+    const mailbox = await MailboxModel.findOne({ address: address.trim().toLowerCase() });
+    if (!mailbox) return;
+
+    if (mailbox.stalwartAccountId) {
+      try {
+        await stalwartClient.deleteAccount(mailbox.stalwartAccountId);
+      } catch (err: any) {
+        console.warn(`[MailboxService] Stalwart cleanup failed for ${address}:`, err?.message);
+      }
+    }
+    await MailboxModel.deleteOne({ _id: mailbox._id });
+    await TenantModel.updateOne({ _id: mailbox.tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
+  }
+
+  /**
+   * Keeps the Stalwart credential in step with the login password, now that an admin's login email
+   * IS their mailbox address. Best-effort by design: legacy external-email admins and super admins
+   * have no matching mailbox, and a mail server outage must never block a password reset.
+   */
+  static async syncLoginMailboxPassword(email: string, newPassword: string): Promise<void> {
+    try {
+      const mailbox = await MailboxModel.findOne({ address: email.trim().toLowerCase() });
+      if (mailbox?.stalwartAccountId) {
+        await stalwartClient.updateAccountPassword(mailbox.stalwartAccountId, newPassword);
+      }
+    } catch (err: any) {
+      console.warn(`[MailboxService] Stalwart password sync skipped for ${email}:`, err?.message);
+    }
+  }
+}
+
+/** Resolve (creating if absent) the Stalwart domain id for a Domain row, caching it back. */
+async function resolvePlatformStalwartDomainId(domain: any, forceRefresh = false): Promise<string> {
+  if (domain.stalwartDomainId && !forceRefresh) return domain.stalwartDomainId;
+
+  const domains = await stalwartClient.listDomains();
+  const match = domains.find((d) => d.name.toLowerCase() === domain.domainName.toLowerCase());
+  const id = match ? match.id : (await stalwartClient.createDomain(domain.domainName, 'Toowix platform identities')).id;
+
+  if (domain.stalwartDomainId !== id) {
+    domain.stalwartDomainId = id;
+    await domain.save();
+  }
+  return id;
 }
 
