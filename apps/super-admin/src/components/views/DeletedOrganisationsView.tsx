@@ -185,25 +185,34 @@ export const DeletedOrganisationsView: React.FC = () => {
         </div>
       )}
 
-      <Modal isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `${selected.organisationName} — deletion record` : ''} maxWidth="max-w-3xl">
+      <Modal isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `${selected.organisationName} — deletion record` : ''} maxWidth="max-w-6xl">
         {selected && (
-          <div className="flex flex-col gap-5">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-              <Field label="Organisation ID"><span className="font-mono">{selected.organisationId}</span></Field>
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-x-8 gap-y-6">
+            {/* Summary */}
+            <div className="flex flex-col gap-3.5 lg:border-r lg:border-slate-100 lg:pr-8">
               <Field label="Status"><StatusBadge status={selected.stage} /></Field>
+              <Field label="Organisation ID"><span className="font-mono text-[11px] break-all">{selected.organisationId}</span></Field>
               <Field label="Registration email">{selected.registrationEmail ?? '—'}</Field>
               <Field label="Domains">{selected.domains.length ? selected.domains.join(', ') : '—'}</Field>
               <Field label="Organisation created">{formatDateTime(selected.organisationCreatedAt)}</Field>
               <Field label="Reason given">{selected.reason || '—'}</Field>
-              <Field label="Deletion initiated">{formatDateTime(selected.initiatedAt)} · {actorLine(selected.initiatedBy)}</Field>
-              <Field label="Deletion completed">{selected.completedAt ? `${formatDateTime(selected.completedAt)} · ${actorLine(selected.completedBy)}` : '—'}</Field>
+              <Field label="Deletion initiated">
+                {formatDateTime(selected.initiatedAt)}
+                <span className="block text-slate-500">{actorLine(selected.initiatedBy)}</span>
+              </Field>
+              <Field label="Deletion completed">
+                {selected.completedAt ? formatDateTime(selected.completedAt) : '—'}
+                {selected.completedAt && <span className="block text-slate-500">{actorLine(selected.completedBy)}</span>}
+              </Field>
               <Field label="OTP verification">
                 <span className="capitalize">{selected.otpVerification.replace('_', ' ')}</span>
                 {selected.otpVerifiedAt ? ` · ${formatDateTime(selected.otpVerifiedAt)}` : ''}
               </Field>
-              <Field label="Deletion path">{selected.path === 'forced' ? 'Forced immediate delete (security timeline bypassed)' : 'Standard security timeline'}</Field>
+              <Field label="Deletion path">{selected.path === 'forced' ? 'Forced immediate delete (timeline bypassed)' : 'Standard security timeline'}</Field>
               <Field label="Email restriction">
-                {selected.emailRestriction.email ? `${selected.emailRestriction.email} — permanently blocked since ${formatDateTime(selected.emailRestriction.blockedAt)}` : 'Not applied yet'}
+                {selected.emailRestriction.email
+                  ? `Permanently blocked since ${formatDateTime(selected.emailRestriction.blockedAt)}`
+                  : 'Not applied yet'}
               </Field>
               <Field label="Re-registration">
                 {selected.reRegistration.status === 'blocked'
@@ -212,80 +221,66 @@ export const DeletedOrganisationsView: React.FC = () => {
               </Field>
             </div>
 
-            {selected.reRegistration.blockedAttempts.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1"><ShieldAlert size={12} /> Refused re-registration attempts (latest 100)</span>
-                <ul className="text-[11px] text-slate-700 max-h-28 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-                  {[...selected.reRegistration.blockedAttempts].reverse().map((a, i) => (
-                    <li key={i} className="px-3 py-1.5 flex justify-between gap-3">
-                      <span>{formatDateTime(a.at)} · {a.source}</span>
-                      <span className="font-mono">{a.ip} · {a.location}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-slate-900">Security timeline</span>
-              {detailLoading && !selected.timeline && <span className="text-xs text-slate-500">Loading timeline…</span>}
-              <ol className="flex flex-col">
-                {(selected.timeline ?? []).map((entry: DeletionTimelineEntry, i: number, all: DeletionTimelineEntry[]) => {
-                  const last = i === all.length - 1;
-                  const n = entry.network;
-                  return (
-                    <li key={i} className="relative pl-8 pb-5 last:pb-0">
-                      {/* connecting line between steps */}
-                      {!last && <span className="absolute left-[8px] top-5 bottom-0 w-px bg-slate-200" aria-hidden="true" />}
-                      <span className="absolute left-0 top-0.5 bg-white">
-                        {entry.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
-                      </span>
-
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-                        <span className="text-xs font-semibold text-slate-900">
-                          {STAGE_LABEL[entry.stage] ?? entry.stage}
-                          {!entry.success && <span className="ml-2 text-rose-600 font-medium">failed</span>}
-                        </span>
-                        <span className="text-[11px] text-slate-500">{formatDateTime(entry.at)}</span>
-                      </div>
-                      <div className="text-[11px] text-slate-600 mt-0.5">{actorLine(entry.actor)}</div>
-                      {entry.message && <div className="text-[11px] text-slate-500 italic mt-0.5">“{entry.message}”</div>}
-
-                      {n && (
-                        <dl className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                          <div className="min-w-0">
-                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">IP address</dt>
-                            <dd className="text-[11px] text-slate-800 font-mono break-all">
-                              {n.ip}
-                              {n.ipVersion ? <span className="ml-1 font-sans text-slate-400">IPv{n.ipVersion}</span> : null}
-                            </dd>
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">Location</dt>
-                            <dd className="text-[11px] text-slate-800">{n.location}</dd>
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">Device</dt>
-                            <dd className="text-[11px] text-slate-800 capitalize">{n.deviceType}</dd>
-                            <dd className="text-[11px] text-slate-500">{n.os}</dd>
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-[10px] uppercase tracking-wide text-slate-400">Browser</dt>
-                            <dd className="text-[11px] text-slate-800">{n.browser}</dd>
-                            {n.browserVersion && <dd className="text-[11px] text-slate-500">v{n.browserVersion}</dd>}
-                          </div>
-                          {n.sessionId && (
-                            <div className="col-span-2 sm:col-span-4 min-w-0">
-                              <dt className="text-[10px] uppercase tracking-wide text-slate-400">Session</dt>
-                              <dd className="text-[11px] text-slate-600 font-mono break-all">{n.sessionId}</dd>
+            {/* Timeline */}
+            <div className="flex flex-col gap-5 min-w-0">
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-semibold text-slate-900">Security timeline</span>
+                {detailLoading && !selected.timeline && <span className="text-xs text-slate-500">Loading timeline…</span>}
+                <ol className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(selected.timeline ?? []).map((entry: DeletionTimelineEntry, i: number) => {
+                    const n = entry.network;
+                    return (
+                      <li key={i} className="p-3 rounded-lg border border-slate-200 flex flex-col gap-1.5 min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            {entry.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <XCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                            <span className="text-xs font-semibold text-slate-900">
+                              {STAGE_LABEL[entry.stage] ?? entry.stage}
+                              {!entry.success && <span className="ml-1.5 text-rose-600 font-medium">failed</span>}
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-slate-500 shrink-0">{formatDateTime(entry.at)}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-600">{actorLine(entry.actor)}</div>
+                        {entry.message && <div className="text-[11px] text-slate-500 italic">“{entry.message}”</div>}
+                        {n && (
+                          <div className="text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 pt-1.5">
+                            <div>
+                              <span className="font-mono text-slate-700">{n.ip}</span>
+                              {n.ipVersion ? <span className="text-slate-400"> IPv{n.ipVersion}</span> : null} · {n.location}
                             </div>
-                          )}
-                        </dl>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
+                            <div className="capitalize">
+                              {n.deviceType} · {n.os} · {n.browser}
+                              {n.browserVersion ? ` v${n.browserVersion}` : ''}
+                            </div>
+                            {n.sessionId && (
+                              <div className="font-mono text-[10px] text-slate-400 truncate" title={n.sessionId}>
+                                session {n.sessionId}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+
+              {selected.reRegistration.blockedAttempts.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
+                    <ShieldAlert size={12} /> Refused re-registration attempts (latest 100)
+                  </span>
+                  <ul className="text-[11px] text-slate-700 max-h-28 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                    {[...selected.reRegistration.blockedAttempts].reverse().map((a, i) => (
+                      <li key={i} className="px-3 py-1.5 flex justify-between gap-3">
+                        <span>{formatDateTime(a.at)} · {a.source}</span>
+                        <span className="font-mono">{a.ip} · {a.location}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         )}
