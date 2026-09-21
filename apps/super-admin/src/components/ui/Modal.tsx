@@ -10,6 +10,31 @@ export interface ModalProps {
   maxWidth?: string;
 }
 
+const MAX_WIDTH_MAP: Record<string, string> = {
+  'max-w-xs': '320px',
+  'max-w-sm': '384px',
+  'max-w-md': '448px',
+  'max-w-lg': '512px',
+  'max-w-xl': '576px',
+  'max-w-2xl': '672px',
+  'max-w-3xl': '768px',
+  'max-w-4xl': '896px',
+  'max-w-5xl': '1024px',
+  'max-w-6xl': '1152px',
+  'max-w-7xl': '1280px',
+  'max-w-full': '100%',
+};
+
+function resolveMaxWidth(maxWidth?: string): string | undefined {
+  if (!maxWidth) return undefined;
+  const match = maxWidth.match(/max-w-\[(.+)\]/);
+  if (match) return match[1];
+  for (const token of maxWidth.split(/\s+/)) {
+    if (MAX_WIDTH_MAP[token]) return MAX_WIDTH_MAP[token];
+  }
+  return undefined;
+}
+
 export const Modal: React.FC<ModalProps> = ({
   isOpen,
   onClose,
@@ -36,10 +61,20 @@ export const Modal: React.FC<ModalProps> = ({
 
   if (!isOpen) return null;
 
+  const resolvedWidth = resolveMaxWidth(maxWidth);
+
   return (
     <div className="modal-backdrop-mock" onClick={onClose} role="dialog" aria-modal="true">
       <div
         className={`modal-card ${maxWidth}`}
+        style={
+          resolvedWidth
+            ? ({
+                '--modal-max-width': resolvedWidth,
+                maxWidth: `min(${resolvedWidth}, calc(100vw - 48px))`,
+              } as React.CSSProperties)
+            : undefined
+        }
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">

@@ -501,19 +501,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       )}
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-3">
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={connectingStage !== null}
-            className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-              isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Cancel
-          </button>
-        )}
+      <div className="flex items-center justify-start gap-3 pt-2">
         <button
           type="submit"
           disabled={!canSubmit}
@@ -531,6 +519,18 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             </>
           )}
         </button>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={connectingStage !== null}
+            className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+              isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            Cancel
+          </button>
+        )}
       </div>
     </form>
   );

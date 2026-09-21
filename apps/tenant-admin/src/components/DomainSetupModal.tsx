@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
+import { WizardStepGraphic } from './WizardStepGraphic';
 
 interface DomainSetupModalProps {
   isOpen: boolean;
@@ -36,6 +37,21 @@ export const PROVIDER_LABEL: Record<DnsProvider, string> = {
 };
 
 const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+
+/**
+ * Per-step vertical positioning:
+ * Shorter content steps (e.g. domain name input) are positioned lower down to sit in the vertical
+ * center of the screen, while taller content steps (e.g. manual DNS zone file) start higher up.
+ */
+const STEP_TOP_PADDING: Record<WizardStep, string> = {
+  domain: 'pt-14 sm:pt-20 md:pt-28 lg:pt-36 xl:pt-[26vh]',
+  plan: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[19vh]',
+  method: 'pt-10 sm:pt-14 md:pt-16 lg:pt-20 xl:pt-[16vh]',
+  godaddy: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[20vh]',
+  hostinger: 'pt-14 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
+  cloudflare: 'pt-14 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
+  status: 'pt-8 sm:pt-12 lg:pt-16 xl:pt-[12vh]',
+};
 
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
 
@@ -406,11 +422,11 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         {/* Unified Single-Focus Layout across all wizard pages */}
         <div
           key={step}
-          className={`flex-1 flex flex-col w-full bg-white pl-6 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] pr-6 sm:pr-8 ${
+          className={`flex-1 flex flex-row items-start w-full bg-white pl-6 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] pr-6 sm:pr-8 overflow-x-hidden ${
             direction === 'backward' ? 'animate-slide-in-left' : 'animate-slide-in-right'
           }`}
         >
-          <main className="w-full max-w-2xl sm:max-w-3xl pt-24 sm:pt-36 lg:pt-48 xl:pt-[26vh] pb-16 flex flex-col text-left">
+          <main className={`w-full max-w-xl shrink-0 ${STEP_TOP_PADDING[step]} pb-12 flex flex-col text-left`}>
             {error && (
               <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -854,28 +870,26 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
                     {headline}
                   </h1>
-                  <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
-                    {subhead}
-                  </p>
+                  {methodAutoSkipped ? (
+                    <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
+                      We couldn't detect GoDaddy, Hostinger, or Cloudflare managing this domain.{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMethodAutoSkipped(false);
+                          navigateBack('method');
+                        }}
+                        className="text-indigo-600 font-semibold hover:underline cursor-pointer inline"
+                      >
+                        Connect a provider instead
+                      </button>
+                    </p>
+                  ) : (
+                    <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
+                      {subhead}
+                    </p>
+                  )}
                 </div>
-
-                {methodAutoSkipped && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-center justify-between">
-                    <span>
-                      We couldn't detect GoDaddy, Hostinger, or Cloudflare managing this domain.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMethodAutoSkipped(false);
-                        navigateBack('method');
-                      }}
-                      className="text-indigo-600 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
-                    >
-                      Connect a provider instead
-                    </button>
-                  </div>
-                )}
 
                 <DnsStatusPanel
                   domainName={createdDomain?.domainName || domainName}
@@ -946,6 +960,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </div>
             )}
           </main>
+
+          {/* Right Graphic: Positioned in right space on desktop, unique per step */}
+          <div className={`hidden xl:flex flex-1 items-start justify-center ${STEP_TOP_PADDING[step]} pl-10 select-none pointer-events-none sticky top-0`}>
+            <WizardStepGraphic
+              step={step}
+              domainName={createdDomain?.domainName || domainName}
+              selectedPlan={plans.find((p) => p.id === selectedPlanId)}
+              provider={provider}
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -91,9 +91,8 @@
   padding: 0;
 }
 
-/* Page content and modals scaled while preserving navbar & sidebar at 100% */
-.page-content-scaled,
-.modal-card {
+/* Page content scaled while preserving navbar, sidebar & overlays at 100% */
+.page-content-scaled {
   zoom: 1.12;
 }
 
@@ -566,18 +565,30 @@ body {
   box-shadow: var(--shadow-xl);
   border: 1px solid var(--border-color);
   width: 100%;
-  max-width: 520px;
-  padding: 24px;
+  max-width: min(var(--modal-max-width, 520px), calc(100vw - 48px));
+  padding: 20px 24px;
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  /* Never taller than the screen: the header/footer stay put and only the body scrolls.
-     (`.modal-card` is zoomed 1.12x above, so the limit is divided by the zoom.) */
-  max-height: calc((100vh - 48px) / 1.12);
+  gap: 14px;
+  /* Never taller than screen: header & footer stay fixed, only body scrolls */
+  max-height: min(84vh, 740px);
   overflow: hidden;
   animation: modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* Modifier classes to override default modal-card max-width */
+.modal-card.max-w-sm { --modal-max-width: 384px; max-width: min(384px, calc(100vw - 48px)); }
+.modal-card.max-w-md { --modal-max-width: 448px; max-width: min(448px, calc(100vw - 48px)); }
+.modal-card.max-w-lg { --modal-max-width: 512px; max-width: min(512px, calc(100vw - 48px)); }
+.modal-card.max-w-xl { --modal-max-width: 576px; max-width: min(576px, calc(100vw - 48px)); }
+.modal-card.max-w-2xl { --modal-max-width: 672px; max-width: min(672px, calc(100vw - 48px)); }
+.modal-card.max-w-3xl { --modal-max-width: 768px; max-width: min(768px, calc(100vw - 48px)); }
+.modal-card.max-w-4xl { --modal-max-width: 896px; max-width: min(896px, calc(100vw - 48px)); }
+.modal-card.max-w-5xl { --modal-max-width: 1024px; max-width: min(1024px, calc(100vw - 48px)); }
+.modal-card.max-w-6xl { --modal-max-width: 1152px; max-width: min(1152px, calc(100vw - 48px)); }
+.modal-card.max-w-7xl { --modal-max-width: 1280px; max-width: min(1280px, calc(100vw - 48px)); }
+.modal-card.max-w-full { --modal-max-width: 100%; max-width: calc(100vw - 48px); }
 
 @keyframes modal-in {
   from { opacity: 0; transform: scale(0.96) translateY(4px); }
