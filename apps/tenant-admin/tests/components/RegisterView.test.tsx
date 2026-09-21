@@ -86,6 +86,33 @@ describe('RegisterView Component', () => {
     expect(screen.queryByText('Set your password')).not.toBeInTheDocument();
   });
 
+  it('every Back link returns to the step before it', async () => {
+    vi.mocked(api.publicSendRecoveryEmailOtp).mockResolvedValue({ success: true, message: 'sent', expiresMinutes: 10 });
+
+    render(<RegisterView onBackToLogin={onBackToLogin} />);
+    await fillUsernameAndPassword(); // now on the recovery-email step
+
+    // Recovery email -> Password
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }));
+    await waitFor(() => expect(screen.getByText('Set your password')).toBeInTheDocument());
+
+    // Password -> Organization + username (the link that used to point at itself)
+    fireEvent.click(screen.getByRole('button', { name: /← back/i }));
+    await waitFor(() => expect(screen.getByText('Create your account')).toBeInTheDocument());
+
+    // Forward again, then OTP -> back to the recovery-email step
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+    await waitFor(() => expect(screen.getByText('Set your password')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^next$/i }));
+    await waitFor(() => expect(screen.getByText('Add a recovery email')).toBeInTheDocument());
+    await userEvent.type(screen.getByPlaceholderText(/you@example\.com/i), 'personal@gmail.com');
+    fireEvent.click(screen.getByRole('button', { name: /send verification code/i }));
+    await waitFor(() => expect(screen.getByText('Verify your email')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /change email/i }));
+    await waitFor(() => expect(screen.getByText('Add a recovery email')).toBeInTheDocument());
+  });
+
   it('sends the verification code to the recovery email, not the new address', async () => {
     vi.mocked(api.publicSendRecoveryEmailOtp).mockResolvedValueOnce({
       success: true,

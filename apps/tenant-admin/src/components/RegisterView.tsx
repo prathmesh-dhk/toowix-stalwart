@@ -587,7 +587,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                         type="button"
                         className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setCurrentStep(1);
+                          setCurrentStep(3);
                           setError(null);
                         }}
                       >
@@ -697,7 +697,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
                         type="button"
                         className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setCurrentStep(2);
+                          setCurrentStep(1);
                           setError(null);
                         }}
                       >
