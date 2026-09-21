@@ -203,6 +203,21 @@ body {
   outline-offset: 2px;
 }
 
+.btn-success {
+  height: 40px;
+  padding: 0 16px;
+  background-color: var(--success-mid);
+  color: #FFFFFF;
+  font-size: 14px;
+}
+.btn-success:hover {
+  background-color: var(--success-dark);
+}
+.btn-success:focus {
+  outline: 2px solid var(--success-mid);
+  outline-offset: 2px;
+}
+
 /* Button Sizes */
 .btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
 .btn-md { height: 40px; padding: 0 16px; font-size: 14px; }

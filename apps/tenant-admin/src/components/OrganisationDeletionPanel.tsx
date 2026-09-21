@@ -93,7 +93,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
   const restoreLabel = deletion?.stage === 'requested' ? 'Never mind' : 'Restore organisation';
 
   const restoreButton = (
-    <button type="button" disabled={busy} onClick={restore} className="btn btn-secondary btn-sm" id="btn-cancel-organisation-deletion">
+    <button type="button" disabled={busy} onClick={restore} className={`btn btn-sm ${deletion?.stage === 'requested' ? 'btn-secondary' : 'btn-success'}`} id="btn-cancel-organisation-deletion">
       {restoreLabel}
     </button>
   );
