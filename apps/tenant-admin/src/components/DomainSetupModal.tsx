@@ -17,7 +17,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
-import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
+import { DnsProviderCredentialForm, type SuccessInfo } from './DnsProviderCredentialForm';
 import { WizardStepGraphic } from './WizardStepGraphic';
 
 interface DomainSetupModalProps {
@@ -120,8 +120,47 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       .catch(() => {});
   }, [isOpen]);
 
+  // A domain is created (in MongoDB AND in Stalwart) the moment a setup method is chosen, but it only
+  // "belongs" to the tenant once the wizard reports it through onDomainAdded. Anything created and then
+  // abandoned must be deleted again, or it lingers in Stalwart with nothing in the tenant's list.
+  const createdRef = useRef<DomainItem | null>(null);
+  const committedRef = useRef(false);
+  // Bumped on every close, so a request that finishes after the wizard was closed knows it was cancelled.
+  const sessionRef = useRef(0);
+
+  const discardDomain = (dom: DomainItem) => {
+    void (async () => {
+      try {
+        await api.deleteDomain(dom.id);
+      } catch (err) {
+        console.warn('[DomainSetup] Could not remove the abandoned domain:', err);
+      }
+    })();
+  };
+
+  /** Registers a newly created domain. Returns false (after deleting it) if the wizard was closed meanwhile. */
+  const adoptCreatedDomain = (dom: DomainItem, session: number): boolean => {
+    if (session !== sessionRef.current) {
+      discardDomain(dom);
+      return false;
+    }
+    createdRef.current = dom;
+    setCreatedDomain(dom);
+    return true;
+  };
+
+  /** Hands the domain to the tenant. From here on it must survive the wizard closing. */
+  const commitDomain = (dom: DomainItem) => {
+    committedRef.current = true;
+    onDomainAdded(dom);
+  };
+
   // Reset all state when modal closes
   const handleClose = () => {
+    if (createdRef.current && !committedRef.current) discardDomain(createdRef.current);
+    createdRef.current = null;
+    committedRef.current = false;
+    sessionRef.current += 1;
     if (pollingRef.current) clearInterval(pollingRef.current);
     detectedProviderPromiseRef.current = null;
     setDomainName('');
@@ -217,6 +256,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setError(null);
     setLoading(true);
 
+    const session = sessionRef.current;
     try {
       const clean = domainName.trim().toLowerCase();
       let detected: DnsProvider | null = null;
@@ -230,6 +270,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       }
 
       setLoading(false);
+      if (session !== sessionRef.current) return; // cancelled while detecting
 
       if (detected) {
         setProvider(detected);
@@ -246,8 +287,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               domainName: clean,
               planId: selectedPlanId || undefined,
             });
+            if (!adoptCreatedDomain(createRes.domain, session)) return;
             dom = createRes.domain;
-            setCreatedDomain(dom);
           } catch {
             // ignore
           }
@@ -268,13 +309,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
     if (!createdDomain) {
       setLoading(true);
+      const session = sessionRef.current;
       try {
         const clean = domainName.trim().toLowerCase();
         const res = await api.createTenantDomain({
           domainName: clean,
           planId: selectedPlanId || undefined,
         });
-        setCreatedDomain(res.domain);
+        if (!adoptCreatedDomain(res.domain, session)) return;
         goToStatus(res.domain);
       } catch (err: any) {
         setError(err?.message || 'Failed to initialize domain. Please try again.');
@@ -342,9 +384,25 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
   const handleFinish = () => {
     if (createdDomain) {
-      onDomainAdded(createdDomain);
+      commitDomain(createdDomain);
     }
     handleClose();
+  };
+
+  // Snapshot for the provider form: it may finish connecting after this render's wizard was closed.
+  const renderSession = sessionRef.current;
+
+  const handleProviderSuccess = (info: SuccessInfo, newDom: DomainItem | undefined, session: number) => {
+    if (newDom ? !adoptCreatedDomain(newDom, session) : session !== sessionRef.current) return;
+
+    const dom = newDom ?? createdDomain;
+    setConnected(true);
+    if (info.usedSavedKey) {
+      if (dom) commitDomain(dom);
+      handleClose();
+    } else {
+      goToStatus(dom);
+    }
   };
 
   if (!isOpen) return null;
@@ -746,17 +804,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   planId={selectedPlanId || undefined}
                   provider="godaddy"
                   theme="light"
-                  onSuccess={(info, newDom) => {
-                    const dom = newDom ?? createdDomain;
-                    if (dom) setCreatedDomain(dom);
-                    setConnected(true);
-                    if (info.usedSavedKey) {
-                      if (dom) onDomainAdded(dom);
-                      handleClose();
-                    } else {
-                      goToStatus(dom);
-                    }
-                  }}
+                  onSuccess={(info, newDom) => handleProviderSuccess(info, newDom, renderSession)}
                 />
               </div>
             )}
@@ -797,17 +845,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   planId={selectedPlanId || undefined}
                   provider="hostinger"
                   theme="light"
-                  onSuccess={(info, newDom) => {
-                    const dom = newDom ?? createdDomain;
-                    if (dom) setCreatedDomain(dom);
-                    setConnected(true);
-                    if (info.usedSavedKey) {
-                      if (dom) onDomainAdded(dom);
-                      handleClose();
-                    } else {
-                      goToStatus(dom);
-                    }
-                  }}
+                  onSuccess={(info, newDom) => handleProviderSuccess(info, newDom, renderSession)}
                 />
               </div>
             )}
@@ -848,17 +886,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   planId={selectedPlanId || undefined}
                   provider="cloudflare"
                   theme="light"
-                  onSuccess={(info, newDom) => {
-                    const dom = newDom ?? createdDomain;
-                    if (dom) setCreatedDomain(dom);
-                    setConnected(true);
-                    if (info.usedSavedKey) {
-                      if (dom) onDomainAdded(dom);
-                      handleClose();
-                    } else {
-                      goToStatus(dom);
-                    }
-                  }}
+                  onSuccess={(info, newDom) => handleProviderSuccess(info, newDom, renderSession)}
                 />
               </div>
             )}

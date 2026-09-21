@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DomainSetupModal } from '../../src/components/DomainSetupModal';
 import { api } from '../../src/api';
@@ -17,6 +17,7 @@ vi.mock('../../src/api', () => ({
     startDomainCheckout: vi.fn(),
     detectDnsProvider: vi.fn(),
     checkDomainAvailability: vi.fn(),
+    deleteDomain: vi.fn(),
   },
 }));
 
@@ -53,6 +54,7 @@ describe('DomainSetupModal Component', () => {
     // method-picker step exactly as before this feature was added.
     vi.mocked(api.detectDnsProvider).mockResolvedValue({ provider: null, nameservers: [] });
     vi.mocked(api.checkDomainAvailability).mockResolvedValue({ available: true });
+    vi.mocked(api.deleteDomain).mockResolvedValue({ success: true, domainName: 'x' });
   });
 
   it('blocks advancing past the domain step when the domain is already taken, without touching plan/provider steps', async () => {
@@ -343,6 +345,7 @@ describe('DomainSetupModal Component', () => {
     expect(onDomainAdded).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
     expect(api.startDomainCheckout).not.toHaveBeenCalled();
+    expect(api.deleteDomain).not.toHaveBeenCalled();
   });
 
   it('lets "Back" from an auto-skipped setup step reach the method picker as an override', async () => {
@@ -432,5 +435,123 @@ describe('DomainSetupModal Component', () => {
       })
     );
     expect(onClose).toHaveBeenCalled();
+    expect(api.deleteDomain).not.toHaveBeenCalled();
+  });
+
+  describe('cancelling the wizard', () => {
+    const exitWizard = () => userEvent.click(screen.getByRole('button', { name: /exit domain setup/i }));
+
+    it('deletes a domain that was already created (in Mongo and Stalwart) and does not add it to the tenant', async () => {
+      vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-abandoned-1',
+        domainName: 'abandoned.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+      const onDomainAdded = vi.fn();
+      const onClose = vi.fn();
+
+      render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
+      await enterDomainAndContinue('abandoned.io');
+      await screen.findByText('10 Seats');
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      expect(await screen.findByText('DNS Setup — abandoned.io')).toBeInTheDocument();
+
+      await exitWizard();
+
+      expect(api.deleteDomain).toHaveBeenCalledTimes(1);
+      expect(api.deleteDomain).toHaveBeenCalledWith('dom-abandoned-1');
+      expect(onDomainAdded).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('deletes nothing when it is cancelled before any domain was created', async () => {
+      const onClose = vi.fn();
+      render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={vi.fn()} />);
+
+      await enterDomainAndContinue('neverwritten.io');
+      await exitWizard();
+
+      expect(api.createTenantDomain).not.toHaveBeenCalled();
+      expect(api.deleteDomain).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('still closes, and does not crash, if cleaning up the domain fails', async () => {
+      vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: {
+        id: 'dom-abandoned-2',
+        domainName: 'flaky.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+      vi.mocked(api.deleteDomain).mockRejectedValueOnce(new Error('network down'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const onClose = vi.fn();
+
+      render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={vi.fn()} />);
+      await enterDomainAndContinue('flaky.io');
+      await screen.findByText('10 Seats');
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await screen.findByText('DNS Setup — flaky.io');
+
+      await exitWizard();
+
+      expect(onClose).toHaveBeenCalled();
+      await waitFor(() => expect(warn).toHaveBeenCalled());
+      warn.mockRestore();
+    });
+
+    it('deletes the domain if the wizard was closed while it was still being created', async () => {
+      // Creation includes Stalwart DKIM polling, so it can take several seconds — long enough to cancel.
+      let finishCreation!: (value: any) => void;
+      vi.mocked(api.createTenantDomain).mockReturnValueOnce(new Promise((resolve) => (finishCreation = resolve)) as any);
+      const onDomainAdded = vi.fn();
+
+      render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={onDomainAdded} />);
+      await enterDomainAndContinue('inflight.io');
+      await screen.findByText('10 Seats');
+      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await waitFor(() => expect(api.createTenantDomain).toHaveBeenCalled());
+
+      await exitWizard(); // cancel while the request is still running
+      expect(api.deleteDomain).not.toHaveBeenCalled(); // nothing to delete yet
+
+      finishCreation({
+      success: true,
+      domain: {
+        id: 'dom-inflight-1',
+        domainName: 'inflight.io',
+        status: 'active',
+        dnsStatus: 'not_started',
+        mailboxLimit: 10,
+        employeeCount: 10,
+        planId: 'plan-10',
+        planName: 'Team',
+        mailboxCount: 0,
+        isPrimary: false,
+      },
+    });
+
+      await waitFor(() => expect(api.deleteDomain).toHaveBeenCalledWith('dom-inflight-1'));
+      expect(onDomainAdded).not.toHaveBeenCalled();
+    });
   });
 });
