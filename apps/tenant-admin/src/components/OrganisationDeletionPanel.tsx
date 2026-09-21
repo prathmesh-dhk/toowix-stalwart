@@ -137,7 +137,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
             </p>
           </div>
           {domainCount > 0 ? (
-            <div className="mx-auto w-full max-w-2xl flex flex-col gap-3">
+            <div className="w-full max-w-2xl flex flex-col gap-3">
               <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900" id="organisation-deletion-domains-notice">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
@@ -153,7 +153,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
               )}
             </div>
           ) : (
-            <div className="mx-auto w-full max-w-2xl flex justify-start">
+            <div className="w-full max-w-2xl flex justify-start">
               <button type="button" onClick={() => setAskingReason(true)} className="btn btn-danger btn-sm flex items-center gap-1.5" id="btn-start-organisation-deletion">
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Delete organisation…</span>

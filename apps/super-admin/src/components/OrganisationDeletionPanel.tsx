@@ -131,7 +131,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
       {/* Nothing in progress: explain, then ask for a reason */}
       {!deletion && !askingReason && (
         <>
-          <div className="flex flex-col gap-1 mx-auto w-full max-w-2xl">
+          <div className="flex flex-col gap-1 w-full max-w-2xl">
             <span className="text-xs font-semibold text-slate-900">Permanently delete {organisationName}</span>
             <p className="text-xs text-slate-500 leading-relaxed">
               Deletes the organisation with all of its domains, mailboxes, DNS credentials and administrator accounts. This cannot be undone,
@@ -140,7 +140,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
             </p>
           </div>
           {domainCount > 0 ? (
-            <div className="mx-auto w-full max-w-2xl flex flex-col gap-3">
+            <div className="w-full max-w-2xl flex flex-col gap-3">
               <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900" id="organisation-deletion-domains-notice">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
@@ -149,7 +149,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
               </div>
             </div>
           ) : (
-            <div className="mx-auto w-full max-w-2xl flex justify-start">
+            <div className="w-full max-w-2xl flex justify-start">
               <button type="button" onClick={() => setAskingReason(true)} className="btn btn-danger btn-sm flex items-center gap-1.5" id="btn-start-organisation-deletion">
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Delete organisation…</span>
@@ -161,7 +161,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
 
       {/* Step 1: reason */}
       {!deletion && askingReason && (
-        <div className="flex flex-col gap-3 mx-auto w-full max-w-2xl">
+        <div className="flex flex-col gap-3 w-full max-w-2xl">
           <label htmlFor="deletion-reason" className="text-xs font-semibold text-slate-900">
             Reason for deletion <span className="font-normal text-slate-500">(optional, kept in the audit record)</span>
           </label>
@@ -184,7 +184,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
 
       {/* Step 2: exact name — this is what suspends the organisation */}
       {deletion?.nextAction === 'confirm_name' && (
-        <div className="flex flex-col gap-3 mx-auto w-full max-w-2xl">
+        <div className="flex flex-col gap-3 w-full max-w-2xl">
           <label htmlFor="deletion-name" className="text-xs font-semibold text-slate-900">
             Type <span className="underline">{deletion.organisationName}</span> exactly to confirm
           </label>
@@ -209,7 +209,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
 
       {/* Step 3: suspended, 7-day wait, then request the code */}
       {deletion?.nextAction === 'initiate_otp' && (
-        <div className="flex flex-col gap-3 mx-auto w-full max-w-2xl">
+        <div className="flex flex-col gap-3 w-full max-w-2xl">
           <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
@@ -234,7 +234,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
 
       {/* Step 4a: code requested, 24-hour wait, then it is emailed */}
       {deletion?.nextAction === 'generate_final_otp' && (
-        <div className="flex flex-col gap-3 mx-auto w-full max-w-2xl">
+        <div className="flex flex-col gap-3 w-full max-w-2xl">
           {!unlocked && deletion.nextActionAvailableAt ? (
             waitNotice(`Deletion code requested. It can be emailed to you after ${timings?.otpWaitHours ?? 24} hours, on`, deletion.nextActionAvailableAt)
           ) : (
@@ -253,7 +253,7 @@ export const OrganisationDeletionPanel: React.FC<OrganisationDeletionPanelProps>
 
       {/* Step 4b: enter the code — this deletes the organisation */}
       {deletion?.nextAction === 'verify_final_otp' && (
-        <div className="flex flex-col gap-3 mx-auto w-full max-w-2xl">
+        <div className="flex flex-col gap-3 w-full max-w-2xl">
           <label htmlFor="deletion-otp" className="text-xs font-semibold text-slate-900">
             Enter the 6-digit code emailed to your address
           </label>
