@@ -95,7 +95,13 @@ platformTenantRouter.get('/:id', async (req: Request, res: Response) => {
     const [domains, admins, mailboxes, auditLogs] = await Promise.all([
       DomainModel.find({ tenantId: tenant._id }).sort({ isPrimary: -1, createdAt: 1 }),
       AdminUserModel.find({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).sort({ createdAt: 1 }),
-      MailboxModel.find({ tenantId: tenant._id }).sort({ createdAt: 1 }),
+      // Includes this tenant's own dhkmail mailboxes (filed under the platform tenant's raw
+      // tenantId, with ownerTenantId pointing back here) and excludes every OTHER tenant's dhkmail
+      // mailboxes when viewing the platform tenant itself — see MailboxService.listMailboxes for
+      // why the `ownerTenantId: null` guard on the first branch is required.
+      MailboxModel.find({
+        $or: [{ tenantId: tenant._id, ownerTenantId: null }, { ownerTenantId: tenant._id }],
+      }).sort({ createdAt: 1 }),
       AuditLogModel.find({ tenantId: tenant._id }).sort({ timestamp: -1 }).limit(50),
     ]);
 
@@ -794,7 +800,11 @@ platformTenantRouter.delete('/:id', async (req: Request, res: Response) => {
 
   const tenantName = tenant.name;
   const domainNames = (await DomainModel.find({ tenantId: tenant._id })).map((d) => d.domainName);
-  const mailboxesDeleted = await MailboxModel.countDocuments({ tenantId: tenant._id });
+  // Matches purgeTenant's own widened filter (own domains + this tenant's dhkmail mailboxes via
+  // ownerTenantId), so this summary count isn't an undercount for a tenant using dhkmail.
+  const mailboxesDeleted = await MailboxModel.countDocuments({
+    $or: [{ tenantId: tenant._id }, { ownerTenantId: tenant._id }],
+  });
 
   try {
     const [admin, context] = await Promise.all([AdminUserModel.findById(req.adminUser!.id).select('name'), captureRequestContext(req)]);

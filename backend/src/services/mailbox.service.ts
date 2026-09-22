@@ -313,9 +313,13 @@ export class MailboxService {
       return [];
     }
 
-    // A tenant's mailboxes are either filed under their own tenantId (ordinary domains) or under
-    // the shared platform domain's owner with ownerTenantId pointing back at them (dhkmail).
-    const filter: any = { $or: [{ tenantId }, { ownerTenantId: tenantId }] };
+    // A tenant's mailboxes are either filed under their own tenantId with no override (ordinary
+    // domains, or their own login-identity mailbox) or under the shared platform domain's owner
+    // with ownerTenantId pointing back at them (dhkmail). The `ownerTenantId: null` guard on the
+    // first branch matters specifically for the platform tenant itself: every dhkmail mailbox's
+    // raw tenantId is the platform tenant, so without it, listing "for" the platform tenant would
+    // wrongly include every OTHER tenant's dhkmail mailboxes too.
+    const filter: any = { $or: [{ tenantId, ownerTenantId: null }, { ownerTenantId: tenantId }] };
     if (domainId && mongoose.Types.ObjectId.isValid(domainId)) {
       filter.domainId = domainId;
     }
@@ -349,7 +353,7 @@ export class MailboxService {
       if (!mongoose.Types.ObjectId.isValid(tenantId)) {
         return null;
       }
-      filter.$or = [{ tenantId }, { ownerTenantId: tenantId }];
+      filter.$or = [{ tenantId, ownerTenantId: null }, { ownerTenantId: tenantId }];
     }
 
     const doc = await MailboxModel.findOne(filter);
