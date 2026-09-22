@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requireTenantAdmin, requireAnyAdmin } from '../auth/middleware';
 import { MailboxService } from '../services/mailbox.service';
 import { stalwartClient } from '../stalwart/client';
+import { DomainModel } from '../db/models/Domain';
+import { config } from '../config';
 
 export const tenantMailboxRouter = Router();
 export const mailboxRouter = Router();
@@ -107,12 +109,29 @@ tenantMailboxRouter.post('/', async (req: Request, res: Response): Promise<void>
   }
 
   try {
-    const mailbox = await MailboxService.createMailbox(
-      tenantId,
-      parsed.data,
-      req.adminUser?.id || req.user?.id,
-      req.adminUser?.role || req.user?.role
-    );
+    // Same endpoint for both domain types: a request targeting the shared platform domain
+    // (dhkmail.com) is billed and quota-checked per-tenant on DomainSubscription instead of
+    // per-domain on Domain/Tenant — see MailboxService.createSharedDomainMailbox.
+    let isSharedDomain = false;
+    if (parsed.data.domainId) {
+      const targetDomain = await DomainModel.findById(parsed.data.domainId).select('domainName');
+      isSharedDomain = targetDomain?.domainName === config.platformMailDomain;
+    }
+
+    const mailbox = isSharedDomain
+      ? await MailboxService.createSharedDomainMailbox(
+          tenantId,
+          parsed.data.localPart,
+          parsed.data.password,
+          req.adminUser?.id || req.user?.id,
+          req.adminUser?.role || req.user?.role
+        )
+      : await MailboxService.createMailbox(
+          tenantId,
+          parsed.data,
+          req.adminUser?.id || req.user?.id,
+          req.adminUser?.role || req.user?.role
+        );
     res.status(201).json(mailbox);
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });

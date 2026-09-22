@@ -12,6 +12,12 @@ export interface IMailboxSecurityProfile {
 
 export interface IMailbox extends Document {
   tenantId: Types.ObjectId;
+  // Set only for a mailbox on the shared platform domain (dhkmail.com), where `tenantId` above is
+  // the platform's own system tenant (matching the Domain it lives on), not a real customer. This
+  // field is the real owner: the customer tenant that created it, sees it in their own mailbox
+  // list, and pays for it. Null for every ordinary mailbox on a tenant-owned domain, where
+  // `tenantId` already names the real owner and this field would be redundant.
+  ownerTenantId?: Types.ObjectId | null;
   domainId: Types.ObjectId;
   localPart: string;
   address: string;
@@ -57,6 +63,12 @@ const MailboxSchema = new Schema<IMailbox>(
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
       required: true,
+      index: true,
+    },
+    ownerTenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      default: null,
       index: true,
     },
     domainId: {

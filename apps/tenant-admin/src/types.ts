@@ -98,6 +98,8 @@ export interface DomainItem {
   mailboxCount: number;
   isPrimary: boolean;
   createdAt?: string;
+  // True only for the shared platform domain (dhkmail.com) — no DNS/provider setup applies to it.
+  isSharedDomain?: boolean;
 }
 
 export type PlanBillingMode = 'fixed' | 'metered';

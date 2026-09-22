@@ -35,7 +35,7 @@ export async function runGraceSweepOnce(): Promise<GraceSweepResult> {
 
     let suspended = 0;
     for (const sub of expired) {
-      await suspendDomainForNonPayment(sub.domainId.toString());
+      await suspendDomainForNonPayment(sub.domainId.toString(), sub.tenantId.toString());
       sub.status = 'suspended';
       await sub.save();
       await logAudit({

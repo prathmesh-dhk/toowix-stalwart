@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import mongoose from 'mongoose';
 import { connectDatabase, disconnectDatabase } from '../src/db/connection';
 import {
   TenantModel,
@@ -8,6 +9,7 @@ import {
   MailboxModel,
   OrganisationDeletionModel,
   BlockedRegistrationIdentityModel,
+  DomainSubscriptionModel,
 } from '../src/db/models';
 import { stalwartClient } from '../src/stalwart/client';
 import { emailService } from '../src/services/email.service';
@@ -456,6 +458,68 @@ describe('organisation deletion state machine', () => {
       // The identity mailbox lives under the platform tenant, so a plain {tenantId} sweep would miss it.
       expect(await MailboxModel.findOne({ address: 'olivia@dhkmail.com' })).toBeNull();
       expect(stalwartClient.deleteAccount).toHaveBeenCalledWith('stalwart-platform-1');
+    });
+
+    it('purges the tenant\'s own dhkmail mailboxes and subscription, freeing their names for another tenant, without touching other tenants\' dhkmail usage', async () => {
+      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active', mailboxLimit: 1000, mailboxCount: 0 });
+      const platformDomain = await DomainModel.create({ tenantId: platformTenant._id, domainName: 'dhkmail.com', status: 'active', dnsStatus: 'active', isPrimary: true, mailboxLimit: 1000 });
+      const otherTenant = await TenantModel.create({ name: 'Rival Inc', status: 'active' });
+
+      await DomainSubscriptionModel.create({
+        domainId: platformDomain._id,
+        tenantId,
+        planId: new mongoose.Types.ObjectId(),
+        stripeSubscriptionId: 'sub_ours',
+        stripeSubscriptionItemId: 'si_ours',
+        status: 'active',
+        mailboxLimit: 5,
+        mailboxCount: 1,
+      });
+      await DomainSubscriptionModel.create({
+        domainId: platformDomain._id,
+        tenantId: otherTenant._id,
+        planId: new mongoose.Types.ObjectId(),
+        stripeSubscriptionId: 'sub_theirs',
+        stripeSubscriptionItemId: 'si_theirs',
+        status: 'active',
+        mailboxLimit: 5,
+        mailboxCount: 1,
+      });
+
+      const ourMailbox = await MailboxModel.create({
+        tenantId: platformTenant._id,
+        ownerTenantId: tenantId,
+        domainId: platformDomain._id,
+        localPart: 'sales',
+        address: 'sales@dhkmail.com',
+        stalwartAccountId: 'stalwart-ours',
+        status: 'active',
+      });
+      await MailboxModel.create({
+        tenantId: platformTenant._id,
+        ownerTenantId: otherTenant._id,
+        domainId: platformDomain._id,
+        localPart: 'support',
+        address: 'support@dhkmail.com',
+        stalwartAccountId: 'stalwart-theirs',
+        status: 'active',
+      });
+
+      await advanceTo('final_otp_sent');
+      await verifyFinalOtp(input(at(VERIFY_AT), { code: sentOtps[0] }));
+
+      // Our dhkmail mailbox and subscription row are gone, freeing 'sales' for reuse...
+      expect(await MailboxModel.findById(ourMailbox._id)).toBeNull();
+      expect(stalwartClient.deleteAccount).toHaveBeenCalledWith('stalwart-ours');
+      expect(await DomainSubscriptionModel.findOne({ domainId: platformDomain._id, tenantId })).toBeNull();
+      // ...our tenant never incremented the platform tenant's own mailboxCount, so nothing to refund.
+      expect((await TenantModel.findById(platformTenant._id))!.mailboxCount).toBe(0);
+
+      // ...but the other tenant's dhkmail mailbox, subscription, and the shared Domain itself are
+      // completely untouched.
+      expect(await MailboxModel.findOne({ address: 'support@dhkmail.com' })).not.toBeNull();
+      expect(await DomainSubscriptionModel.findOne({ domainId: platformDomain._id, tenantId: otherTenant._id })).not.toBeNull();
+      expect(await DomainModel.findById(platformDomain._id)).not.toBeNull();
     });
 
     it('records the super admin, not the tenant, when a super admin drives the flow', async () => {

@@ -9,11 +9,16 @@ export type DomainSubscriptionStatus =
   | 'suspended'
   | 'canceled';
 
-// One row per Domain (1:1) — own collection, mirroring DomainDnsCredential's
-// reasoning: keeps this operational/billing sub-state out of normal Domain
-// reads, and lets a Domain exist happily with none of this at all (a domain
-// that never subscribed has no DomainSubscription row — that IS the
-// 'never subscribed' state, checked at mailbox-creation time).
+// Normally one row per Domain (1:1) — own collection, mirroring DomainDnsCredential's reasoning:
+// keeps this operational/billing sub-state out of normal Domain reads, and lets a Domain exist
+// happily with none of this at all (a domain that never subscribed has no DomainSubscription row
+// — that IS the 'never subscribed' state, checked at mailbox-creation time).
+//
+// EXCEPTION: the platform's own shared mail domain (config.platformMailDomain, e.g. dhkmail.com —
+// see db/seed.ts) is used by MANY tenants as a substitute for owning a domain, so it can have many
+// rows, one per tenant. domainId is therefore unique only together with tenantId, not alone — for
+// every other (single-owner) domain this is no looser than before, since only that domain's one
+// owning tenant will ever create a row against it.
 export interface IDomainSubscription extends Document {
   domainId: Types.ObjectId;
   tenantId: Types.ObjectId;
@@ -40,6 +45,16 @@ export interface IDomainSubscription extends Document {
   // change (downgrade scheduled for next renewal) — Stripe's schedule is
   // the actual source of truth; this is for display only.
   pendingDowngradePlanId?: Types.ObjectId | null;
+  // Seat cap for THIS row. For a normal domain this mirrors Domain.mailboxLimit (which stays the
+  // source of truth there — this field is unused for those). For the shared platform domain,
+  // Domain.mailboxLimit is a single field that can't represent many tenants' separate caps, so
+  // THIS row is the only place a tenant's shared-domain seat count can live.
+  mailboxLimit: number;
+  // Atomic counter mirroring mailboxLimit's role: how many mailboxes THIS tenant currently has on
+  // the domain this row is for. Only meaningful (and only updated) for the shared platform domain
+  // — a normal domain's count is read live via MailboxModel.countDocuments({domainId}) instead,
+  // same as always.
+  mailboxCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,7 +65,6 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
       type: Schema.Types.ObjectId,
       ref: 'Domain',
       required: true,
-      unique: true,
       index: true,
     },
     tenantId: {
@@ -105,6 +119,16 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
       ref: 'Plan',
       default: null,
     },
+    mailboxLimit: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    mailboxCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,
@@ -112,6 +136,7 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
   }
 );
 
+DomainSubscriptionSchema.index({ domainId: 1, tenantId: 1 }, { unique: true });
 DomainSubscriptionSchema.index({ status: 1, gracePeriodEndsAt: 1 });
 
 export const DomainSubscriptionModel = mongoose.model<IDomainSubscription>(

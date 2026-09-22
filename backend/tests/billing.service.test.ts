@@ -24,6 +24,8 @@ vi.mock('../src/stripe/client', () => ({
 }));
 
 import { stripeClient } from '../src/stripe/client';
+import { config } from '../src/config';
+import { seedPlatformIdentityDomain } from '../src/db/seed';
 import {
   startCheckout,
   handleWebhookEvent,
@@ -34,6 +36,9 @@ import {
   requestDowngrade,
   cancelSubscription,
   getTenantBillingSummary,
+  startSharedDomainCheckout,
+  getSharedDomainBillingStatus,
+  cancelSharedDomainSubscription,
   BillingError,
 } from '../src/services/billing.service';
 
@@ -339,16 +344,56 @@ describe('billing.service', () => {
         status: 'active',
       });
 
-      await suspendDomainForNonPayment(domain._id.toString());
+      await suspendDomainForNonPayment(domain._id.toString(), tenantId);
 
       expect((await DomainModel.findById(domain._id))?.status).toBe('suspended');
       expect((await DomainModel.findById(otherDomain._id))?.status).toBe('active');
       expect((await MailboxModel.findById(mailbox._id))?.status).toBe('suspended');
       expect(stalwartClient.updateDomainStatus).toHaveBeenCalledWith('stalwart-dom-1', false);
 
-      await reactivateDomainForPayment(domain._id.toString());
+      await reactivateDomainForPayment(domain._id.toString(), tenantId);
       expect((await DomainModel.findById(domain._id))?.status).toBe('active');
       expect((await MailboxModel.findById(mailbox._id))?.status).toBe('active');
+    });
+
+    it('on the shared platform domain, only touches the paying tenant, never the domain itself or other tenants', async () => {
+      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active' });
+      const otherTenantId = (await TenantModel.create({ name: 'Rival Inc', status: 'active' }))._id.toString();
+      const sharedDomain = await DomainModel.create({
+        tenantId: platformTenant._id,
+        domainName: 'dhkmail.com',
+        stalwartDomainId: 'stalwart-shared',
+        status: 'active',
+      });
+
+      const ourMailbox = await MailboxModel.create({
+        tenantId: platformTenant._id,
+        ownerTenantId: tenantId,
+        domainId: sharedDomain._id,
+        localPart: 'sales',
+        address: 'sales@dhkmail.com',
+        status: 'active',
+      });
+      const theirMailbox = await MailboxModel.create({
+        tenantId: platformTenant._id,
+        ownerTenantId: otherTenantId,
+        domainId: sharedDomain._id,
+        localPart: 'support',
+        address: 'support@dhkmail.com',
+        status: 'active',
+      });
+
+      await suspendDomainForNonPayment(sharedDomain._id.toString(), tenantId);
+
+      // Only our mailbox is suspended; the other tenant's mailbox and the shared Domain itself
+      // (used by every tenant) are left completely alone.
+      expect((await MailboxModel.findById(ourMailbox._id))?.status).toBe('suspended');
+      expect((await MailboxModel.findById(theirMailbox._id))?.status).toBe('active');
+      expect((await DomainModel.findById(sharedDomain._id))?.status).toBe('active');
+      expect(stalwartClient.updateDomainStatus).not.toHaveBeenCalled();
+
+      await reactivateDomainForPayment(sharedDomain._id.toString(), tenantId);
+      expect((await MailboxModel.findById(ourMailbox._id))?.status).toBe('active');
     });
   });
 
@@ -547,6 +592,155 @@ describe('billing.service', () => {
       expect(summary.domains).toHaveLength(2);
       expect(summary.domains.map((d) => d.domainName).sort()).toEqual(['sum1.com', 'sum2.com']);
       expect(summary.domains[0].planName).toBe('Team');
+    });
+  });
+
+  describe('startSharedDomainCheckout / getSharedDomainBillingStatus / cancelSharedDomainSubscription', () => {
+    let sharedDomainId: string;
+
+    beforeEach(async () => {
+      await seedPlatformIdentityDomain();
+      const sharedDomain = await DomainModel.findOne({ domainName: config.platformMailDomain });
+      sharedDomainId = sharedDomain!._id.toString();
+    });
+
+    it('creates a Stripe Checkout Session for a tenant\'s first dhkmail subscription', async () => {
+      vi.mocked(stripeClient.createCheckoutSession).mockResolvedValue({ url: 'https://checkout.stripe.com/dhkmail' } as any);
+
+      const result = await startSharedDomainCheckout(tenantId, fixedPlanId, actor);
+
+      expect(result).toMatchObject({ url: 'https://checkout.stripe.com/dhkmail' });
+      expect(stripeClient.createCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({ metadata: { domainId: sharedDomainId, tenantId, planId: fixedPlanId } })
+      );
+    });
+
+    it('attaches to an existing owned-domain subscription instead of starting a new Checkout', async () => {
+      const ownedDomain = await DomainModel.create({ tenantId, domainName: 'acme.com', planId: fixedPlanId, status: 'active' });
+      await DomainSubscriptionModel.create({
+        domainId: ownedDomain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_existing',
+        stripeSubscriptionItemId: 'si_existing',
+        status: 'active',
+      });
+      vi.mocked(stripeClient.addSubscriptionItem).mockResolvedValue({ id: 'si_dhkmail' } as any);
+
+      const result = await startSharedDomainCheckout(tenantId, fixedPlanId, actor);
+
+      expect(result).toEqual({ attached: true });
+      expect(stripeClient.createCheckoutSession).not.toHaveBeenCalled();
+      const sub = await DomainSubscriptionModel.findOne({ domainId: sharedDomainId, tenantId });
+      expect(sub).toMatchObject({ stripeSubscriptionId: 'sub_existing', stripeSubscriptionItemId: 'si_dhkmail', mailboxLimit: 10 });
+    });
+
+    it('rejects starting a second dhkmail checkout when this tenant already has an active one', async () => {
+      await DomainSubscriptionModel.create({
+        domainId: sharedDomainId,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_dhkmail',
+        stripeSubscriptionItemId: 'si_dhkmail',
+        status: 'active',
+      });
+
+      await expect(startSharedDomainCheckout(tenantId, fixedPlanId, actor)).rejects.toMatchObject({
+        code: 'SUBSCRIPTION_EXISTS',
+      });
+    });
+
+    it('a second tenant subscribing to dhkmail does not collide with the first tenant\'s row', async () => {
+      const otherTenantId = (await TenantModel.create({ name: 'Rival Inc', status: 'active' }))._id.toString();
+      vi.mocked(stripeClient.createCheckoutSession).mockResolvedValue({ url: 'https://checkout.stripe.com/a' } as any);
+      await startSharedDomainCheckout(tenantId, fixedPlanId, actor);
+
+      vi.mocked(stripeClient.createCheckoutSession).mockResolvedValue({ url: 'https://checkout.stripe.com/b' } as any);
+      const result = await startSharedDomainCheckout(otherTenantId, fixedPlanId, { ...actor, id: 'admin-2' });
+      expect(result).toMatchObject({ url: 'https://checkout.stripe.com/b' });
+      expect(await DomainSubscriptionModel.countDocuments({ domainId: sharedDomainId })).toBe(0); // neither reached checkout.session.completed yet
+    });
+
+    it('getSharedDomainBillingStatus returns this tenant\'s own row, not another tenant\'s', async () => {
+      const otherTenantId = (await TenantModel.create({ name: 'Rival Inc', status: 'active' }))._id.toString();
+      await DomainSubscriptionModel.create({
+        domainId: sharedDomainId,
+        tenantId: otherTenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_other',
+        stripeSubscriptionItemId: 'si_other',
+        status: 'active',
+      });
+
+      const status = await getSharedDomainBillingStatus(tenantId);
+      expect(status.subscription).toBeNull();
+
+      const otherStatus = await getSharedDomainBillingStatus(otherTenantId);
+      expect(otherStatus.subscription).toMatchObject({ stripeSubscriptionId: 'sub_other' });
+    });
+
+    it('cancelSharedDomainSubscription cancels only this tenant\'s row', async () => {
+      const otherTenantId = (await TenantModel.create({ name: 'Rival Inc', status: 'active' }))._id.toString();
+      await DomainSubscriptionModel.create({
+        domainId: sharedDomainId,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_mine',
+        stripeSubscriptionItemId: 'si_mine',
+        status: 'active',
+      });
+      await DomainSubscriptionModel.create({
+        domainId: sharedDomainId,
+        tenantId: otherTenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_theirs',
+        stripeSubscriptionItemId: 'si_theirs',
+        status: 'active',
+      });
+
+      await cancelSharedDomainSubscription(tenantId, actor);
+
+      // Dhkmail is the only item on this tenant's own Stripe subscription, so cancellation is
+      // scheduled for period end (Stripe's own webhook flips status to 'canceled' once it lands).
+      const mine = await DomainSubscriptionModel.findOne({ domainId: sharedDomainId, tenantId });
+      expect(mine!.cancelAtPeriodEnd).toBe(true);
+      expect(stripeClient.cancelAtPeriodEnd).toHaveBeenCalledWith('sub_mine', true);
+      const theirs = await DomainSubscriptionModel.findOne({ domainId: sharedDomainId, tenantId: otherTenantId });
+      expect(theirs!.status).toBe('active');
+      expect(theirs!.cancelAtPeriodEnd).toBe(false);
+    });
+
+    it('cancelling one of two items on the same tenant subscription only detaches that item', async () => {
+      const ownedDomain = await DomainModel.create({ tenantId, domainName: 'acme.com', planId: fixedPlanId, status: 'active' });
+      await DomainSubscriptionModel.create({
+        domainId: ownedDomain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_combined',
+        stripeSubscriptionItemId: 'si_owned',
+        status: 'active',
+      });
+      await DomainSubscriptionModel.create({
+        domainId: sharedDomainId,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_combined',
+        stripeSubscriptionItemId: 'si_dhkmail',
+        status: 'active',
+      });
+
+      await cancelSharedDomainSubscription(tenantId, actor);
+
+      expect(stripeClient.removeSubscriptionItem).toHaveBeenCalledWith('si_dhkmail');
+      const dhkmailSub = await DomainSubscriptionModel.findOne({ domainId: sharedDomainId, tenantId });
+      expect(dhkmailSub!.status).toBe('canceled');
+      // The owned domain's item on the same combined subscription is untouched.
+      const ownedSub = await DomainSubscriptionModel.findOne({ domainId: ownedDomain._id, tenantId });
+      expect(ownedSub!.status).toBe('active');
+    });
+
+    it('rejects cancelling when this tenant has no dhkmail subscription', async () => {
+      await expect(cancelSharedDomainSubscription(tenantId, actor)).rejects.toMatchObject({ code: 'NO_SUBSCRIPTION' });
     });
   });
 });

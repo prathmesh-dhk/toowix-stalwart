@@ -32,6 +32,19 @@ async function loadDomainForActor(domainId: string, tenantId: string): Promise<I
   return domain;
 }
 
+/** The one shared platform domain (dhkmail.com) every tenant's own dhkmail subscription points at. */
+async function loadSharedDomain(): Promise<IDomain> {
+  const domain = await DomainModel.findOne({ domainName: config.platformMailDomain });
+  if (!domain) {
+    throw new BillingError(
+      `Platform identity domain '${config.platformMailDomain}' is not provisioned yet.`,
+      'PLATFORM_DOMAIN_MISSING',
+      503
+    );
+  }
+  return domain;
+}
+
 /**
  * Starts billing for one Domain. Free/skippable step in the domain-setup
  * wizard — the actual hard gate on payment is at first mailbox creation
@@ -258,21 +271,36 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
  * Mirrors the tenant-wide suspend cascade in platform-tenant.routes.ts, but
  * scoped to a single domain. Kept as a separate function rather than a
  * refactor of that already-tested route — see billing plan doc.
+ *
+ * `tenantId` is the DomainSubscription row's own tenant — the caller always has it on hand (a
+ * webhook/sweep always starts from a subscription row). For an ordinary domain it equals
+ * domain.tenantId, so nothing changes. For the shared platform domain (dhkmail), many tenants'
+ * subscriptions point at the SAME domainId — acting on {domainId} alone would suspend/reactivate
+ * every other tenant's mailboxes on it too, and toggling the Domain's own status/Stalwart domain
+ * would take the whole shared domain down for everyone over one tenant's non-payment. So when the
+ * domain's real owner differs from the paying tenant, this scopes to that tenant's own mailboxes
+ * (ownerTenantId) and never touches the shared Domain document or its Stalwart domain record.
  */
-export async function suspendDomainForNonPayment(domainId: string): Promise<void> {
-  const domain = await DomainModel.findByIdAndUpdate(domainId, { status: 'suspended' }, { returnDocument: 'after' });
+export async function suspendDomainForNonPayment(domainId: string, tenantId: string): Promise<void> {
+  const domain = await DomainModel.findById(domainId);
   if (!domain) return;
 
-  if (domain.stalwartDomainId) {
-    try {
-      await stalwartClient.updateDomainStatus(domain.stalwartDomainId, false);
-    } catch (err: any) {
-      console.warn(`[BillingService] Failed to disable Stalwart domain ${domain.stalwartDomainId}:`, err.message);
+  const isSharedDomain = domain.tenantId.toString() !== tenantId;
+  const mailboxFilter = isSharedDomain ? { domainId: domain._id, ownerTenantId: tenantId } : { domainId: domain._id };
+
+  if (!isSharedDomain) {
+    await DomainModel.findByIdAndUpdate(domainId, { status: 'suspended' });
+    if (domain.stalwartDomainId) {
+      try {
+        await stalwartClient.updateDomainStatus(domain.stalwartDomainId, false);
+      } catch (err: any) {
+        console.warn(`[BillingService] Failed to disable Stalwart domain ${domain.stalwartDomainId}:`, err.message);
+      }
     }
   }
 
-  const mailboxes = await MailboxModel.find({ domainId: domain._id });
-  await MailboxModel.updateMany({ domainId: domain._id }, { status: 'suspended' });
+  const mailboxes = await MailboxModel.find(mailboxFilter);
+  await MailboxModel.updateMany(mailboxFilter, { status: 'suspended' });
   for (const mailbox of mailboxes) {
     if (mailbox.stalwartAccountId) {
       try {
@@ -288,24 +316,30 @@ export async function suspendDomainForNonPayment(domainId: string): Promise<void
     action: 'DOMAIN_SUSPENDED_NONPAYMENT',
     resource: 'DOMAIN',
     resourceId: domain._id.toString(),
-    tenantId: String(domain.tenantId),
+    tenantId,
   });
 }
 
-export async function reactivateDomainForPayment(domainId: string): Promise<void> {
-  const domain = await DomainModel.findByIdAndUpdate(domainId, { status: 'active' }, { returnDocument: 'after' });
+export async function reactivateDomainForPayment(domainId: string, tenantId: string): Promise<void> {
+  const domain = await DomainModel.findById(domainId);
   if (!domain) return;
 
-  if (domain.stalwartDomainId) {
-    try {
-      await stalwartClient.updateDomainStatus(domain.stalwartDomainId, true);
-    } catch (err: any) {
-      console.warn(`[BillingService] Failed to re-enable Stalwart domain ${domain.stalwartDomainId}:`, err.message);
+  const isSharedDomain = domain.tenantId.toString() !== tenantId;
+  const mailboxFilter = isSharedDomain ? { domainId: domain._id, ownerTenantId: tenantId } : { domainId: domain._id };
+
+  if (!isSharedDomain) {
+    await DomainModel.findByIdAndUpdate(domainId, { status: 'active' });
+    if (domain.stalwartDomainId) {
+      try {
+        await stalwartClient.updateDomainStatus(domain.stalwartDomainId, true);
+      } catch (err: any) {
+        console.warn(`[BillingService] Failed to re-enable Stalwart domain ${domain.stalwartDomainId}:`, err.message);
+      }
     }
   }
 
-  const mailboxes = await MailboxModel.find({ domainId: domain._id });
-  await MailboxModel.updateMany({ domainId: domain._id }, { status: 'active' });
+  const mailboxes = await MailboxModel.find(mailboxFilter);
+  await MailboxModel.updateMany(mailboxFilter, { status: 'active' });
   for (const mailbox of mailboxes) {
     if (mailbox.stalwartAccountId) {
       try {
@@ -321,7 +355,7 @@ export async function reactivateDomainForPayment(domainId: string): Promise<void
     action: 'DOMAIN_REACTIVATED_PAYMENT',
     resource: 'DOMAIN',
     resourceId: domain._id.toString(),
-    tenantId: String(domain.tenantId),
+    tenantId,
   });
 }
 
@@ -544,6 +578,181 @@ export async function cancelSubscription(domainId: string, tenantId: string, act
   });
 }
 
+/**
+ * Starts (or attaches) billing for a tenant's OWN seat allowance on the shared platform domain
+ * (dhkmail.com). Deliberately not a branch inside startCheckout(): that function's ownership check
+ * (loadDomainForActor) can never match the shared domain (it's owned by the platform's system
+ * tenant, not the caller), and DomainSubscriptionModel is looked up by {domainId, tenantId} here
+ * instead of {domainId} alone, since many tenants share this one domainId. Otherwise mirrors
+ * startCheckout's combined-subscription logic exactly: first dhkmail subscription for this tenant
+ * opens real Stripe Checkout, a later one (there is only ever one — dhkmail has no per-domain
+ * plan tiers beyond this) would attach as a sibling item, same as a second owned domain would.
+ */
+export async function startSharedDomainCheckout(
+  tenantId: string,
+  planId: string,
+  actor: BillingActor
+): Promise<{ url: string } | { attached: true }> {
+  const domain = await loadSharedDomain();
+  const plan = await PlanModel.findById(planId);
+  if (!plan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
+
+  if (!isBillingEnabled()) {
+    await DomainSubscriptionModel.findOneAndUpdate(
+      { domainId: domain._id, tenantId },
+      {
+        domainId: domain._id,
+        tenantId,
+        planId: plan._id,
+        status: 'active',
+        cancelAtPeriodEnd: false,
+        mailboxLimit: plan.seatCount,
+      },
+      { upsert: true }
+    );
+    return { attached: true };
+  }
+
+  const existing = await DomainSubscriptionModel.findOne({ domainId: domain._id, tenantId });
+  if (existing && !['canceled', 'incomplete'].includes(existing.status)) {
+    throw new BillingError(`This organisation already has an active ${config.platformMailDomain} subscription`, 'SUBSCRIPTION_EXISTS', 409);
+  }
+
+  const tenant = await TenantModel.findById(tenantId);
+  if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+
+  const priceId = await stripeClient.getOrCreatePrice(plan);
+  const quantity = plan.billingMode === 'fixed' ? plan.seatCount : undefined;
+
+  const sibling = await DomainSubscriptionModel.findOne({ tenantId, status: { $nin: ['canceled', 'incomplete'] } });
+
+  if (sibling) {
+    const item = await stripeClient.addSubscriptionItem(sibling.stripeSubscriptionId, priceId, quantity);
+    await DomainSubscriptionModel.findOneAndUpdate(
+      { domainId: domain._id, tenantId },
+      {
+        domainId: domain._id,
+        tenantId,
+        planId: plan._id,
+        stripeSubscriptionId: sibling.stripeSubscriptionId,
+        stripeSubscriptionItemId: item.id,
+        status: sibling.status,
+        currentPeriodEnd: sibling.currentPeriodEnd,
+        trialEnd: sibling.trialEnd,
+        cancelAtPeriodEnd: false,
+        mailboxLimit: plan.seatCount,
+      },
+      { upsert: true }
+    );
+
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId,
+      action: 'BILLING_DHKMAIL_ATTACHED_TO_EXISTING_SUBSCRIPTION',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { planId: plan._id.toString(), stripeSubscriptionId: sibling.stripeSubscriptionId },
+    });
+
+    return { attached: true };
+  }
+
+  const customerId = await stripeClient.getOrCreateCustomer(tenant);
+  const session = await stripeClient.createCheckoutSession({
+    customerId,
+    priceId,
+    isMetered: plan.billingMode === 'metered',
+    quantity: plan.seatCount,
+    trialPeriodDays: TRIAL_DAYS,
+    successUrl: `${config.tenantAdminUrl}/billing?checkout=success&domainId=${domain._id}`,
+    cancelUrl: `${config.tenantAdminUrl}/billing?checkout=cancelled&domainId=${domain._id}`,
+    metadata: { domainId: domain._id.toString(), tenantId, planId: plan._id.toString() },
+  });
+
+  await logAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actorEmail: actor.email,
+    tenantId,
+    action: 'BILLING_DHKMAIL_CHECKOUT_STARTED',
+    resource: 'DOMAIN',
+    resourceId: domain._id.toString(),
+    metadata: { planId: plan._id.toString() },
+  });
+
+  if (!session.url) throw new BillingError('Stripe did not return a checkout URL', 'STRIPE_ERROR', 502);
+  return { url: session.url };
+}
+
+export async function getSharedDomainBillingStatus(tenantId: string) {
+  const domain = await loadSharedDomain();
+  const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id, tenantId }).populate('planId');
+  if (!sub && !isBillingEnabled()) {
+    return {
+      domain,
+      subscription: null,
+    };
+  }
+  return { domain, subscription: sub };
+}
+
+/**
+ * Cancels a tenant's OWN dhkmail subscription row — never the shared Domain document, which stays
+ * owned by the platform and used by every other tenant. Mirrors cancelSubscription's
+ * last-domain-on-the-shared-Stripe-subscription check exactly, just scoped by {domainId, tenantId}
+ * instead of {domainId} so it only ever finds this tenant's row.
+ */
+export async function cancelSharedDomainSubscription(tenantId: string, actor: BillingActor): Promise<void> {
+  const domain = await loadSharedDomain();
+  if (!isBillingEnabled()) {
+    await DomainSubscriptionModel.deleteOne({ domainId: domain._id, tenantId });
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId,
+      action: 'BILLING_DHKMAIL_CANCEL_REQUESTED',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { bypassed: true },
+    });
+    return;
+  }
+
+  const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id, tenantId });
+  if (!sub) throw new BillingError(`No active ${config.platformMailDomain} subscription for this organisation`, 'NO_SUBSCRIPTION', 400);
+
+  const siblingCount = await DomainSubscriptionModel.countDocuments({
+    stripeSubscriptionId: sub.stripeSubscriptionId,
+    status: { $nin: ['canceled'] },
+    domainId: { $ne: domain._id },
+  });
+
+  if (siblingCount === 0) {
+    await stripeClient.cancelAtPeriodEnd(sub.stripeSubscriptionId, true);
+    sub.cancelAtPeriodEnd = true;
+    await sub.save();
+  } else {
+    await stripeClient.removeSubscriptionItem(sub.stripeSubscriptionItemId);
+    sub.status = 'canceled';
+    sub.cancelAtPeriodEnd = false;
+    await sub.save();
+  }
+
+  await logAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actorEmail: actor.email,
+    tenantId,
+    action: 'BILLING_DHKMAIL_CANCEL_REQUESTED',
+    resource: 'DOMAIN',
+    resourceId: domain._id.toString(),
+    metadata: { wasLastDomainOnSubscription: siblingCount === 0 },
+  });
+}
+
 function mapStripeStatus(status: Stripe.Subscription.Status): DomainSubscriptionStatus {
   switch (status) {
     case 'trialing':
@@ -584,9 +793,13 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
       const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
       const subscription = await stripeClient.retrieveSubscription(subscriptionId);
       const item = subscription.items.data[0];
+      const plan = await PlanModel.findById(planId);
 
+      // Filtered by {domainId, tenantId}, not {domainId} alone: on the shared platform domain many
+      // tenants' subscriptions share one domainId, and a domainId-only filter would match (and
+      // overwrite) whichever other tenant's row happened to exist first.
       await DomainSubscriptionModel.findOneAndUpdate(
-        { domainId },
+        { domainId, tenantId },
         {
           domainId,
           tenantId,
@@ -597,6 +810,9 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
           currentPeriodEnd: item.current_period_end ? new Date(item.current_period_end * 1000) : null,
           trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          // Unused by an ordinary domain (Domain.mailboxLimit is authoritative there); this is what
+          // caps a tenant's own seat count on the shared platform domain.
+          mailboxLimit: plan?.seatCount ?? 0,
         },
         { upsert: true, new: true }
       );
@@ -680,8 +896,9 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
 
         if (wasInGrace) {
           const domain = await DomainModel.findById(sub.domainId);
-          if (domain?.status === 'suspended') {
-            await reactivateDomainForPayment(sub.domainId.toString());
+          const isSharedDomain = domain && domain.tenantId.toString() !== sub.tenantId.toString();
+          if (domain?.status === 'suspended' || isSharedDomain) {
+            await reactivateDomainForPayment(sub.domainId.toString(), sub.tenantId.toString());
           }
         }
       }

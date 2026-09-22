@@ -16,6 +16,8 @@ vi.mock('../../src/api', () => ({
     upgradeDomainPlan: vi.fn(),
     downgradeDomainPlan: vi.fn(),
     cancelDomainSubscription: vi.fn(),
+    getDhkmailBillingStatus: vi.fn(),
+    cancelDhkmailSubscription: vi.fn(),
   },
 }));
 
@@ -215,5 +217,73 @@ describe('BillingView Component', () => {
 
     expect(await screen.findByText('paid')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /view/i })).toHaveAttribute('href', 'https://invoice.stripe.com/test');
+  });
+
+  describe('the shared platform domain (dhkmail.com)', () => {
+    const mockSharedDomain: DomainItem = {
+      ...mockDomain,
+      id: 'shared-domain-id',
+      domainName: 'dhkmail.com',
+      isSharedDomain: true,
+    };
+
+    const activeSub = {
+      status: 'active' as const,
+      planId: 'plan-team',
+      currentPeriodEnd: '2026-10-15T00:00:00.000Z',
+      trialEnd: null,
+      gracePeriodEndsAt: null,
+      cancelAtPeriodEnd: false,
+    };
+
+    it('loads status through the dhkmail endpoint, not the generic per-domain one', async () => {
+      vi.mocked(api.getDhkmailBillingStatus).mockResolvedValue({
+        domainId: 'shared-domain-id',
+        domainName: 'dhkmail.com',
+        subscription: activeSub,
+      });
+
+      render(<BillingView activeDomain={mockSharedDomain} />);
+
+      expect(await screen.findByText('Active')).toBeInTheDocument();
+      expect(api.getDhkmailBillingStatus).toHaveBeenCalled();
+      expect(api.getDomainBillingStatus).not.toHaveBeenCalled();
+    });
+
+    it('cancels through the dhkmail endpoint, not the generic one, and never touches the shared Domain', async () => {
+      vi.mocked(api.getDhkmailBillingStatus).mockResolvedValue({
+        domainId: 'shared-domain-id',
+        domainName: 'dhkmail.com',
+        subscription: activeSub,
+      });
+      vi.mocked(api.cancelDhkmailSubscription).mockResolvedValue({ success: true });
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(<BillingView activeDomain={mockSharedDomain} />);
+      await screen.findByText('Active');
+
+      await userEvent.click(screen.getByRole('button', { name: /cancel subscription/i }));
+
+      await waitFor(() => {
+        expect(api.cancelDhkmailSubscription).toHaveBeenCalled();
+        expect(api.cancelDomainSubscription).not.toHaveBeenCalled();
+      });
+    });
+
+    it('hides "Update Payment Method" and the plan picker — dhkmail has no per-domain routes for either', async () => {
+      vi.mocked(api.getDhkmailBillingStatus).mockResolvedValue({
+        domainId: 'shared-domain-id',
+        domainName: 'dhkmail.com',
+        subscription: activeSub,
+      });
+
+      render(<BillingView activeDomain={mockSharedDomain} />);
+      await screen.findByText('Active');
+
+      expect(screen.queryByRole('button', { name: /update payment method/i })).not.toBeInTheDocument();
+      expect(screen.queryByText('Change Plan')).not.toBeInTheDocument();
+      // Cancel is still offered — it has its own dhkmail-specific route.
+      expect(screen.getByRole('button', { name: /cancel subscription/i })).toBeInTheDocument();
+    });
   });
 });
