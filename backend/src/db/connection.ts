@@ -10,7 +10,36 @@ import {
   BackupRecordModel,
   SystemSettingsModel,
   AdminSessionModel,
+  DomainSubscriptionModel,
 } from './models';
+
+/**
+ * Drops any index on `domain_subscriptions` that still enforces the old single-field
+ * `{domainId: 1}` uniqueness, now that the shared platform domain (dhkmail.com) needs many
+ * tenants to hold a row against the same domainId — see DomainSubscriptionSchema's compound
+ * `{domainId, tenantId}` unique index. Mongoose's createIndexes() only ADDS indexes missing from
+ * the current schema; it never drops ones that predate a schema change, so every environment that
+ * had this collection before that change (including already-deployed servers) keeps the stale
+ * unique constraint forever unless something explicitly removes it. Idempotent and self-healing:
+ * a no-op once the old index is gone, safe to run on every boot.
+ */
+async function dropStaleDomainSubscriptionIndex(): Promise<void> {
+  try {
+    const indexes = await DomainSubscriptionModel.collection.indexes();
+    const stale = indexes.find(
+      (idx) => idx.unique && Object.keys(idx.key).length === 1 && idx.key.domainId === 1
+    );
+    if (stale?.name) {
+      await DomainSubscriptionModel.collection.dropIndex(stale.name);
+      console.log(`[DB Migration] Dropped stale single-field unique index '${stale.name}' on domain_subscriptions`);
+    }
+  } catch (err: any) {
+    // Collection may not exist yet on a fresh database — nothing to migrate.
+    if (err?.codeName !== 'NamespaceNotFound') {
+      console.warn('[DB Migration] Failed to check/drop stale domain_subscriptions index:', err.message);
+    }
+  }
+}
 
 export interface DbConnectionOptions {
   uri: string;
@@ -39,6 +68,7 @@ export async function connectDatabase(options: DbConnectionOptions): Promise<typ
 
     // Ensure all compound unique indexes are built
     if (autoIndex) {
+      await dropStaleDomainSubscriptionIndex();
       await Promise.all([
         TenantModel.createIndexes(),
         DomainModel.createIndexes(),
@@ -50,6 +80,7 @@ export async function connectDatabase(options: DbConnectionOptions): Promise<typ
         BackupRecordModel.createIndexes(),
         SystemSettingsModel.createIndexes(),
         AdminSessionModel.createIndexes(),
+        DomainSubscriptionModel.createIndexes(),
       ]);
     }
 
