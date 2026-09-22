@@ -1,4 +1,4 @@
-export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN';
+export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'TENANT_MODERATOR';
 export type UserRole = AdminRole;
 
 export interface UserContext {
@@ -7,6 +7,16 @@ export interface UserContext {
   role: AdminRole;
   tenantId?: string | null;
   twoFactorEnabled?: boolean;
+}
+
+export interface ModeratorItem {
+  id: string;
+  email: string;
+  role: 'TENANT_MODERATOR';
+  status: 'active' | 'disabled';
+  twoFactorEnabled: boolean;
+  scopedDomainIds: string[];
+  createdAt: string;
 }
 
 export interface RegistrationApplication {
@@ -24,6 +34,8 @@ export interface RegistrationApplication {
   reviewedBy?: { _id: string; email: string } | string | null;
   reviewedAt?: string | null;
   rejectionReason?: string | null;
+  tenantId?: string | null;
+  domainId?: string | null;
   createdAt?: string;
   updatedAt?: string;
   submittedAt?: string;

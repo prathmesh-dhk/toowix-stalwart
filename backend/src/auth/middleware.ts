@@ -3,6 +3,7 @@ import { verifyOidcToken } from './service';
 import { AdminUserContext } from './types';
 import { sessionService } from '../services/session.service';
 import { checkAndIncrementRateLimit, clearRateLimitKey, resetAllRateLimits } from '../utils/rate-limit';
+import { AdminUserModel } from '../db/models/AdminUser';
 
 // Brute-force login rate limiting — backed by MongoDB (see utils/rate-limit.ts)
 // so attempt counts survive a backend restart/redeploy instead of resetting.
@@ -110,11 +111,65 @@ export function requireTenantAdmin(req: Request, res: Response, next: NextFuncti
   });
 }
 
+/**
+ * Populates req.adminUser.scopedDomainIds for a TENANT_MODERATOR actor (one small DB read — the
+ * JWT deliberately doesn't carry scope, so a Tenant Admin revoking a domain takes effect on this
+ * moderator's very next request, not just their next login). Returns false (having already sent
+ * a response) if the account can't be loaded or is disabled; true otherwise, including for every
+ * non-moderator role, which this is simply a no-op for.
+ */
+async function loadModeratorScope(req: Request, res: Response): Promise<boolean> {
+  if (!req.adminUser || req.adminUser.role !== 'TENANT_MODERATOR') return true;
+  try {
+    const doc = await AdminUserModel.findById(req.adminUser.id).select('scopedDomainIds status');
+    if (!doc || doc.status !== 'active') {
+      res.status(403).json({ error: 'FORBIDDEN', message: 'Account is disabled' });
+      return false;
+    }
+    req.adminUser.scopedDomainIds = doc.scopedDomainIds.map((id) => id.toString());
+    return true;
+  } catch (err) {
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to load account scope' });
+    return false;
+  }
+}
+
+/**
+ * Gates routes a Moderator is allowed to reach at all (today: mailbox management, and reading
+ * their own tenant/domain summary) — same tenant-scoped authentication as requireTenantAdmin, but
+ * also accepts TENANT_MODERATOR. Domain-level restriction within those routes is a SEPARATE check
+ * (isDomainInScope below), since "may use this route" and "may touch this specific domain" are
+ * different questions.
+ */
+export async function requireTenantAdminOrModerator(req: Request, res: Response, next: NextFunction) {
+  requireAuth(req, res, async () => {
+    if (!req.adminUser || !req.adminUser.tenantId || (req.adminUser.role !== 'TENANT_ADMIN' && req.adminUser.role !== 'TENANT_MODERATOR')) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Requires Tenant Admin or Moderator privileges' });
+    }
+    if (await loadModeratorScope(req, res)) next();
+  });
+}
+
+/**
+ * True if this actor may touch the given domain. Tenant Admin (and Super Admin) are unrestricted
+ * within their own tenant boundary (already enforced elsewhere); a Moderator is restricted to
+ * req.adminUser.scopedDomainIds, populated by requireTenantAdminOrModerator above. Default-deny:
+ * an undefined/empty scopedDomainIds means no access, not unrestricted access.
+ */
+export function isDomainInScope(adminUser: AdminUserContext, domainId: string): boolean {
+  if (adminUser.role !== 'TENANT_MODERATOR') return true;
+  return !!adminUser.scopedDomainIds?.includes(domainId);
+}
+
 export function requireAnyAdmin(req: Request, res: Response, next: NextFunction) {
-  requireAuth(req, res, () => {
-    if (!req.adminUser || (req.adminUser.role !== 'SUPER_ADMIN' && req.adminUser.role !== 'TENANT_ADMIN')) {
+  requireAuth(req, res, async () => {
+    if (
+      !req.adminUser ||
+      (req.adminUser.role !== 'SUPER_ADMIN' && req.adminUser.role !== 'TENANT_ADMIN' && req.adminUser.role !== 'TENANT_MODERATOR')
+    ) {
       return res.status(403).json({ error: 'FORBIDDEN', message: 'Requires Admin privileges' });
     }
+    if (!(await loadModeratorScope(req, res))) return;
     next();
   });
 }

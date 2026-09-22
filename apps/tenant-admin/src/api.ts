@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView, ModeratorItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -214,6 +214,21 @@ export const api = {
   // Tenant Admin - Self View & Multi-Domain
   getTenantMe: () => request<{ tenant: TenantSummary }>('/api/tenants/me'),
   listTenantDomains: () => request<{ domains: DomainItem[] }>('/api/tenants/me/domains'),
+
+  // Moderator accounts — Tenant-Admin-only (a Moderator hitting these gets a 403 from the server).
+  listModerators: () => request<{ moderators: ModeratorItem[] }>('/api/tenants/me/moderators'),
+  createModerator: (body: { email: string; password: string; scopedDomainIds: string[] }) =>
+    request<{ moderator: ModeratorItem }>('/api/tenants/me/moderators', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateModerator: (id: string, body: { scopedDomainIds?: string[]; status?: 'active' | 'disabled' }) =>
+    request<{ moderator: ModeratorItem }>(`/api/tenants/me/moderators/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteModerator: (id: string) =>
+    request<{ message: string }>(`/api/tenants/me/moderators/${id}`, { method: 'DELETE' }),
   createTenantDomain: (body: { domainName: string; planId: string }) =>
     // Domain is created unprovisioned (dnsStatus: 'not_started'). Stalwart/DNS
     // provisioning only happens when a Super Admin clicks "Activate Domain".

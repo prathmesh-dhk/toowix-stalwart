@@ -19,6 +19,7 @@ vi.mock('../../src/api', () => ({
     listTenantDomains: vi.fn(),
     createTenantDomain: vi.fn(),
     deleteDomain: vi.fn(),
+    listPlans: vi.fn().mockResolvedValue({ plans: [] }),
     getDomainDnsStatus: vi.fn().mockResolvedValue({
       dnsStatus: 'active',
       dnsRecords: [],
@@ -35,6 +36,7 @@ vi.mock('../../src/api', () => ({
         { id: 'mb-1', address: 'user@acmecorp.com', localPart: 'user', domainId: 'dom-1', domainName: 'acmecorp.com', storageBytes: 1048576, storageFormatted: '1.0 MB', percentage: 100, status: 'active', createdAt: '2026-09-01T00:00:00Z' }
       ]
     }),
+    listModerators: vi.fn().mockResolvedValue({ moderators: [] }),
   },
   clearStoredToken: vi.fn(),
 }));
@@ -615,6 +617,65 @@ describe('TenantAdminDashboard Component', () => {
         expect(screen.getByText('No Domains Configured')).toBeInTheDocument();
         expect(screen.getAllByRole('button', { name: /add domain/i }).length).toBeGreaterThanOrEqual(1);
       });
+    });
+
+    it('opens DomainSetupModal when clicking "+ Add Domain" button in Domains tab header', async () => {
+      renderDashboard();
+
+      expect(await screen.findByText('Admin Overview')).toBeInTheDocument();
+
+      const domainsNavBtn = screen.getByRole('button', { name: /domains & dns/i });
+      fireEvent.click(domainsNavBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Domain Configuration')).toBeInTheDocument();
+      });
+
+      const addDomainBtn = screen.getByRole('button', { name: /add domain/i });
+      expect(addDomainBtn).toBeInTheDocument();
+
+      fireEvent.click(addDomainBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/how do you want to add a domain\?/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Tenant Moderator role restriction', () => {
+    const mockModerator: UserContext = {
+      id: 'moderator-user-1',
+      email: 'mod@acmecorp.com',
+      role: 'TENANT_MODERATOR',
+      tenantId: 'tenant-123',
+    };
+
+    it('only shows the Mailboxes nav tab, hides everything Tenant-Admin-only', async () => {
+      renderDashboard({ user: mockModerator });
+
+      await waitFor(() => expect(screen.getByRole('button', { name: /mailboxes/i })).toBeInTheDocument());
+
+      expect(screen.queryByRole('button', { name: /^dashboard$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /storage/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /billing/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /domains & dns/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^security$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^team$/i })).not.toBeInTheDocument();
+    });
+
+    it('lands on the Mailboxes tab by default instead of Dashboard', async () => {
+      renderDashboard({ user: mockModerator });
+
+      await waitFor(() => expect(screen.getByText('alice@acmecorp.com')).toBeInTheDocument());
+      expect(screen.queryByText('Admin Overview')).not.toBeInTheDocument();
+    });
+
+    it("hides the domain switcher's Add Domain button", async () => {
+      renderDashboard({ user: mockModerator });
+
+      await waitFor(() => expect(screen.getByRole('button', { name: /mailboxes/i })).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: /add domain/i })).not.toBeInTheDocument();
     });
   });
 });

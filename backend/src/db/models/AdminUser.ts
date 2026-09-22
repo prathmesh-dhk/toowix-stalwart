@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN';
+export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'TENANT_MODERATOR';
 export type AdminUserStatus = 'active' | 'disabled';
 
 export interface ISecurityQuestionItem {
@@ -47,6 +47,9 @@ export interface IAdminUser extends Document {
     tokenHash: string;
     expiresAt: Date;
   } | null;
+  // Only meaningful for TENANT_MODERATOR — the domain IDs (within tenantId) this account may act
+  // on. Default-deny: empty means no access to anything, not unrestricted access.
+  scopedDomainIds: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -72,7 +75,7 @@ const AdminUserSchema = new Schema(
     },
     role: {
       type: String,
-      enum: ['SUPER_ADMIN', 'TENANT_ADMIN'],
+      enum: ['SUPER_ADMIN', 'TENANT_ADMIN', 'TENANT_MODERATOR'],
       required: true,
       index: true,
     },
@@ -86,12 +89,12 @@ const AdminUserSchema = new Schema(
           if (this.role === 'SUPER_ADMIN') {
             return value === null || value === undefined;
           }
-          if (this.role === 'TENANT_ADMIN') {
+          if (this.role === 'TENANT_ADMIN' || this.role === 'TENANT_MODERATOR') {
             return value !== null && value !== undefined;
           }
           return false;
         },
-        message: 'SUPER_ADMIN must not have a tenantId; TENANT_ADMIN must have a tenantId',
+        message: 'SUPER_ADMIN must not have a tenantId; TENANT_ADMIN/TENANT_MODERATOR must have a tenantId',
       },
     },
     status: {
@@ -153,6 +156,11 @@ const AdminUserSchema = new Schema(
     passwordResetToken: {
       tokenHash: { type: String, default: null },
       expiresAt: { type: Date, default: null },
+    },
+    scopedDomainIds: {
+      type: [Schema.Types.ObjectId],
+      ref: 'Domain',
+      default: [],
     },
   },
   {

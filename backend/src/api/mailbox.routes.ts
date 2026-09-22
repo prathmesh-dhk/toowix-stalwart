@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { requireTenantAdmin, requireAnyAdmin } from '../auth/middleware';
+import { requireTenantAdminOrModerator, requireAnyAdmin, isDomainInScope } from '../auth/middleware';
 import { MailboxService } from '../services/mailbox.service';
 import { stalwartClient } from '../stalwart/client';
 import { DomainModel } from '../db/models/Domain';
@@ -8,6 +8,23 @@ import { config } from '../config';
 
 export const tenantMailboxRouter = Router();
 export const mailboxRouter = Router();
+
+/**
+ * For a Moderator only: confirms the target mailbox exists and its domain is in scope before a
+ * write action runs, sending 404 (not 403 — avoids revealing whether the mailbox exists at all
+ * to someone outside its domain, same IDOR-prevention convention used elsewhere) and returning
+ * false if not. A no-op (true) for every other role — MailboxService's own tenantId-scoped lookup
+ * already handles their access boundary.
+ */
+async function assertMailboxInModeratorScope(req: Request, res: Response, mailboxId: string, tenantId?: string): Promise<boolean> {
+  if (!req.adminUser || req.adminUser.role !== 'TENANT_MODERATOR') return true;
+  const mailbox = await MailboxService.getMailboxById(mailboxId, tenantId);
+  if (!mailbox || !isDomainInScope(req.adminUser, mailbox.domainId)) {
+    res.status(404).json({ error: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' });
+    return false;
+  }
+  return true;
+}
 
 const createMailboxSchema = z.object({
   localPart: z
@@ -26,7 +43,7 @@ const resetPasswordSchema = z.object({
 // TENANT ADMIN SCOPED ROUTES (/api/tenants/me/mailboxes)
 // ==========================================
 
-tenantMailboxRouter.use(requireTenantAdmin);
+tenantMailboxRouter.use(requireTenantAdminOrModerator);
 
 tenantMailboxRouter.get('/', async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.adminUser?.tenantId || req.user?.tenantId;
@@ -36,9 +53,18 @@ tenantMailboxRouter.get('/', async (req: Request, res: Response): Promise<void> 
   }
 
   const domainId = typeof req.query.domainId === 'string' && req.query.domainId.trim() ? req.query.domainId.trim() : undefined;
+  if (domainId && req.adminUser && !isDomainInScope(req.adminUser, domainId)) {
+    res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain not found' });
+    return;
+  }
 
   try {
-    const mailboxes = await MailboxService.listMailboxes(tenantId, domainId);
+    let mailboxes = await MailboxService.listMailboxes(tenantId, domainId);
+    // No specific domain requested — a Moderator sees only mailboxes on their scoped domains,
+    // never the tenant's full list (domains outside scope must be completely invisible).
+    if (!domainId && req.adminUser?.role === 'TENANT_MODERATOR') {
+      mailboxes = mailboxes.filter((m) => isDomainInScope(req.adminUser!, m.domainId));
+    }
     res.status(200).json({ mailboxes });
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.code || 'INTERNAL_ERROR', message: err.message });
@@ -54,9 +80,16 @@ tenantMailboxRouter.get('/storage', async (req: Request, res: Response): Promise
   }
 
   const domainId = typeof req.query.domainId === 'string' && req.query.domainId.trim() ? req.query.domainId.trim() : undefined;
+  if (domainId && req.adminUser && !isDomainInScope(req.adminUser, domainId)) {
+    res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain not found' });
+    return;
+  }
 
   try {
-    const mailboxes = await MailboxService.listMailboxes(tenantId, domainId);
+    let mailboxes = await MailboxService.listMailboxes(tenantId, domainId);
+    if (!domainId && req.adminUser?.role === 'TENANT_MODERATOR') {
+      mailboxes = mailboxes.filter((m) => isDomainInScope(req.adminUser!, m.domainId));
+    }
     let storageMap = new Map<string, number>();
     try {
       storageMap = await stalwartClient.listAccountsWithStorage();
@@ -108,6 +141,15 @@ tenantMailboxRouter.post('/', async (req: Request, res: Response): Promise<void>
     return;
   }
 
+  if (req.adminUser?.role === 'TENANT_MODERATOR') {
+    // A Moderator must name the domain explicitly — createMailbox defaults a missing domainId to
+    // the tenant's primary domain, which would silently bypass scope if left to fall through.
+    if (!parsed.data.domainId || !isDomainInScope(req.adminUser, parsed.data.domainId)) {
+      res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain not found' });
+      return;
+    }
+  }
+
   try {
     // Same endpoint for both domain types: a request targeting the shared platform domain
     // (dhkmail.com) is billed and quota-checked per-tenant on DomainSubscription instead of
@@ -146,11 +188,11 @@ mailboxRouter.use(requireAnyAdmin);
 
 mailboxRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {
   const role = req.adminUser?.role || req.user?.role;
-  const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+  const tenantId = role === 'TENANT_ADMIN' || role === 'TENANT_MODERATOR' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
 
   try {
     const mailbox = await MailboxService.getMailboxById(req.params.id, tenantId);
-    if (!mailbox) {
+    if (!mailbox || (req.adminUser && !isDomainInScope(req.adminUser, mailbox.domainId))) {
       res.status(404).json({ error: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' });
       return;
     }
@@ -162,13 +204,15 @@ mailboxRouter.get('/:id', async (req: Request, res: Response): Promise<void> => 
 
 mailboxRouter.post('/:id/reset-password', async (req: Request, res: Response): Promise<void> => {
   const role = req.adminUser?.role || req.user?.role;
-  const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+  const tenantId = role === 'TENANT_ADMIN' || role === 'TENANT_MODERATOR' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
 
   const parsed = resetPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'VALIDATION_ERROR', details: parsed.error.flatten().fieldErrors });
     return;
   }
+
+  if (!(await assertMailboxInModeratorScope(req, res, req.params.id, tenantId))) return;
 
   try {
     await MailboxService.resetPassword(
@@ -186,7 +230,9 @@ mailboxRouter.post('/:id/reset-password', async (req: Request, res: Response): P
 
 mailboxRouter.post('/:id/suspend', async (req: Request, res: Response): Promise<void> => {
   const role = req.adminUser?.role || req.user?.role;
-  const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+  const tenantId = role === 'TENANT_ADMIN' || role === 'TENANT_MODERATOR' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+
+  if (!(await assertMailboxInModeratorScope(req, res, req.params.id, tenantId))) return;
 
   try {
     const mailbox = await MailboxService.suspendMailbox(
@@ -203,7 +249,9 @@ mailboxRouter.post('/:id/suspend', async (req: Request, res: Response): Promise<
 
 mailboxRouter.post('/:id/reactivate', async (req: Request, res: Response): Promise<void> => {
   const role = req.adminUser?.role || req.user?.role;
-  const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+  const tenantId = role === 'TENANT_ADMIN' || role === 'TENANT_MODERATOR' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+
+  if (!(await assertMailboxInModeratorScope(req, res, req.params.id, tenantId))) return;
 
   try {
     const mailbox = await MailboxService.reactivateMailbox(
@@ -220,7 +268,9 @@ mailboxRouter.post('/:id/reactivate', async (req: Request, res: Response): Promi
 
 mailboxRouter.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   const role = req.adminUser?.role || req.user?.role;
-  const tenantId = role === 'TENANT_ADMIN' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+  const tenantId = role === 'TENANT_ADMIN' || role === 'TENANT_MODERATOR' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
+
+  if (!(await assertMailboxInModeratorScope(req, res, req.params.id, tenantId))) return;
 
   try {
     await MailboxService.deleteMailbox(

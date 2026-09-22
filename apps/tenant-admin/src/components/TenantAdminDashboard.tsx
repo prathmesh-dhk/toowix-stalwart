@@ -13,6 +13,7 @@ import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSecurityView } from './DomainSecurityView';
+import { ModeratorsView } from './ModeratorsView';
 import {
   Loader2,
   LogOut,
@@ -69,7 +70,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   const [showDomainDeletionModal, setShowDomainDeletionModal] = useState(false);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security'>('dashboard');
+  // A Moderator's nav is restricted to Mailboxes only — everything else in this component
+  // (Dashboard, Storage, Billing, Domains, Security) is Tenant-Admin-only, so there's nothing to
+  // default to for them but the one tab they can actually see.
+  const isModerator = user?.role === 'TENANT_MODERATOR';
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team'>(
+    isModerator ? 'mailboxes' : 'dashboard'
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
@@ -638,31 +645,33 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             domains={domains}
             activeDomain={activeDomain}
             onSelectDomain={handleSelectDomain}
-            onOpenAddDomain={() => setShowDomainModal(true)}
+            onOpenAddDomain={isModerator ? undefined : () => setShowDomainModal(true)}
           />
 
           {/* Main Navigation Group */}
           <div className="flex flex-col gap-0.5">
-            {/* Dashboard */}
-            <button
-              onClick={() => setActiveNav('dashboard')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'dashboard'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-dashboard"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <LayoutDashboard
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'dashboard' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Dashboard</span>
-              </div>
-            </button>
+            {/* Dashboard — Tenant-Admin-only, same reasoning as Storage/Billing/Domains/Security below */}
+            {!isModerator && (
+              <button
+                onClick={() => setActiveNav('dashboard')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'dashboard'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-dashboard"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <LayoutDashboard
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'dashboard' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Dashboard</span>
+                </div>
+              </button>
+            )}
 
             {/* Mailboxes with dynamic Count Badge */}
             <button
@@ -689,95 +698,122 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             </button>
 
             {/* Storage */}
-            <button
-              onClick={() => setActiveNav('storage')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'storage'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-storage"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <HardDrive
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'storage' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Storage</span>
-              </div>
-            </button>
+            {!isModerator && (
+              <button
+                onClick={() => setActiveNav('storage')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'storage'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-storage"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <HardDrive
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'storage' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Storage</span>
+                </div>
+              </button>
+            )}
 
             {/* Billing */}
-            <button
-              onClick={() => setActiveNav('billing')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'billing'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-billing"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <CreditCard
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'billing' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Billing</span>
-              </div>
-            </button>
+            {!isModerator && (
+              <button
+                onClick={() => setActiveNav('billing')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'billing'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-billing"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <CreditCard
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'billing' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Billing</span>
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Divider matching Google Admin console */}
-          <div className="my-2 border-t border-slate-200/80" />
+          {!isModerator && <div className="my-2 border-t border-slate-200/80" />}
 
           {/* Security & Organization Governance */}
-          <div className="flex flex-col gap-0.5">
-            {/* Domains & DNS */}
-            <button
-              onClick={() => setActiveNav('domains')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'domains'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-domains"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <Globe
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'domains' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Domains & DNS</span>
-              </div>
-            </button>
+          {!isModerator && (
+            <div className="flex flex-col gap-0.5">
+              {/* Domains & DNS */}
+              <button
+                onClick={() => setActiveNav('domains')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'domains'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-domains"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <Globe
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'domains' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Domains & DNS</span>
+                </div>
+              </button>
 
-            {/* Security */}
-            <button
-              onClick={() => setActiveNav('security')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeNav === 'security'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-security"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <Shield
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeNav === 'security' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Security</span>
-              </div>
-            </button>
-          </div>
+              {/* Security */}
+              <button
+                onClick={() => setActiveNav('security')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'security'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-security"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <Shield
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'security' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Security</span>
+                </div>
+              </button>
+
+              {/* Team (Moderators) */}
+              <button
+                onClick={() => setActiveNav('team')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'team'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-team"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <Users
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'team' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Team</span>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -1421,6 +1457,23 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               </div>
             ) : (
             <section className="flex flex-col gap-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900">Domain Configuration</h1>
+                  <p className="text-xs text-slate-500">DNS routing and security records for {activeDomain.domainName}.</p>
+                </div>
+                {!isModerator && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDomainModal(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                    id="btn-add-domain-dashboard-domains-tab"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Domain</span>
+                  </button>
+                )}
+              </div>
               {/* Domain Health Card */}
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1621,6 +1674,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           {activeNav === 'security' && (
             <DomainSecurityView activeDomain={activeDomain} />
           )}
+
+          {/* ===================================================================== */}
+          {/* VIEW: TEAM (Moderator accounts, Tenant-Admin-only)                    */}
+          {/* ===================================================================== */}
+          {activeNav === 'team' && <ModeratorsView domains={domains} />}
 
         </main>
       </div>

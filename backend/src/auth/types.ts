@@ -1,4 +1,4 @@
-export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN';
+export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'TENANT_MODERATOR';
 
 export interface AdminUserContext {
   id: string;
@@ -6,6 +6,9 @@ export interface AdminUserContext {
   role: AdminRole;
   tenantId: string | null;
   twoFactorEnabled: boolean;
+  // Only meaningful for TENANT_MODERATOR: the domain IDs (within their own tenant) this account
+  // may act on. Empty/undefined for every other role, which are unrestricted within their tenant.
+  scopedDomainIds?: string[];
 }
 
 export interface OidcAuthTokenPayload {

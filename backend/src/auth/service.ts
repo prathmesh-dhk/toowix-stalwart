@@ -189,8 +189,11 @@ export async function authenticatePortalUser(
     return { success: false, error: 'Invalid email or password', statusCode: 401 };
   }
 
-  // Strict Backend-Authoritative Portal Gating
-  if (user.role !== portalType) {
+  // Strict Backend-Authoritative Portal Gating. The tenant-admin portal accepts both
+  // TENANT_ADMIN and TENANT_MODERATOR — same portal/login/2FA, different in-app privileges,
+  // enforced by route middleware, not at login.
+  const allowedRoles: AdminRole[] = portalType === 'TENANT_ADMIN' ? ['TENANT_ADMIN', 'TENANT_MODERATOR'] : [portalType];
+  if (!allowedRoles.includes(user.role)) {
     await AuditLogModel.create({
       actorId: user._id,
       actorRole: user.role,

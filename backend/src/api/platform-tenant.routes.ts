@@ -94,7 +94,7 @@ platformTenantRouter.get('/:id', async (req: Request, res: Response) => {
 
     const [domains, admins, mailboxes, auditLogs] = await Promise.all([
       DomainModel.find({ tenantId: tenant._id }).sort({ isPrimary: -1, createdAt: 1 }),
-      AdminUserModel.find({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).sort({ createdAt: 1 }),
+      AdminUserModel.find({ tenantId: tenant._id, role: { $in: ['TENANT_ADMIN', 'TENANT_MODERATOR'] } }).sort({ createdAt: 1 }),
       // Includes this tenant's own dhkmail mailboxes (filed under the platform tenant's raw
       // tenantId, with ownerTenantId pointing back here) and excludes every OTHER tenant's dhkmail
       // mailboxes when viewing the platform tenant itself — see MailboxService.listMailboxes for
@@ -658,7 +658,7 @@ platformTenantRouter.get('/:id/admins', async (req: Request, res: Response) => {
   const tenant = await TenantModel.findById(req.params.id);
   if (!tenant) return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
 
-  const admins = await AdminUserModel.find({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).sort({ createdAt: 1 });
+  const admins = await AdminUserModel.find({ tenantId: tenant._id, role: { $in: ['TENANT_ADMIN', 'TENANT_MODERATOR'] } }).sort({ createdAt: 1 });
 
   return res.status(200).json({
     admins: admins.map((a) => ({

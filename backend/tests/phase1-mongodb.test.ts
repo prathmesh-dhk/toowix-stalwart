@@ -138,7 +138,7 @@ describe('Phase 1: Foundation & MongoDB Data Layer', () => {
           role: 'TENANT_ADMIN',
           tenantId: null as any,
         })
-      ).rejects.toThrow(/TENANT_ADMIN must have a tenantId/);
+      ).rejects.toThrow(/TENANT_ADMIN\/TENANT_MODERATOR must have a tenantId/);
     });
 
     it('should enforce unique email across admin users', async () => {

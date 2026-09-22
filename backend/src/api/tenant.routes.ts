@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
-import { requireTenantAdmin } from '../auth/middleware';
+import { requireTenantAdmin, requireTenantAdminOrModerator, isDomainInScope } from '../auth/middleware';
 import { tenantDeletionRouter } from './organisation-deletion.routes';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainModel } from '../db/models/Domain';
@@ -38,30 +38,11 @@ export const tenantMeRouter = Router();
 // TENANT ADMIN SELF ROUTE (/api/tenants/me)
 // ==========================================
 
-tenantMeRouter.use(requireTenantAdmin);
-
-// The organisation-deletion flow itself (reason, name, OTP, restore).
-tenantMeRouter.use('/me/deletion', tenantDeletionRouter);
-
-// An organisation inside its deletion timeline is suspended: reads and the deletion flow above stay
-// available, every other change — including mailbox and billing writes mounted after this router —
-// is refused until the deletion is cancelled or completes.
-tenantMeRouter.use(async (req: Request, res: Response, next: NextFunction) => {
-  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
-  try {
-    const tenant = await TenantModel.findById(req.adminUser!.tenantId).select('status').lean();
-    if (tenant?.status === 'pending_deletion') {
-      res.status(423).json({
-        error: 'ORGANISATION_PENDING_DELETION',
-        message: 'This organisation is suspended while it is being deleted. Cancel the deletion to make changes.',
-      });
-      return;
-    }
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
+// Loose baseline: both Tenant Admin and Moderator authenticate here. Only /me and /me/domains
+// below are actually reachable by a Moderator — the stricter requireTenantAdmin gate further
+// down re-tightens everything else in this file (deletion, domain CRUD, DNS credentials,
+// security-ip) to Tenant-Admin-only, matching the settled scope for this role.
+tenantMeRouter.use(requireTenantAdminOrModerator);
 
 /**
  * The shared platform domain (dhkmail.com) as a domain-list entry for this tenant, if they have an
@@ -69,7 +50,7 @@ tenantMeRouter.use(async (req: Request, res: Response, next: NextFunction) => {
  * DomainSubscription row, not the (shared, unusable-per-tenant) Domain document — same reasoning as
  * mailbox.service.ts's createSharedDomainMailbox. Returns null when the tenant hasn't subscribed.
  */
-async function getSharedDomainListEntry(tenantId: string) {
+export async function getSharedDomainListEntry(tenantId: string) {
   const domain = await DomainModel.findOne({ domainName: config.platformMailDomain });
   if (!domain) return null;
 
@@ -149,7 +130,14 @@ tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => 
     const sharedDomainEntry = await getSharedDomainListEntry(tenant._id.toString());
     if (sharedDomainEntry) mappedDomains.push(sharedDomainEntry as any);
 
-    const primaryDomain = mappedDomains.find((d) => d.isPrimary) || mappedDomains[0] || null;
+    // A Moderator only ever sees their own scoped domains — everything else must be completely
+    // invisible, not merely read-only.
+    const visibleDomains =
+      req.adminUser!.role === 'TENANT_MODERATOR'
+        ? mappedDomains.filter((d) => isDomainInScope(req.adminUser!, d.id))
+        : mappedDomains;
+
+    const primaryDomain = visibleDomains.find((d) => d.isPrimary) || visibleDomains[0] || null;
 
     res.status(200).json({
       tenant: {
@@ -163,7 +151,7 @@ tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => 
         createdAt: tenant.createdAt.toISOString(),
         updatedAt: tenant.updatedAt.toISOString(),
         domain: primaryDomain, // Backwards compatibility
-        domains: mappedDomains,
+        domains: visibleDomains,
       },
     });
   } catch (err: any) {
@@ -209,10 +197,42 @@ tenantMeRouter.get(['/me/domains', '/domains'], async (req: Request, res: Respon
     const sharedDomainEntry = await getSharedDomainListEntry(tenantId);
     if (sharedDomainEntry) mappedDomains.push(sharedDomainEntry as any);
 
-    res.status(200).json({ domains: mappedDomains });
+    const visibleDomains =
+      req.adminUser!.role === 'TENANT_MODERATOR'
+        ? mappedDomains.filter((d) => isDomainInScope(req.adminUser!, d.id))
+        : mappedDomains;
+
+    res.status(200).json({ domains: visibleDomains });
   } catch (err: any) {
     console.error('[Tenant Domains List Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to retrieve domains' });
+  }
+});
+
+// Everything below this point is Tenant-Admin-only: domain setup/CRUD, DNS credentials,
+// security-ip management, and the organisation-deletion flow. A Moderator's access ends at the
+// two read-only routes above.
+tenantMeRouter.use(requireTenantAdmin);
+
+// The organisation-deletion flow itself (reason, name, OTP, restore).
+tenantMeRouter.use('/me/deletion', tenantDeletionRouter);
+
+// An organisation inside its deletion timeline is suspended: reads stay available, every write
+// from here on is refused until the deletion is cancelled or completes.
+tenantMeRouter.use(async (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  try {
+    const tenant = await TenantModel.findById(req.adminUser!.tenantId).select('status').lean();
+    if (tenant?.status === 'pending_deletion') {
+      res.status(423).json({
+        error: 'ORGANISATION_PENDING_DELETION',
+        message: 'This organisation is suspended while it is being deleted. Cancel the deletion to make changes.',
+      });
+      return;
+    }
+    next();
+  } catch (err) {
+    next(err);
   }
 });
 

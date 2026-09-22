@@ -30,6 +30,13 @@ const timingsForClient = {
 
 async function buildActor(req: Request): Promise<DeletionActor> {
   const user = req.adminUser!;
+  // Deleting an organisation is Tenant-Admin/Super-Admin-only — a Moderator should never reach
+  // this route (tenantDeletionRouter relies on the parent router's stricter requireTenantAdmin
+  // gate, not its own), but DeletionActor's role type is intentionally narrower than AdminRole,
+  // so this is both the type-safety fix and a defensive backstop if that gate is ever loosened.
+  if (user.role !== 'SUPER_ADMIN' && user.role !== 'TENANT_ADMIN') {
+    throw new OrganisationDeletionError('Requires Tenant Admin or Super Admin privileges', 'FORBIDDEN', 403);
+  }
   const record = await AdminUserModel.findById(user.id).select('name');
   return {
     id: user.id,

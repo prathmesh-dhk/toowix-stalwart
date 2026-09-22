@@ -1,4 +1,4 @@
-export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN';
+export type AdminRole = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'TENANT_MODERATOR';
 export type UserRole = AdminRole;
 
 export interface UserContext {

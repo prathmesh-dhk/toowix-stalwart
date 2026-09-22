@@ -17,6 +17,7 @@ import { tenantMailboxRouter, mailboxRouter } from './api/mailbox.routes';
 import { auditRouter } from './api/audit.routes';
 import { plansRouter } from './api/plans.routes';
 import { tenantBillingRouter } from './api/billing.routes';
+import { tenantModeratorRouter } from './api/tenant-moderator.routes';
 import { stripeWebhookRouter } from './api/stripe-webhook.routes';
 import { metricsService } from './services/metrics.service';
 
@@ -62,9 +63,14 @@ app.use('/api/public', publicRouter);
 app.use('/api/super-admin', superAdminRouter);
 app.use('/api/platform/tenants', platformTenantRouter);
 app.use('/api/platform/deleted-organisations', deletedOrganisationsRouter);
-app.use('/api/tenants', tenantMeRouter);
+// Mounted BEFORE tenantMeRouter: '/api/tenants' is a path prefix of these, and tenantMeRouter's
+// own blanket auth middleware (looser for /me and /me/domains, re-tightened to Tenant-Admin-only
+// for everything else in that file) would otherwise run on every request under '/api/tenants/*'
+// — including these siblings — before Express ever reaches their own, differently-scoped gates.
 app.use('/api/tenants/me/mailboxes', tenantMailboxRouter);
 app.use('/api/tenants/me/billing', tenantBillingRouter);
+app.use('/api/tenants/me/moderators', tenantModeratorRouter);
+app.use('/api/tenants', tenantMeRouter);
 app.use('/api/mailboxes', mailboxRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/plans', plansRouter);

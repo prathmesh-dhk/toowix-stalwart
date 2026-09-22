@@ -75,10 +75,10 @@ export const App: React.FC = () => {
 
       try {
         const res = await api.getMe();
-        if (res.user.role === 'TENANT_ADMIN') {
+        if (res.user.role === 'TENANT_ADMIN' || res.user.role === 'TENANT_MODERATOR') {
           setCurrentUser(res.user);
         } else {
-          console.warn('Non-Tenant-Admin user attempted session on Tenant Admin portal');
+          console.warn('Unauthorized role attempted session on Tenant Admin portal');
           clearStoredToken();
           setCurrentUser(null);
         }
