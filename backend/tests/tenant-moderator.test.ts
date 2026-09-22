@@ -195,6 +195,12 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
 
       const deletion = await request(app).get('/api/tenants/me/deletion/status').set('Authorization', `Bearer ${token}`);
       expect(deletion.status).toBe(403);
+
+      // Plan-tier metadata backs the billing/domain-setup pickers, neither of which a Moderator
+      // can reach — requireAnyAdminOrModerator (used by mailbox routes) must stay separate from
+      // requireAnyAdmin (used here) rather than widening the shared one.
+      const plans = await request(app).get('/api/plans').set('Authorization', `Bearer ${token}`);
+      expect(plans.status).toBe(403);
     });
 
     it('a disabled Moderator is rejected even with a still-valid token', async () => {

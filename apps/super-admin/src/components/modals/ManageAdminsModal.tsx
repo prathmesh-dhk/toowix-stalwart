@@ -156,17 +156,21 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                           ID: {(adm._id || adm.id).slice(-8)} · Role: {adm.role || 'TENANT_ADMIN'}
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setResettingAdminId(resettingAdminId === (adm._id || adm.id) ? null : (adm._id || adm.id));
-                          setResetPasswordInput('');
-                        }}
-                      >
-                        <KeyRound size={12} />
-                        <span>Reset Password</span>
-                      </Button>
+                      {adm.role === 'TENANT_MODERATOR' ? (
+                        <span className="text-[10px] text-slate-400 italic">Managed by Tenant Admin</span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            setResettingAdminId(resettingAdminId === (adm._id || adm.id) ? null : (adm._id || adm.id));
+                            setResetPasswordInput('');
+                          }}
+                        >
+                          <KeyRound size={12} />
+                          <span>Reset Password</span>
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>

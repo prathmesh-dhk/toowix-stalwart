@@ -321,6 +321,30 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
       expect(audit?.resourceId).toBe(tenantAdminAId);
     });
 
+    it('refuses to reset a Moderator\'s password — visible in the admins list, but management stays Tenant-Admin-only', async () => {
+      const moderator = await AdminUserModel.create({
+        email: 'alfred@waynecorp.test',
+        passwordHash: 'argon2id$mocked',
+        role: 'TENANT_MODERATOR',
+        tenantId: tenantAId,
+        status: 'active',
+        twoFactorEnabled: false,
+        scopedDomainIds: [],
+      });
+
+      const res = await request(app)
+        .post(`/api/platform/tenants/${tenantAId}/admins/${moderator._id}/reset-password`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ newPassword: 'ShouldNotWork2026!' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('ADMIN_NOT_FOUND');
+
+      // Password is untouched.
+      const stillModerator = await AdminUserModel.findById(moderator._id);
+      expect(stillModerator!.passwordHash).toBe('argon2id$mocked');
+    });
+
     it('should deny non-super admins with 403 on admin management', async () => {
       const res = await request(app)
         .post(`/api/platform/tenants/${tenantAId}/admins`)

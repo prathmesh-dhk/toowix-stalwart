@@ -162,6 +162,21 @@ export function isDomainInScope(adminUser: AdminUserContext, domainId: string): 
 }
 
 export function requireAnyAdmin(req: Request, res: Response, next: NextFunction) {
+  requireAuth(req, res, () => {
+    if (!req.adminUser || (req.adminUser.role !== 'SUPER_ADMIN' && req.adminUser.role !== 'TENANT_ADMIN')) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Requires Admin privileges' });
+    }
+    next();
+  });
+}
+
+/**
+ * requireAnyAdmin, widened for the one router (resource-level mailbox routes) a Moderator needs
+ * to reach — kept separate rather than widening requireAnyAdmin itself, since that's also used by
+ * plans.routes.ts (plan-tier metadata for billing/domain-setup, neither of which a Moderator's
+ * capability set includes — see mailbox.routes.ts spec).
+ */
+export async function requireAnyAdminOrModerator(req: Request, res: Response, next: NextFunction) {
   requireAuth(req, res, async () => {
     if (
       !req.adminUser ||

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { requireTenantAdminOrModerator, requireAnyAdmin, isDomainInScope } from '../auth/middleware';
+import { requireTenantAdminOrModerator, requireAnyAdminOrModerator, isDomainInScope } from '../auth/middleware';
 import { MailboxService } from '../services/mailbox.service';
 import { stalwartClient } from '../stalwart/client';
 import { DomainModel } from '../db/models/Domain';
@@ -184,7 +184,7 @@ tenantMailboxRouter.post('/', async (req: Request, res: Response): Promise<void>
 // RESOURCE-LEVEL ROUTES (/api/mailboxes)
 // ==========================================
 
-mailboxRouter.use(requireAnyAdmin);
+mailboxRouter.use(requireAnyAdminOrModerator);
 
 mailboxRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {
   const role = req.adminUser?.role || req.user?.role;

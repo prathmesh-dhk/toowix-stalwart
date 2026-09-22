@@ -948,17 +948,21 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => {
-                            setResettingAdminId(resettingAdminId === admin.id ? null : admin.id);
-                            setNewAdminPassword('');
-                          }}
-                          icon={<KeyRound className="w-3.5 h-3.5 text-slate-600" />}
-                        >
-                          Reset Password
-                        </Button>
+                        {admin.role === 'TENANT_MODERATOR' ? (
+                          <span className="text-[11px] text-slate-400 italic">Managed by Tenant Admin</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setResettingAdminId(resettingAdminId === admin.id ? null : admin.id);
+                              setNewAdminPassword('');
+                            }}
+                            icon={<KeyRound className="w-3.5 h-3.5 text-slate-600" />}
+                          >
+                            Reset Password
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}

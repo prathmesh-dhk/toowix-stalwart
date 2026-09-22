@@ -757,7 +757,11 @@ platformTenantRouter.post('/:id/admins/:adminId/reset-password', async (req: Req
     return res.status(400).json({ error: 'VALIDATION_ERROR', details: parsed.error.errors });
   }
 
-  const admin = await AdminUserModel.findOne({ _id: req.params.adminId, tenantId: req.params.id });
+  // Deliberately TENANT_ADMIN-only: Moderator accounts are visible here (the /:id and /:id/admins
+  // routes above list both roles), but managing them — including password resets — stays with the
+  // Tenant Admin, same as creating/editing/removing one. Widening the list to include Moderators
+  // must not implicitly widen this action too.
+  const admin = await AdminUserModel.findOne({ _id: req.params.adminId, tenantId: req.params.id, role: 'TENANT_ADMIN' });
   if (!admin) {
     return res.status(404).json({ error: 'ADMIN_NOT_FOUND', message: 'Tenant Admin not found' });
   }

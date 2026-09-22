@@ -52,6 +52,14 @@ const mockTenantDetails: TenantFullDetails = {
       twoFactorEnabled: true,
       createdAt: '2026-01-15T10:00:00.000Z',
     },
+    {
+      id: 'mod-1',
+      email: 'alfred@waynecorp.com',
+      role: 'TENANT_MODERATOR',
+      status: 'active',
+      twoFactorEnabled: false,
+      createdAt: '2026-01-16T10:00:00.000Z',
+    },
   ],
   mailboxes: [
     {
@@ -224,5 +232,21 @@ describe('TenantDetailView Component in Super Admin', () => {
         'NewSecurePassword123!'
       );
     });
+  });
+
+  it('hides Reset Password for a Moderator row — that account is managed by the Tenant Admin, not Super Admin', async () => {
+    render(<TenantDetailView {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Wayne Enterprises' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^administrators/i }));
+
+    await waitFor(() => expect(screen.getByText('alfred@waynecorp.com')).toBeInTheDocument());
+
+    // Only one Reset Password button exists — for the Tenant Admin row, not the Moderator's.
+    expect(screen.getAllByRole('button', { name: /reset password/i })).toHaveLength(1);
+    expect(screen.getByText('Managed by Tenant Admin')).toBeInTheDocument();
   });
 });
