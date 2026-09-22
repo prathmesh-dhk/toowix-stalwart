@@ -14,6 +14,7 @@ import {
 } from './types';
 import { sessionService } from '../services/session.service';
 import { emailService } from '../services/email.service';
+import { stalwartClient } from '../stalwart/client';
 
 export async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password, {
@@ -232,7 +233,23 @@ export async function authenticatePortalUser(
     return { success: false, error: 'Account is disabled. Contact your administrator.', statusCode: 403 };
   }
 
-  const isValidPassword = await verifyPassword(user.passwordHash, password);
+  let isValidPassword = await verifyPassword(user.passwordHash, password);
+  if (!isValidPassword) {
+    // If local hash doesn't match, verify against Stalwart directly
+    // (e.g. Moderator logging in with mailbox password, or mailbox credential change)
+    try {
+      const isStalwartValid = await stalwartClient.verifyUserCredentials(normalizedEmail, password);
+      if (isStalwartValid) {
+        isValidPassword = true;
+        // Auto-heal and sync local password hash
+        user.passwordHash = await hashPassword(password);
+        await user.save();
+      }
+    } catch (stalwartAuthErr: any) {
+      console.warn(`[Auth] Stalwart verification fallback skipped for ${normalizedEmail}:`, stalwartAuthErr?.message);
+    }
+  }
+
   if (!isValidPassword) {
     await AuditLogModel.create({
       actorId: user._id,

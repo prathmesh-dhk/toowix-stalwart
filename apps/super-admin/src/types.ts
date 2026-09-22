@@ -24,6 +24,17 @@ export interface RegistrationApplication {
   reviewedBy?: { _id: string; email: string } | string | null;
   reviewedAt?: string | null;
   rejectionReason?: string | null;
+  tenantId?: string | null;
+  domainId?: string | null;
+  domain?: {
+    id: string;
+    domainName: string;
+    status: string;
+    dnsStatus: DnsActivationStatus;
+    dnsRecords: GeneratedDnsRecord[];
+    dnsZoneFile?: string | null;
+    dnsConflicts?: any[];
+  } | null;
   createdAt: string;
   updatedAt: string;
   submittedAt?: string;
@@ -102,6 +113,9 @@ export interface Plan {
   isDefault: boolean;
   billingMode: PlanBillingMode;
   monthlyPriceInPaise: number;
+  storageQuotaGb?: number | null;
+  apps?: string[];
+  features?: string[];
   createdAt: string;
   updatedAt: string;
 }

@@ -53,9 +53,11 @@ tenantModeratorRouter.get('/', async (req: Request, res: Response): Promise<void
   res.status(200).json({ moderators: moderators.map(mapModerator) });
 });
 
+import crypto from 'crypto';
+
 const createModeratorSchema = z.object({
   email: z.string().email('Invalid email address format'),
-  password: z.string().min(8, 'Password must be at least 8 characters long'),
+  password: z.string().min(8, 'Password must be at least 8 characters long').optional().or(z.literal('')),
   scopedDomainIds: scopedDomainIdsSchema,
 });
 
@@ -101,7 +103,23 @@ tenantModeratorRouter.post('/', async (req: Request, res: Response): Promise<voi
     return;
   }
 
-  const passwordHash = await hashPassword(parsed.data.password);
+  let passwordHash: string;
+  if (parsed.data.password) {
+    // Sync password to Stalwart mailbox so credentials remain unified
+    try {
+      await MailboxService.syncLoginMailboxPassword(normalizedEmail, parsed.data.password);
+    } catch (err: any) {
+      res.status(err.status || 400).json({
+        error: err.code || 'PASSWORD_REJECTED',
+        message: err.message || 'Failed to update mailbox password on mail server',
+      });
+      return;
+    }
+    passwordHash = await hashPassword(parsed.data.password);
+  } else {
+    // If no password provided, placeholder hash: user authenticates using their existing Stalwart mailbox password
+    passwordHash = await hashPassword(crypto.randomUUID() + '!Placeholder');
+  }
 
   const moderator = await AdminUserModel.create({
     email: normalizedEmail,

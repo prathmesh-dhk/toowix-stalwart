@@ -10,7 +10,7 @@ import { logAudit } from '../audit/service';
 import { emailService } from './email.service';
 import { config, isBillingEnabled } from '../config';
 
-const TRIAL_DAYS = 30;
+const TRIAL_DAYS = 60;
 const GRACE_DAYS = 7;
 
 export interface BillingActor {

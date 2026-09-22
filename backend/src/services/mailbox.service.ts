@@ -407,6 +407,19 @@ export class MailboxService {
       try {
         await stalwartClient.updateAccountPassword(mailbox.stalwartAccountId, newPassword);
       } catch (err: any) {
+        const msg = err?.details?.description || err?.message || '';
+        if (
+          err?.code === 'PASSWORD_UPDATE_FAILED' ||
+          msg.toLowerCase().includes('password is too weak') ||
+          msg.toLowerCase().includes('commonly used password')
+        ) {
+          const cleanMsg = (err?.details?.description || err?.message || 'Password was rejected as too weak.').replace(/^Failed to update password in Stalwart:\s*/i, '');
+          throw {
+            status: 400,
+            code: 'PASSWORD_TOO_WEAK',
+            message: cleanMsg,
+          };
+        }
         throw {
           status: 503,
           code: 'STALWART_UNAVAILABLE',
@@ -928,12 +941,31 @@ export class MailboxService {
    * have no matching mailbox, and a mail server outage must never block a password reset.
    */
   static async syncLoginMailboxPassword(email: string, newPassword: string): Promise<void> {
+    const mailbox = await MailboxModel.findOne({ address: email.trim().toLowerCase() });
+    if (!mailbox?.stalwartAccountId) {
+      // Legacy external-email admins or accounts with no Stalwart mailbox
+      return;
+    }
+
     try {
-      const mailbox = await MailboxModel.findOne({ address: email.trim().toLowerCase() });
-      if (mailbox?.stalwartAccountId) {
-        await stalwartClient.updateAccountPassword(mailbox.stalwartAccountId, newPassword);
-      }
+      await stalwartClient.updateAccountPassword(mailbox.stalwartAccountId, newPassword);
     } catch (err: any) {
+      const msg = err?.details?.description || err?.message || '';
+      // If Stalwart rejected the password as too weak / common or invalid:
+      if (
+        err?.code === 'PASSWORD_UPDATE_FAILED' ||
+        msg.toLowerCase().includes('password is too weak') ||
+        msg.toLowerCase().includes('commonly used password')
+      ) {
+        const cleanMsg = (err?.details?.description || err?.message || 'Password was rejected as too weak.').replace(/^Failed to update password in Stalwart:\s*/i, '');
+        throw {
+          status: 400,
+          code: 'PASSWORD_TOO_WEAK',
+          message: cleanMsg,
+        };
+      }
+
+      // Mail server outage / unreachable: log warning for fallback
       console.warn(`[MailboxService] Stalwart password sync skipped for ${email}:`, err?.message);
     }
   }

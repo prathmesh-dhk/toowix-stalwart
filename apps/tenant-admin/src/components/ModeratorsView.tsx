@@ -103,13 +103,17 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addEmail.trim() || !addPassword) return;
+    if (!addEmail.trim()) return;
 
     setSubmittingAdd(true);
     setError(null);
     setSuccessMsg(null);
     try {
-      await api.createModerator({ email: addEmail.trim(), password: addPassword, scopedDomainIds: addScope });
+      await api.createModerator({
+        email: addEmail.trim(),
+        password: addPassword.trim() || undefined,
+        scopedDomainIds: addScope,
+      });
       setSuccessMsg(`Moderator ${addEmail.trim()} created.`);
       setShowAddModal(false);
       setAddEmail('');
@@ -221,7 +225,7 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
           </button>
           <button
             onClick={() => {
-              setAddPassword(generatePassword());
+              setAddPassword('');
               setAddEmail('');
               setMailboxQuery('');
               setAddScope([]);
@@ -410,15 +414,15 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Password <span className="text-rose-500">*</span>
+                  Password <span className="text-slate-400 font-normal">(optional)</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
+                    placeholder="Leave empty to use existing mailbox password"
                     value={addPassword}
                     onChange={(e) => setAddPassword(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    required
                     minLength={8}
                   />
                   <button
@@ -426,10 +430,12 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
                     onClick={() => setAddPassword(generatePassword())}
                     className="px-3 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap"
                   >
-                    Regenerate
+                    Generate
                   </button>
                 </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">Share this with them directly — it won't be shown again.</span>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Moderators sign in using their mailbox address. If left blank, their existing mailbox password is used.
+                </span>
               </div>
 
               <div>
@@ -463,7 +469,7 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingAdd || !addEmail.trim() || addPassword.length < 8}
+                  disabled={submittingAdd || !addEmail.trim() || (addPassword.length > 0 && addPassword.length < 8)}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   {submittingAdd && <RefreshCw size={12} className="animate-spin" />}

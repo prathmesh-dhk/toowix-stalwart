@@ -338,6 +338,29 @@ describe('TenantHomeView Component', () => {
     expect(sessionStorage.getItem('toowix_dismissed_2fa_banner')).toBe('true');
   });
 
+  it('opens DomainSetupModal when clicking "Add Domain" button on Overview', async () => {
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+    await screen.findByText('acmecorp.com');
+
+    const addDomainBtn = screen.getByTestId ? screen.getAllByRole('button', { name: /^add domain$/i })[0] : null;
+    expect(addDomainBtn).toBeInTheDocument();
+
+    fireEvent.click(addDomainBtn!);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText(/how do you want to add a domain\?/i)).toBeInTheDocument();
+    });
+
+    // Close the modal
+    const closeBtn = screen.getByRole('button', { name: /exit domain setup/i });
+    fireEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the Team tab and loads Moderator accounts when selected', async () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 

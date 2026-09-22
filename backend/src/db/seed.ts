@@ -81,17 +81,49 @@ export async function seedSystemSettings(): Promise<void> {
 // this corrects an already-seeded dev/staging database on the next boot
 // instead of silently no-op'ing forever once anything exists.
 const DEFAULT_PLANS = [
-  { name: 'Individual', badge: 'Solo', seatCount: 1, displayOrder: 1, isDefault: false, billingMode: 'fixed' as const },
-  { name: 'Team', badge: 'Standard', seatCount: 10, displayOrder: 2, isDefault: true, billingMode: 'fixed' as const },
-  { name: 'Growth', badge: 'Growth', seatCount: 25, displayOrder: 3, isDefault: false, billingMode: 'fixed' as const },
-  { name: 'Enterprise', badge: 'Enterprise', seatCount: 100, displayOrder: 4, isDefault: false, billingMode: 'fixed' as const },
-  { name: 'Custom', badge: 'Pay as you go', seatCount: 99999, displayOrder: 5, isDefault: false, billingMode: 'metered' as const },
+  {
+    name: 'Starter',
+    badge: 'Basic',
+    description: 'Essential email for solo founders and small teams',
+    seatCount: 10,
+    displayOrder: 1,
+    isDefault: false,
+    billingMode: 'metered' as const,
+    monthlyPriceInPaise: 4900,
+    storageQuotaGb: 5,
+    apps: ['email'],
+    features: ['5 GB Mailbox Storage', 'Up to 10 mailboxes', 'Custom domain webmail & IMAP/SMTP'],
+  },
+  {
+    name: 'Pro',
+    badge: 'Most Popular',
+    description: 'Full workspace suite with Toowix Meet & Sign',
+    seatCount: 20,
+    displayOrder: 2,
+    isDefault: true,
+    billingMode: 'metered' as const,
+    monthlyPriceInPaise: 9900,
+    storageQuotaGb: 20,
+    apps: ['email', 'meet', 'sign'],
+    features: ['20 GB Mailbox Storage', 'Up to 20 mailboxes', 'Toowix Suite (Meet & Sign)', 'Priority Deliverability'],
+  },
+  {
+    name: 'Enterprise',
+    badge: 'High Capacity',
+    description: 'High-capacity workspace with unlimited mailboxes',
+    seatCount: 999999,
+    displayOrder: 3,
+    isDefault: false,
+    billingMode: 'metered' as const,
+    monthlyPriceInPaise: 14900,
+    storageQuotaGb: 30,
+    apps: ['email', 'meet', 'sign'],
+    features: ['30 GB Mailbox Storage', 'Unlimited mailboxes', 'Toowix Suite (Meet & Sign)', 'Full Audit Logs'],
+  },
 ];
 
-// Retired tiers from the earlier, pre-billing seed set — deactivated rather
-// than deleted (Plan deletion is blocked while any Domain still references
-// it; deactivating just hides them from pickers going forward).
-const RETIRED_PLAN_NAMES = ['Business', 'Scale'];
+// Retired tiers from earlier seed sets — deactivated rather than deleted
+const RETIRED_PLAN_NAMES = ['Individual', 'Team', 'Growth', 'Custom', 'Business', 'Scale'];
 
 export async function seedDefaultPlans(): Promise<void> {
   try {
@@ -100,15 +132,19 @@ export async function seedDefaultPlans(): Promise<void> {
         { name: plan.name },
         {
           $setOnInsert: {
-            monthlyPriceInPaise: 0,
             isActive: true,
           },
           $set: {
             badge: plan.badge,
+            description: plan.description,
             seatCount: plan.seatCount,
             displayOrder: plan.displayOrder,
             isDefault: plan.isDefault,
             billingMode: plan.billingMode,
+            monthlyPriceInPaise: plan.monthlyPriceInPaise,
+            storageQuotaGb: plan.storageQuotaGb,
+            apps: plan.apps,
+            features: plan.features,
           },
         },
         { upsert: true }
@@ -122,7 +158,7 @@ export async function seedDefaultPlans(): Promise<void> {
 
     await PlanModel.updateMany({ name: { $in: RETIRED_PLAN_NAMES } }, { $set: { isActive: false, isDefault: false } });
 
-    console.log('[Seed] Plans reconciled to the confirmed billing tier set (Individual, Team, Growth, Enterprise, Custom).');
+    console.log('[Seed] Plans reconciled to the confirmed 3-tier metered set (Starter, Pro, Enterprise).');
   } catch (err) {
     console.error('[Seed Plans Error]:', err);
     throw err;

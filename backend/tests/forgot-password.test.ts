@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
@@ -7,8 +7,11 @@ import { AdminUserModel } from '../src/db/models/AdminUser';
 import { RegistrationApplicationModel } from '../src/db/models/RegistrationApplication';
 import { TenantModel } from '../src/db/models/Tenant';
 import { DomainModel } from '../src/db/models/Domain';
+import { MailboxModel } from '../src/db/models/Mailbox';
 import { ActivationTokenModel } from '../src/db/models/ActivationToken';
 import { hashPassword, hashSecurityAnswer } from '../src/auth/service';
+import { stalwartClient } from '../src/stalwart/client';
+import { StalwartError } from '../src/stalwart/errors';
 import { generateSync } from 'otplib';
 import crypto from 'crypto';
 
@@ -333,6 +336,81 @@ describe('Forgot Password & Registration Security Options', () => {
         .send({ email: testUserEmail, code: plainCode });
       expect(repeatRes.status).toBe(400);
       expect(repeatRes.body.error).toBe('INVALID_BACKUP_CODE');
+    });
+
+    it('returns 400 with PASSWORD_TOO_WEAK when Stalwart rejects password during reset, preserving reset token', async () => {
+      // Find tenant for test user
+      const user = await AdminUserModel.findOne({ email: testUserEmail });
+      expect(user).toBeTruthy();
+
+      // Create a mailbox row for testUserEmail with a stalwartAccountId
+      await MailboxModel.create({
+        tenantId: user!.tenantId,
+        domainId: new mongoose.Types.ObjectId(),
+        localPart: 'admin',
+        address: testUserEmail,
+        stalwartAccountId: 'acc-test-stalwart-123',
+        status: 'active',
+      });
+
+      // Prepare OTP and resetToken
+      const testOtp = '654321';
+      user!.passwordResetOtp = {
+        codeHash: crypto.createHash('sha256').update(testOtp).digest('hex'),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        attempts: 0,
+      };
+      await user!.save();
+
+      const verifyRes = await request(app)
+        .post('/api/auth/forgot-password/verify-otp')
+        .send({ email: testUserEmail, otp: testOtp });
+
+      expect(verifyRes.status).toBe(200);
+      expect(verifyRes.body.resetToken).toBeTruthy();
+      const resetToken = verifyRes.body.resetToken;
+
+      // Mock Stalwart to reject with weak password
+      const stalwartSpy = vi.spyOn(stalwartClient, 'updateAccountPassword').mockRejectedValueOnce(
+        new StalwartError(
+          "Failed to update password in Stalwart: Password is too weak. This is similar to a commonly used password. Add another word or two. Uncommon words are better. Capitalization doesn't help very much.",
+          'PASSWORD_UPDATE_FAILED',
+          {
+            description: "Password is too weak. This is similar to a commonly used password. Add another word or two. Uncommon words are better. Capitalization doesn't help very much.",
+          }
+        )
+      );
+
+      const oldHash = user!.passwordHash;
+
+      // 1. Attempt reset with weak password
+      const resetRes = await request(app)
+        .post('/api/auth/forgot-password/reset')
+        .send({ resetToken, newPassword: 'WeakCommonPassword123!' });
+
+      expect(resetRes.status).toBe(400);
+      expect(resetRes.body.error).toBe('PASSWORD_TOO_WEAK');
+      expect(resetRes.body.message).toContain('Password is too weak');
+
+      // Ensure MongoDB user was NOT updated and reset token was NOT consumed
+      const userAfterFail = await AdminUserModel.findOne({ email: testUserEmail });
+      expect(userAfterFail?.passwordHash).toBe(oldHash);
+      expect(userAfterFail?.passwordResetToken).toBeTruthy();
+
+      // 2. Now attempt reset with strong password (mock Stalwart accepting it)
+      stalwartSpy.mockResolvedValueOnce();
+
+      const successResetRes = await request(app)
+        .post('/api/auth/forgot-password/reset')
+        .send({ resetToken, newPassword: 'SuperStrongUniquePass2026!' });
+
+      expect(successResetRes.status).toBe(200);
+      expect(successResetRes.body.success).toBe(true);
+
+      // Verify user hash has now updated and resetToken is consumed
+      const userAfterSuccess = await AdminUserModel.findOne({ email: testUserEmail });
+      expect(userAfterSuccess?.passwordHash).not.toBe(oldHash);
+      expect(userAfterSuccess?.passwordResetToken?.tokenHash).toBeFalsy();
     });
   });
 });

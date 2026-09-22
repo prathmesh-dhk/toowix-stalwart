@@ -127,6 +127,9 @@ export interface Plan {
   isDefault: boolean;
   billingMode: PlanBillingMode;
   monthlyPriceInPaise: number;
+  storageQuotaGb?: number | null;
+  apps?: string[];
+  features?: string[];
 }
 
 export type DomainSubscriptionStatus =

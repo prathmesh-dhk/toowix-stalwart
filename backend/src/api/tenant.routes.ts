@@ -10,6 +10,7 @@ import { AdminUserModel } from '../db/models/AdminUser';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
+import { RegistrationApplicationModel } from '../db/models/RegistrationApplication';
 import { IPlan } from '../db/models/Plan';
 import { isBillingEnabled, config } from '../config';
 import { connectDnsProviderCredential, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
@@ -445,6 +446,25 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       timestamp: new Date(),
     });
 
+    // Register domain application so Super Admin can review it in Domain Applications
+    const adminUser = req.adminUser?.id ? await AdminUserModel.findById(req.adminUser.id) : null;
+    const actorName = adminUser?.name || req.adminUser?.email?.split('@')[0] || tenant.name;
+    try {
+      await RegistrationApplicationModel.create({
+        companyName: tenant.name,
+        requestedDomain: normalizedDomain,
+        applicantName: actorName,
+        contactEmail: actorEmail,
+        phone: tenant.phone || null,
+        tenantId: tenant._id,
+        domainId: newDomain._id,
+        notes: `Domain application for existing organisation "${tenant.name}" (Plan: ${plan.name}, Seats: ${plan.seatCount})`,
+        status: 'PENDING_REVIEW',
+      });
+    } catch (appErr: any) {
+      console.warn(`[Domain Creation] Non-fatal failure registering application: ${appErr.message}`);
+    }
+
     res.status(201).json({
       success: true,
       domain: {
@@ -753,7 +773,7 @@ tenantMeRouter.get('/me/domains/:domainId/dns-check', async (req: Request, res: 
 // DOMAIN DELETE — instant, zero mailboxes required, no Super Admin approval
 // (/api/tenants/me/domains/:domainId)
 // ==========================================
-tenantMeRouter.delete('/me/domains/:domainId', async (req: Request, res: Response): Promise<void> => {
+tenantMeRouter.delete(['/me/domains/:domainId', '/domains/:domainId'], async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.adminUser?.tenantId;
   if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
     res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });

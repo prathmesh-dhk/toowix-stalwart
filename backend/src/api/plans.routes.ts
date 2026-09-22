@@ -20,6 +20,9 @@ function serializePlan(plan: any) {
     isDefault: plan.isDefault,
     billingMode: plan.billingMode,
     monthlyPriceInPaise: plan.monthlyPriceInPaise,
+    storageQuotaGb: plan.storageQuotaGb ?? null,
+    apps: plan.apps || ['email'],
+    features: plan.features || [],
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
   };
@@ -47,6 +50,9 @@ const createPlanSchema = z.object({
   isDefault: z.boolean().optional(),
   billingMode: z.enum(['fixed', 'metered']).optional(),
   monthlyPriceInPaise: z.number().int().min(0, 'Price cannot be negative').optional(),
+  storageQuotaGb: z.number().int().min(1).optional().nullable(),
+  apps: z.array(z.string()).optional(),
+  features: z.array(z.string()).optional(),
 });
 
 async function unsetOtherDefaults(exceptId?: string) {
@@ -74,6 +80,9 @@ plansRouter.post('/', requireSuperAdmin, async (req: Request, res: Response): Pr
     isDefault: data.isDefault ?? false,
     billingMode: data.billingMode ?? 'fixed',
     monthlyPriceInPaise: data.monthlyPriceInPaise ?? 0,
+    storageQuotaGb: data.storageQuotaGb ?? null,
+    apps: data.apps ?? ['email'],
+    features: data.features ?? [],
   });
 
   if (plan.isDefault) {
@@ -122,6 +131,9 @@ plansRouter.patch('/:id', requireSuperAdmin, async (req: Request, res: Response)
   if (data.isDefault !== undefined) plan.isDefault = data.isDefault;
   if (data.billingMode !== undefined) plan.billingMode = data.billingMode;
   if (data.monthlyPriceInPaise !== undefined) plan.monthlyPriceInPaise = data.monthlyPriceInPaise;
+  if (data.storageQuotaGb !== undefined) plan.storageQuotaGb = data.storageQuotaGb;
+  if (data.apps !== undefined) plan.apps = data.apps;
+  if (data.features !== undefined) plan.features = data.features;
   // Stripe Price objects are immutable — a price/mode change means the
   // cached stripePriceId is stale; clear it so the next checkout creates
   // a fresh Price instead of billing the old amount.

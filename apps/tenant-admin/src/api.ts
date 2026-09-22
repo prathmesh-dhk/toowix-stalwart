@@ -217,7 +217,7 @@ export const api = {
 
   // Moderator accounts — Tenant-Admin-only (a Moderator hitting these gets a 403 from the server).
   listModerators: () => request<{ moderators: ModeratorItem[] }>('/api/tenants/me/moderators'),
-  createModerator: (body: { email: string; password: string; scopedDomainIds: string[] }) =>
+  createModerator: (body: { email: string; password?: string; scopedDomainIds: string[] }) =>
     request<{ moderator: ModeratorItem }>('/api/tenants/me/moderators', {
       method: 'POST',
       body: JSON.stringify(body),

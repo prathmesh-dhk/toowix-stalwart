@@ -26,6 +26,8 @@ export interface IRegistrationApplication extends Document {
   rejectionReason?: string | null;
   reviewedBy?: Types.ObjectId | null;
   reviewedAt?: Date | null;
+  tenantId?: Types.ObjectId | null;
+  domainId?: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -135,6 +137,17 @@ const RegistrationApplicationSchema = new Schema<IRegistrationApplication>(
       type: Date,
       default: null,
     },
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      default: null,
+      index: true,
+    },
+    domainId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Domain',
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -143,6 +156,7 @@ const RegistrationApplicationSchema = new Schema<IRegistrationApplication>(
 );
 
 RegistrationApplicationSchema.index({ status: 1, createdAt: -1 });
+RegistrationApplicationSchema.index({ tenantId: 1, requestedDomain: 1 });
 
 export const RegistrationApplicationModel = mongoose.model<IRegistrationApplication>(
   'RegistrationApplication',

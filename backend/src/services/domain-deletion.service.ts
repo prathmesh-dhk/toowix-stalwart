@@ -3,6 +3,7 @@ import { DomainModel } from '../db/models/Domain';
 import { MailboxModel } from '../db/models/Mailbox';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { DomainDnsCredentialModel } from '../db/models/DomainDnsCredential';
+import { RegistrationApplicationModel } from '../db/models/RegistrationApplication';
 import { stripeClient } from '../stripe/client';
 import { stalwartClient } from '../stalwart/client';
 import { logAudit } from '../audit/service';
@@ -53,6 +54,16 @@ export async function executeDeletionCascade(domainId: mongoose.Types.ObjectId |
 
   // 3. Delete DomainDnsCredential
   await DomainDnsCredentialModel.deleteOne({ domainId });
+
+  // 3b. Delete any pending or associated domain application records
+  if (domain) {
+    await RegistrationApplicationModel.deleteMany({
+      $or: [
+        { domainId },
+        { tenantId, requestedDomain: domain.domainName.toLowerCase() },
+      ],
+    });
+  }
 
   // 4. Delete Stalwart domain & DKIM keys
   if (domain?.stalwartDomainId) {

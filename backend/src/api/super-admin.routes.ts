@@ -12,6 +12,7 @@ import { emailService } from '../services/email.service';
 import { config } from '../config';
 import { getDefaultPlanSeatCount } from '../services/plan.service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
+import { stalwartClient } from '../stalwart/client';
 
 export const superAdminRouter = Router();
 
@@ -65,7 +66,34 @@ superAdminRouter.get('/applications/:id', async (req: Request, res: Response) =>
     return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found' });
   }
 
-  return res.status(200).json({ application });
+  let domainDoc = null;
+  if (application.domainId) {
+    domainDoc = await DomainModel.findById(application.domainId);
+  } else if (application.tenantId && application.requestedDomain) {
+    domainDoc = await DomainModel.findOne({ tenantId: application.tenantId, domainName: application.requestedDomain });
+    if (domainDoc && !application.domainId) {
+      application.domainId = domainDoc._id;
+      await application.save();
+    }
+  } else if (application.requestedDomain) {
+    domainDoc = await DomainModel.findOne({ domainName: application.requestedDomain });
+  }
+
+  const appObj = application.toObject();
+  return res.status(200).json({
+    application: {
+      ...appObj,
+      domain: domainDoc ? {
+        id: domainDoc._id.toString(),
+        domainName: domainDoc.domainName,
+        status: domainDoc.status,
+        dnsStatus: domainDoc.dnsStatus,
+        dnsRecords: domainDoc.dnsRecords || [],
+        dnsZoneFile: domainDoc.dnsZoneFile || null,
+        dnsConflicts: domainDoc.dnsConflicts || [],
+      } : null,
+    },
+  });
 });
 
 // 3. Approve Application
@@ -84,6 +112,73 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
     return res.status(400).json({
       error: 'INVALID_STATUS',
       message: `Cannot approve application with status: ${application.status}`,
+    });
+  }
+
+  // Handle existing organisation domain application
+  if (application.tenantId) {
+    const tenant = await TenantModel.findById(application.tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Associated organization not found' });
+    }
+
+    let domain = await DomainModel.findOne({ tenantId: tenant._id, domainName: application.requestedDomain });
+    if (!domain && application.domainId) {
+      domain = await DomainModel.findById(application.domainId);
+    }
+
+    if (!domain) {
+      return res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain record not found' });
+    }
+
+    domain.status = 'active';
+    if (domain.stalwartDomainId) {
+      try {
+        await stalwartClient.updateDomainStatus(domain.stalwartDomainId, true);
+      } catch (err: any) {
+        console.warn(`[Domain Approval] Stalwart domain enable warning: ${err.message}`);
+      }
+    }
+    await domain.save();
+
+    if (!application.domainId && domain._id) {
+      application.domainId = domain._id;
+    }
+    application.status = 'APPROVED';
+    application.reviewedBy = new mongoose.Types.ObjectId(req.adminUser!.id);
+    application.reviewedAt = new Date();
+    await application.save();
+
+    await AuditLogModel.create({
+      actorId: req.adminUser!.id,
+      actorRole: req.adminUser!.role,
+      actorEmail: req.adminUser!.email,
+      actorIp: req.ip || req.socket.remoteAddress || 'unknown',
+      tenantId: tenant._id,
+      action: 'ORGANISATION_DOMAIN_APPLICATION_APPROVED',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      status: 'SUCCESS',
+      metadata: {
+        companyName: tenant.name,
+        domainName: domain.domainName,
+        contactEmail: application.contactEmail,
+      },
+      timestamp: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Domain application for "${domain.domainName}" (${tenant.name}) approved successfully.`,
+      emailSent: false,
+      tenant: {
+        id: tenant._id.toString(),
+        name: tenant.name,
+        status: tenant.status,
+        domain: domain.domainName,
+        dnsStatus: domain.dnsStatus,
+        contactEmail: application.contactEmail,
+      },
     });
   }
 
@@ -126,6 +221,8 @@ superAdminRouter.post('/applications/:id/approve', async (req: Request, res: Res
 
   // 4. Update application record
   application.status = 'APPROVED';
+  application.tenantId = tenant._id;
+  application.domainId = domain._id;
   application.reviewedBy = new mongoose.Types.ObjectId(req.adminUser!.id);
   application.reviewedAt = new Date();
   await application.save();
@@ -226,6 +323,24 @@ superAdminRouter.post('/applications/:id/reject', async (req: Request, res: Resp
   application.reviewedBy = new mongoose.Types.ObjectId(req.adminUser!.id);
   application.reviewedAt = new Date();
   await application.save();
+
+  if (application.tenantId) {
+    let domain = await DomainModel.findOne({ tenantId: application.tenantId, domainName: application.requestedDomain });
+    if (!domain && application.domainId) {
+      domain = await DomainModel.findById(application.domainId);
+    }
+    if (domain) {
+      domain.status = 'suspended';
+      if (domain.stalwartDomainId) {
+        try {
+          await stalwartClient.updateDomainStatus(domain.stalwartDomainId, false);
+        } catch (err: any) {
+          console.warn(`[Domain Rejection] Stalwart domain disable warning: ${err.message}`);
+        }
+      }
+      await domain.save();
+    }
+  }
 
   // Audit event
   await AuditLogModel.create({

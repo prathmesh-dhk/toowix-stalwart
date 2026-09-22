@@ -645,7 +645,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
                 <span className="truncate">Domain Applications</span>
               </div>
               {pendingAppsCount > 0 ? (
-                <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/60">
+                <span className="text-xs font-semibold text-indigo-700 bg-indigo-100/90 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
                   {pendingAppsCount}
                 </span>
               ) : (
@@ -1007,6 +1007,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         onClose={() => setReviewApp(null)}
         onApprove={handleApproveApplication}
         onReject={handleRejectApplication}
+        onChanged={() => {
+          loadApplications();
+          loadTenantsAndMetrics();
+        }}
       />
 
       <TenantDetailModal

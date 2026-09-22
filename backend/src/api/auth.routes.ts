@@ -912,15 +912,24 @@ authRouter.post('/forgot-password/reset', async (req: Request, res: Response) =>
     });
   }
 
-  // Hash new password using argon2id
+  // 1. Sync & validate with Stalwart first if account has a mailbox.
+  // Must happen before saving to MongoDB so that weak-password rejections from Stalwart
+  // prevent consuming the reset token and prevent desyncing credentials.
+  try {
+    await MailboxService.syncLoginMailboxPassword(user.email, newPassword);
+  } catch (err: any) {
+    return res.status(err.status || 400).json({
+      error: err.code || 'PASSWORD_REJECTED',
+      message: err.message || 'Password was rejected by the mail server.',
+    });
+  }
+
+  // 2. Hash new password using argon2id and commit to MongoDB
   const newPasswordHash = await hashPassword(newPassword);
   user.passwordHash = newPasswordHash;
   user.passwordResetToken = null;
   user.passwordResetOtp = null;
   await user.save();
-
-  // The login email is also the platform mailbox address, so the mail credential moves with it.
-  await MailboxService.syncLoginMailboxPassword(user.email, newPassword);
 
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
   await AuditLogModel.create({

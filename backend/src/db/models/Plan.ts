@@ -21,6 +21,9 @@ export interface IPlan extends Document {
   // Only set for billingMode 'metered' — the Stripe Billing Meter this
   // plan's Price reports usage against. See backend/src/stripe/client.ts.
   stripeMeterId?: string | null;
+  storageQuotaGb?: number | null;
+  apps?: string[];
+  features?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -80,6 +83,18 @@ const PlanSchema = new Schema<IPlan>(
     stripeMeterId: {
       type: String,
       default: null,
+    },
+    storageQuotaGb: {
+      type: Number,
+      default: null,
+    },
+    apps: {
+      type: [String],
+      default: ['email'],
+    },
+    features: {
+      type: [String],
+      default: [],
     },
   },
   {

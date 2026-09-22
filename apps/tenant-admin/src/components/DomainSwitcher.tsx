@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { DomainItem, DnsActivationStatus } from '../types';
-import { ChevronDown, Check, Globe } from 'lucide-react';
+import { ChevronDown, Check, Globe, Plus } from 'lucide-react';
 
 export function dnsStatusPill(dnsStatus?: DnsActivationStatus) {
   switch (dnsStatus) {
@@ -142,6 +142,22 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
               );
             })}
           </div>
+          {onOpenAddDomain && (
+            <div className="border-t border-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenAddDomain();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                id="btn-add-domain-switcher-item"
+              >
+                <Plus className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Add Domain</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -34,6 +34,19 @@ const mockApplications: RegistrationApplication[] = [
     createdAt: '2026-02-15T12:00:00.000Z',
     updatedAt: '2026-02-15T12:00:00.000Z',
   },
+  {
+    _id: 'app-3',
+    id: 'app-3',
+    companyName: 'Wayne Enterprises',
+    requestedDomain: 'waynecorp.com',
+    applicantName: 'Bruce Wayne',
+    contactEmail: 'bruce@waynecorp.com',
+    status: 'APPROVED',
+    tenantId: 'tenant-wayne-1',
+    submittedAt: '2026-03-05T10:00:00.000Z',
+    createdAt: '2026-03-05T10:00:00.000Z',
+    updatedAt: '2026-03-05T10:00:00.000Z',
+  },
 ];
 
 describe('TenantApplicationsView Component', () => {
@@ -49,10 +62,23 @@ describe('TenantApplicationsView Component', () => {
 
     expect(screen.getByText('NextGen AI Inc')).toBeInTheDocument();
     expect(screen.getByText('nextgenai.tech')).toBeInTheDocument();
-    expect(screen.getByText('Sarah Connor')).toBeInTheDocument();
+    expect(screen.getByText('sarah@nextgenai.tech')).toBeInTheDocument();
 
     // Cyberdyne is REJECTED, so not visible under PENDING_REVIEW filter
     expect(screen.queryByText('Cyberdyne Systems')).not.toBeInTheDocument();
+  });
+
+  it('switches tabs to show approved applications without Existing Org tag', () => {
+    render(<TenantApplicationsView {...defaultProps} />);
+
+    const approvedTab = screen.getByRole('button', { name: /approved/i });
+    fireEvent.click(approvedTab);
+
+    expect(screen.getByText('Wayne Enterprises')).toBeInTheDocument();
+    expect(screen.getByText('waynecorp.com')).toBeInTheDocument();
+    expect(screen.getByText('bruce@waynecorp.com')).toBeInTheDocument();
+    expect(screen.queryByText('Existing Org')).not.toBeInTheDocument();
+    expect(screen.queryByText('NextGen AI Inc')).not.toBeInTheDocument();
   });
 
   it('switches tabs to show rejected applications', () => {

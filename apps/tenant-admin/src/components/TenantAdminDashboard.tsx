@@ -770,48 +770,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   <span className="truncate">Domains & DNS</span>
                 </div>
               </button>
-
-              {/* Security */}
-              <button
-                onClick={() => setActiveNav('security')}
-                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                  activeNav === 'security'
-                    ? 'bg-indigo-50 text-indigo-700 font-medium'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-                }`}
-                id="nav-security"
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <Shield
-                    className={`w-5 h-5 shrink-0 transition-colors ${
-                      activeNav === 'security' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                    }`}
-                    strokeWidth={1.75}
-                  />
-                  <span className="truncate">Security</span>
-                </div>
-              </button>
-
-              {/* Team (Moderators) */}
-              <button
-                onClick={() => setActiveNav('team')}
-                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                  activeNav === 'team'
-                    ? 'bg-indigo-50 text-indigo-700 font-medium'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-                }`}
-                id="nav-team"
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <Users
-                    className={`w-5 h-5 shrink-0 transition-colors ${
-                      activeNav === 'team' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                    }`}
-                    strokeWidth={1.75}
-                  />
-                  <span className="truncate">Team</span>
-                </div>
-              </button>
             </div>
           )}
         </div>

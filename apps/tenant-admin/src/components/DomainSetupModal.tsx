@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { DomainItem, DomainDnsStatus, Plan } from '../types';
 import {
-  Check,
   AlertCircle,
   Loader2,
   X,
@@ -15,6 +14,7 @@ import {
   Mail,
   Sparkles,
   HelpCircle,
+  Star,
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm, type SuccessInfo } from './DnsProviderCredentialForm';
@@ -50,7 +50,7 @@ const PLATFORM_MAIL_DOMAIN = 'dhkmail.com';
 const STEP_TOP_PADDING: Record<WizardStep, string> = {
   choice: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[19vh]',
   domain: 'pt-14 sm:pt-20 md:pt-28 lg:pt-36 xl:pt-[26vh]',
-  plan: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[19vh]',
+  plan: 'pt-20 sm:pt-24 xl:pt-[17vh] pb-6 sm:pb-8',
   method: 'pt-10 sm:pt-14 md:pt-16 lg:pt-20 xl:pt-[16vh]',
   godaddy: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[20vh]',
   hostinger: 'pt-14 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
@@ -106,14 +106,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setPlansLoading(true);
-    api
-      .listPlans()
-      .then((res) => {
-        const sorted = (res.plans || [])
-          .filter((p) => p.isActive)
-          .sort((a, b) => a.displayOrder - b.displayOrder);
+    Promise.resolve()
+      .then(() => api.listPlans?.())
+      .then((res: any) => {
+        const sorted = (res?.plans || [])
+          .filter((p: any) => p.isActive)
+          .sort((a: any, b: any) => a.displayOrder - b.displayOrder);
         setPlans(sorted);
-        const def = sorted.find((p) => p.isDefault) || sorted[0];
+        const def = sorted.find((p: any) => p.isDefault) || sorted[0];
         if (def) setSelectedPlanId(def.id);
       })
       .catch(() => {})
@@ -360,8 +360,10 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             });
             if (!adoptCreatedDomain(createRes.domain, session)) return;
             dom = createRes.domain;
-          } catch {
-            // ignore
+          } catch (createErr: any) {
+            setLoading(false);
+            setError(createErr?.message || 'Failed to create domain. Please try again.');
+            return;
           }
         }
         goToStatus(dom);
@@ -525,9 +527,21 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-white overflow-y-auto overflow-x-hidden" role="dialog" aria-modal="true">
-      <div className="min-h-screen flex flex-col bg-white overflow-x-hidden">
+      {/* Ambient background curves & gradient glows matching Toowix design system */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden z-0 select-none">
+        <div className="absolute -top-20 -left-20 w-[420px] h-[420px] rounded-full bg-gradient-to-br from-purple-100/40 via-indigo-50/20 to-transparent blur-2xl" />
+        <div className="absolute -bottom-24 -right-24 w-[480px] h-[480px] rounded-full bg-gradient-to-tl from-indigo-100/35 via-purple-50/20 to-transparent blur-3xl" />
+        <svg className="absolute top-0 left-0 w-72 h-72 overflow-visible opacity-25 text-indigo-300" viewBox="0 0 288 288" fill="none">
+          <path d="M -40 -10 C 60 80 140 160 -10 260" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+        <svg className="absolute bottom-0 right-0 w-96 h-96 overflow-visible opacity-25 text-indigo-300" viewBox="0 0 384 384" fill="none">
+          <path d="M 390 80 C 270 150 180 250 240 390" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </div>
+
+      <div className="min-h-screen flex flex-col bg-transparent overflow-x-hidden relative z-10">
         {/* Top bar: close, title, back */}
-        <div className="flex items-center justify-between px-6 sm:px-8 md:px-10 lg:px-12 pt-7 pb-4 shrink-0 bg-white sticky top-0 z-20">
+        <div className="flex items-center justify-between px-6 sm:px-8 md:px-10 lg:px-12 pt-7 pb-4 shrink-0 bg-transparent sticky top-0 z-20">
           <div className="flex items-center gap-3.5">
             <button
               type="button"
@@ -556,11 +570,11 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         {/* Unified Single-Focus Layout across all wizard pages */}
         <div
           key={step}
-          className={`flex-1 flex flex-row items-start w-full bg-white pl-6 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] pr-6 sm:pr-8 overflow-x-hidden ${
+          className={`flex-1 flex flex-row items-start w-full pl-6 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] pr-6 sm:pr-8 overflow-x-hidden ${
             direction === 'backward' ? 'animate-slide-in-left' : 'animate-slide-in-right'
           }`}
         >
-          <main className={`w-full max-w-xl shrink-0 ${STEP_TOP_PADDING[step]} pb-12 flex flex-col text-left`}>
+          <main className={`w-full ${step === 'plan' ? 'max-w-xl xl:max-w-2xl' : 'max-w-xl'} shrink-0 ${STEP_TOP_PADDING[step]} ${step !== 'plan' ? 'pb-12' : ''} flex flex-col text-left`}>
             {error && (
               <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -572,15 +586,22 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             {step === 'choice' && (
               <div>
                 <div className="mb-8">
-                  <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
-                    How do you want to add a domain?
+                  <h1 className="text-4xl sm:text-[44px] font-extrabold text-slate-900 tracking-tight leading-[1.12]">
+                    <span className="sr-only">How do you want to add a domain?</span>
+                    <span aria-hidden="true">
+                      How do you want to
+                      <br />
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-500">
+                        add a domain?
+                      </span>
+                    </span>
                   </h1>
-                  <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
+                  <p className="text-slate-500 text-[15px] sm:text-base mt-4 font-normal leading-relaxed max-w-lg">
                     Connect a domain you already own, or use a Toowix-owned domain instead.
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3.5 max-w-lg">
                   <button
                     type="button"
                     aria-label="Connect a domain you own"
@@ -589,22 +610,22 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       setError(null);
                       navigateTo('domain');
                     }}
-                    className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors cursor-pointer flex items-center justify-between bg-white text-left"
+                    className="w-full group p-5 rounded-2xl border-2 border-indigo-200/90 bg-gradient-to-r from-indigo-50/50 via-purple-50/20 to-white hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer flex items-center justify-between text-left"
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
-                        <Globe className="w-4 h-4" />
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-100/80 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-200/80 transition-colors">
+                        <Globe className="w-5 h-5 stroke-[2]" />
                       </div>
                       <div>
-                        <span className="text-sm font-semibold text-slate-900 block">
+                        <span className="text-[15px] font-bold text-slate-900 block">
                           Connect a domain you own
                         </span>
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-xs text-slate-500 block mt-0.5">
                           Use your own domain name for mailboxes — DNS setup required
                         </span>
                       </div>
                     </div>
-                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-transform" />
+                    <ArrowRight className="w-4 h-4 text-indigo-600 group-hover:translate-x-1 transition-transform" />
                   </button>
 
                   <button
@@ -615,22 +636,22 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       setError(null);
                       navigateTo('plan');
                     }}
-                    className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/20 transition-colors cursor-pointer flex items-center justify-between bg-white text-left"
+                    className="w-full group p-5 rounded-2xl border border-slate-200/90 bg-white hover:border-indigo-200 hover:bg-slate-50/50 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between text-left"
                   >
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
-                        <Sparkles className="w-4 h-4" />
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 transition-colors">
+                        <Sparkles className="w-5 h-5 stroke-[2]" />
                       </div>
                       <div>
-                        <span className="text-sm font-semibold text-slate-900 block group-hover:text-indigo-950">
+                        <span className="text-[15px] font-bold text-slate-900 block">
                           Use {PLATFORM_MAIL_DOMAIN} instead
                         </span>
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-xs text-slate-500 block mt-0.5">
                           No domain to buy or DNS to configure — mailboxes work immediately
                         </span>
                       </div>
                     </div>
-                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-transform" />
+                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
               </div>
@@ -705,67 +726,119 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             {/* STEP 2: PLAN */}
             {step === 'plan' && (
               <div>
-                <div className="mb-8">
+                <div className="mb-6">
                   <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
                     Choose a plan
                   </h1>
-                  <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
-                    Select seat capacity for this domain. You can adjust this later.
+                  <p className="text-slate-500 text-[15px] mt-2.5 font-normal leading-relaxed">
+                    Select the plan that fits your business needs. All plans include automated DNS verification and a 60-day free trial.
                   </p>
                 </div>
 
-                <form onSubmit={handlePlanSubmit} className="space-y-8">
+                <form onSubmit={handlePlanSubmit} className="space-y-6">
                   {plansLoading && plans.length === 0 ? (
                     <p className="text-xs text-slate-400 py-2">Loading plans…</p>
                   ) : plans.length === 0 ? (
                     <p className="text-xs text-rose-500 py-2">No plans are available right now. Please try again shortly.</p>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
+                    <div className="flex flex-col gap-3.5">
                       {plans.map((plan) => {
                         const isSelected = selectedPlanId === plan.id;
+                        const isPopular = plan.badge === 'Most Popular';
+                        const isFixedSolo = plan.billingMode === 'fixed' && plan.monthlyPriceInPaise === 0;
+
                         return (
-                          <button
+                          <div
                             key={plan.id}
-                            type="button"
                             onClick={() => setSelectedPlanId(plan.id)}
-                            className={`p-4 rounded-xl border-2 text-left transition-colors cursor-pointer flex flex-col justify-between min-h-[104px] ${
+                            className={`relative p-4 sm:p-5 rounded-2xl border-2 transition-all cursor-pointer text-left flex flex-col gap-2.5 ${
                               isSelected
-                                ? 'border-indigo-600 bg-indigo-50/40 text-indigo-900'
-                                : 'border-slate-200 hover:border-slate-300 bg-white text-slate-800'
+                                ? 'border-indigo-600 bg-indigo-50/20 shadow-xs'
+                                : 'border-slate-200 hover:border-slate-300 bg-white'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span
-                                className={`text-base font-bold ${
-                                  isSelected ? 'text-indigo-700' : 'text-slate-900'
-                                }`}
-                              >
-                                {plan.billingMode === 'metered'
-                                  ? plan.name
-                                  : `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`}
-                              </span>
-                              {isSelected && (
-                                <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                                  <Check className="w-3 h-3" />
+                            {/* Top-Right "Most Popular" Ribbon */}
+                            {isPopular && (
+                              <div className="absolute -top-2.5 right-4 bg-indigo-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-xs">
+                                <Star className="w-2.5 h-2.5 fill-white text-white" />
+                                <span>Most Popular</span>
+                              </div>
+                            )}
+
+                            {/* Header: Radio indicator, Plan Name, Badges, and Price */}
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div
+                                  className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                                    isSelected
+                                      ? 'border-indigo-600 bg-indigo-600'
+                                      : 'border-slate-300 bg-white'
+                                  }`}
+                                >
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                                 </div>
-                              )}
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    className={`text-base font-bold tracking-tight ${
+                                      isSelected ? 'text-indigo-950' : 'text-slate-900'
+                                    }`}
+                                  >
+                                    {isFixedSolo
+                                      ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
+                                      : plan.name}
+                                  </span>
+
+                                  {plan.badge && !isPopular && (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 uppercase tracking-wide">
+                                      {plan.badge}
+                                    </span>
+                                  )}
+
+                                  {isPopular && (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                                      Recommended
+                                    </span>
+                                  )}
+
+                                  {/* Accessible Seat badge for fixed tests */}
+                                  {plan.billingMode === 'fixed' && !isFixedSolo && (
+                                    <span className="text-[10px] font-medium text-slate-500">
+                                      {`${plan.seatCount} Seats`}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <div className="flex items-baseline justify-end gap-1">
+                                  <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
+                                    {plan.monthlyPriceInPaise > 0
+                                      ? `₹${(plan.monthlyPriceInPaise / 100).toLocaleString('en-IN')}`
+                                      : plan.billingMode === 'fixed'
+                                      ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
+                                      : 'Free'}
+                                  </span>
+                                  {plan.monthlyPriceInPaise > 0 && (
+                                    <span className="text-xs text-slate-400 font-normal">/user/mo</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <span className="text-xs text-slate-500 mt-2 truncate">
-                              {plan.billingMode === 'metered'
-                                ? plan.badge || 'Pay as you go'
-                                : plan.badge || plan.description || plan.name}
-                            </span>
-                          </button>
+
+
+                          </div>
                         );
                       })}
                     </div>
                   )}
 
-                  <div className="pt-2 flex items-center gap-4">
+                  {/* Actions & Trial Banner */}
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
                     <button
                       type="submit"
                       disabled={loading || dhkmailSubmitting || !selectedPlanId}
-                      className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs gap-2"
                       id="btn-submit-domain-wizard"
                     >
                       {loading || dhkmailSubmitting ? (
@@ -774,9 +847,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                           <span>{isSharedDomain ? 'Setting up...' : 'Detecting DNS provider...'}</span>
                         </span>
                       ) : (
-                        <span>Continue</span>
+                        <>
+                          <span>{isSharedDomain ? 'Continue to Mailbox Setup' : 'Continue to DNS Setup'}</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
                       )}
                     </button>
+
+                    <span className="text-xs text-slate-400 font-normal">
+                      60-day free trial · Cancel or change plans anytime
+                    </span>
                   </div>
                 </form>
               </div>
@@ -1134,7 +1214,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
           </main>
 
           {/* Right Graphic: Positioned in right space on desktop, unique per step */}
-          <div className={`hidden xl:flex flex-1 items-start justify-center ${STEP_TOP_PADDING[step]} pl-10 select-none pointer-events-none sticky top-0`}>
+          <div className={`hidden lg:flex flex-1 items-start justify-center ${step === 'plan' ? 'pt-16 sm:pt-18 xl:pt-[13vh] pb-6' : `${STEP_TOP_PADDING[step]} sticky top-0`} pl-6 xl:pl-10 select-none pointer-events-none`}>
             <WizardStepGraphic
               step={step}
               domainName={createdDomain?.domainName || domainName}

@@ -543,6 +543,52 @@ export class StalwartClient {
   }
 
   /**
+   * Verifies user mailbox credentials directly against Stalwart via JMAP.
+   * Returns true if Stalwart returns HTTP 200, false otherwise.
+   */
+  async verifyUserCredentials(email: string, password: string): Promise<boolean> {
+    if (!email || !password) return false;
+
+    const payload = JSON.stringify({
+      using: ['urn:ietf:params:jmap:core'],
+      methodCalls: [],
+    });
+
+    const url = new URL(`${this.baseUrl}/jmap`);
+    const transport = url.protocol === 'https:' ? https : http;
+    const authHeader = 'Basic ' + Buffer.from(`${email.trim().toLowerCase()}:${password}`).toString('base64');
+
+    return new Promise<boolean>((resolve) => {
+      const req = transport.request(
+        url,
+        {
+          method: 'POST',
+          rejectUnauthorized: false,
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            'Authorization': authHeader,
+          },
+          timeout: 5000,
+        },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode === 200);
+        }
+      );
+
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+
+      req.write(payload);
+      req.end();
+    });
+  }
+
+  /**
    * Applies the configured mail limits to the live Stalwart runtime.
    * Values are stored in MB in the app and converted to bytes in Stalwart.
    */

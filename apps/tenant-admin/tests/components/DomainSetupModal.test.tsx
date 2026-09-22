@@ -24,12 +24,9 @@ vi.mock('../../src/api', () => ({
 }));
 
 const MOCK_PLANS = [
-  { id: 'plan-1', name: 'Individual', badge: 'Solo', description: 'Starter / Solo', seatCount: 1, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
-  { id: 'plan-10', name: 'Team', badge: 'Standard', description: 'Standard team tier', seatCount: 10, displayOrder: 2, isActive: true, isDefault: true, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
-  { id: 'plan-25', name: 'Growth', badge: 'Growth', description: 'Growing businesses', seatCount: 25, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
-  { id: 'plan-50', name: 'Business', badge: 'Team', description: 'Mid-size organizations', seatCount: 50, displayOrder: 4, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
-  { id: 'plan-75', name: 'Scale', badge: 'Business', description: 'Large departments', seatCount: 75, displayOrder: 5, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
-  { id: 'plan-100', name: 'Enterprise', badge: 'Enterprise', description: 'Full-scale enterprise', seatCount: 100, displayOrder: 6, isActive: true, isDefault: false, billingMode: 'fixed' as const, monthlyPriceInPaise: 0 },
+  { id: 'plan-starter', name: 'Starter', badge: null, description: 'Email only — up to 10 mailboxes', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'metered' as const, monthlyPriceInPaise: 4900, storageQuotaGb: 5, apps: [] },
+  { id: 'plan-pro', name: 'Pro', badge: 'Most Popular', description: 'Email + Toowix Suite — up to 20 mailboxes', seatCount: 20, displayOrder: 2, isActive: true, isDefault: true, billingMode: 'metered' as const, monthlyPriceInPaise: 9900, storageQuotaGb: 20, apps: ['meet', 'sign'] },
+  { id: 'plan-enterprise', name: 'Enterprise', badge: null, description: 'Unlimited mailboxes — full Toowix Suite + 30 GB', seatCount: 9999, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'metered' as const, monthlyPriceInPaise: 14900, storageQuotaGb: 30, apps: ['meet', 'sign'] },
 ];
 
 /** Types the domain name on step 1 and advances to the plan step. */
@@ -74,23 +71,20 @@ describe('DomainSetupModal Component', () => {
     expect(api.createTenantDomain).not.toHaveBeenCalled();
   });
 
-  it('renders the domain step, then the fetched plan tiers (1, 10, 25, 50, 75, 100 seats) on the next step', async () => {
+  it('renders the domain step, then the fetched plan tiers (Starter, Pro, Enterprise) on the next step', async () => {
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     expect(screen.getByText(/Let's start with a name for your domain/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/enter your domain name|acme-tech\.com/i)).toBeInTheDocument();
     // Plan tiers are not shown until the domain step is completed.
-    expect(screen.queryByText('10 Seats')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pro')).not.toBeInTheDocument();
 
     await enterDomainAndContinue('acme-tech.com');
 
-    expect(await screen.findByText('1 Seat')).toBeInTheDocument();
-    expect(screen.getByText('10 Seats')).toBeInTheDocument();
-    expect(screen.getByText('25 Seats')).toBeInTheDocument();
-    expect(screen.getByText('50 Seats')).toBeInTheDocument();
-    expect(screen.getByText('75 Seats')).toBeInTheDocument();
-    expect(screen.getByText('100 Seats')).toBeInTheDocument();
+    expect(await screen.findByText('Starter')).toBeInTheDocument();
+    expect(screen.getAllByText('Pro').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Enterprise').length).toBeGreaterThanOrEqual(1);
   });
 
   it('creates an unprovisioned domain by planId, then connects GoDaddy after auto-detecting it from nameservers', async () => {
@@ -108,10 +102,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'newbrand.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 25,
-        employeeCount: 25,
-        planId: 'plan-25',
-        planName: 'Growth',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -129,9 +123,10 @@ describe('DomainSetupModal Component', () => {
     await enterDomainAndContinue('newbrand.io');
     expect(api.detectDnsProvider).toHaveBeenCalledWith('newbrand.io');
 
-    // Step 2: plan
-    await userEvent.click(await screen.findByText('25 Seats'));
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    // Step 2: plan — Pro is the default plan (isDefault: true), so it's already selected. Just confirm step loaded then proceed.
+    await screen.findByText('Starter');
+    await screen.findAllByText('Pro');
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
 
     // Before credentials are submitted, domain is NOT created yet (avoids orphan domains on cancel/interrupt)
     expect(api.createTenantDomain).not.toHaveBeenCalled();
@@ -147,7 +142,7 @@ describe('DomainSetupModal Component', () => {
 
     expect(api.createTenantDomain).toHaveBeenCalledWith({
       domainName: 'newbrand.io',
-      planId: 'plan-25',
+      planId: 'plan-pro',
     });
 
     expect(api.connectDnsProviderCredential).toHaveBeenCalledWith(
@@ -169,7 +164,7 @@ describe('DomainSetupModal Component', () => {
     expect(onDomainAdded).toHaveBeenCalledWith(
       expect.objectContaining({
         domainName: 'newbrand.io',
-        mailboxLimit: 25,
+        mailboxLimit: 20,
         dnsStatus: 'not_started',
       })
     );
@@ -184,10 +179,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'otherbrand.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -202,8 +197,8 @@ describe('DomainSetupModal Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('otherbrand.io');
-    await screen.findByText('10 Seats'); // default-selected already
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findAllByText('Pro'); // default-selected (Pro is isDefault: true); findAll because WizardStepGraphic also shows it
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
 
     await screen.findByText(/couldn't detect/i);
     await userEvent.click(screen.getByText('Connect a provider instead'));
@@ -233,10 +228,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'thirdbrand.dev',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -251,8 +246,8 @@ describe('DomainSetupModal Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('thirdbrand.dev');
-    await screen.findByText('10 Seats');
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findAllByText('Pro');
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
 
     await screen.findByText(/couldn't detect/i);
     await userEvent.click(screen.getByText('Connect a provider instead'));
@@ -282,10 +277,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'manualbrand.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -301,8 +296,8 @@ describe('DomainSetupModal Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('manualbrand.io');
-    await screen.findByText('10 Seats');
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findAllByText('Pro');
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
 
     // Method picker is skipped — nothing was auto-detected (default mock),
     // so the wizard lands directly on the DNS records / status step.
@@ -323,10 +318,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'refreshme.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -335,8 +330,8 @@ describe('DomainSetupModal Component', () => {
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
     await enterDomainAndContinue('refreshme.io');
-    await screen.findByText('10 Seats');
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findAllByText('Pro');
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
     await screen.findByText('DNS Setup — refreshme.io');
 
     vi.mocked(api.getDomainDnsStatus).mockClear();
@@ -360,10 +355,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'payable.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -374,8 +369,8 @@ describe('DomainSetupModal Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('payable.io');
-    await screen.findByText('10 Seats');
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findAllByText('Pro');
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
 
     expect(await screen.findByText('DNS Setup — payable.io')).toBeInTheDocument();
     expect(screen.getByText('Add a payment method')).toBeInTheDocument();
@@ -401,8 +396,8 @@ describe('DomainSetupModal Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('backnav.io');
-    await screen.findByText('10 Seats');
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findAllByText('Pro');
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
 
     // Auto-skipped straight to Cloudflare's form.
     expect(await screen.findByText(/^Connect Cloudflare$/)).toBeInTheDocument();
@@ -439,10 +434,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'dhkinnovations.com',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -460,8 +455,8 @@ describe('DomainSetupModal Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('dhkinnovations.com');
-    await screen.findByText('10 Seats');
-    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findAllByText('Pro');
+    await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
 
     // Land on Connect GoDaddy with saved key button
     expect(await screen.findByText(/^Connect GoDaddy$/)).toBeInTheDocument();
@@ -494,10 +489,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'abandoned.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -508,8 +503,8 @@ describe('DomainSetupModal Component', () => {
       render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
       fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await enterDomainAndContinue('abandoned.io');
-      await screen.findByText('10 Seats');
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await screen.findAllByText('Pro');
+      await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
       expect(await screen.findByText('DNS Setup — abandoned.io')).toBeInTheDocument();
 
       await exitWizard();
@@ -526,6 +521,7 @@ describe('DomainSetupModal Component', () => {
       fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
       await enterDomainAndContinue('neverwritten.io');
+      await screen.findAllByText('Pro');
       await exitWizard();
 
       expect(api.createTenantDomain).not.toHaveBeenCalled();
@@ -541,10 +537,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'flaky.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -556,8 +552,8 @@ describe('DomainSetupModal Component', () => {
       render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={vi.fn()} />);
       fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await enterDomainAndContinue('flaky.io');
-      await screen.findByText('10 Seats');
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await screen.findAllByText('Pro');
+      await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
       await screen.findByText('DNS Setup — flaky.io');
 
       await exitWizard();
@@ -576,8 +572,8 @@ describe('DomainSetupModal Component', () => {
       render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={onDomainAdded} />);
       fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await enterDomainAndContinue('inflight.io');
-      await screen.findByText('10 Seats');
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await screen.findAllByText('Pro');
+      await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
       await waitFor(() => expect(api.createTenantDomain).toHaveBeenCalled());
 
       await exitWizard(); // cancel while the request is still running
@@ -590,10 +586,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'inflight.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -610,8 +606,10 @@ describe('DomainSetupModal Component', () => {
     /** Goes forward to the DNS status step, where the wizard has already created the domain. */
     const reachStatusStep = async (domain: string) => {
       await enterDomainAndContinue(domain);
-      await screen.findByText('10 Seats');
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      // Plan step is confirmed by enterDomainAndContinue (finds 'Choose a plan').
+      // Use findAllByText since 'Pro' appears in both the plan card and the WizardStepGraphic sidebar.
+      await screen.findAllByText('Pro');
+      await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
       await screen.findByText(`DNS Setup — ${domain}`);
     };
 
@@ -630,10 +628,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'again.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -654,7 +652,7 @@ describe('DomainSetupModal Component', () => {
       expect(screen.queryByText(/already registered/i)).not.toBeInTheDocument();
 
       // Same domain: it is kept and reused, not deleted and not created a second time.
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
       await screen.findByText('DNS Setup — again.io');
       expect(api.deleteDomain).not.toHaveBeenCalled();
       expect(api.createTenantDomain).toHaveBeenCalledTimes(1);
@@ -669,10 +667,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'first.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -684,10 +682,10 @@ describe('DomainSetupModal Component', () => {
         domainName: 'second.io',
         status: 'active',
         dnsStatus: 'not_started',
-        mailboxLimit: 10,
-        employeeCount: 10,
-        planId: 'plan-10',
-        planName: 'Team',
+        mailboxLimit: 20,
+        employeeCount: 20,
+        planId: 'plan-pro',
+        planName: 'Pro',
         mailboxCount: 0,
         isPrimary: false,
       },
@@ -706,7 +704,7 @@ describe('DomainSetupModal Component', () => {
       // first.io must not linger in Stalwart under a wizard that has moved on to second.io.
       expect(api.deleteDomain).toHaveBeenCalledWith('dom-first-1');
 
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
       expect(await screen.findByText('DNS Setup — second.io')).toBeInTheDocument();
       expect(api.createTenantDomain).toHaveBeenLastCalledWith(expect.objectContaining({ domainName: 'second.io' }));
     });
@@ -749,9 +747,9 @@ describe('DomainSetupModal Component', () => {
       render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
       await userEvent.click(screen.getByRole('button', { name: /use dhkmail\.com instead/i }));
       await screen.findByText('Choose a plan');
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await userEvent.click(screen.getByRole('button', { name: /continue to mailbox setup/i }));
 
-      await waitFor(() => expect(api.startDhkmailCheckout).toHaveBeenCalledWith('plan-10'));
+      await waitFor(() => expect(api.startDhkmailCheckout).toHaveBeenCalledWith('plan-pro'));
       await waitFor(() => expect(onDomainAdded).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'shared-domain-id', domainName: 'dhkmail.com', isSharedDomain: true })
       ));
@@ -768,7 +766,7 @@ describe('DomainSetupModal Component', () => {
       render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={vi.fn()} />);
       await userEvent.click(screen.getByRole('button', { name: /use dhkmail\.com instead/i }));
       await screen.findByText('Choose a plan');
-      await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+      await userEvent.click(screen.getByRole('button', { name: /continue to mailbox setup/i }));
 
       expect(await screen.findByText(/payment provider unreachable/i)).toBeInTheDocument();
       expect(onClose).not.toHaveBeenCalled();

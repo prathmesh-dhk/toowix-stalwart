@@ -541,18 +541,12 @@ describe('TenantAdminDashboard Component', () => {
       expect(screen.queryByText('v=spf1 mx include:relay.toowix.net ~all')).not.toBeInTheDocument();
     });
 
-    it('clicking Security in the sidebar switches navigation to Domain Security view', async () => {
+    it('does not display Security or Team tabs in the sidebar navigation', async () => {
       renderDashboard();
 
-      const securityNavBtn = await screen.findByRole('button', { name: /^security$/i });
-      fireEvent.click(securityNavBtn);
-
-      await waitFor(() => {
-        expect(screen.getByRole('heading', { level: 1, name: /domain security/i })).toBeInTheDocument();
-        expect(screen.getByText('@acmecorp.com')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /blocked ips/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /allowed ips/i })).toBeInTheDocument();
-      });
+      await screen.findByRole('button', { name: /dashboard/i });
+      expect(screen.queryByRole('button', { name: /^security$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^team$/i })).not.toBeInTheDocument();
     });
 
     it('gracefully falls back to first domain and does not crash when navigated with unknown domainId', async () => {

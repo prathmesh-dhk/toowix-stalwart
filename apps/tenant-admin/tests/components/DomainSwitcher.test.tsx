@@ -93,4 +93,29 @@ describe('DomainSwitcher Component', () => {
     await userEvent.click(screen.getByText('secondarybrand.com'));
     expect(onSelectDomain).toHaveBeenCalledWith(mockDomains[1]);
   });
+
+  it('renders "+ Add Domain" button in dropdown when onOpenAddDomain is provided and triggers callback', async () => {
+    const onSelectDomain = vi.fn();
+    const onOpenAddDomain = vi.fn();
+
+    render(
+      <DomainSwitcher
+        domains={mockDomains}
+        activeDomain={mockDomains[0]}
+        onSelectDomain={onSelectDomain}
+        onOpenAddDomain={onOpenAddDomain}
+      />
+    );
+
+    // Open dropdown
+    const triggerBtn = screen.getByRole('button', { name: /primarybrand\.com/i });
+    await userEvent.click(triggerBtn);
+
+    // Verify Add Domain button appears in listbox
+    const addDomainBtn = screen.getByRole('button', { name: /add domain/i });
+    expect(addDomainBtn).toBeInTheDocument();
+
+    await userEvent.click(addDomainBtn);
+    expect(onOpenAddDomain).toHaveBeenCalledTimes(1);
+  });
 });

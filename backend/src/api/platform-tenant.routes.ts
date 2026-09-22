@@ -766,11 +766,18 @@ platformTenantRouter.post('/:id/admins/:adminId/reset-password', async (req: Req
     return res.status(404).json({ error: 'ADMIN_NOT_FOUND', message: 'Tenant Admin not found' });
   }
 
+  // 1. Sync & validate with Stalwart first if account has a mailbox.
+  try {
+    await MailboxService.syncLoginMailboxPassword(admin.email, parsed.data.newPassword);
+  } catch (err: any) {
+    return res.status(err.status || 400).json({
+      error: err.code || 'PASSWORD_REJECTED',
+      message: err.message || 'Password was rejected by the mail engine',
+    });
+  }
+
   admin.passwordHash = await hashPassword(parsed.data.newPassword);
   await admin.save();
-  // An admin's login email is also their platform mailbox address, so the mail credential has to
-  // move with it — otherwise login and IMAP/webmail drift apart.
-  await MailboxService.syncLoginMailboxPassword(admin.email, parsed.data.newPassword);
 
   await AuditLogModel.create({
     actorId: req.adminUser!.id,
