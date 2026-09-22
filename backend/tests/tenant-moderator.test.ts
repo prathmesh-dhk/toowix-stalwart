@@ -77,6 +77,15 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
       tenantId,
       twoFactorEnabled: true,
     });
+
+    // A Moderator's login must be an existing mailbox — the default fixture used by createModerator().
+    await MailboxModel.create({
+      tenantId,
+      domainId: domainAId,
+      localPart: 'mod',
+      address: 'mod@acme.test',
+      status: 'active',
+    });
   });
 
   async function createModerator(scopedDomainIds: string[] = [domainAId]) {
@@ -113,6 +122,74 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
       expect(res.status).toBe(404);
       expect(res.body.error).toBe('DOMAIN_NOT_FOUND');
       expect(await AdminUserModel.countDocuments({ role: 'TENANT_MODERATOR' })).toBe(0);
+    });
+
+    it('refuses an email that is not an existing mailbox for this tenant — no free-text logins', async () => {
+      const res = await request(app)
+        .post('/api/tenants/me/moderators')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ email: 'nobody@acme.test', password: 'Password123!', scopedDomainIds: [domainAId] });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('MAILBOX_NOT_FOUND');
+      expect(await AdminUserModel.countDocuments({ role: 'TENANT_MODERATOR' })).toBe(0);
+    });
+
+    it("refuses another tenant's dhkmail mailbox even though the address format is valid", async () => {
+      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active', mailboxLimit: 1000000, mailboxCount: 0 });
+      const platformDomain = await DomainModel.create({
+        tenantId: platformTenant._id,
+        domainName: 'dhkmail.com',
+        status: 'active',
+        dnsStatus: 'active',
+        isPrimary: true,
+        mailboxLimit: 1000000,
+      });
+      const otherTenantId = (await TenantModel.create({ name: 'Rival Inc', status: 'active' }))._id.toString();
+      await MailboxModel.create({
+        tenantId: platformTenant._id,
+        ownerTenantId: otherTenantId,
+        domainId: platformDomain._id,
+        localPart: 'sales',
+        address: 'sales@dhkmail.com',
+        status: 'active',
+      });
+
+      const res = await request(app)
+        .post('/api/tenants/me/moderators')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ email: 'sales@dhkmail.com', password: 'Password123!', scopedDomainIds: [] });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('MAILBOX_NOT_FOUND');
+    });
+
+    it("accepts this tenant's own dhkmail mailbox as a Moderator login", async () => {
+      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active', mailboxLimit: 1000000, mailboxCount: 0 });
+      const platformDomain = await DomainModel.create({
+        tenantId: platformTenant._id,
+        domainName: 'dhkmail.com',
+        status: 'active',
+        dnsStatus: 'active',
+        isPrimary: true,
+        mailboxLimit: 1000000,
+      });
+      await MailboxModel.create({
+        tenantId: platformTenant._id,
+        ownerTenantId: tenantId,
+        domainId: platformDomain._id,
+        localPart: 'support',
+        address: 'support@dhkmail.com',
+        status: 'active',
+      });
+
+      const res = await request(app)
+        .post('/api/tenants/me/moderators')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ email: 'support@dhkmail.com', password: 'Password123!', scopedDomainIds: [] });
+
+      expect(res.status).toBe(201);
+      expect(res.body.moderator.email).toBe('support@dhkmail.com');
     });
 
     it('lists Moderators for this tenant', async () => {
@@ -237,7 +314,8 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
         .send({ localPart: 'sales', password: 'Password123!', domainId: domainBId });
 
       expect(res.status).toBe(404);
-      expect(await MailboxModel.countDocuments({})).toBe(0);
+      // Only the fixture mailbox (the moderator's own login address) exists — nothing new created.
+      expect(await MailboxModel.countDocuments({})).toBe(1);
     });
 
     it('refuses to create a mailbox with no domainId (would otherwise default to the primary domain, bypassing scope)', async () => {
@@ -269,8 +347,9 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
 
       const res = await request(app).get('/api/tenants/me/mailboxes').set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
-      expect(res.body.mailboxes).toHaveLength(1);
-      expect(res.body.mailboxes[0].address).toBe('sales@acme.test');
+      // Both in-scope: the fixture login mailbox and the one just created — never the out-of-scope one.
+      const addresses = res.body.mailboxes.map((m: any) => m.address).sort();
+      expect(addresses).toEqual(['mod@acme.test', 'sales@acme.test']);
     });
 
     it('suspend/reactivate/reset-password/delete succeed on an in-scope mailbox', async () => {

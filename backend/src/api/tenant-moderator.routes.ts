@@ -7,6 +7,7 @@ import { DomainModel } from '../db/models/Domain';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { hashPassword } from '../auth/service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
+import { MailboxService } from '../services/mailbox.service';
 import { getSharedDomainListEntry } from './tenant.routes';
 
 /**
@@ -77,6 +78,19 @@ tenantModeratorRouter.post('/', async (req: Request, res: Response): Promise<voi
   const existing = await AdminUserModel.findOne({ email: normalizedEmail });
   if (existing) {
     res.status(409).json({ error: 'ACCOUNT_EXISTS', message: `An account with email "${normalizedEmail}" already exists` });
+    return;
+  }
+
+  // A Moderator's login must be an existing mailbox this tenant owns — the frontend offers a
+  // picker over MailboxService.listMailboxes rather than a free-text email field, but the backend
+  // re-checks rather than trusting that, since listMailboxes is exactly what already excludes
+  // every other tenant's dhkmail mailboxes (via ownerTenantId) from this tenant's own list.
+  const ownMailboxes = await MailboxService.listMailboxes(tenantId);
+  if (!ownMailboxes.some((m) => m.address.toLowerCase() === normalizedEmail)) {
+    res.status(404).json({
+      error: 'MAILBOX_NOT_FOUND',
+      message: `'${normalizedEmail}' is not an existing mailbox for this organisation. Pick one of your organisation's mailboxes to make it a Moderator login.`,
+    });
     return;
   }
 

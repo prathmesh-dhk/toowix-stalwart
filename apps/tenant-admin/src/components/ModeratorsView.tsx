@@ -13,7 +13,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { api } from '../api';
-import { ModeratorItem, DomainItem } from '../types';
+import { ModeratorItem, DomainItem, MailboxItem } from '../types';
 
 interface ModeratorsViewProps {
   domains: DomainItem[];
@@ -35,9 +35,17 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [addEmail, setAddEmail] = useState('');
+  const [mailboxQuery, setMailboxQuery] = useState('');
+  const [mailboxOptions, setMailboxOptions] = useState<MailboxItem[]>([]);
+  const [mailboxOptionsLoading, setMailboxOptionsLoading] = useState(false);
   const [addPassword, setAddPassword] = useState('');
   const [addScope, setAddScope] = useState<string[]>([]);
   const [submittingAdd, setSubmittingAdd] = useState(false);
+
+  // Addresses already spoken for — a Moderator login is a NEW admin_users row on top of an
+  // existing mailbox, and AdminUserModel.email is globally unique, so an address already used by
+  // another Moderator can't be picked again.
+  const takenAddresses = new Set(moderators.map((m) => m.email.toLowerCase()));
 
   const [editingScope, setEditingScope] = useState<ModeratorItem | null>(null);
   const [editScope, setEditScope] = useState<string[]>([]);
@@ -66,8 +74,31 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
     fetchModerators();
   }, [fetchModerators]);
 
+  // A Moderator login must be an existing mailbox (see backend's MAILBOX_NOT_FOUND check) — this
+  // fetches the tenant's full mailbox list once when the Add modal opens, across every domain
+  // they own (their own dhkmail mailboxes included; MailboxService.listMailboxes already excludes
+  // every other tenant's).
+  useEffect(() => {
+    if (!showAddModal) return;
+    setMailboxOptionsLoading(true);
+    api
+      .listMyMailboxes()
+      .then((res) => setMailboxOptions(res.mailboxes || []))
+      .catch(() => setMailboxOptions([]))
+      .finally(() => setMailboxOptionsLoading(false));
+  }, [showAddModal]);
+
   const toggleScopeDomain = (list: string[], setList: (v: string[]) => void, id: string) => {
     setList(list.includes(id) ? list.filter((d) => d !== id) : [...list, id]);
+  };
+
+  const availableMailboxOptions = mailboxOptions.filter(
+    (m) => !takenAddresses.has(m.address.toLowerCase()) && m.address.toLowerCase().includes(mailboxQuery.trim().toLowerCase())
+  );
+
+  const selectMailbox = (m: MailboxItem) => {
+    setAddEmail(m.address);
+    setMailboxQuery(m.address);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -82,6 +113,7 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
       setSuccessMsg(`Moderator ${addEmail.trim()} created.`);
       setShowAddModal(false);
       setAddEmail('');
+      setMailboxQuery('');
       setAddPassword('');
       setAddScope([]);
       await fetchModerators();
@@ -190,6 +222,9 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
           <button
             onClick={() => {
               setAddPassword(generatePassword());
+              setAddEmail('');
+              setMailboxQuery('');
+              setAddScope([]);
               setShowAddModal(true);
             }}
             className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
@@ -330,16 +365,47 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
             <form onSubmit={handleAdd} className="flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Email <span className="text-rose-500">*</span>
+                  Mailbox <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="email"
-                  placeholder="moderator@yourcompany.com"
-                  value={addEmail}
-                  onChange={(e) => setAddEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  required
-                />
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                  <input
+                    type="text"
+                    placeholder="Search an existing mailbox..."
+                    value={mailboxQuery}
+                    onChange={(e) => {
+                      setMailboxQuery(e.target.value);
+                      setAddEmail('');
+                    }}
+                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    required
+                  />
+                </div>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  A Moderator's login is an existing mailbox address, not a new email — pick one from any domain
+                  your organisation owns.
+                </span>
+
+                {mailboxQuery && !addEmail && (
+                  <div className="mt-1.5 max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                    {mailboxOptionsLoading ? (
+                      <div className="px-3 py-2 text-xs text-slate-400">Loading mailboxes...</div>
+                    ) : availableMailboxOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-slate-400">No matching mailbox found.</div>
+                    ) : (
+                      availableMailboxOptions.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => selectMailbox(m)}
+                          className="w-full text-left px-3 py-2 text-xs text-slate-800 hover:bg-indigo-50 cursor-pointer"
+                        >
+                          {m.address}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
