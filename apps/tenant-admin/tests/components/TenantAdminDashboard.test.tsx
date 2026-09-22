@@ -677,6 +677,14 @@ describe('TenantAdminDashboard Component', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: /mailboxes/i })).toBeInTheDocument());
       expect(screen.queryByRole('button', { name: /add domain/i })).not.toBeInTheDocument();
     });
+
+    it('with an empty domainId (App.tsx\'s Moderator landing redirect), resolves to the first domain from their own scoped list', async () => {
+      renderDashboard({ user: mockModerator, domainId: '' });
+
+      // acmecorp.com is dom-1, the only domain in the mocked (already server-scoped) list.
+      await waitFor(() => expect(screen.getByText('acmecorp.com')).toBeInTheDocument());
+      expect(screen.getByText('alice@acmecorp.com')).toBeInTheDocument();
+    });
   });
 });
 

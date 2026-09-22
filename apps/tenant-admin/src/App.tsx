@@ -180,6 +180,25 @@ export const App: React.FC = () => {
     );
   }
 
+  // A Moderator has no tenant-wide home (Overview/API Keys/Billing/Audit Log/Active Devices are
+  // all Tenant-Admin-only) — they land straight in the per-domain dashboard instead, with its
+  // DomainSwitcher (already scoped server-side to their assigned domains) as the only way to
+  // move between domains. Passing an empty domainId lets the dashboard resolve to the first
+  // domain from its own (correctly scoped) fetched list, same as an invalid domainId would.
+  if (currentUser.role === 'TENANT_MODERATOR') {
+    return (
+      <ErrorBoundary fallbackTitle="Unable to load domain view" onReset={navigateHome}>
+        <TenantAdminDashboard
+          domainId=""
+          user={currentUser}
+          onLogout={handleLogout}
+          onNavigateHome={navigateHome}
+          onSelectDomain={navigateToDomain}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={navigateHome}>
       <TenantHomeView

@@ -32,6 +32,8 @@ vi.mock('../../src/api', () => ({
     listSessions: vi.fn(),
     revokeSession: vi.fn(),
     revokeOtherSessions: vi.fn(),
+    // ModeratorsView (mounted on the Team tab)
+    listModerators: vi.fn(),
   },
 }));
 
@@ -111,6 +113,7 @@ describe('TenantHomeView Component', () => {
     vi.mocked(api.listBillingInvoices).mockResolvedValue({ invoices: [] });
     vi.mocked(api.listSessions).mockResolvedValue({ sessions: [] });
     vi.mocked(api.listTenantDnsCredentials).mockResolvedValue({ credentials: [] });
+    vi.mocked(api.listModerators).mockResolvedValue({ moderators: [] });
   });
 
   it('lists every domain and navigates to a Domain Dashboard when one is clicked', async () => {
@@ -221,7 +224,8 @@ describe('TenantHomeView Component', () => {
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByText('acmecorp.com')).toBeInTheDocument();
     expect(screen.getByText('secondary.com')).toBeInTheDocument();
-    expect(screen.getByText('Team')).toBeInTheDocument(); // dom-1's plan name
+    // 'Team' also labels the new Team (Moderators) nav tab, so this must disambiguate rather than assume a single match.
+    expect(screen.getAllByText('Team').length).toBeGreaterThanOrEqual(1); // dom-1's plan name
     expect(screen.getByText('Individual')).toBeInTheDocument(); // dom-2's plan name
     expect(screen.getByText('2 / 50')).toBeInTheDocument(); // dom-1's mailbox allocation
 
@@ -332,5 +336,16 @@ describe('TenantHomeView Component', () => {
       expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
     });
     expect(sessionStorage.getItem('toowix_dismissed_2fa_banner')).toBe('true');
+  });
+
+  it('shows the Team tab and loads Moderator accounts when selected', async () => {
+    render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
+
+    await screen.findByRole('heading', { name: 'Overview' });
+
+    fireEvent.click(screen.getByRole('button', { name: /^team$/i }));
+
+    await waitFor(() => expect(api.listModerators).toHaveBeenCalled());
+    expect(await screen.findByText(/moderators \(0\)/i)).toBeInTheDocument();
   });
 });

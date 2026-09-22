@@ -9,6 +9,7 @@ import { OrganisationDeletionPanel } from './OrganisationDeletionPanel';
 import { ActiveDevicesView } from './ActiveDevicesView';
 import { TenantBillingSummary } from './TenantBillingSummary';
 import { ApiKeysView } from './ApiKeysView';
+import { ModeratorsView } from './ModeratorsView';
 import {
   Loader2,
   LogOut,
@@ -30,6 +31,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Key,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -39,7 +41,7 @@ interface TenantHomeViewProps {
   onNavigateToDomain: (domainId: string) => void;
 }
 
-type HomeTab = 'overview' | 'domains' | 'apikeys' | 'billing' | 'security' | 'audit' | 'devices';
+type HomeTab = 'overview' | 'domains' | 'apikeys' | 'billing' | 'security' | 'team' | 'audit' | 'devices';
 
 function formatAuditAction(action: string, metadata?: any) {
   switch (action) {
@@ -147,6 +149,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
     { key: 'apikeys', label: 'API Keys', icon: Key },
     { key: 'billing', label: 'Billing', icon: CreditCard },
     { key: 'security', label: 'Security', icon: Shield },
+    { key: 'team', label: 'Team', icon: Users },
     { key: 'audit', label: 'Audit Log', icon: FileText },
     { key: 'devices', label: 'Active Devices', icon: Laptop },
   ];
@@ -765,6 +768,8 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
               />
             </SecurityView>
           )}
+
+          {activeTab === 'team' && <ModeratorsView domains={domains} />}
 
           {activeTab === 'audit' && (
             <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">

@@ -49,6 +49,15 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
   }, [isOpen]);
 
   if (domains.length === 0) {
+    // Without onOpenAddDomain (a Moderator), there's nothing this button could do — show a plain
+    // empty state instead of an "Add Domain" affordance that would silently no-op when clicked.
+    if (!onOpenAddDomain) {
+      return (
+        <div className="mb-3 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-xs">
+          No domains assigned yet.
+        </div>
+      );
+    }
     return (
       <div className="mb-3">
         <button

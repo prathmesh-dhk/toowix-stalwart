@@ -46,6 +46,13 @@ describe('DomainSwitcher Component', () => {
     expect(onOpenAddDomain).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a plain empty state (no Add Domain affordance) when 0 domains exist and onOpenAddDomain is omitted — a Moderator with no scoped domains', () => {
+    render(<DomainSwitcher domains={[]} activeDomain={null} onSelectDomain={vi.fn()} />);
+
+    expect(screen.getByText('No domains assigned yet.')).toBeInTheDocument();
+    expect(screen.queryByText('Add Domain')).not.toBeInTheDocument();
+  });
+
   it('renders active domain button showing only domain name', () => {
     const onSelectDomain = vi.fn();
 
