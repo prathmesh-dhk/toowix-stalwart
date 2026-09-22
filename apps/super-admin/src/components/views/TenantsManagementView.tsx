@@ -12,6 +12,7 @@ import {
   Trash2,
   RefreshCw,
   Plus,
+  ChevronRight,
 } from 'lucide-react';
 import { TenantSummary } from '../../types';
 import { Button } from '../ui/Button';
@@ -240,7 +241,7 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                               {tenant.name}
                             </div>
                             <div className="text-[11px] text-slate-400">
-                              ID: {tenant.id.slice(-8)} · {tenant.adminCount || 0} admin{(tenant.adminCount || 0) !== 1 ? 's' : ''}
+                              {tenant.adminCount || 0} admin{(tenant.adminCount || 0) !== 1 ? 's' : ''}
                             </div>
                           </div>
                         </div>
@@ -248,30 +249,18 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
 
                       {/* Domain */}
                       <td>
-                        {tenant.domains && tenant.domains.length > 0 ? (
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
-                              <Globe size={13} className="text-slate-400" />
-                              <span>{tenant.domain?.domainName || tenant.domains[0].domainName}</span>
-                            </div>
-                            {tenant.domains.length > 1 && (
-                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] font-semibold">
-                                  +{tenant.domains.length - 1} more
-                                </span>
-                                <span
-                                  className="text-slate-400 truncate max-w-[150px]"
-                                  title={tenant.domains.slice(1).map((d) => d.domainName).join(', ')}
-                                >
-                                  {tenant.domains.slice(1).map((d) => d.domainName).join(', ')}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ) : tenant.domain ? (
+                        {tenant.domain || (tenant.domains && tenant.domains.length > 0) ? (
                           <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
-                            <Globe size={13} className="text-slate-400" />
-                            <span>{tenant.domain.domainName}</span>
+                            <Globe size={13} className="text-slate-400 shrink-0" />
+                            <span>{tenant.domain?.domainName || tenant.domains![0].domainName}</span>
+                            {tenant.domains && tenant.domains.length > 1 && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold"
+                                title={tenant.domains.slice(1).map((d) => d.domainName).join(', ')}
+                              >
+                                +{tenant.domains.length - 1}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400">No domain</span>
@@ -310,18 +299,11 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Actions */}
+                      {/* Actions — the row itself opens Details, so only actions that change
+                          something for this tenant live here. The chevron at the end signals the
+                          row is clickable, replacing a redundant "Details" button. */}
                       <td style={{ textAlign: 'right' }}>
-                        <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => onViewDetails(tenant)}
-                            title="Inspect Tenant Details"
-                          >
-                            Details
-                          </Button>
-
+                        <div className="inline-flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                           {isPending && (
                             <Button
                               size="sm"
@@ -375,6 +357,8 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                             <Users size={14} />
                           </Button>
 
+                          <span className="w-px h-4 bg-slate-200 mx-0.5" aria-hidden="true" />
+
                           <Button
                             size="sm"
                             variant="ghost"
@@ -384,6 +368,12 @@ export const TenantsManagementView: React.FC<TenantsManagementViewProps> = ({
                           >
                             <Trash2 size={14} />
                           </Button>
+
+                          <ChevronRight
+                            size={15}
+                            className="ml-1 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0"
+                            aria-hidden="true"
+                          />
                         </div>
                       </td>
                     </tr>
