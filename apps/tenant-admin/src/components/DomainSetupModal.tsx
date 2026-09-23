@@ -25,7 +25,7 @@ interface DomainSetupModalProps {
 }
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
-export type WizardStep = 'domain' | 'plan' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status';
+export type WizardStep = 'domain' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status' | 'plan';
 export type SetupMethod = 'provider' | 'manual' | null;
 
 export const PROVIDER_LABEL: Record<DnsProvider, string> = {
@@ -66,10 +66,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Wizard state: domain -> plan -> method -> provider/status
+  // Wizard state: domain -> method -> provider/status -> plan (plan is asked for last, once
+  // DNS is configured — see selectDomainPlan on the backend for why the domain is created without
+  // one up front).
   const [step, setStep] = useState<WizardStep>('domain');
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [createdDomain, setCreatedDomain] = useState<DomainItem | null>(null);
+  const [planAssigned, setPlanAssigned] = useState(false);
+  const [planSubmitting, setPlanSubmitting] = useState(false);
 
   // Method state
   const [method, setMethod] = useState<SetupMethod>(null);
@@ -169,6 +173,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setStep('domain');
     setDirection('forward');
     setCreatedDomain(null);
+    setPlanAssigned(false);
+    setPlanSubmitting(false);
     setMethod(null);
     setProvider('godaddy');
     setMethodAutoSkipped(false);
@@ -195,10 +201,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   // Back button handler
   const goBack = () => {
     setError(null);
-    if (step === 'plan') {
+    if (step === 'method') {
       navigateBack('domain');
-    } else if (step === 'method') {
-      navigateBack('plan');
     } else if (step === 'godaddy' || step === 'hostinger' || step === 'cloudflare') {
       navigateBack('method');
     } else if (step === 'status') {
@@ -209,10 +213,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       } else {
         navigateBack('method');
       }
+    } else if (step === 'plan') {
+      navigateBack('status');
     }
   };
 
-  // STEP 1 -> STEP 2: DOMAIN SUBMIT
+  // STEP 1 -> STEP 2: DOMAIN SUBMIT — creates the domain right away (no plan yet; see
+  // selectDomainPlan on the backend) so the wizard has a domainId to walk DNS setup against, then
+  // detects the DNS provider to decide whether to auto-skip the method picker.
   const handleContinueDomainStep = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = domainName.trim().toLowerCase();
@@ -230,6 +238,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     // asking "is it taken?" would answer yes — by us. A different name replaces it, so the old one is
     // deleted rather than left behind in Stalwart.
     const keepingCreated = createdDomain?.domainName === clean;
+    // Local, not the (still-stale-until-next-render) createdDomain state: discarding and recreating
+    // both happen within this one call, so the state setter below wouldn't be visible in time.
+    let dom: DomainItem | null = keepingCreated ? createdDomain : null;
     if (createdDomain && !keepingCreated) {
       discardDomain(createdDomain);
       createdRef.current = null;
@@ -237,6 +248,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       if (pollingRef.current) clearInterval(pollingRef.current);
       setDnsStatus(null);
       setConnected(false);
+      setPlanAssigned(false);
     }
 
     if (!keepingCreated) {
@@ -256,38 +268,37 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       }
     }
 
-    detectedProviderPromiseRef.current = api.detectDnsProvider(clean).catch(() => null);
-
-    setCheckingAvailability(false);
-    navigateTo('plan');
-  };
-
-  // STEP 2 -> STEP 3: PLAN SUBMIT
-  const handlePlanSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPlanId) {
-      setError('Please select a plan to continue');
-      return;
-    }
-
-    setError(null);
-    setLoading(true);
-
     const session = sessionRef.current;
+    setLoading(true);
     try {
-      const clean = domainName.trim().toLowerCase();
+      if (!dom) {
+        try {
+          const createRes = await api.createTenantDomain({ domainName: clean });
+          if (!adoptCreatedDomain(createRes.domain, session)) {
+            setCheckingAvailability(false);
+            setLoading(false);
+            return;
+          }
+          dom = createRes.domain;
+        } catch (createErr: any) {
+          setCheckingAvailability(false);
+          setLoading(false);
+          setError(createErr?.message || 'Failed to create domain. Please try again.');
+          return;
+        }
+      }
+
       let detected: DnsProvider | null = null;
       try {
-        const detRes = detectedProviderPromiseRef.current
-          ? await detectedProviderPromiseRef.current
-          : await api.detectDnsProvider(clean);
+        const detRes = await api.detectDnsProvider(clean);
         detected = detRes?.provider || null;
       } catch {
         detected = null;
       }
 
+      setCheckingAvailability(false);
       setLoading(false);
-      if (session !== sessionRef.current) return; // cancelled while detecting
+      if (session !== sessionRef.current) return; // cancelled while creating/detecting
 
       if (detected) {
         setProvider(detected);
@@ -295,56 +306,20 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         setMethodAutoSkipped(true);
         navigateTo(detected);
       } else {
-        setMethod('manual');
-        setMethodAutoSkipped(true);
-        let dom = createdDomain;
-        if (!dom) {
-          try {
-            const createRes = await api.createTenantDomain({
-              domainName: clean,
-              planId: selectedPlanId || undefined,
-            });
-            if (!adoptCreatedDomain(createRes.domain, session)) return;
-            dom = createRes.domain;
-          } catch (createErr: any) {
-            setLoading(false);
-            setError(createErr?.message || 'Failed to create domain. Please try again.');
-            return;
-          }
-        }
-        goToStatus(dom);
+        navigateTo('method');
       }
     } catch (err: any) {
+      setCheckingAvailability(false);
       setLoading(false);
-      setError(err?.message || 'Failed to detect DNS configuration. Please try again.');
+      setError(err?.message || 'Failed to set up domain. Please try again.');
     }
   };
 
-  // STEP 3: USER CHOOSES MANUAL SETUP
-  const handleChooseManualSetup = async () => {
+  // STEP 2: USER CHOOSES MANUAL SETUP — the domain already exists by this point.
+  const handleChooseManualSetup = () => {
     setError(null);
     setMethod('manual');
     setMethodAutoSkipped(false);
-
-    if (!createdDomain) {
-      setLoading(true);
-      const session = sessionRef.current;
-      try {
-        const clean = domainName.trim().toLowerCase();
-        const res = await api.createTenantDomain({
-          domainName: clean,
-          planId: selectedPlanId || undefined,
-        });
-        if (!adoptCreatedDomain(res.domain, session)) return;
-        goToStatus(res.domain);
-      } catch (err: any) {
-        setError(err?.message || 'Failed to initialize domain. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
     goToStatus(createdDomain);
   };
 
@@ -408,19 +383,40 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     handleClose();
   };
 
+  // STEP 4 -> STEP 5: PLAN SUBMIT — the domain already exists; this just attaches a plan to it.
+  const handleSelectPlanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPlanId || !createdDomain) {
+      setError('Please select a plan to continue');
+      return;
+    }
+
+    setError(null);
+    setPlanSubmitting(true);
+    try {
+      const res = await api.selectDomainPlan(createdDomain.id, selectedPlanId);
+      const updated: DomainItem = { ...createdDomain, ...res.domain };
+      createdRef.current = updated;
+      setCreatedDomain(updated);
+      setPlanAssigned(true);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save the selected plan. Please try again.');
+    } finally {
+      setPlanSubmitting(false);
+    }
+  };
+
   // Snapshot for the provider form: it may finish connecting after this render's wizard was closed.
   const renderSession = sessionRef.current;
 
   const handleProviderSuccess = (info: SuccessInfo, newDom: DomainItem | undefined, session: number) => {
     if (newDom ? !adoptCreatedDomain(newDom, session) : session !== sessionRef.current) return;
 
-    const dom = newDom ?? createdDomain;
     setConnected(true);
     if (info.usedSavedKey) {
-      if (dom) commitDomain(dom);
-      handleClose();
+      navigateTo('plan');
     } else {
-      goToStatus(dom);
+      goToStatus(newDom ?? createdDomain);
     }
   };
 
@@ -444,9 +440,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       </span>
     );
     subhead = "You'll need to own this domain and be able to manage its DNS records.";
-  } else if (step === 'plan') {
-    headline = 'Choose a plan';
-    subhead = 'Sets how many mailboxes this domain can create — you can change it anytime.';
   } else if (step === 'method') {
     headline = 'How do you want to set up DNS?';
     subhead = 'Pick your DNS provider for automatic setup, or configure records manually.';
@@ -571,14 +564,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                     <button
                       id="continue-button"
                       type="submit"
-                      disabled={!domainNameValid || checkingAvailability}
+                      disabled={!domainNameValid || checkingAvailability || loading}
                       className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                       data-purpose="submit-domain"
                     >
-                      {checkingAvailability ? (
+                      {checkingAvailability || loading ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Checking availability...</span>
+                          <span>{checkingAvailability ? 'Checking availability...' : 'Setting up domain...'}</span>
                         </span>
                       ) : (
                         <span>Continue</span>
@@ -589,146 +582,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </div>
             )}
 
-            {/* STEP 2: PLAN */}
-            {step === 'plan' && (
-              <div>
-                <div className="mb-6">
-                  <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
-                    Choose a plan
-                  </h1>
-                  <p className="text-slate-500 text-[15px] mt-2.5 font-normal leading-relaxed">
-                    Select the plan that fits your business needs. All plans include automated DNS verification and a 60-day free trial.
-                  </p>
-                </div>
-
-                <form onSubmit={handlePlanSubmit} className="space-y-6">
-                  {plansLoading && plans.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-2">Loading plans…</p>
-                  ) : plans.length === 0 ? (
-                    <p className="text-xs text-rose-500 py-2">No plans are available right now. Please try again shortly.</p>
-                  ) : (
-                    <div className="flex flex-col gap-3.5">
-                      {plans.map((plan) => {
-                        const isSelected = selectedPlanId === plan.id;
-                        const isPopular = plan.badge === 'Most Popular';
-                        const isFixedSolo = plan.billingMode === 'fixed' && plan.monthlyPriceInPaise === 0;
-
-                        return (
-                          <div
-                            key={plan.id}
-                            onClick={() => setSelectedPlanId(plan.id)}
-                            className={`relative p-4 sm:p-5 rounded-2xl border-2 transition-all cursor-pointer text-left flex flex-col gap-2.5 ${
-                              isSelected
-                                ? 'border-indigo-600 bg-indigo-50/20 shadow-xs'
-                                : 'border-slate-200 hover:border-slate-300 bg-white'
-                            }`}
-                          >
-                            {/* Top-Right "Most Popular" Ribbon */}
-                            {isPopular && (
-                              <div className="absolute -top-2.5 right-4 bg-indigo-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-xs">
-                                <Star className="w-2.5 h-2.5 fill-white text-white" />
-                                <span>Most Popular</span>
-                              </div>
-                            )}
-
-                            {/* Header: Radio indicator, Plan Name, Badges, and Price */}
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div
-                                  className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                                    isSelected
-                                      ? 'border-indigo-600 bg-indigo-600'
-                                      : 'border-slate-300 bg-white'
-                                  }`}
-                                >
-                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                                </div>
-
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span
-                                    className={`text-base font-bold tracking-tight ${
-                                      isSelected ? 'text-indigo-950' : 'text-slate-900'
-                                    }`}
-                                  >
-                                    {isFixedSolo
-                                      ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
-                                      : plan.name}
-                                  </span>
-
-                                  {plan.badge && !isPopular && (
-                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 uppercase tracking-wide">
-                                      {plan.badge}
-                                    </span>
-                                  )}
-
-                                  {isPopular && (
-                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
-                                      Recommended
-                                    </span>
-                                  )}
-
-                                  {/* Accessible Seat badge for fixed tests */}
-                                  {plan.billingMode === 'fixed' && !isFixedSolo && (
-                                    <span className="text-[10px] font-medium text-slate-500">
-                                      {`${plan.seatCount} Seats`}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="text-right shrink-0">
-                                <div className="flex items-baseline justify-end gap-1">
-                                  <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
-                                    {plan.monthlyPriceInPaise > 0
-                                      ? `₹${(plan.monthlyPriceInPaise / 100).toLocaleString('en-IN')}`
-                                      : plan.billingMode === 'fixed'
-                                      ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
-                                      : 'Free'}
-                                  </span>
-                                  {plan.monthlyPriceInPaise > 0 && (
-                                    <span className="text-xs text-slate-400 font-normal">/user/mo</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Actions & Trial Banner */}
-                  <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
-                    <button
-                      type="submit"
-                      disabled={loading || !selectedPlanId}
-                      className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs gap-2"
-                      id="btn-submit-domain-wizard"
-                    >
-                      {loading ? (
-                        <span className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Detecting DNS provider...</span>
-                        </span>
-                      ) : (
-                        <>
-                          <span>Continue to DNS Setup</span>
-                          <ArrowRight className="w-4 h-4" />
-                        </>
-                      )}
-                    </button>
-
-                    <span className="text-xs text-slate-400 font-normal">
-                      60-day free trial · Cancel or change plans anytime
-                    </span>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* STEP 3: METHOD */}
+            {/* STEP 2: METHOD */}
             {step === 'method' && (
               <div>
                 <div className="mb-8">
@@ -891,7 +745,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                 <DnsProviderCredentialForm
                   domainId={createdDomain?.id}
                   domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
-                  planId={selectedPlanId || undefined}
                   provider="godaddy"
                   theme="light"
                   onSuccess={(info, newDom) => handleProviderSuccess(info, newDom, renderSession)}
@@ -932,7 +785,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                 <DnsProviderCredentialForm
                   domainId={createdDomain?.id}
                   domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
-                  planId={selectedPlanId || undefined}
                   provider="hostinger"
                   theme="light"
                   onSuccess={(info, newDom) => handleProviderSuccess(info, newDom, renderSession)}
@@ -973,7 +825,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                 <DnsProviderCredentialForm
                   domainId={createdDomain?.id}
                   domainName={createdDomain?.domainName || domainName.trim().toLowerCase()}
-                  planId={selectedPlanId || undefined}
                   provider="cloudflare"
                   theme="light"
                   onSuccess={(info, newDom) => handleProviderSuccess(info, newDom, renderSession)}
@@ -1019,62 +870,226 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   theme="light"
                 />
 
-                {billingEnabled && !paymentCardDismissed && (
-                  <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl">
-                    <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                        <CreditCard className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs font-semibold text-slate-900 block">Add a payment method</span>
-                        <span className="text-[11px] text-slate-600 leading-relaxed block mt-1">
-                          One month free, then billed monthly for this domain's plan. Skip this and add it later —
-                          mailboxes just can't be created here until you do.
-                        </span>
-                        {checkoutError && (
-                          <span className="text-[11px] text-rose-500 block mt-1.5">{checkoutError}</span>
-                        )}
-                        <div className="flex items-center gap-2 mt-3">
-                          <button
-                            type="button"
-                            onClick={handleStartCheckout}
-                            disabled={startingCheckout}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                          >
-                            {startingCheckout ? (
-                              <>
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                <span>Redirecting...</span>
-                              </>
-                            ) : (
-                              <span>Add Payment Method</span>
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPaymentCardDismissed(true)}
-                            disabled={startingCheckout}
-                            className="px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                          >
-                            Skip for now
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div className="pt-2">
                   <button
                     type="button"
-                    onClick={handleFinish}
+                    onClick={() => navigateTo('plan')}
                     className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
-                    id="btn-complete-domain-setup"
+                    id="btn-continue-to-plan"
                   >
-                    <span>Done</span>
-                    <Check className="w-4 h-4" />
+                    <span>Continue to Plan Selection</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* STEP 5: PLAN — asked for last, once DNS is configured */}
+            {step === 'plan' && (
+              <div>
+                {!planAssigned ? (
+                  <>
+                    <div className="mb-6">
+                      <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
+                        Choose a plan
+                      </h1>
+                      <p className="text-slate-500 text-[15px] mt-2.5 font-normal leading-relaxed">
+                        Select the plan that fits your business needs. All plans include automated DNS verification and a 60-day free trial.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleSelectPlanSubmit} className="space-y-6">
+                      {plansLoading && plans.length === 0 ? (
+                        <p className="text-xs text-slate-400 py-2">Loading plans…</p>
+                      ) : plans.length === 0 ? (
+                        <p className="text-xs text-rose-500 py-2">No plans are available right now. Please try again shortly.</p>
+                      ) : (
+                        <div className="flex flex-col gap-3.5">
+                          {plans.map((plan) => {
+                            const isSelected = selectedPlanId === plan.id;
+                            const isPopular = plan.badge === 'Most Popular';
+                            const isFixedSolo = plan.billingMode === 'fixed' && plan.monthlyPriceInPaise === 0;
+
+                            return (
+                              <div
+                                key={plan.id}
+                                onClick={() => setSelectedPlanId(plan.id)}
+                                className={`relative p-4 sm:p-5 rounded-2xl border-2 transition-all cursor-pointer text-left flex flex-col gap-2.5 ${
+                                  isSelected
+                                    ? 'border-indigo-600 bg-indigo-50/20 shadow-xs'
+                                    : 'border-slate-200 hover:border-slate-300 bg-white'
+                                }`}
+                              >
+                                {/* Top-Right "Most Popular" Ribbon */}
+                                {isPopular && (
+                                  <div className="absolute -top-2.5 right-4 bg-indigo-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-xs">
+                                    <Star className="w-2.5 h-2.5 fill-white text-white" />
+                                    <span>Most Popular</span>
+                                  </div>
+                                )}
+
+                                {/* Header: Radio indicator, Plan Name, Badges, and Price */}
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div
+                                      className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                                        isSelected
+                                          ? 'border-indigo-600 bg-indigo-600'
+                                          : 'border-slate-300 bg-white'
+                                      }`}
+                                    >
+                                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                    </div>
+
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span
+                                        className={`text-base font-bold tracking-tight ${
+                                          isSelected ? 'text-indigo-950' : 'text-slate-900'
+                                        }`}
+                                      >
+                                        {isFixedSolo
+                                          ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
+                                          : plan.name}
+                                      </span>
+
+                                      {plan.badge && !isPopular && (
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 uppercase tracking-wide">
+                                          {plan.badge}
+                                        </span>
+                                      )}
+
+                                      {isPopular && (
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                                          Recommended
+                                        </span>
+                                      )}
+
+                                      {/* Accessible Seat badge for fixed tests */}
+                                      {plan.billingMode === 'fixed' && !isFixedSolo && (
+                                        <span className="text-[10px] font-medium text-slate-500">
+                                          {`${plan.seatCount} Seats`}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-right shrink-0">
+                                    <div className="flex items-baseline justify-end gap-1">
+                                      <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
+                                        {plan.monthlyPriceInPaise > 0
+                                          ? `₹${(plan.monthlyPriceInPaise / 100).toLocaleString('en-IN')}`
+                                          : plan.billingMode === 'fixed'
+                                          ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
+                                          : 'Free'}
+                                      </span>
+                                      {plan.monthlyPriceInPaise > 0 && (
+                                        <span className="text-xs text-slate-400 font-normal">/user/mo</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Actions & Trial Banner */}
+                      <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
+                        <button
+                          type="submit"
+                          disabled={planSubmitting || !selectedPlanId}
+                          className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs gap-2"
+                          id="btn-submit-domain-wizard"
+                        >
+                          {planSubmitting ? (
+                            <span className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Saving plan...</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span>Finish Setup</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+
+                        <span className="text-xs text-slate-400 font-normal">
+                          60-day free trial · Cancel or change plans anytime
+                        </span>
+                      </div>
+                    </form>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-6">
+                    <div className="mb-2">
+                      <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
+                        {selectedPlan ? `You're set up on ${selectedPlan.name}` : "You're all set"}
+                      </h1>
+                      <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
+                        Add a payment method now, or skip it and add one later from Domain Settings.
+                      </p>
+                    </div>
+
+                    {billingEnabled && !paymentCardDismissed && (
+                      <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                            <CreditCard className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-semibold text-slate-900 block">Add a payment method</span>
+                            <span className="text-[11px] text-slate-600 leading-relaxed block mt-1">
+                              One month free, then billed monthly for this domain's plan. Skip this and add it later —
+                              mailboxes just can't be created here until you do.
+                            </span>
+                            {checkoutError && (
+                              <span className="text-[11px] text-rose-500 block mt-1.5">{checkoutError}</span>
+                            )}
+                            <div className="flex items-center gap-2 mt-3">
+                              <button
+                                type="button"
+                                onClick={handleStartCheckout}
+                                disabled={startingCheckout}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                              >
+                                {startingCheckout ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    <span>Redirecting...</span>
+                                  </>
+                                ) : (
+                                  <span>Add Payment Method</span>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPaymentCardDismissed(true)}
+                                disabled={startingCheckout}
+                                className="px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                              >
+                                Skip for now
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handleFinish}
+                        className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
+                        id="btn-complete-domain-setup"
+                      >
+                        <span>Done</span>
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </main>

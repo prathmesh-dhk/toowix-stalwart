@@ -251,7 +251,10 @@ const addDomainSchema = z.object({
     .string()
     .min(3, 'Domain name is required')
     .regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i, 'Invalid domain format'),
-  planId: z.string().min(1, 'A plan must be selected'),
+  // Optional: the domain-setup wizard now asks for a plan only after DNS is configured, via
+  // POST /api/tenants/me/billing/domains/:domainId/select-plan. A domain without one yet is
+  // blocked from mailbox creation by mailbox.service.ts's NO_PLAN_SELECTED gate.
+  planId: z.string().min(1).optional(),
 });
 
 tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Response): Promise<void> => {
@@ -270,7 +273,7 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
   const { domainName, planId } = parseResult.data;
   const normalizedDomain = domainName.toLowerCase().trim();
 
-  if (!mongoose.Types.ObjectId.isValid(planId)) {
+  if (planId !== undefined && !mongoose.Types.ObjectId.isValid(planId)) {
     res.status(400).json({ error: 'INVALID_PLAN_ID', message: 'Invalid plan selected' });
     return;
   }
@@ -282,10 +285,13 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       return;
     }
 
-    const plan = await PlanModel.findOne({ _id: planId, isActive: true });
-    if (!plan) {
-      res.status(404).json({ error: 'PLAN_NOT_FOUND', message: 'Selected plan is unavailable. Please choose another.' });
-      return;
+    let plan: IPlan | null = null;
+    if (planId !== undefined) {
+      plan = await PlanModel.findOne({ _id: planId, isActive: true });
+      if (!plan) {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND', message: 'Selected plan is unavailable. Please choose another.' });
+        return;
+      }
     }
 
     // Check if domain already exists globally
@@ -350,10 +356,7 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       stalwartDomainId,
       status: 'active',
       dnsStatus: 'not_started',
-      mailboxLimit: plan.seatCount,
-      employeeCount: plan.seatCount,
-      planId: plan._id,
-      planName: plan.name,
+      ...(plan ? { mailboxLimit: plan.seatCount, employeeCount: plan.seatCount, planId: plan._id, planName: plan.name } : {}),
       isPrimary,
       dnsRecords,
       dnsZoneFile,
@@ -361,7 +364,7 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       dkimPublicKey: rsaKey?.publicKey || null,
     });
 
-    if (!isBillingEnabled()) {
+    if (plan && !isBillingEnabled()) {
       await DomainSubscriptionModel.findOneAndUpdate(
         { domainId: newDomain._id },
         {
@@ -392,9 +395,9 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       status: 'SUCCESS',
       metadata: {
         domainName: normalizedDomain,
-        planId: plan._id.toString(),
-        planName: plan.name,
-        mailboxLimit: plan.seatCount,
+        planId: plan ? plan._id.toString() : null,
+        planName: plan ? plan.name : null,
+        mailboxLimit: plan ? plan.seatCount : null,
       },
       timestamp: new Date(),
     });
@@ -411,7 +414,9 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
         phone: tenant.phone || null,
         tenantId: tenant._id,
         domainId: newDomain._id,
-        notes: `Domain application for existing organisation "${tenant.name}" (Plan: ${plan.name}, Seats: ${plan.seatCount})`,
+        notes: plan
+          ? `Domain application for existing organisation "${tenant.name}" (Plan: ${plan.name}, Seats: ${plan.seatCount})`
+          : `Domain application for existing organisation "${tenant.name}" (plan not yet selected)`,
         status: 'PENDING_REVIEW',
       });
     } catch (appErr: any) {

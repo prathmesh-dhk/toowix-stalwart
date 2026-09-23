@@ -203,6 +203,114 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
     expect(meRes.body.tenant.domain.domainName).toBe('primarybrand.com');
   });
 
+  describe('creating a domain without a plan, then selecting one later', () => {
+    it('creates the domain with no plan when planId is omitted (wizard now asks for a plan only after DNS setup)', async () => {
+      const res = await request(app)
+        .post('/api/tenants/me/domains')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ domainName: 'planless.com' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.domain.planId).toBeNull();
+      expect(res.body.domain.planName).toBeNull();
+
+      const stored = await DomainModel.findOne({ domainName: 'planless.com' });
+      expect(stored?.planId).toBeNull();
+    });
+
+    it('rejects an invalid planId at creation the same way as before, but still allows omitting it', async () => {
+      const res = await request(app)
+        .post('/api/tenants/me/domains')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ domainName: 'badplan.com', planId: 'not-an-object-id' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('INVALID_PLAN_ID');
+    });
+
+    it('POST /api/tenants/me/billing/domains/:id/select-plan attaches a plan to a plan-less domain', async () => {
+      const createRes = await request(app)
+        .post('/api/tenants/me/domains')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ domainName: 'pickaplan.com' });
+      const domainId = createRes.body.domain.id;
+
+      const selectRes = await request(app)
+        .post(`/api/tenants/me/billing/domains/${domainId}/select-plan`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ planId: plan25Id });
+
+      expect(selectRes.status).toBe(200);
+      expect(selectRes.body.domain).toMatchObject({
+        id: domainId,
+        mailboxLimit: 25,
+        employeeCount: 25,
+        planId: plan25Id,
+        planName: 'Growth',
+      });
+
+      const stored = await DomainModel.findById(domainId);
+      expect(stored?.mailboxLimit).toBe(25);
+      expect(stored?.planId?.toString()).toBe(plan25Id);
+    });
+
+    it('rejects select-plan for a domain that already has a live subscription — use upgrade/downgrade instead', async () => {
+      const createRes = await request(app)
+        .post('/api/tenants/me/domains')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ domainName: 'already-subscribed.com' });
+      const domainId = createRes.body.domain.id;
+
+      await DomainSubscriptionModel.create({
+        domainId,
+        tenantId,
+        planId: plan10Id,
+        stripeSubscriptionId: 'sub_existing',
+        stripeSubscriptionItemId: 'si_existing',
+        status: 'active',
+      });
+
+      const selectRes = await request(app)
+        .post(`/api/tenants/me/billing/domains/${domainId}/select-plan`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ planId: plan25Id });
+
+      expect(selectRes.status).toBe(409);
+      expect(selectRes.body.error).toBe('PLAN_ALREADY_SELECTED');
+    });
+
+    it('with billing bypassed, select-plan also activates a free subscription so mailboxes can be created immediately', async () => {
+      const prevSkip = process.env.SKIP_BILLING;
+      process.env.SKIP_BILLING = 'true';
+      try {
+        const createRes = await request(app)
+          .post('/api/tenants/me/domains')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ domainName: 'freeplan.com' });
+        const domainId = createRes.body.domain.id;
+        await DomainModel.updateOne({ _id: domainId }, { dnsStatus: 'active' });
+
+        const selectRes = await request(app)
+          .post(`/api/tenants/me/billing/domains/${domainId}/select-plan`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ planId: plan10Id });
+        expect(selectRes.status).toBe(200);
+
+        const sub = await DomainSubscriptionModel.findOne({ domainId });
+        expect(sub?.status).toBe('active');
+
+        const mailboxRes = await request(app)
+          .post('/api/tenants/me/mailboxes')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ localPart: 'carol', password: 'Password123!', domainId });
+        expect(mailboxRes.status).toBe(201);
+      } finally {
+        if (prevSkip === undefined) delete process.env.SKIP_BILLING;
+        else process.env.SKIP_BILLING = prevSkip;
+      }
+    });
+  });
+
   it('provisions mailboxes under specified domain and supports domain filtering', async () => {
     // Create two domains
     const d1 = await DomainModel.create({

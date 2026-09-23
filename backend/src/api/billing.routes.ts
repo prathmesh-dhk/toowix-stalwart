@@ -10,6 +10,7 @@ import {
   requestUpgrade,
   requestDowngrade,
   cancelSubscription,
+  selectDomainPlan,
   BillingError,
 } from '../services/billing.service';
 import { config, isBillingEnabled } from '../config';
@@ -117,6 +118,34 @@ tenantBillingRouter.post('/domains/:domainId/setup-intent', async (req: Request,
 });
 
 const planIdSchema = z.object({ planId: z.string().min(1) });
+
+// First-time plan pick for a domain created without one — the tail end of the domain-setup
+// wizard, once DNS is configured. Distinct from /upgrade and /downgrade, which change the plan
+// on a domain that already has a live subscription.
+tenantBillingRouter.post('/domains/:domainId/select-plan', async (req: Request, res: Response): Promise<void> => {
+  const parseResult = planIdSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
+    return;
+  }
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const domain = await selectDomainPlan(req.params.domainId, tenantId, parseResult.data.planId, actorFromReq(req));
+    res.json({
+      success: true,
+      domain: {
+        id: domain._id.toString(),
+        domainName: domain.domainName,
+        mailboxLimit: domain.mailboxLimit,
+        employeeCount: domain.employeeCount,
+        planId: domain.planId ? domain.planId.toString() : null,
+        planName: domain.planName || null,
+      },
+    });
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
 
 tenantBillingRouter.post('/domains/:domainId/upgrade', async (req: Request, res: Response): Promise<void> => {
   const parseResult = planIdSchema.safeParse(req.body);

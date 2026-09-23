@@ -229,9 +229,11 @@ export const api = {
     }),
   deleteModerator: (id: string) =>
     request<{ message: string }>(`/api/tenants/me/moderators/${id}`, { method: 'DELETE' }),
-  createTenantDomain: (body: { domainName: string; planId: string }) =>
+  createTenantDomain: (body: { domainName: string; planId?: string }) =>
     // Domain is created unprovisioned (dnsStatus: 'not_started'). Stalwart/DNS
     // provisioning only happens when a Super Admin clicks "Activate Domain".
+    // planId is optional — the wizard now asks for a plan only after DNS is
+    // configured (see selectDomainPlan below).
     request<{ success: boolean; domain: DomainItem }>('/api/tenants/me/domains', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -246,6 +248,14 @@ export const api = {
   // no redirect (`attached: true`) instead of returning a Checkout `url`.
   startDomainCheckout: (domainId: string) =>
     request<{ url: string } | { attached: true }>(`/api/tenants/me/billing/domains/${domainId}/checkout`, { method: 'POST' }),
+  // First-time plan pick for a domain created without one — the tail end of the domain-setup
+  // wizard, once DNS is configured. Distinct from upgrade/downgrade, which change the plan on a
+  // domain that already has a live subscription.
+  selectDomainPlan: (domainId: string, planId: string) =>
+    request<{ success: boolean; domain: Pick<DomainItem, 'id' | 'domainName' | 'mailboxLimit' | 'employeeCount' | 'planId' | 'planName'> }>(
+      `/api/tenants/me/billing/domains/${domainId}/select-plan`,
+      { method: 'POST', body: JSON.stringify({ planId }) }
+    ),
   getDomainBillingStatus: (domainId: string) =>
     request<DomainBillingStatus>(`/api/tenants/me/billing/domains/${domainId}`),
   getTenantBillingSummary: () =>

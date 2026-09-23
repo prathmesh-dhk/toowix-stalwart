@@ -33,6 +33,68 @@ async function loadDomainForActor(domainId: string, tenantId: string): Promise<I
 }
 
 /**
+ * First-time plan selection for a Domain created without one — the domain-setup wizard now
+ * creates the domain up front (so it can walk the tenant through DNS setup) and only asks for a
+ * plan at the very end, once DNS is configured. Sets the domain's planId/planName/mailboxLimit/
+ * employeeCount so mailbox creation's NO_PLAN_SELECTED gate (see mailbox.service.ts) clears, and
+ * — mirroring requestUpgrade/requestDowngrade's bypass branch — activates a free subscription row
+ * when billing is disabled. Once a domain has a live (non-canceled/incomplete) subscription,
+ * further plan changes go through requestUpgrade/requestDowngrade instead.
+ */
+export async function selectDomainPlan(
+  domainId: string,
+  tenantId: string,
+  planId: string,
+  actor: BillingActor
+): Promise<IDomain> {
+  const domain = await loadDomainForActor(domainId, tenantId);
+  const plan = await PlanModel.findOne({ _id: planId, isActive: true });
+  if (!plan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
+
+  const existingSub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+  if (existingSub && !['canceled', 'incomplete'].includes(existingSub.status)) {
+    throw new BillingError(
+      'This domain already has a plan — use upgrade/downgrade to change it',
+      'PLAN_ALREADY_SELECTED',
+      409
+    );
+  }
+
+  domain.planId = plan._id as any;
+  domain.planName = plan.name;
+  domain.mailboxLimit = plan.seatCount;
+  domain.employeeCount = plan.seatCount;
+  await domain.save();
+
+  if (!isBillingEnabled()) {
+    await DomainSubscriptionModel.findOneAndUpdate(
+      { domainId: domain._id },
+      {
+        domainId: domain._id,
+        tenantId,
+        planId: plan._id,
+        status: 'active',
+        cancelAtPeriodEnd: false,
+      },
+      { upsert: true }
+    );
+  }
+
+  await logAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actorEmail: actor.email,
+    tenantId,
+    action: 'DOMAIN_PLAN_SELECTED',
+    resource: 'DOMAIN',
+    resourceId: domain._id.toString(),
+    metadata: { planId: plan._id.toString(), planName: plan.name, mailboxLimit: plan.seatCount },
+  });
+
+  return domain;
+}
+
+/**
  * Starts billing for one Domain. Free/skippable step in the domain-setup
  * wizard — the actual hard gate on payment is at first mailbox creation
  * (see mailbox.service.ts).
