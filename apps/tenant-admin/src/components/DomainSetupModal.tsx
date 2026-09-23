@@ -25,7 +25,7 @@ interface DomainSetupModalProps {
 }
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
-export type WizardStep = 'domain' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status' | 'plan';
+export type WizardStep = 'domain' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status' | 'plan' | 'payment';
 export type SetupMethod = 'provider' | 'manual' | null;
 
 export const PROVIDER_LABEL: Record<DnsProvider, string> = {
@@ -44,6 +44,7 @@ const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0
 const STEP_TOP_PADDING: Record<WizardStep, string> = {
   domain: 'pt-14 sm:pt-20 md:pt-28 lg:pt-36 xl:pt-[26vh]',
   plan: 'pt-20 sm:pt-24 xl:pt-[17vh] pb-6 sm:pb-8',
+  payment: 'pt-14 sm:pt-20 xl:pt-[15vh] pb-6 sm:pb-8',
   method: 'pt-10 sm:pt-14 md:pt-16 lg:pt-20 xl:pt-[16vh]',
   godaddy: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[20vh]',
   hostinger: 'pt-14 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
@@ -52,6 +53,7 @@ const STEP_TOP_PADDING: Record<WizardStep, string> = {
 };
 
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
+import { PaymentMethodSelector } from './PaymentMethodSelector';
 
 export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   isOpen,
@@ -215,6 +217,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       }
     } else if (step === 'plan') {
       navigateBack('status');
+    } else if (step === 'payment') {
+      navigateBack('plan');
     }
   };
 
@@ -399,6 +403,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       createdRef.current = updated;
       setCreatedDomain(updated);
       setPlanAssigned(true);
+      navigateTo('payment');
     } catch (err: any) {
       setError(err?.message || 'Failed to save the selected plan. Please try again.');
     } finally {
@@ -455,6 +460,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   } else if (step === 'status') {
     headline = `DNS Setup — ${createdDomain?.domainName || domainName}`;
     subhead = 'Track activation and grab your records, whether or not a provider is connected.';
+  } else if (step === 'payment') {
+    headline = 'Add or select payment method';
+    subhead = `60-day free trial on your plan. You won't be charged today.`;
   }
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId);
@@ -887,12 +895,10 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             {/* STEP 5: PLAN — asked for last, once DNS is configured */}
             {step === 'plan' && (
               <div>
-                {!planAssigned ? (
-                  <>
-                    <div className="mb-6">
-                      <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
-                        Choose a plan
-                      </h1>
+                <div className="mb-6">
+                  <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
+                    Choose a plan
+                  </h1>
                       <p className="text-slate-500 text-[15px] mt-2.5 font-normal leading-relaxed">
                         Select the plan that fits your business needs. All plans include automated DNS verification and a 60-day free trial.
                       </p>
@@ -1020,62 +1026,40 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         </span>
                       </div>
                     </form>
-                  </>
-                ) : (
-                  <div className="flex flex-col gap-6">
-                    <div className="mb-2">
-                      <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
-                        {selectedPlan ? `You're set up on ${selectedPlan.name}` : "You're all set"}
-                      </h1>
-                      <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
-                        Add a payment method now, or skip it and add one later from Domain Settings.
-                      </p>
-                    </div>
+              </div>
+            )}
 
-                    {billingEnabled && !paymentCardDismissed && (
-                      <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl">
-                        <div className="flex items-start gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                            <CreditCard className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-xs font-semibold text-slate-900 block">Add a payment method</span>
-                            <span className="text-[11px] text-slate-600 leading-relaxed block mt-1">
-                              One month free, then billed monthly for this domain's plan. Skip this and add it later —
-                              mailboxes just can't be created here until you do.
-                            </span>
-                            {checkoutError && (
-                              <span className="text-[11px] text-rose-500 block mt-1.5">{checkoutError}</span>
-                            )}
-                            <div className="flex items-center gap-2 mt-3">
-                              <button
-                                type="button"
-                                onClick={handleStartCheckout}
-                                disabled={startingCheckout}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                              >
-                                {startingCheckout ? (
-                                  <>
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    <span>Redirecting...</span>
-                                  </>
-                                ) : (
-                                  <span>Add Payment Method</span>
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setPaymentCardDismissed(true)}
-                                disabled={startingCheckout}
-                                className="px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                              >
-                                Skip for now
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+            {/* STEP: PAYMENT METHOD */}
+            {step === 'payment' && (
+              <div className="flex flex-col gap-6">
+                <div className="mb-2">
+                  <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
+                    {paymentCardDismissed ? "You're all set" : "Add a payment method"}
+                  </h1>
+                  <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
+                    {paymentCardDismissed
+                      ? "Payment method skipped. You can add one later from Domain Settings or Tenant Billing."
+                      : selectedPlan
+                      ? `Your 60-day free trial on ${selectedPlan.name} starts now. You won't be charged today.`
+                      : "Your 60-day free trial starts now. You won't be charged today."}
+                  </p>
+                </div>
+
+                {!paymentCardDismissed ? (
+                  <>
+                    <PaymentMethodSelector
+                      selectedPlan={selectedPlan}
+                      domainName={createdDomain?.domainName || domainName}
+                      autoAttachDomainId={createdDomain?.id}
+                      onSuccess={() => {
+                        handleFinish();
+                      }}
+                      onSkip={() => {
+                        setPaymentCardDismissed(true);
+                      }}
+                      submitLabel="Save Payment Method & Finish"
+                      showSkip={true}
+                    />
 
                     <div className="pt-2">
                       <button
@@ -1088,6 +1072,18 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         <Check className="w-4 h-4" />
                       </button>
                     </div>
+                  </>
+                ) : (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={handleFinish}
+                      className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
+                      id="btn-complete-domain-setup"
+                    >
+                      <span>Done</span>
+                      <Check className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
               </div>

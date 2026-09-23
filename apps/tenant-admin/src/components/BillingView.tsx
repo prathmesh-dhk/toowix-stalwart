@@ -242,7 +242,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
             <p className="text-xs text-slate-600 leading-relaxed">
               {!billingEnabled
                 ? 'Billing is currently bypassed for this platform. All domains and mailboxes have full access with no payment required.'
-                : 'This domain has no active subscription. Add a payment method to get 1 month free, then monthly billing begins automatically.'}
+                : 'This domain has no active subscription. Add a payment method to get 60 days free, then monthly billing begins automatically.'}
             </p>
             {billingEnabled && (
               <button

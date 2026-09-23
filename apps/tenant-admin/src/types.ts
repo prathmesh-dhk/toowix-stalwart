@@ -166,6 +166,15 @@ export interface TenantBillingSummary {
   domains: Array<{ domainId: string; domainName: string; planName: string | null; seatCount: number | null }>;
 }
 
+export interface PaymentMethodItem {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
+}
+
 export interface InvoiceItem {
   id: string;
   status: string | null;

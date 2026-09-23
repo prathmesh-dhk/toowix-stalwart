@@ -205,4 +205,53 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
 
     expect(res.status).toBe(201);
   });
+
+  it('manages tenant payment methods and supports attaching to domain', async () => {
+    // 1. List initially empty
+    const listRes1 = await request(app)
+      .get('/api/tenants/me/billing/payment-methods')
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(listRes1.status).toBe(200);
+    expect(listRes1.body.paymentMethods).toEqual([]);
+
+    // 2. Save payment method
+    const saveRes = await request(app)
+      .post('/api/tenants/me/billing/payment-methods')
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ brand: 'visa', last4: '4242', expMonth: 12, expYear: 2028 });
+    expect(saveRes.status).toBe(200);
+    expect(saveRes.body.success).toBe(true);
+    expect(saveRes.body.paymentMethod.last4).toBe('4242');
+
+    // 3. List contains saved payment method
+    const listRes2 = await request(app)
+      .get('/api/tenants/me/billing/payment-methods')
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(listRes2.status).toBe(200);
+    expect(listRes2.body.paymentMethods.length).toBe(1);
+    expect(listRes2.body.paymentMethods[0].brand).toBe('visa');
+
+    // 4. Setup intent endpoint
+    const setupRes = await request(app)
+      .post('/api/tenants/me/billing/setup-intent')
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(setupRes.status).toBe(200);
+    expect(setupRes.body.clientSecret).toBeDefined();
+
+    // 5. Attach payment to domain starts trialing subscription
+    const attachRes = await request(app)
+      .post(`/api/tenants/me/billing/domains/${domainId}/attach-payment`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(attachRes.status).toBe(200);
+    expect(attachRes.body.success).toBe(true);
+    expect(attachRes.body.status).toBe('trialing');
+
+    // 6. Delete payment method
+    const pmId = listRes2.body.paymentMethods[0].id;
+    const delRes = await request(app)
+      .delete(`/api/tenants/me/billing/payment-methods/${pmId}`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(delRes.status).toBe(200);
+    expect(delRes.body.success).toBe(true);
+  });
 });

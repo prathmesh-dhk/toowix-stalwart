@@ -8,6 +8,17 @@ export type TenantStatus =
   | 'pending_deletion'
   | 'archived';
 
+export interface ITenantPaymentMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
+  stripePaymentMethodId?: string | null;
+  createdAt: Date;
+}
+
 export interface ITenant extends Document {
   name: string;
   contactEmail?: string | null;
@@ -21,6 +32,7 @@ export interface ITenant extends Document {
   // any of the tenant's domains, shared (one payment method) across every
   // domain's own Subscription. See backend/src/services/billing.service.ts.
   stripeCustomerId?: string | null;
+  paymentMethods?: ITenantPaymentMethod[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -81,6 +93,18 @@ const TenantSchema = new Schema<ITenant>(
       default: null,
       index: true,
     },
+    paymentMethods: [
+      {
+        id: { type: String, required: true },
+        brand: { type: String, required: true },
+        last4: { type: String, required: true },
+        expMonth: { type: Number, required: true },
+        expYear: { type: Number, required: true },
+        isDefault: { type: Boolean, default: false },
+        stripePaymentMethodId: { type: String, default: null },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,

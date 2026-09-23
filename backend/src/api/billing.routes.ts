@@ -4,6 +4,12 @@ import { requireTenantAdmin } from '../auth/middleware';
 import {
   startCheckout,
   createPaymentMethodSetupIntent,
+  createTenantSetupIntent,
+  listTenantPaymentMethods,
+  saveTenantPaymentMethod,
+  deleteTenantPaymentMethod,
+  setDefaultPaymentMethod,
+  attachDomainWithSavedPayment,
   getDomainBillingStatus,
   listTenantInvoices,
   getTenantBillingSummary,
@@ -186,3 +192,79 @@ tenantBillingRouter.post('/domains/:domainId/cancel', async (req: Request, res: 
     handleBillingError(res, err);
   }
 });
+
+// Tenant-wide Payment Methods
+tenantBillingRouter.get('/payment-methods', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await listTenantPaymentMethods(tenantId);
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+tenantBillingRouter.post('/setup-intent', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await createTenantSetupIntent(tenantId);
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+const savePaymentMethodSchema = z.object({
+  paymentMethodId: z.string().optional(),
+  brand: z.string().optional(),
+  last4: z.string().optional(),
+  expMonth: z.number().optional(),
+  expYear: z.number().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+tenantBillingRouter.post('/payment-methods', async (req: Request, res: Response): Promise<void> => {
+  const parseResult = savePaymentMethodSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
+    return;
+  }
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await saveTenantPaymentMethod(tenantId, parseResult.data);
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+tenantBillingRouter.delete('/payment-methods/:id', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await deleteTenantPaymentMethod(tenantId, req.params.id);
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+tenantBillingRouter.post('/payment-methods/:id/default', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await setDefaultPaymentMethod(tenantId, req.params.id);
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+tenantBillingRouter.post('/domains/:domainId/attach-payment', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await attachDomainWithSavedPayment(req.params.domainId, tenantId, actorFromReq(req));
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+

@@ -147,6 +147,29 @@ export class ToowixStripeClient {
     return stripe.setupIntents.create({ customer: customerId });
   }
 
+  async listPaymentMethods(customerId: string): Promise<Stripe.PaymentMethod[]> {
+    const stripe = getStripe();
+    const result = await stripe.paymentMethods.list({ customer: customerId, type: 'card' });
+    return result.data;
+  }
+
+  async attachPaymentMethod(customerId: string, paymentMethodId: string): Promise<Stripe.PaymentMethod> {
+    const stripe = getStripe();
+    return stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+  }
+
+  async detachPaymentMethod(paymentMethodId: string): Promise<Stripe.PaymentMethod> {
+    const stripe = getStripe();
+    return stripe.paymentMethods.detach(paymentMethodId);
+  }
+
+  async setDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<Stripe.Customer> {
+    const stripe = getStripe();
+    return stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    }) as Promise<Stripe.Customer>;
+  }
+
   async retrieveSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
     const stripe = getStripe();
     return stripe.subscriptions.retrieve(subscriptionId);

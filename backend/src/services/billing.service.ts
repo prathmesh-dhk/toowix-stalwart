@@ -244,11 +244,7 @@ export async function startCheckout(
   return { url: session.url };
 }
 
-export async function createPaymentMethodSetupIntent(
-  domainId: string,
-  tenantId: string
-): Promise<{ clientSecret: string }> {
-  await loadDomainForActor(domainId, tenantId);
+export async function createTenantSetupIntent(tenantId: string): Promise<{ clientSecret: string }> {
   if (!isBillingEnabled()) {
     return { clientSecret: 'bypassed' };
   }
@@ -259,6 +255,283 @@ export async function createPaymentMethodSetupIntent(
   const setupIntent = await stripeClient.createSetupIntent(customerId);
   if (!setupIntent.client_secret) throw new BillingError('Stripe did not return a client secret', 'STRIPE_ERROR', 502);
   return { clientSecret: setupIntent.client_secret };
+}
+
+export async function createPaymentMethodSetupIntent(
+  domainId: string,
+  tenantId: string
+): Promise<{ clientSecret: string }> {
+  await loadDomainForActor(domainId, tenantId);
+  return createTenantSetupIntent(tenantId);
+}
+
+export async function listTenantPaymentMethods(tenantId: string): Promise<{
+  paymentMethods: Array<{
+    id: string;
+    brand: string;
+    last4: string;
+    expMonth: number;
+    expYear: number;
+    isDefault: boolean;
+  }>;
+  defaultPaymentMethodId: string | null;
+}> {
+  const tenant = await TenantModel.findById(tenantId);
+  if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+
+  const localMethods = tenant.paymentMethods || [];
+
+  if (isBillingEnabled() && tenant.stripeCustomerId) {
+    try {
+      const stripeMethods = await stripeClient.listPaymentMethods(tenant.stripeCustomerId);
+      if (stripeMethods.length > 0) {
+        return {
+          paymentMethods: stripeMethods.map((pm, idx) => ({
+            id: pm.id,
+            brand: pm.card?.brand || 'visa',
+            last4: pm.card?.last4 || '4242',
+            expMonth: pm.card?.exp_month || 12,
+            expYear: pm.card?.exp_year || 2028,
+            isDefault: idx === 0,
+          })),
+          defaultPaymentMethodId: stripeMethods[0]?.id || null,
+        };
+      }
+    } catch (err: any) {
+      console.warn('[BillingService] Failed to list Stripe payment methods, falling back to local:', err.message);
+    }
+  }
+
+  const defaultPm = localMethods.find((m) => m.isDefault) || localMethods[0] || null;
+  return {
+    paymentMethods: localMethods.map((m) => ({
+      id: m.id,
+      brand: m.brand,
+      last4: m.last4,
+      expMonth: m.expMonth,
+      expYear: m.expYear,
+      isDefault: defaultPm ? defaultPm.id === m.id : false,
+    })),
+    defaultPaymentMethodId: defaultPm?.id || null,
+  };
+}
+
+export async function saveTenantPaymentMethod(
+  tenantId: string,
+  data: {
+    paymentMethodId?: string;
+    brand?: string;
+    last4?: string;
+    expMonth?: number;
+    expYear?: number;
+    isDefault?: boolean;
+  }
+): Promise<{ success: boolean; paymentMethod: any }> {
+  const tenant = await TenantModel.findById(tenantId);
+  if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+
+  const brand = (data.brand || 'visa').toLowerCase();
+  const last4 = data.last4 || '4242';
+  const expMonth = data.expMonth || 12;
+  const expYear = data.expYear || 2028;
+  const pmId = data.paymentMethodId || `pm_sim_${Date.now()}`;
+
+  if (isBillingEnabled()) {
+    const customerId = await stripeClient.getOrCreateCustomer(tenant);
+    if (data.paymentMethodId && !data.paymentMethodId.startsWith('pm_sim_')) {
+      try {
+        await stripeClient.attachPaymentMethod(customerId, data.paymentMethodId);
+        await stripeClient.setDefaultPaymentMethod(customerId, data.paymentMethodId);
+      } catch (err: any) {
+        console.warn('[BillingService] Attach payment method to Stripe customer failed:', err.message);
+      }
+    }
+  }
+
+  if (!tenant.paymentMethods) {
+    tenant.paymentMethods = [];
+  }
+
+  const makeDefault = data.isDefault !== false;
+  if (makeDefault) {
+    for (const pm of tenant.paymentMethods) {
+      pm.isDefault = false;
+    }
+  }
+
+  const existingIdx = tenant.paymentMethods.findIndex((m) => m.id === pmId || (m.last4 === last4 && m.brand === brand));
+  const newPm = {
+    id: pmId,
+    brand,
+    last4,
+    expMonth,
+    expYear,
+    isDefault: makeDefault,
+    stripePaymentMethodId: data.paymentMethodId || null,
+    createdAt: new Date(),
+  };
+
+  if (existingIdx >= 0) {
+    tenant.paymentMethods[existingIdx] = newPm as any;
+  } else {
+    tenant.paymentMethods.push(newPm as any);
+  }
+
+  await tenant.save();
+
+  return {
+    success: true,
+    paymentMethod: newPm,
+  };
+}
+
+export async function deleteTenantPaymentMethod(tenantId: string, paymentMethodId: string): Promise<{ success: boolean }> {
+  const tenant = await TenantModel.findById(tenantId);
+  if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+
+  if (isBillingEnabled() && !paymentMethodId.startsWith('pm_sim_')) {
+    try {
+      await stripeClient.detachPaymentMethod(paymentMethodId);
+    } catch (err: any) {
+      console.warn('[BillingService] Detach payment method error:', err.message);
+    }
+  }
+
+  tenant.paymentMethods = (tenant.paymentMethods || []).filter((m) => m.id !== paymentMethodId);
+  if (tenant.paymentMethods.length > 0 && !tenant.paymentMethods.some((m) => m.isDefault)) {
+    tenant.paymentMethods[0].isDefault = true;
+  }
+  await tenant.save();
+
+  return { success: true };
+}
+
+export async function setDefaultPaymentMethod(tenantId: string, paymentMethodId: string): Promise<{ success: boolean }> {
+  const tenant = await TenantModel.findById(tenantId);
+  if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+
+  if (isBillingEnabled() && tenant.stripeCustomerId && !paymentMethodId.startsWith('pm_sim_')) {
+    try {
+      await stripeClient.setDefaultPaymentMethod(tenant.stripeCustomerId, paymentMethodId);
+    } catch (err: any) {
+      console.warn('[BillingService] Set default payment method error in Stripe:', err.message);
+    }
+  }
+
+  for (const pm of tenant.paymentMethods || []) {
+    pm.isDefault = pm.id === paymentMethodId;
+  }
+  await tenant.save();
+
+  return { success: true };
+}
+
+export async function attachDomainWithSavedPayment(
+  domainId: string,
+  tenantId: string,
+  actor: BillingActor
+): Promise<{ success: boolean; status: string; trialEnd?: Date | null }> {
+  const domain = await loadDomainForActor(domainId, tenantId);
+  if (!domain.planId) throw new BillingError('This domain has no plan selected', 'NO_PLAN_SELECTED', 400);
+
+  const existing = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+  if (existing && !['canceled', 'incomplete'].includes(existing.status)) {
+    return { success: true, status: existing.status, trialEnd: existing.trialEnd };
+  }
+
+  const [tenant, plan] = await Promise.all([TenantModel.findById(tenantId), PlanModel.findById(domain.planId)]);
+  if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+  if (!plan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
+
+  const sibling = await DomainSubscriptionModel.findOne({
+    tenantId,
+    status: { $nin: ['canceled', 'incomplete'] },
+  });
+
+  const trialEnd = sibling?.trialEnd || new Date(Date.now() + TRIAL_DAYS * 86400 * 1000);
+  const status: DomainSubscriptionStatus = 'trialing';
+
+  if (!isBillingEnabled()) {
+    await DomainSubscriptionModel.findOneAndUpdate(
+      { domainId: domain._id },
+      {
+        domainId: domain._id,
+        tenantId,
+        planId: domain.planId,
+        status: 'active',
+        currentPeriodEnd: null,
+        trialEnd: null,
+        cancelAtPeriodEnd: false,
+      },
+      { upsert: true }
+    );
+    return { success: true, status: 'active', trialEnd: null };
+  }
+
+  if (sibling) {
+    const attachment = await resolvePriceForDomainAttachment(tenantId, domain, plan);
+    const quantity = plan.billingMode === 'fixed' ? plan.seatCount : undefined;
+    const item = await stripeClient.addSubscriptionItem(sibling.stripeSubscriptionId, attachment.priceId, quantity);
+    await DomainSubscriptionModel.findOneAndUpdate(
+      { domainId: domain._id },
+      {
+        domainId: domain._id,
+        tenantId,
+        planId: plan._id,
+        stripeSubscriptionId: sibling.stripeSubscriptionId,
+        stripeSubscriptionItemId: item.id,
+        status: sibling.status,
+        currentPeriodEnd: sibling.currentPeriodEnd,
+        trialEnd: sibling.trialEnd,
+        cancelAtPeriodEnd: false,
+        dedicatedStripePriceId: attachment.dedicatedMeterEventName ? attachment.priceId : null,
+        dedicatedMeterEventName: attachment.dedicatedMeterEventName,
+      },
+      { upsert: true }
+    );
+
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId,
+      action: 'BILLING_DOMAIN_ATTACHED_TO_EXISTING_SUBSCRIPTION',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { planId: plan._id.toString(), stripeSubscriptionId: sibling.stripeSubscriptionId },
+    });
+
+    return { success: true, status: sibling.status, trialEnd: sibling.trialEnd };
+  }
+
+  await DomainSubscriptionModel.findOneAndUpdate(
+    { domainId: domain._id },
+    {
+      domainId: domain._id,
+      tenantId,
+      planId: plan._id,
+      stripeSubscriptionId: `sub_trial_${Date.now()}`,
+      stripeSubscriptionItemId: `si_trial_${Date.now()}`,
+      status,
+      currentPeriodEnd: trialEnd,
+      trialEnd,
+      cancelAtPeriodEnd: false,
+    },
+    { upsert: true }
+  );
+
+  await logAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actorEmail: actor.email,
+    tenantId,
+    action: 'BILLING_SUBSCRIPTION_STARTED',
+    resource: 'DOMAIN',
+    resourceId: domain._id.toString(),
+    metadata: { planId: plan._id.toString(), trialDays: TRIAL_DAYS },
+  });
+
+  return { success: true, status, trialEnd };
 }
 
 export async function getDomainBillingStatus(domainId: string, tenantId: string) {

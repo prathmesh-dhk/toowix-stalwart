@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView, ModeratorItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, PaymentMethodItem, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView, ModeratorItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -263,6 +263,31 @@ export const api = {
   listBillingInvoices: () => request<{ invoices: InvoiceItem[] }>('/api/tenants/me/billing/invoices'),
   createPaymentMethodSetupIntent: (domainId: string) =>
     request<{ clientSecret: string }>(`/api/tenants/me/billing/domains/${domainId}/setup-intent`, { method: 'POST' }),
+  createTenantSetupIntent: () =>
+    request<{ clientSecret: string }>('/api/tenants/me/billing/setup-intent', { method: 'POST' }),
+  listPaymentMethods: () =>
+    request<{ paymentMethods: PaymentMethodItem[]; defaultPaymentMethodId: string | null }>('/api/tenants/me/billing/payment-methods'),
+  savePaymentMethod: (data: {
+    paymentMethodId?: string;
+    brand?: string;
+    last4?: string;
+    expMonth?: number;
+    expYear?: number;
+    isDefault?: boolean;
+  }) =>
+    request<{ success: boolean; paymentMethod: PaymentMethodItem }>('/api/tenants/me/billing/payment-methods', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deletePaymentMethod: (id: string) =>
+    request<{ success: boolean }>(`/api/tenants/me/billing/payment-methods/${id}`, { method: 'DELETE' }),
+  setDefaultPaymentMethod: (id: string) =>
+    request<{ success: boolean }>(`/api/tenants/me/billing/payment-methods/${id}/default`, { method: 'POST' }),
+  attachDomainWithSavedPayment: (domainId: string) =>
+    request<{ success: boolean; status: string; trialEnd?: string | null }>(
+      `/api/tenants/me/billing/domains/${domainId}/attach-payment`,
+      { method: 'POST' }
+    ),
   upgradeDomainPlan: (domainId: string, planId: string) =>
     request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/upgrade`, {
       method: 'POST',
