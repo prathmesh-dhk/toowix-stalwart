@@ -4,7 +4,6 @@ import {
   MailboxItem,
   AuditItem,
   SystemMetrics,
-  RegistrationApplication,
   SystemHealthDetails,
   BackupRecordItem,
   AlertConfig,
@@ -12,8 +11,6 @@ import {
   DriftReport,
   SessionItem,
   PlatformAnalytics,
-  DomainDnsStatus,
-  DnsLiveCheckResult,
   Plan,
   TenantFullDetails,
   OrganisationDeletionState,
@@ -275,25 +272,6 @@ export const api = {
   getDeletedOrganisation: (id: string) =>
     request<{ record: DeletedOrganisationRecord }>(`/api/platform/deleted-organisations/${id}`),
 
-  // Platform Admin - Domain DNS Activation (Stalwart + GoDaddy)
-  activateDomainDns: (tenantId: string, domainId: string) =>
-    request<{ success: boolean } & DomainDnsStatus>(
-      `/api/platform/tenants/${tenantId}/domains/${domainId}/activate`,
-      { method: 'POST' }
-    ),
-
-  retryVerifyDomainDns: (tenantId: string, domainId: string) =>
-    request<{ success: boolean } & DomainDnsStatus>(
-      `/api/platform/tenants/${tenantId}/domains/${domainId}/retry-verify`,
-      { method: 'POST' }
-    ),
-
-  getDomainDnsStatus: (tenantId: string, domainId: string) =>
-    request<DomainDnsStatus>(`/api/platform/tenants/${tenantId}/domains/${domainId}/dns-status`),
-
-  checkDomainDnsLive: (tenantId: string, domainId: string) =>
-    request<DnsLiveCheckResult>(`/api/platform/tenants/${tenantId}/domains/${domainId}/dns-check`),
-
   // Platform Admin - Tenant Admins
   listTenantAdmins: (tenantId: string) =>
     request<{ admins: any[] }>(`/api/platform/tenants/${tenantId}/admins`),
@@ -338,61 +316,6 @@ export const api = {
   getSystemStatus: () => request<SystemMetrics>('/api/system/status'),
 
   // Phase 3: Public Self-Service Registration
-  publicRegisterTenant: (body: {
-    companyName: string;
-    requestedDomain: string;
-    applicantName?: string;
-    firstName?: string;
-    lastName?: string;
-    contactEmail: string;
-    phone?: string;
-    notes?: string;
-    employeeCount?: string;
-    region?: string;
-    password?: string;
-  }) =>
-    request<{
-      success: boolean;
-      message: string;
-      application: {
-        id: string;
-        companyName: string;
-        requestedDomain: string;
-        status: string;
-        createdAt: string;
-      };
-    }>('/api/public/register-tenant', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
-  // Phase 3: Super Admin Application Queue
-  listApplications: (params?: { status?: string; limit?: number; skip?: number }) => {
-    const q = new URLSearchParams();
-    if (params?.status) q.set('status', params.status);
-    if (params?.limit) q.set('limit', String(params.limit));
-    if (params?.skip) q.set('skip', String(params.skip));
-    return request<{
-      applications: RegistrationApplication[];
-      pagination: { total: number; limit: number; skip: number };
-    }>(`/api/super-admin/applications?${q.toString()}`);
-  },
-
-  getApplication: (id: string) =>
-    request<{ application: RegistrationApplication }>(`/api/super-admin/applications/${id}`),
-
-  approveApplication: (id: string) =>
-    request<{
-      success: boolean;
-      message: string;
-      activationLink?: string;
-      emailSent?: boolean;
-      emailError?: string;
-      tenant: { id: string; name: string; status: string; domain: string; contactEmail: string };
-    }>(`/api/super-admin/applications/${id}/approve`, {
-      method: 'POST',
-    }),
-
   resendActivationEmail: (tenantId: string) =>
     request<{
       success: boolean;
@@ -403,16 +326,6 @@ export const api = {
       emailError?: string;
     }>(`/api/platform/tenants/${tenantId}/resend-activation`, {
       method: 'POST',
-    }),
-
-  rejectApplication: (id: string, reason: string) =>
-    request<{
-      success: boolean;
-      message: string;
-      application: { id: string; status: string; rejectionReason: string };
-    }>(`/api/super-admin/applications/${id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
     }),
 
   // Phase 7: System Operations, Health, Backups & Alerts

@@ -9,37 +9,6 @@ export interface UserContext {
   twoFactorEnabled?: boolean;
 }
 
-export interface RegistrationApplication {
-  _id: string;
-  id?: string;
-  companyName: string;
-  requestedDomain: string;
-  applicantName: string;
-  contactEmail: string;
-  employeeCount?: string | null;
-  region?: string | null;
-  phone?: string | null;
-  notes?: string | null;
-  status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
-  reviewedBy?: { _id: string; email: string } | string | null;
-  reviewedAt?: string | null;
-  rejectionReason?: string | null;
-  tenantId?: string | null;
-  domainId?: string | null;
-  domain?: {
-    id: string;
-    domainName: string;
-    status: string;
-    dnsStatus: DnsActivationStatus;
-    dnsRecords: GeneratedDnsRecord[];
-    dnsZoneFile?: string | null;
-    dnsConflicts?: any[];
-  } | null;
-  createdAt: string;
-  updatedAt: string;
-  submittedAt?: string;
-}
-
 export type DnsActivationStatus = 'not_started' | 'activating' | 'active' | 'conflict' | 'activation_failed';
 
 export interface GeneratedDnsRecord {
@@ -555,4 +524,44 @@ export interface DeletedOrganisationRecord {
   emailRestriction: { email: string | null; normalized: string | null; blockedAt: string | null; permanent: boolean };
   timelineLength?: number;
   timeline?: DeletionTimelineEntry[];
+}
+
+export type CouponStatus = 'active' | 'used' | 'expired' | 'revoked';
+
+export interface CouponItem {
+  id: string;
+  code: string;
+  extraTrialDays: number;
+  maxUses: number;
+  usedCount: number;
+  status: CouponStatus;
+  expiresAt: string | null;
+  description: string | null;
+  createdByEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  redemptions: Array<{
+    tenantId: string;
+    tenantName: string | null;
+    domainId: string | null;
+    redeemedAt: string;
+    extraTrialDays: number;
+  }>;
+}
+
+export interface CreateCouponInput {
+  code?: string;
+  extraTrialDays: number;
+  expiresAt?: string | null;
+  description?: string | null;
+  maxUses?: number;
+}
+
+export interface BatchCreateCouponInput {
+  count: number;
+  prefix?: string;
+  extraTrialDays: number;
+  expiresAt?: string | null;
+  description?: string | null;
+  maxUses?: number;
 }

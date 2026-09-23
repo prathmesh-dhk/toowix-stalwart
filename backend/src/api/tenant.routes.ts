@@ -10,10 +10,10 @@ import { AdminUserModel } from '../db/models/AdminUser';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
-import { RegistrationApplicationModel } from '../db/models/RegistrationApplication';
 import { IPlan } from '../db/models/Plan';
 import { isBillingEnabled, config } from '../config';
-import { connectDnsProviderCredential, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
+import { activateDomainOnPayment } from '../services/billing.service';
+import { connectDnsProviderCredential, checkDnsRecordsLive, retryVerify, DomainActivationError } from '../services/domain-activation.service';
 import {
   listTenantDnsCredentials,
   saveTenantDnsCredential,
@@ -61,6 +61,24 @@ tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => 
     }
 
     const domains = await DomainModel.find({ tenantId: tenant._id }).sort({ createdAt: 1 });
+    // Auto-activate any active domain that already has a plan/subscription but got stuck in activating
+    await Promise.all(
+      domains.map(async (d) => {
+        if (d.status === 'active' && d.dnsStatus === 'activating') {
+          const hasPlanOrSub = d.planId || (await DomainSubscriptionModel.exists({ domainId: d._id }));
+          if (hasPlanOrSub || !isBillingEnabled()) {
+            d.dnsStatus = 'active';
+            d.activatedAt = d.activatedAt || new Date();
+            if (d.stalwartDomainId) {
+              try {
+                await stalwartClient.updateDomainStatus(d.stalwartDomainId, true);
+              } catch {}
+            }
+            await d.save();
+          }
+        }
+      })
+    );
     const adminCount = await AdminUserModel.countDocuments({ tenantId: tenant._id });
 
     // Aggregate mailbox count per domain
@@ -77,6 +95,7 @@ tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => 
         domainName: d.domainName,
         stalwartDomainId: d.stalwartDomainId || null,
         status: d.status,
+        dnsStatus: d.dnsStatus,
         mailboxLimit: d.mailboxLimit || 10,
         employeeCount: d.employeeCount || d.mailboxLimit || 10,
         planId: d.planId ? d.planId.toString() : null,
@@ -129,6 +148,24 @@ tenantMeRouter.get(['/me/domains', '/domains'], async (req: Request, res: Respon
 
   try {
     const domains = await DomainModel.find({ tenantId }).sort({ createdAt: 1 });
+    // Auto-activate any active domain that already has a plan/subscription but got stuck in activating
+    await Promise.all(
+      domains.map(async (d) => {
+        if (d.status === 'active' && d.dnsStatus === 'activating') {
+          const hasPlanOrSub = d.planId || (await DomainSubscriptionModel.exists({ domainId: d._id }));
+          if (hasPlanOrSub || !isBillingEnabled()) {
+            d.dnsStatus = 'active';
+            d.activatedAt = d.activatedAt || new Date();
+            if (d.stalwartDomainId) {
+              try {
+                await stalwartClient.updateDomainStatus(d.stalwartDomainId, true);
+              } catch {}
+            }
+            await d.save();
+          }
+        }
+      })
+    );
 
     // Stalwart domain creation happens only on explicit "Activate Domain"
     // (see domain-activation.service.ts) — never eagerly while listing.
@@ -364,6 +401,11 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       dkimPublicKey: rsaKey?.publicKey || null,
     });
 
+    // Audit log actor
+    const actorId = req.adminUser?.id || req.user?.id || 'system';
+    const actorRole = (req.adminUser?.role || req.user?.role || 'TENANT_ADMIN') as any;
+    const actorEmail = req.adminUser?.email || req.user?.email || 'admin@toowix.internal';
+
     if (plan && !isBillingEnabled()) {
       await DomainSubscriptionModel.findOneAndUpdate(
         { domainId: newDomain._id },
@@ -379,9 +421,6 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
     }
 
     // Audit log
-    const actorId = req.adminUser?.id || req.user?.id;
-    const actorRole = req.adminUser?.role || req.user?.role || 'TENANT_ADMIN';
-    const actorEmail = req.adminUser?.email || req.user?.email || 'admin@toowix.internal';
 
     await AuditLogModel.create({
       actorId,
@@ -401,27 +440,6 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
       },
       timestamp: new Date(),
     });
-
-    // Register domain application so Super Admin can review it in Domain Applications
-    const adminUser = req.adminUser?.id ? await AdminUserModel.findById(req.adminUser.id) : null;
-    const actorName = adminUser?.name || req.adminUser?.email?.split('@')[0] || tenant.name;
-    try {
-      await RegistrationApplicationModel.create({
-        companyName: tenant.name,
-        requestedDomain: normalizedDomain,
-        applicantName: actorName,
-        contactEmail: actorEmail,
-        phone: tenant.phone || null,
-        tenantId: tenant._id,
-        domainId: newDomain._id,
-        notes: plan
-          ? `Domain application for existing organisation "${tenant.name}" (Plan: ${plan.name}, Seats: ${plan.seatCount})`
-          : `Domain application for existing organisation "${tenant.name}" (plan not yet selected)`,
-        status: 'PENDING_REVIEW',
-      });
-    } catch (appErr: any) {
-      console.warn(`[Domain Creation] Non-fatal failure registering application: ${appErr.message}`);
-    }
 
     res.status(201).json({
       success: true,
@@ -679,6 +697,21 @@ tenantMeRouter.get('/me/domains/:domainId/dns-status', async (req: Request, res:
       res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found' });
       return;
     }
+
+    if (domain.status === 'active' && domain.dnsStatus !== 'active') {
+      const hasPlanOrSub = domain.planId || (await DomainSubscriptionModel.exists({ domainId: domain._id }));
+      if (hasPlanOrSub || !isBillingEnabled()) {
+        domain.dnsStatus = 'active';
+        domain.activatedAt = domain.activatedAt || new Date();
+        if (domain.stalwartDomainId) {
+          try {
+            await stalwartClient.updateDomainStatus(domain.stalwartDomainId, true);
+          } catch {}
+        }
+        await domain.save();
+      }
+    }
+
     res.status(200).json({
       dnsStatus: domain.dnsStatus,
       dnsRecords: domain.dnsRecords || [],
@@ -724,6 +757,94 @@ tenantMeRouter.get('/me/domains/:domainId/dns-check', async (req: Request, res: 
   } catch (err: any) {
     console.error('[Tenant Domain DNS Check Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to check DNS records.' });
+  }
+});
+
+// Retry verification after the tenant corrects DNS conflicts or an activation failure.
+tenantMeRouter.post(['/me/domains/:domainId/retry-verify', '/domains/:domainId/retry-verify'], async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    res.status(400).json({ error: 'INVALID_ID', message: 'Tenant or domain ID is missing or malformed' });
+    return;
+  }
+
+  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId });
+  if (!domain) {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found' });
+    return;
+  }
+
+  try {
+    const result = await retryVerify(domain._id.toString(), {
+      id: req.adminUser!.id,
+      email: req.adminUser!.email,
+      role: req.adminUser!.role,
+    });
+    res.status(200).json({
+      success: true,
+      status: {
+        dnsStatus: result.dnsStatus,
+        dnsRecords: result.dnsRecords || [],
+        dnsConflicts: result.dnsConflicts || [],
+        dnsVerificationStartedAt: result.dnsVerificationStartedAt,
+        dnsVerifiedAt: result.dnsVerifiedAt,
+        activatedAt: result.activatedAt,
+      },
+      dnsStatus: result.dnsStatus,
+      dnsRecords: result.dnsRecords || [],
+      dnsConflicts: result.dnsConflicts || [],
+    });
+  } catch (err: any) {
+    if (err instanceof DomainActivationError) {
+      res.status(err.statusCode).json({ error: err.code, message: err.message });
+      return;
+    }
+    console.error('[Tenant Domain Retry Verify Error]:', err);
+    res.status(502).json({ error: 'DOMAIN_RETRY_FAILED', message: err.message || 'Could not retry domain verification' });
+  }
+});
+
+// ==========================================
+// ACTIVATE DOMAIN (/api/tenants/me/domains/:domainId/activate)
+// ==========================================
+tenantMeRouter.post(['/me/domains/:domainId/activate', '/domains/:domainId/activate'], async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser?.tenantId;
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    res.status(400).json({ error: 'INVALID_ID', message: 'Tenant or domain ID is missing or malformed' });
+    return;
+  }
+
+  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId });
+  if (!domain) {
+    res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain not found for this tenant' });
+    return;
+  }
+
+  try {
+    await activateDomainOnPayment(domain, {
+      id: req.adminUser!.id,
+      email: req.adminUser!.email,
+      role: req.adminUser!.role as any,
+    });
+
+    const updated = await DomainModel.findById(domain._id);
+    res.status(200).json({
+      success: true,
+      message: `Domain '${domain.domainName}' is now active!`,
+      domain: updated
+        ? {
+            id: updated._id.toString(),
+            domainName: updated.domainName,
+            status: updated.status,
+            dnsStatus: updated.dnsStatus,
+            mailboxLimit: updated.mailboxLimit || 10,
+            employeeCount: updated.employeeCount || 10,
+          }
+        : null,
+    });
+  } catch (err: any) {
+    console.error('[Tenant Domain Activation Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: err.message || 'Failed to activate domain' });
   }
 });
 

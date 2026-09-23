@@ -9,8 +9,6 @@ import {
   IAdminUser,
   MailboxModel,
   IMailbox,
-  RegistrationApplicationModel,
-  IRegistrationApplication,
   ActivationTokenModel,
   IActivationToken,
   AuditLogModel,
@@ -156,28 +154,6 @@ export async function createTestMailbox(
     stalwartAccountId: `acc-${localPart}`,
     status: 'active',
     quotaBytes: 1073741824,
-    ...overrides,
-  });
-}
-
-export async function createTestApplication(
-  overrides: Partial<IRegistrationApplication> = {}
-): Promise<IRegistrationApplication> {
-  const domain = overrides.requestedDomain || `${uniqueId('app').toLowerCase()}.test`;
-  return RegistrationApplicationModel.create({
-    companyName: uniqueId('Company'),
-    requestedDomain: domain,
-    applicantName: 'Test Applicant',
-    contactEmail: `contact@${domain}`,
-    employeeCount: '10 – 99',
-    region: 'United States (us-central1)',
-    passwordHash: await hashPassword('InitialAppPassword2026!'),
-    securityQuestions: [
-      { question: 'Q1', answerHash: 'hash1' },
-      { question: 'Q2', answerHash: 'hash2' },
-      { question: 'Q3', answerHash: 'hash3' },
-    ],
-    status: 'PENDING_REVIEW',
     ...overrides,
   });
 }

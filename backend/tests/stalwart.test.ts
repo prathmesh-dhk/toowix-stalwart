@@ -556,4 +556,91 @@ describe('Phase 5: Stalwart Client Unit Tests (Offline / Mocked)', () => {
     await client.deleteDomain('dom-to-delete');
     expect(mockDispatch).toHaveBeenCalledTimes(3);
   });
+
+  it('migrateAccountMail creates a folder tree mirroring the source and copies every message into it', async () => {
+    const mockDispatch = vi
+      .fn()
+      // 1. List source folders
+      .mockResolvedValueOnce([
+        [
+          'Mailbox/get',
+          {
+            list: [
+              { id: 'src-inbox', name: 'Inbox', role: 'inbox', totalEmails: 2 },
+              { id: 'src-sent', name: 'Sent', role: 'sent', totalEmails: 1 },
+              { id: 'src-empty', name: 'Empty', role: null, totalEmails: 0 },
+            ],
+          },
+          'c_migrate_src_folders',
+        ],
+      ])
+      // 2. Create parent + child folders on destination
+      .mockResolvedValueOnce([
+        [
+          'Mailbox/set',
+          {
+            created: {
+              migrate_parent: { id: 'dest-parent' },
+              migrate_child_0: { id: 'dest-inbox' },
+              migrate_child_1: { id: 'dest-sent' },
+              migrate_child_2: { id: 'dest-empty' },
+            },
+          },
+          'c_migrate_create_folders',
+        ],
+      ])
+      // 3. Query + copy for Inbox (2 messages)
+      .mockResolvedValueOnce([['Email/query', { ids: ['m1', 'm2'] }, 'c_migrate_query']])
+      .mockResolvedValueOnce([
+        ['Email/copy', { created: { m_0: { id: 'm1' }, m_1: { id: 'm2' } } }, 'c_migrate_copy'],
+      ])
+      // 4. Query + copy for Sent (1 message)
+      .mockResolvedValueOnce([['Email/query', { ids: ['m3'] }, 'c_migrate_query']])
+      .mockResolvedValueOnce([['Email/copy', { created: { m_0: { id: 'm3' } } }, 'c_migrate_copy']]);
+    (client as any).dispatch = mockDispatch;
+
+    const onProgress = vi.fn();
+    const result = await client.migrateAccountMail('src-account', 'dest-account', 'Migrated from alice@acme.test', onProgress);
+
+    expect(result).toEqual({ totalMessages: 3, migratedMessages: 3, failedMessageIds: [] });
+    expect(onProgress).toHaveBeenLastCalledWith(3, 3);
+    // The empty folder is skipped entirely — no Email/query for it.
+    expect(mockDispatch).toHaveBeenCalledTimes(6);
+
+    const createCall = mockDispatch.mock.calls[1][0][0];
+    expect(createCall[0]).toBe('Mailbox/set');
+    expect(createCall[1].create.migrate_parent).toEqual({ name: 'Migrated from alice@acme.test' });
+    expect(createCall[1].create.migrate_child_0).toMatchObject({ name: 'Inbox', role: 'inbox', parentId: '#migrate_parent' });
+
+    const firstCopyCall = mockDispatch.mock.calls[3][0][0];
+    expect(firstCopyCall[1]).toMatchObject({
+      fromAccountId: 'src-account',
+      accountId: 'dest-account',
+      create: { m_0: { id: 'm1', mailboxIds: { 'dest-inbox': true } }, m_1: { id: 'm2', mailboxIds: { 'dest-inbox': true } } },
+    });
+  });
+
+  it('migrateAccountMail collects notCreated ids as failures without throwing', async () => {
+    const mockDispatch = vi
+      .fn()
+      .mockResolvedValueOnce([
+        ['Mailbox/get', { list: [{ id: 'src-inbox', name: 'Inbox', role: 'inbox', totalEmails: 2 }] }, 'c1'],
+      ])
+      .mockResolvedValueOnce([
+        ['Mailbox/set', { created: { migrate_parent: { id: 'dest-parent' }, migrate_child_0: { id: 'dest-inbox' } } }, 'c2'],
+      ])
+      .mockResolvedValueOnce([['Email/query', { ids: ['m1', 'm2'] }, 'c3']])
+      .mockResolvedValueOnce([
+        [
+          'Email/copy',
+          { created: { m_0: { id: 'm1' } }, notCreated: { m_1: { type: 'notFound' } } },
+          'c4',
+        ],
+      ]);
+    (client as any).dispatch = mockDispatch;
+
+    const result = await client.migrateAccountMail('src-account', 'dest-account', 'Migrated from bob@acme.test');
+
+    expect(result).toEqual({ totalMessages: 2, migratedMessages: 1, failedMessageIds: ['m2'] });
+  });
 });

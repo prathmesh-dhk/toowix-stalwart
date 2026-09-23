@@ -6,12 +6,11 @@ import { requireSuperAdmin } from '../auth/middleware';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainModel } from '../db/models/Domain';
 import { AdminUserModel } from '../db/models/AdminUser';
-import { RegistrationApplicationModel } from '../db/models/RegistrationApplication';
 import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { MailboxModel } from '../db/models/Mailbox';
 import { hashPassword } from '../auth/service';
-import { activateDomain, retryVerify, checkDnsRecordsLive, DomainActivationError } from '../services/domain-activation.service';
+import { checkDnsRecordsLive } from '../services/domain-activation.service';
 import { emailService } from '../services/email.service';
 import { config } from '../config';
 import { suspendTenantInfrastructure, restoreTenantInfrastructure } from '../services/tenant-lifecycle.service';
@@ -285,9 +284,7 @@ platformTenantRouter.post('/:id/activate', async (req: Request, res: Response) =
   domain.status = 'active';
   await domain.save();
 
-  // Find applicant contact email
-  const application = await RegistrationApplicationModel.findOne({ requestedDomain: domain.domainName });
-  const contactEmail = application?.contactEmail || `admin@${domain.domainName}`;
+  const contactEmail = tenant.contactEmail || `admin@${domain.domainName}`;
 
   // Generate 48-hour single-use activation token
   const rawToken = crypto.randomBytes(32).toString('hex');
@@ -306,7 +303,7 @@ platformTenantRouter.post('/:id/activate', async (req: Request, res: Response) =
   const emailResult = await emailService.sendTenantActivationEmail({
     to: contactEmail,
     companyName: tenant.name,
-    applicantName: application?.applicantName || tenant.name,
+    applicantName: tenant.name,
     domainName: domain.domainName,
     activationLink,
     expiresHours: 48,
@@ -367,8 +364,7 @@ platformTenantRouter.post('/:id/resend-activation', async (req: Request, res: Re
     return res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Tenant does not have an assigned domain' });
   }
 
-  const application = await RegistrationApplicationModel.findOne({ requestedDomain: domain.domainName });
-  const contactEmail = application?.contactEmail || `admin@${domain.domainName}`;
+  const contactEmail = tenant.contactEmail || `admin@${domain.domainName}`;
 
   // Invalidate any existing unused tokens for this tenant
   await ActivationTokenModel.deleteMany({ tenantId: tenant._id, usedAt: null });
@@ -389,7 +385,7 @@ platformTenantRouter.post('/:id/resend-activation', async (req: Request, res: Re
   const emailResult = await emailService.sendTenantActivationEmail({
     to: contactEmail,
     companyName: tenant.name,
-    applicantName: application?.applicantName || tenant.name,
+    applicantName: tenant.name,
     domainName: domain.domainName,
     activationLink,
     expiresHours: 48,
@@ -427,74 +423,7 @@ platformTenantRouter.post('/:id/resend-activation', async (req: Request, res: Re
   });
 });
 
-// 2c. Activate Domain (DNS/mail provisioning via Stalwart + GoDaddy — distinct
-// from "/:id/activate" above, which only activates the Tenant Admin's login).
-platformTenantRouter.post('/:id/domains/:domainId/activate', async (req: Request, res: Response) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
-    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });
-  }
-
-  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId: req.params.id });
-  if (!domain) {
-    return res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found for this tenant' });
-  }
-
-  try {
-    const result = await activateDomain(req.params.domainId, {
-      id: req.adminUser!.id,
-      email: req.adminUser!.email,
-      role: req.adminUser!.role,
-    });
-    return res.status(200).json({
-      success: true,
-      dnsStatus: result.dnsStatus,
-      dnsRecords: result.dnsRecords || [],
-      dnsConflicts: result.dnsConflicts || [],
-      dnsZoneFile: result.dnsZoneFile || null,
-    });
-  } catch (err: any) {
-    if (err instanceof DomainActivationError) {
-      return res.status(err.statusCode).json({ error: err.code, message: err.message });
-    }
-    console.error('[Domain Activation Error]:', err);
-    return res.status(502).json({ error: 'DOMAIN_ACTIVATION_FAILED', message: err.message || 'Domain activation failed' });
-  }
-});
-
-// 2d. Retry / Verify Domain Activation
-platformTenantRouter.post('/:id/domains/:domainId/retry-verify', async (req: Request, res: Response) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
-    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });
-  }
-
-  const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId: req.params.id });
-  if (!domain) {
-    return res.status(404).json({ error: 'NOT_FOUND', message: 'Domain not found for this tenant' });
-  }
-
-  try {
-    const result = await retryVerify(req.params.domainId, {
-      id: req.adminUser!.id,
-      email: req.adminUser!.email,
-      role: req.adminUser!.role,
-    });
-    return res.status(200).json({
-      success: true,
-      dnsStatus: result.dnsStatus,
-      dnsRecords: result.dnsRecords || [],
-      dnsConflicts: result.dnsConflicts || [],
-      dnsZoneFile: result.dnsZoneFile || null,
-    });
-  } catch (err: any) {
-    if (err instanceof DomainActivationError) {
-      return res.status(err.statusCode).json({ error: err.code, message: err.message });
-    }
-    console.error('[Domain Retry/Verify Error]:', err);
-    return res.status(502).json({ error: 'DOMAIN_RETRY_FAILED', message: err.message || 'Domain retry/verify failed' });
-  }
-});
-
-// 2e. Domain DNS Activation Status
+// 2c. Domain DNS activation status
 platformTenantRouter.get('/:id/domains/:domainId/dns-status', async (req: Request, res: Response) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
     return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });

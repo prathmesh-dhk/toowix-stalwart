@@ -20,20 +20,15 @@ import {
   Trash2,
   KeyRound,
   Search,
-  ExternalLink,
-  UserCheck,
-  CheckCircle2,
   AlertTriangle,
   FileText,
-  Lock,
   Plus,
 } from 'lucide-react';
-import { TenantFullDetails, TenantDomainSummary, TenantSummary } from '../../types';
+import { TenantFullDetails, TenantSummary } from '../../types';
 import { api } from '../../api';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
-import { DomainActivationModal } from '../modals/DomainActivationModal';
 import { OrganisationDeletionPanel } from '../OrganisationDeletionPanel';
 import { dnsStatusBadgeProps } from '../../utils/dnsStatus';
 
@@ -72,7 +67,6 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   const [auditSearch, setAuditSearch] = useState('');
 
   // Modal triggers
-  const [activationDomain, setActivationDomain] = useState<TenantDomainSummary | null>(null);
 
   // Admin password reset
   const [resettingAdminId, setResettingAdminId] = useState<string | null>(null);
@@ -87,7 +81,6 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   const [newAdminPass, setNewAdminPass] = useState('');
 
   // Quota editor
-  const [editingQuota, setEditingQuota] = useState(false);
   const [newQuotaValue, setNewQuotaValue] = useState<number>(0);
   const [quotaSaving, setQuotaSaving] = useState(false);
 
@@ -170,7 +163,6 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
     setQuotaSaving(true);
     try {
       await api.updateMailboxLimit(details.tenant.id, newQuotaValue);
-      setEditingQuota(false);
       onShowAlert?.('success', `Mailbox quota updated to ${newQuotaValue}.`);
       await fetchTenantDetails();
       onTenantUpdated?.();
@@ -679,14 +671,6 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                           </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => setActivationDomain(dom as any)}
-                            icon={<ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />}
-                          >
-                            <span>{dom.dnsStatus === 'active' ? 'View DNS' : 'Activate DNS'}</span>
-                          </Button>
                         </td>
                       </tr>
                     );
@@ -1201,14 +1185,6 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
         </div>
       )}
 
-      {/* Domain Activation Modal Integration */}
-      <DomainActivationModal
-        tenant={tenantSummaryAdapter}
-        domain={activationDomain}
-        isOpen={!!activationDomain}
-        onClose={() => setActivationDomain(null)}
-        onChanged={() => fetchTenantDetails()}
-      />
     </div>
   );
 };

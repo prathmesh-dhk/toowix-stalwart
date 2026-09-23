@@ -5,14 +5,31 @@ import { DomainModel } from '../db/models/Domain';
 import { stalwartClient } from '../stalwart/client';
 import { logAudit } from '../audit/service';
 import { StalwartAccountExistsError, StalwartError } from '../stalwart/errors';
+import { StalwartEmailAlias } from '../stalwart/types';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { reportMeteredUsage } from './billing.service';
 import { config, isBillingEnabled } from '../config';
 
 export interface CreateMailboxInput {
+  displayName?: string;
   localPart: string;
   password: string;
   domainId?: string;
+}
+
+export interface MailboxAliasRecord {
+  id: string;
+  localPart: string;
+  domainId: string;
+  domainName: string;
+  address: string;
+  description?: string | null;
+  createdAt: string;
+}
+
+export interface AddAliasInput {
+  localPart: string;
+  description?: string | null;
 }
 
 export interface MailboxRecord {
@@ -20,14 +37,40 @@ export interface MailboxRecord {
   tenantId: string;
   domainId: string;
   localPart: string;
+  displayName: string | null;
   address: string;
   stalwartAccountId: string | null;
   status: 'active' | 'suspended';
+  aliases?: MailboxAliasRecord[];
   createdAt: string;
   updatedAt: string;
 }
 
 export class MailboxService {
+  public static mapToRecord(doc: any): MailboxRecord {
+    return {
+      id: doc._id.toString(),
+      tenantId: doc.tenantId.toString(),
+      domainId: doc.domainId.toString(),
+      localPart: doc.localPart,
+      displayName: doc.displayName || null,
+      address: doc.address,
+      stalwartAccountId: doc.stalwartAccountId || null,
+      status: doc.status,
+      aliases: (doc.aliases || []).map((a: any) => ({
+        id: a._id.toString(),
+        localPart: a.localPart,
+        domainId: a.domainId.toString(),
+        domainName: a.domainName,
+        address: a.address,
+        description: a.description || null,
+        createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : (a.createdAt ? new Date(a.createdAt).toISOString() : new Date().toISOString()),
+      })),
+      createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : new Date(doc.createdAt).toISOString(),
+      updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : new Date(doc.updatedAt).toISOString(),
+    };
+  }
+
   /**
    * Concurrency-safe mailbox creation using atomic MongoDB conditional updates ($expr + $inc).
    * 1. Atomically reserve quota on TenantModel:
@@ -45,6 +88,7 @@ export class MailboxService {
     actorRole = 'TENANT_ADMIN'
   ): Promise<MailboxRecord> {
     const localPart = input.localPart.trim().toLowerCase();
+    const displayName = input.displayName?.trim() || null;
 
     // Syntax validation for local-part (RFC 5322 compatible characters)
     if (!/^[a-zA-Z0-9._-]+$/.test(localPart)) {
@@ -122,14 +166,17 @@ export class MailboxService {
       }
     }
 
-    // 2b. Block mailbox creation if the domain is suspended or not yet activated by Super Admin
+    // 2b. Block mailbox creation if the domain is suspended or not yet activated
     if (domain.status === 'suspended' || domain.dnsStatus !== 'active') {
       // Rollback quota
       await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
       throw {
         status: 403,
         code: 'DOMAIN_NOT_ACTIVATED',
-        message: `Domain '${domain.domainName}' is pending activation by a Super Admin. Mailboxes can only be created once the domain is activated.`,
+        message:
+          domain.status === 'suspended'
+            ? `Domain '${domain.domainName}' is suspended.`
+            : `Domain '${domain.domainName}' is pending activation. Mailboxes can only be created once the domain is active.`,
       };
     }
 
@@ -204,7 +251,7 @@ export class MailboxService {
           name: localPart,
           domainId: stalwartDomainId!,
           password: input.password,
-          description: localPart,
+          description: displayName || localPart,
         });
       } catch (err: any) {
         if (err.message && err.message.includes('invalidForeignKey')) {
@@ -217,7 +264,7 @@ export class MailboxService {
             name: localPart,
             domainId: targetId,
             password: input.password,
-            description: localPart,
+            description: displayName || localPart,
           });
         } else {
           throw err;
@@ -265,6 +312,7 @@ export class MailboxService {
       tenantId: tenant._id,
       domainId: domain._id,
       localPart,
+      displayName,
       address: fullAddress,
       stalwartAccountId: stalwartAccount.id,
       status: 'active',
@@ -287,17 +335,7 @@ export class MailboxService {
       console.warn(`[MailboxService] reportMeteredUsage failed for domain ${domain._id}:`, err.message)
     );
 
-    return {
-      id: mailboxDoc._id.toString(),
-      tenantId: tenant._id.toString(),
-      domainId: domain._id.toString(),
-      localPart: mailboxDoc.localPart,
-      address: mailboxDoc.address,
-      stalwartAccountId: mailboxDoc.stalwartAccountId || null,
-      status: mailboxDoc.status,
-      createdAt: mailboxDoc.createdAt.toISOString(),
-      updatedAt: mailboxDoc.updatedAt.toISOString(),
-    };
+    return this.mapToRecord(mailboxDoc);
   }
 
   /**
@@ -315,17 +353,7 @@ export class MailboxService {
 
     const docs = await MailboxModel.find(filter).sort({ createdAt: 1 });
 
-    return docs.map((doc) => ({
-      id: doc._id.toString(),
-      tenantId: doc.tenantId.toString(),
-      domainId: doc.domainId.toString(),
-      localPart: doc.localPart,
-      address: doc.address,
-      stalwartAccountId: doc.stalwartAccountId || null,
-      status: doc.status,
-      createdAt: doc.createdAt.toISOString(),
-      updatedAt: doc.updatedAt.toISOString(),
-    }));
+    return docs.map((doc) => this.mapToRecord(doc));
   }
 
   /**
@@ -347,17 +375,7 @@ export class MailboxService {
     const doc = await MailboxModel.findOne(filter);
     if (!doc) return null;
 
-    return {
-      id: doc._id.toString(),
-      tenantId: doc.tenantId.toString(),
-      domainId: doc.domainId.toString(),
-      localPart: doc.localPart,
-      address: doc.address,
-      stalwartAccountId: doc.stalwartAccountId || null,
-      status: doc.status,
-      createdAt: doc.createdAt.toISOString(),
-      updatedAt: doc.updatedAt.toISOString(),
-    };
+    return this.mapToRecord(doc);
   }
 
   /**
@@ -534,17 +552,7 @@ export class MailboxService {
       success: true,
     });
 
-    return {
-      id: updatedDoc!._id.toString(),
-      tenantId: updatedDoc!.tenantId.toString(),
-      domainId: updatedDoc!.domainId.toString(),
-      localPart: updatedDoc!.localPart,
-      address: updatedDoc!.address,
-      stalwartAccountId: updatedDoc!.stalwartAccountId || null,
-      status: updatedDoc!.status,
-      createdAt: updatedDoc!.createdAt.toISOString(),
-      updatedAt: updatedDoc!.updatedAt.toISOString(),
-    };
+    return this.mapToRecord(updatedDoc!);
   }
 
   /**
@@ -599,17 +607,7 @@ export class MailboxService {
       success: true,
     });
 
-    return {
-      id: updatedDoc!._id.toString(),
-      tenantId: updatedDoc!.tenantId.toString(),
-      domainId: updatedDoc!.domainId.toString(),
-      localPart: updatedDoc!.localPart,
-      address: updatedDoc!.address,
-      stalwartAccountId: updatedDoc!.stalwartAccountId || null,
-      status: updatedDoc!.status,
-      createdAt: updatedDoc!.createdAt.toISOString(),
-      updatedAt: updatedDoc!.updatedAt.toISOString(),
-    };
+    return this.mapToRecord(updatedDoc!);
   }
 
   /**
@@ -765,6 +763,325 @@ export class MailboxService {
       // Mail server outage / unreachable: log warning for fallback
       console.warn(`[MailboxService] Stalwart password sync skipped for ${email}:`, err?.message);
     }
+  }
+
+  /**
+   * Add an email alias to a mailbox:
+   * 1. Validates localPart syntax and target domain ownership/activation.
+   * 2. Checks global collision against primary mailboxes and existing aliases.
+   * 3. Syncs alias to Stalwart mail server via JMAP.
+   * 4. Persists alias subdocument in MongoDB.
+   * 5. Does NOT increment tenant mailboxCount (aliases are free/zero-seat).
+   */
+  static async addAlias(
+    mailboxId: string,
+    tenantId: string,
+    input: AddAliasInput,
+    actorId?: string,
+    actorRole = 'TENANT_ADMIN'
+  ): Promise<MailboxAliasRecord> {
+    if (!mongoose.Types.ObjectId.isValid(mailboxId) || !mongoose.Types.ObjectId.isValid(tenantId)) {
+      throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+    }
+
+    const localPart = (input.localPart || '').trim().toLowerCase();
+    if (!/^[a-zA-Z0-9._-]+$/.test(localPart)) {
+      throw {
+        status: 400,
+        code: 'INVALID_LOCAL_PART',
+        message: 'Local part can only contain letters, numbers, dots, hyphens, and underscores',
+      };
+    }
+
+    // 1. Fetch tenant and verify status
+    const tenant = await TenantModel.findById(tenantId);
+    if (!tenant) {
+      throw { status: 404, code: 'TENANT_NOT_FOUND', message: 'Tenant not found' };
+    }
+    if (tenant.status === 'suspended' || tenant.status === 'pending_deletion') {
+      throw {
+        status: 403,
+        code: 'TENANT_SUSPENDED',
+        message: 'Tenant is suspended; alias creation is blocked',
+      };
+    }
+
+    // 2. Fetch mailbox and check status
+    const mailbox = await MailboxModel.findOne({ _id: mailboxId, tenantId });
+    if (!mailbox) {
+      throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+    }
+    if (mailbox.status === 'suspended') {
+      throw {
+        status: 403,
+        code: 'MAILBOX_SUSPENDED',
+        message: 'Cannot add aliases to a suspended mailbox',
+      };
+    }
+
+    // 3. Aliases always stay on the mailbox's own domain. This prevents a
+    // caller from creating an address on another domain by changing a request.
+    const domain = await DomainModel.findOne({ _id: mailbox.domainId, tenantId });
+    if (!domain) {
+      throw { status: 404, code: 'DOMAIN_NOT_FOUND', message: 'Domain not found for this tenant' };
+    }
+    if (domain.status === 'suspended' || domain.dnsStatus !== 'active') {
+      throw {
+        status: 403,
+        code: 'DOMAIN_NOT_ACTIVE',
+        message: `Domain '${domain.domainName}' is not active; aliases cannot be added to it`,
+      };
+    }
+
+    const fullAddress = `${localPart}@${domain.domainName}`;
+
+    // 4. Collision checks:
+    // a. Primary mailbox address collision
+    const existingPrimary = await MailboxModel.findOne({ address: fullAddress });
+    if (existingPrimary) {
+      throw {
+        status: 409,
+        code: 'ADDRESS_IN_USE',
+        message: `Address '${fullAddress}' is already in use by a primary mailbox`,
+      };
+    }
+
+    // b. Alias address collision across any mailbox
+    const existingAlias = await MailboxModel.findOne({ 'aliases.address': fullAddress });
+    if (existingAlias) {
+      throw {
+        status: 409,
+        code: 'ALIAS_EXISTS',
+        message: `Alias '${fullAddress}' already exists`,
+      };
+    }
+
+    // 5. Stalwart Domain Resolution
+    let stalwartDomainId = domain.stalwartDomainId;
+    if (!stalwartDomainId) {
+      try {
+        stalwartDomainId = await resolvePlatformStalwartDomainId(domain);
+      } catch (err: any) {
+        stalwartDomainId = domain.domainName;
+      }
+    }
+
+    // 6. Update Stalwart if mailbox is provisioned
+    if (mailbox.stalwartAccountId) {
+      const currentAliases = mailbox.aliases || [];
+
+      // Resolve stalwartDomainIds for all domains involved in existing aliases
+      const domainIdsToResolve = [...new Set(currentAliases.map((a) => a.domainId.toString()))];
+      const domainDocs = await DomainModel.find({ _id: { $in: domainIdsToResolve } });
+      const domainMap = new Map<string, any>();
+      for (const d of domainDocs) {
+        domainMap.set(d._id.toString(), d);
+      }
+
+      const resolvedCurrentAliases: StalwartEmailAlias[] = await Promise.all(
+        currentAliases.map(async (a) => {
+          const d = domainMap.get(a.domainId.toString());
+          let resolvedId = d?.stalwartDomainId;
+          if (!resolvedId && d) {
+            try {
+              resolvedId = await resolvePlatformStalwartDomainId(d);
+            } catch {
+              resolvedId = a.domainName;
+            }
+          }
+          return {
+            name: a.localPart,
+            domainId: resolvedId || a.domainName,
+            description: a.description || null,
+            enabled: true,
+          };
+        })
+      );
+
+      const stalwartAliases: StalwartEmailAlias[] = [
+        ...resolvedCurrentAliases,
+        {
+          name: localPart,
+          domainId: stalwartDomainId || domain.domainName,
+          description: input.description?.trim() || null,
+          enabled: true,
+        },
+      ];
+
+      try {
+        await stalwartClient.updateAccountAliases(mailbox.stalwartAccountId, stalwartAliases);
+      } catch (err: any) {
+        throw {
+          status: 502,
+          code: 'STALWART_SYNC_FAILED',
+          message: `Failed to sync alias to mail server: ${err.message}`,
+        };
+      }
+    }
+
+    // 7. Push to MongoDB subdocuments
+    const newAliasDoc = {
+      _id: new mongoose.Types.ObjectId(),
+      localPart,
+      domainId: domain._id,
+      domainName: domain.domainName,
+      address: fullAddress,
+      description: input.description?.trim() || null,
+      createdAt: new Date(),
+    };
+
+    mailbox.aliases.push(newAliasDoc as any);
+    await mailbox.save();
+
+    await logAudit({
+      actorId,
+      actorRole,
+      tenantId: tenant._id.toString(),
+      action: 'MAILBOX_ALIAS_CREATED',
+      resource: 'MAILBOX',
+      resourceId: mailbox._id.toString(),
+      metadata: { address: fullAddress, mailboxAddress: mailbox.address, domainName: domain.domainName },
+      success: true,
+    });
+
+    return {
+      id: newAliasDoc._id.toString(),
+      localPart: newAliasDoc.localPart,
+      domainId: newAliasDoc.domainId.toString(),
+      domainName: newAliasDoc.domainName,
+      address: newAliasDoc.address,
+      description: newAliasDoc.description,
+      createdAt: newAliasDoc.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * Delete an email alias from a mailbox:
+   * 1. Validates existence and tenant ownership.
+   * 2. Removes alias from Stalwart account via JMAP.
+   * 3. Removes alias subdocument from MongoDB.
+   */
+  static async deleteAlias(
+    mailboxId: string,
+    tenantId: string,
+    aliasId: string,
+    actorId?: string,
+    actorRole = 'TENANT_ADMIN'
+  ): Promise<void> {
+    if (
+      !mongoose.Types.ObjectId.isValid(mailboxId) ||
+      !mongoose.Types.ObjectId.isValid(tenantId) ||
+      !mongoose.Types.ObjectId.isValid(aliasId)
+    ) {
+      throw { status: 404, code: 'ALIAS_NOT_FOUND', message: 'Alias or mailbox not found' };
+    }
+
+    const tenant = await TenantModel.findById(tenantId);
+    if (!tenant) {
+      throw { status: 404, code: 'TENANT_NOT_FOUND', message: 'Tenant not found' };
+    }
+    if (tenant.status === 'suspended' || tenant.status === 'pending_deletion') {
+      throw {
+        status: 403,
+        code: 'TENANT_SUSPENDED',
+        message: 'Tenant is suspended; alias deletion is blocked',
+      };
+    }
+
+    const mailbox = await MailboxModel.findOne({ _id: mailboxId, tenantId });
+    if (!mailbox) {
+      throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+    }
+
+    const aliasDoc = mailbox.aliases.find((a) => a._id.toString() === aliasId);
+    if (!aliasDoc) {
+      throw { status: 404, code: 'ALIAS_NOT_FOUND', message: 'Alias not found on this mailbox' };
+    }
+
+    // Stalwart sync: remove alias from Stalwart account
+    if (mailbox.stalwartAccountId) {
+      const remainingAliasDocs = mailbox.aliases.filter((a) => a._id.toString() !== aliasId);
+
+      const domainIdsToResolve = [...new Set(remainingAliasDocs.map((a) => a.domainId.toString()))];
+      const domainDocs = await DomainModel.find({ _id: { $in: domainIdsToResolve } });
+      const domainMap = new Map<string, any>();
+      for (const d of domainDocs) {
+        domainMap.set(d._id.toString(), d);
+      }
+
+      const remainingAliases: StalwartEmailAlias[] = await Promise.all(
+        remainingAliasDocs.map(async (a) => {
+          const d = domainMap.get(a.domainId.toString());
+          let resolvedId = d?.stalwartDomainId;
+          if (!resolvedId && d) {
+            try {
+              resolvedId = await resolvePlatformStalwartDomainId(d);
+            } catch {
+              resolvedId = a.domainName;
+            }
+          }
+          return {
+            name: a.localPart,
+            domainId: resolvedId || a.domainName,
+            description: a.description || null,
+            enabled: true,
+          };
+        })
+      );
+
+      try {
+        await stalwartClient.updateAccountAliases(mailbox.stalwartAccountId, remainingAliases);
+      } catch (err: any) {
+        console.warn(`[MailboxService] Failed to remove alias ${aliasDoc.address} from Stalwart:`, err.message);
+      }
+    }
+
+    // Pull from MongoDB
+    mailbox.aliases = mailbox.aliases.filter((a) => a._id.toString() !== aliasId) as any;
+    await mailbox.save();
+
+    await logAudit({
+      actorId,
+      actorRole,
+      tenantId: tenant._id.toString(),
+      action: 'MAILBOX_ALIAS_DELETED',
+      resource: 'MAILBOX',
+      resourceId: mailbox._id.toString(),
+      metadata: { address: aliasDoc.address, mailboxAddress: mailbox.address },
+      success: true,
+    });
+  }
+
+  /**
+   * List all aliases for a specific mailbox.
+   */
+  static async listAliases(mailboxId: string, tenantId?: string): Promise<MailboxAliasRecord[]> {
+    if (!mongoose.Types.ObjectId.isValid(mailboxId)) {
+      throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+    }
+
+    const filter: any = { _id: mailboxId };
+    if (tenantId) {
+      if (!mongoose.Types.ObjectId.isValid(tenantId)) {
+        throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+      }
+      filter.tenantId = tenantId;
+    }
+
+    const mailbox = await MailboxModel.findOne(filter);
+    if (!mailbox) {
+      throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
+    }
+
+    return (mailbox.aliases || []).map((a) => ({
+      id: a._id.toString(),
+      localPart: a.localPart,
+      domainId: a.domainId.toString(),
+      domainName: a.domainName,
+      address: a.address,
+      description: a.description || null,
+      createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : (a.createdAt ? new Date(a.createdAt).toISOString() : new Date().toISOString()),
+    }));
   }
 }
 

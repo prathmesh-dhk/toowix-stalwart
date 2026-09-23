@@ -2,7 +2,6 @@ import React from 'react';
 import {
   TenantSummary,
   SystemMetrics,
-  RegistrationApplication,
   SystemHealthDetails,
   AuditItem,
   DriftReport,
@@ -10,14 +9,12 @@ import {
   PlatformAnalytics,
 } from '../../types';
 import { Button } from '../ui/Button';
-import { StatusBadge } from '../ui/StatusBadge';
 import {
   Plus,
   Mail,
   CheckCircle2,
   Server,
   ArrowRight,
-  ClipboardList,
   History,
   FileText,
   BarChart3,
@@ -30,13 +27,11 @@ interface DashboardOverviewViewProps {
   tenants: TenantSummary[];
   metrics: SystemMetrics | null;
   healthDetails: SystemHealthDetails | null;
-  applications: RegistrationApplication[];
   backups: BackupRecordItem[];
   driftReport: DriftReport | null;
   recentAuditLogs: AuditItem[];
   analyticsData?: PlatformAnalytics | null;
-  onNavigateTab: (tab: 'applications' | 'tenants' | 'operations' | 'audit' | 'analytics') => void;
-  onReviewApplication: (app: RegistrationApplication) => void;
+  onNavigateTab: (tab: 'tenants' | 'operations' | 'audit' | 'analytics') => void;
   onActivateTenant: (tenant: TenantSummary) => void;
 }
 
@@ -55,29 +50,17 @@ function formatRelativeTime(date: Date | string | undefined): string {
   return `${diffDays}d ago`;
 }
 
-const getInitials = (text: string) => {
-  if (!text) return 'AP';
-  const parts = text.trim().split(/[._\s-]+/);
-  if (parts.length >= 2 && parts[0] && parts[1]) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return text.slice(0, 2).toUpperCase();
-};
-
 export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
   tenants,
   metrics,
   healthDetails,
-  applications,
   backups,
   driftReport: _driftReport,
   recentAuditLogs,
   analyticsData,
   onNavigateTab,
-  onReviewApplication,
   onActivateTenant,
 }) => {
-  const pendingApps = applications.filter((a) => a.status === 'PENDING_REVIEW');
   const pendingActivationTenants = tenants.filter((t) => t.status === 'approved_pending_setup');
   const activeTenants = tenants.filter((t) => t.status === 'active');
 
@@ -103,9 +86,6 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
     ? `Up to date (${formatRelativeTime(latestBackup.createdAt)})`
     : 'Up to date';
 
-  const displayApps = pendingApps.length > 0
-    ? pendingApps.slice(0, 4)
-    : applications.slice(0, 4);
 
   return (
     <div className="flex flex-col gap-8" id="view-dashboard">
@@ -345,81 +325,7 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
 
       {/* 4. SIDE-BY-SIDE DUAL PANELS (MATCHING TENANT ADMIN EXACTLY) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Panel: Recent Applications */}
-        <section className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="w-[18px] h-[18px] text-slate-400" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Recent Applications
-              </h2>
-            </div>
-            <button
-              onClick={() => onNavigateTab('applications')}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
-            >
-              <span>View all</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {displayApps.length === 0 ? (
-            <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
-              <Mail className="w-7 h-7" />
-              <p className="text-xs">No recent applications to display.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col divide-y divide-slate-100">
-              {displayApps.map((app) => (
-                <div
-                  key={app._id || app.id}
-                  className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-medium shrink-0">
-                      {getInitials(app.companyName)}
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-slate-900 truncate">
-                          {app.companyName}
-                        </span>
-                        <span className="text-indigo-600 font-medium text-[11px]">
-                          {app.requestedDomain}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-400 mt-0.5">
-                        {app.applicantName} · {formatRelativeTime(app.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <StatusBadge
-                      status={
-                        app.status === 'PENDING_REVIEW'
-                          ? 'warning'
-                          : app.status === 'APPROVED'
-                          ? 'success'
-                          : 'danger'
-                      }
-                      label={app.status === 'PENDING_REVIEW' ? 'Pending Review' : app.status}
-                    />
-                    <Button
-                      size="sm"
-                      variant={app.status === 'PENDING_REVIEW' ? 'primary' : 'secondary'}
-                      onClick={() => onReviewApplication(app)}
-                    >
-                      {app.status === 'PENDING_REVIEW' ? 'Review' : 'Details'}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Right Panel: Platform Event Log */}
+        {/* Platform Event Log */}
         <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">

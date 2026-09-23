@@ -12,7 +12,6 @@ import {
   TenantModel,
   DomainModel,
   MailboxModel,
-  RegistrationApplicationModel,
   ActivationTokenModel,
   BackupRecordModel,
   AuditLogModel,
@@ -104,7 +103,6 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
     await DomainModel.deleteMany({});
     await AdminUserModel.deleteMany({});
     await MailboxModel.deleteMany({});
-    await RegistrationApplicationModel.deleteMany({});
     await ActivationTokenModel.deleteMany({});
     await BackupRecordModel.deleteMany({});
     await AuditLogModel.deleteMany({});
@@ -328,9 +326,9 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
       expect(deleteRes.status).toBe(403);
     });
 
-    it('prevents Privilege Escalation: Tenant Admin cannot access Super Admin Application Queue', async () => {
+    it('prevents Privilege Escalation: Tenant Admin cannot access Super Admin Coupons Management', async () => {
       const res = await request(app)
-        .get('/api/super-admin/applications')
+        .get('/api/admin/coupons')
         .set('Authorization', `Bearer ${tenantAdminAToken}`);
       expect(res.status).toBe(403);
     });
@@ -398,46 +396,22 @@ describe('Phase 8: End-to-End Hardening, Concurrency Stress & Security Penetrati
   describe('Pillar 3: Complete 11-Stage End-to-End User Journey', () => {
     it('executes full multi-tenant lifecycle from registration to cascade teardown', async () => {
       // -----------------------------------------------------------------------
-      // STAGE 1: Public Self-Service Registration
+      // STAGE 1: Tenant Provisioning
       // -----------------------------------------------------------------------
-      const regRes = await request(app)
-        .post('/api/public/register-tenant')
-        .send({
-          companyName: 'Wayne Enterprises',
-          requestedDomain: 'waynecorp.test',
-          applicantName: 'Bruce Wayne',
-          contactEmail: 'bruce@wayne-external.test',
-          notes: 'Global defense contractor',
-        });
+      const tenant = await TenantModel.create({
+        name: 'Wayne Enterprises',
+        status: 'approved_pending_setup',
+        mailboxLimit: 50,
+        mailboxCount: 0,
+        contactEmail: 'bruce@wayne-external.test',
+      });
+      const newTenantId = tenant._id.toString();
 
-      expect(regRes.status).toBe(201);
-      expect(regRes.body.success).toBe(true);
-      const applicationId = regRes.body.application.id;
-
-      // -----------------------------------------------------------------------
-      // STAGE 2: Super Admin Views Review Queue
-      // -----------------------------------------------------------------------
-      const queueRes = await request(app)
-        .get('/api/super-admin/applications?status=PENDING_REVIEW')
-        .set('Authorization', `Bearer ${superAdminToken}`);
-
-      expect(queueRes.status).toBe(200);
-      const matchedApp = queueRes.body.applications.find((a: any) => a._id === applicationId);
-      expect(matchedApp).toBeDefined();
-
-      // -----------------------------------------------------------------------
-      // STAGE 3: Super Admin Approves Application (Auto-Provisions Domain on Stalwart)
-      // -----------------------------------------------------------------------
-      const approveRes = await request(app)
-        .post(`/api/super-admin/applications/${applicationId}/approve`)
-        .set('Authorization', `Bearer ${superAdminToken}`);
-
-      expect(approveRes.status).toBe(200);
-      expect(approveRes.body.success).toBe(true);
-      const newTenantId = approveRes.body.tenant.id;
-
-      const approvedTenant = await TenantModel.findById(newTenantId);
-      expect(approvedTenant?.status).toBe('approved_pending_setup');
+      await DomainModel.create({
+        tenantId: tenant._id,
+        domainName: 'waynecorp.test',
+        status: 'suspended',
+      });
 
       // -----------------------------------------------------------------------
       // STAGE 4: Super Admin Activates Tenant (Stalwart Pre-Flight + 48h Token)

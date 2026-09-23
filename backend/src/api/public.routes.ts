@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { RegistrationApplicationModel } from '../db/models/RegistrationApplication';
 import { TenantModel } from '../db/models/Tenant';
 import { DomainModel } from '../db/models/Domain';
 import { ActivationTokenModel } from '../db/models/ActivationToken';
@@ -526,222 +525,6 @@ publicRouter.post('/totp/verify', async (req: Request, res: Response) => {
   });
 });
 
-const RESERVED_DOMAINS = [
-  'toowix.com',
-  'toowix.test',
-  'toowix.net',
-  'localhost',
-  'local',
-  'example.com',
-  'test.com',
-];
-
-const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
-
-const registerTenantSchema = z.object({
-  companyName: z.string().min(2, 'Company name must be at least 2 characters').max(100),
-  requestedDomain: z
-    .string()
-    .min(3, 'Domain must be at least 3 characters')
-    .max(253)
-    .refine((val) => DOMAIN_REGEX.test(val.trim().toLowerCase()), {
-      message: 'Invalid domain format (e.g., example.com)',
-    })
-    .refine((val) => !RESERVED_DOMAINS.includes(val.trim().toLowerCase()), {
-      message: 'This domain name is reserved and cannot be registered.',
-    }),
-  applicantName: z.string().min(2, 'Applicant name must be at least 2 characters').max(100).optional(),
-  firstName: z.string().max(100).optional(),
-  lastName: z.string().max(100).optional(),
-  contactEmail: z.string().email('Valid external contact email is required'),
-  recoveryEmail: z.string().email('Valid recovery email is required').optional(),
-  securityQuestions: z
-    .array(
-      z.object({
-        question: z.string().min(3, 'Security question must be at least 3 characters'),
-        answer: z.string().min(1, 'Security answer is required'),
-      })
-    )
-    .optional()
-    .refine(
-      (items) => {
-        if (!items || items.length === 0) return true;
-        if (items.length !== 3) return false;
-        const questions = items.map((q) => q.question.trim().toLowerCase());
-        return new Set(questions).size === 3;
-      },
-      {
-        message: 'You must select exactly 3 unique security questions',
-      }
-    ),
-  phone: z.string().max(30).optional(),
-  notes: z.string().max(1000).optional(),
-  employeeCount: z.string().max(50).optional(),
-  region: z.string().max(100).optional(),
-  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
-  recoveryEmailVerificationToken: z.string().optional(),
-  contactEmailVerificationToken: z.string().optional(),
-  totpSetupToken: z.string().optional(),
-});
-
-// POST /api/public/register-tenant
-publicRouter.post('/register-tenant', registrationRateLimiter(), async (req: Request, res: Response) => {
-  const parseResult = registerTenantSchema.safeParse(req.body);
-  if (!parseResult.success) {
-    return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
-  }
-
-  const {
-    companyName,
-    requestedDomain,
-    applicantName: rawApplicantName,
-    firstName,
-    lastName,
-    contactEmail,
-    recoveryEmail,
-    securityQuestions,
-    phone,
-    notes,
-    employeeCount,
-    region,
-    password,
-    recoveryEmailVerificationToken,
-    contactEmailVerificationToken,
-    totpSetupToken,
-  } = parseResult.data;
-
-  // Resolve applicant name from first/last name or direct applicantName
-  const resolvedApplicantName =
-    rawApplicantName?.trim() ||
-    [firstName?.trim(), lastName?.trim()].filter(Boolean).join(' ') ||
-    'Organization Admin';
-
-  const normalizedDomain = requestedDomain.trim().toLowerCase();
-  const normalizedEmail = contactEmail.trim().toLowerCase();
-  const normalizedRecoveryEmail = recoveryEmail ? recoveryEmail.trim().toLowerCase() : null;
-  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-
-  // Blocked on the registration email identity only — org name and domain are irrelevant to this check.
-  if (await isRegistrationEmailBlocked(normalizedEmail, { ip: requestIp(req), source: 'register-tenant' })) {
-    return res.status(403).json(REGISTRATION_EMAIL_BLOCKED_RESPONSE);
-  }
-
-  // 1. Check if domain is already actively provisioned
-  const existingDomain = await DomainModel.findOne({ domainName: normalizedDomain });
-  if (existingDomain) {
-    return res.status(409).json({
-      error: 'DOMAIN_ALREADY_EXISTS',
-      message: 'The requested domain is already registered on this platform.',
-    });
-  }
-
-  // 2. Check if an application is already pending review for this domain
-  const existingPendingApp = await RegistrationApplicationModel.findOne({
-    requestedDomain: normalizedDomain,
-    status: 'PENDING_REVIEW',
-  });
-  if (existingPendingApp) {
-    return res.status(409).json({
-      error: 'APPLICATION_ALREADY_PENDING',
-      message: 'An application for this domain is already pending review.',
-    });
-  }
-
-  // 3a. Verify contact email verification token if provided
-  let contactEmailVerified = false;
-  if (contactEmailVerificationToken) {
-    const verifiedContactPayload = verifyContactEmailVerificationToken(contactEmailVerificationToken);
-    if (verifiedContactPayload && verifiedContactPayload.email === normalizedEmail) {
-      contactEmailVerified = true;
-    }
-  }
-
-  // 3b. Verify recovery email verification token if recovery email was provided
-  let recoveryEmailVerified = false;
-  if (recoveryEmail && recoveryEmailVerificationToken) {
-    const verifiedPayload = verifyRecoveryEmailVerificationToken(recoveryEmailVerificationToken);
-    if (verifiedPayload && verifiedPayload.email === normalizedRecoveryEmail) {
-      recoveryEmailVerified = true;
-    }
-  }
-
-  // 4. Verify TOTP setup token if provided
-  let twoFactorEnabled = false;
-  let twoFactorSecret: string | null = null;
-  if (totpSetupToken) {
-    const verifiedTotp = verifyTotpSetupToken(totpSetupToken);
-    if (verifiedTotp && verifiedTotp.secret) {
-      twoFactorEnabled = true;
-      twoFactorSecret = verifiedTotp.secret;
-    }
-  }
-
-  // 5. Hash initial password if provided
-  let passwordHash: string | null = null;
-  if (password) {
-    passwordHash = await hashPassword(password);
-  }
-
-  // 6. Hash security questions if provided
-  let processedSecurityQuestions: Array<{ question: string; answerHash: string }> = [];
-  if (securityQuestions && securityQuestions.length === 3) {
-    processedSecurityQuestions = securityQuestions.map((sq) => ({
-      question: sq.question.trim(),
-      answerHash: hashSecurityAnswer(sq.answer),
-    }));
-  }
-
-  // 7. Create the registration application record
-  const application = await RegistrationApplicationModel.create({
-    companyName: companyName.trim(),
-    requestedDomain: normalizedDomain,
-    applicantName: resolvedApplicantName,
-    firstName: firstName?.trim() || null,
-    lastName: lastName?.trim() || null,
-    contactEmail: normalizedEmail,
-    contactEmailVerified,
-    recoveryEmail: normalizedRecoveryEmail,
-    recoveryEmailVerified,
-    twoFactorEnabled,
-    twoFactorSecret,
-    securityQuestions: processedSecurityQuestions,
-    phone: phone?.trim() || null,
-    notes: notes?.trim() || null,
-    employeeCount: employeeCount?.trim() || null,
-    region: region?.trim() || null,
-    passwordHash,
-    status: 'PENDING_REVIEW',
-  });
-
-  // 4. Audit the public registration
-  await AuditLogModel.create({
-    actorRole: 'ANONYMOUS',
-    actorEmail: normalizedEmail,
-    actorIp: clientIp,
-    action: 'TENANT_APPLICATION_SUBMITTED',
-    resource: 'REGISTRATION_APPLICATION',
-    resourceId: application._id.toString(),
-    status: 'SUCCESS',
-    metadata: {
-      companyName: application.companyName,
-      requestedDomain: application.requestedDomain,
-    },
-    timestamp: new Date(),
-  });
-
-  return res.status(201).json({
-    success: true,
-    message: 'Application submitted successfully. Our team will review your application.',
-    application: {
-      id: application._id.toString(),
-      companyName: application.companyName,
-      requestedDomain: application.requestedDomain,
-      status: application.status,
-      createdAt: application.createdAt,
-    },
-  });
-});
-
 // GET /api/public/activate-token/:token - Validate activation link token
 publicRouter.get('/activate-token/:token', async (req: Request, res: Response) => {
   const { token } = req.params;
@@ -771,9 +554,6 @@ publicRouter.get('/activate-token/:token', async (req: Request, res: Response) =
     return res.status(404).json({ valid: false, error: 'TENANT_NOT_FOUND', message: 'Associated tenant could not be found' });
   }
 
-  // Check if organization has a pre-set registration password
-  const application = await RegistrationApplicationModel.findOne({ requestedDomain: domain.domainName });
-
   // Generate TOTP secret and QR code for mandatory 2FA enrollment
   const { secret: totpSecret, otpauthUrl } = generateTotpSecret(tokenDoc.contactEmail);
   const qrCodeDataUrl = await generateTotpQrCode(otpauthUrl);
@@ -789,7 +569,7 @@ publicRouter.get('/activate-token/:token', async (req: Request, res: Response) =
     contactEmail: tokenDoc.contactEmail,
     totpSecret,
     qrCodeDataUrl,
-    hasRegistrationPassword: !!(application?.passwordHash),
+    hasRegistrationPassword: false,
   });
 });
 
@@ -821,26 +601,7 @@ publicRouter.post('/verify-activation-password', async (req: Request, res: Respo
     return res.status(410).json({ valid: false, error: 'TOKEN_EXPIRED', message: 'This activation token has expired' });
   }
 
-  const domain = await DomainModel.findOne({ tenantId: tokenDoc.tenantId });
-  const application = domain
-    ? await RegistrationApplicationModel.findOne({
-        $or: [
-          { requestedDomain: domain.domainName.toLowerCase().trim() },
-          { contactEmail: tokenDoc.contactEmail.toLowerCase().trim() },
-        ],
-      })
-    : await RegistrationApplicationModel.findOne({ contactEmail: tokenDoc.contactEmail.toLowerCase().trim() });
-
-  if (application?.passwordHash) {
-    const isPasswordValid = await verifyPassword(application.passwordHash, password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        valid: false,
-        error: 'INVALID_PASSWORD',
-        message: 'The password entered does not match the password you set up during registration.',
-      });
-    }
-  } else if (password.length < 8) {
+  if (password.length < 8) {
     return res.status(400).json({
       valid: false,
       error: 'INVALID_PASSWORD',
@@ -896,28 +657,6 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
     });
   }
 
-  // Find linked application to verify registration password & transfer recovery profile
-  const domain = await DomainModel.findOne({ tenantId: tenant._id });
-  const application = domain
-    ? await RegistrationApplicationModel.findOne({
-        $or: [
-          { requestedDomain: domain.domainName.toLowerCase().trim() },
-          { contactEmail: tokenDoc.contactEmail.toLowerCase().trim() },
-        ],
-      })
-    : await RegistrationApplicationModel.findOne({ contactEmail: tokenDoc.contactEmail.toLowerCase().trim() });
-
-  // Enforce password verification against the password set during registration
-  if (application?.passwordHash) {
-    const isPasswordValid = await verifyPassword(application.passwordHash, password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        error: 'INVALID_PASSWORD',
-        message: 'The password entered does not match the password you set up during registration.',
-      });
-    }
-  }
-
   const normalizedEmail = email.toLowerCase().trim();
 
   if (await isRegistrationEmailBlocked(normalizedEmail, { ip: requestIp(req), source: 'activate' })) {
@@ -930,8 +669,7 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
     return res.status(409).json({ error: 'EMAIL_EXISTS', message: 'An admin user with this email already exists' });
   }
 
-  // Use the verified registration password hash, or hash the provided password if no registration application exists
-  const passwordHash = application?.passwordHash || (await hashPassword(password));
+  const passwordHash = await hashPassword(password);
 
   // Generate 10 emergency backup codes
   const { plainCodes, hashedCodes } = generateBackupCodes(10);
@@ -947,8 +685,8 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
     twoFactorMethod: 'totp',
     twoFactorSecret: totpSecret,
     backupCodes: hashedCodes,
-    recoveryEmail: application?.recoveryEmail || null,
-    securityQuestions: application?.securityQuestions || [],
+    recoveryEmail: null,
+    securityQuestions: [],
   });
 
   try {
@@ -1014,4 +752,3 @@ publicRouter.post('/activate', async (req: Request, res: Response) => {
     },
   });
 });
-

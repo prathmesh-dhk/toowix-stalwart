@@ -296,6 +296,42 @@ All management and directory operations on Stalwart Community Edition execute ag
   },
   "callId"
 ]
+### E. Update Account Email Aliases (`x:Account/set`)
+- **Method:** `x:Account/set`
+- **Request Arguments:**
+```json
+{
+  "accountId": "b",
+  "update": {
+    "<accountId>": {
+      "aliases": {
+        "0": {
+          "name": "sales",
+          "domainId": "<stalwartDomainId>",
+          "description": null,
+          "enabled": true
+        }
+      }
+    }
+  }
+}
+```
+- **Critical Requirements:**
+  - `aliases` is an **object map** (dictionary `Record<string, EmailAlias>`), **NOT a JSON array**. Passing `aliases: [ ... ]` fails with `"Invalid value for object property"`.
+  - `domainId` must be the internal Stalwart Domain ID (e.g. `"g2"`, `"b"`), **NOT** the domain name string (e.g. `"bottle.com"`). Passing a domain name string fails with `"Failed to parse Id from string"`.
+  - To clear all aliases from an account, pass an empty object: `"aliases": {}`.
+- **Success Response:**
+```json
+[
+  "x:Account/set",
+  {
+    "accountId": "b",
+    "updated": {
+      "<accountId>": null
+    }
+  },
+  "callId"
+]
 ```
 
 ---
@@ -309,6 +345,8 @@ All management and directory operations on Stalwart Community Edition execute ag
 | Password < 8 characters | `x:Account/set` create | `invalidProperties` | `description: "Password must be at least 8 characters long."`, `properties: ["secret"]` |
 | Missing `@type: "User"` | `x:Account/set` create | `invalidPatch` | `description: "Missing or invalid '@type' property in object"` |
 | Deleting Domain with Linked Keys | `x:Domain/set` destroy | `objectIsLinked` | `linkedObjects: [{"object": "DkimSignature", "id": "..."}]` |
+| Aliases passed as JSON array | `x:Account/set` update | `invalidPatch` | `description: "Invalid value for object property"`, `properties: ["aliases"]` |
+| Alias domainId passed as string domain name | `x:Account/set` update | `invalidPatch` | `description: "Failed to parse Id from string"`, `properties: ["aliases/domainId"]` |
 | Invalid Authentication | Any | `401 Unauthorized` | `{"type": "about:blank", "status": 401, "title": "Unauthorized"}` |
 
 ---

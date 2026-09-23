@@ -4,7 +4,6 @@ import {
   DomainModel,
   AdminUserModel,
   MailboxModel,
-  RegistrationApplicationModel,
   ActivationTokenModel,
   AuditLogModel,
   BackupRecordModel,
@@ -44,57 +43,6 @@ async function dropStaleDomainSubscriptionIndex(): Promise<void> {
   }
 }
 
-/**
- * Backfills application queue records for any organisation domain that was added
- * without an application entry in `registration_applications`.
- * Any domain whose DNS/routing is not yet fully active defaults to PENDING_REVIEW
- * so Super Admins see them immediately in the Domain Applications queue.
- */
-async function syncMissingDomainApplications(): Promise<void> {
-  try {
-    const domains = await DomainModel.find().lean();
-    if (!domains || domains.length === 0) return;
-
-    for (const domain of domains) {
-      // Ignore the shared platform domain dhkmail.com
-      if (domain.domainName === 'dhkmail.com') continue;
-
-      const existingApp = await RegistrationApplicationModel.findOne({
-        requestedDomain: domain.domainName.toLowerCase(),
-      });
-      if (existingApp) continue;
-
-      const tenant = await TenantModel.findById(domain.tenantId).lean();
-      if (!tenant) continue;
-
-      // Find primary tenant admin email if available
-      const admin = await AdminUserModel.findOne({ tenantId: tenant._id, role: 'TENANT_ADMIN' }).lean();
-      const applicantName = admin?.name || tenant.name;
-      const contactEmail = admin?.email || tenant.contactEmail || `admin@${domain.domainName}`;
-
-      const isVerified = domain.dnsStatus === 'active';
-      const status = isVerified ? 'APPROVED' : 'PENDING_REVIEW';
-
-      await RegistrationApplicationModel.create({
-        companyName: tenant.name,
-        requestedDomain: domain.domainName.toLowerCase(),
-        applicantName,
-        contactEmail,
-        phone: tenant.phone || null,
-        tenantId: tenant._id,
-        domainId: domain._id,
-        status,
-        notes: `Domain application for organisation "${tenant.name}"`,
-      });
-      console.log(`[DB Migration] Backfilled domain application for '${domain.domainName}' (${status})`);
-    }
-  } catch (err: any) {
-    if (err?.codeName !== 'NamespaceNotFound') {
-      console.warn('[DB Migration] Failed to sync missing domain applications:', err.message);
-    }
-  }
-}
-
 export interface DbConnectionOptions {
   uri: string;
   autoIndex?: boolean;
@@ -123,13 +71,11 @@ export async function connectDatabase(options: DbConnectionOptions): Promise<typ
     // Ensure all compound unique indexes are built
     if (autoIndex) {
       await dropStaleDomainSubscriptionIndex();
-      await syncMissingDomainApplications();
       await Promise.all([
         TenantModel.createIndexes(),
         DomainModel.createIndexes(),
         AdminUserModel.createIndexes(),
         MailboxModel.createIndexes(),
-        RegistrationApplicationModel.createIndexes(),
         ActivationTokenModel.createIndexes(),
         AuditLogModel.createIndexes(),
         BackupRecordModel.createIndexes(),

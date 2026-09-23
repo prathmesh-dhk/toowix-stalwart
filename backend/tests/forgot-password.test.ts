@@ -4,7 +4,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import { app } from '../src/app';
 import { AdminUserModel } from '../src/db/models/AdminUser';
-import { RegistrationApplicationModel } from '../src/db/models/RegistrationApplication';
 import { TenantModel } from '../src/db/models/Tenant';
 import { DomainModel } from '../src/db/models/Domain';
 import { MailboxModel } from '../src/db/models/Mailbox';
@@ -36,56 +35,6 @@ beforeEach(async () => {
 });
 
 describe('Forgot Password & Registration Security Options', () => {
-  it('should accept registration with recoveryEmail and 3 security questions', async () => {
-    const res = await request(app)
-      .post('/api/public/register-tenant')
-      .send({
-        companyName: 'Acme Corp',
-        requestedDomain: 'acmecorp.tech',
-        applicantName: 'Alice Admin',
-        contactEmail: 'alice@external.com',
-        recoveryEmail: 'alice-recovery@gmail.com',
-        securityQuestions: [
-          { question: 'What was the name of your first pet?', answer: 'Fluffy' },
-          { question: 'In what city was your first job?', answer: 'San Francisco' },
-          { question: 'What was your childhood nickname?', answer: 'Ace' },
-        ],
-        password: 'Password123!',
-      });
-
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-
-    const appDoc = await RegistrationApplicationModel.findOne({ requestedDomain: 'acmecorp.tech' });
-    expect(appDoc).toBeTruthy();
-    expect(appDoc?.recoveryEmail).toBe('alice-recovery@gmail.com');
-    expect(appDoc?.securityQuestions?.length).toBe(3);
-    // Answers must be hashed
-    expect(appDoc?.securityQuestions?.[0].answerHash).not.toBe('Fluffy');
-    expect(appDoc?.securityQuestions?.[0].answerHash).toBe(hashSecurityAnswer('Fluffy'));
-  });
-
-  it('should reject registration if duplicate security questions are selected', async () => {
-    const res = await request(app)
-      .post('/api/public/register-tenant')
-      .send({
-        companyName: 'Duplicate Corp',
-        requestedDomain: 'duplicate.tech',
-        applicantName: 'Bob Admin',
-        contactEmail: 'bob@external.com',
-        recoveryEmail: 'bob-recovery@gmail.com',
-        securityQuestions: [
-          { question: 'What was the name of your first pet?', answer: 'Dog' },
-          { question: 'What was the name of your first pet?', answer: 'Cat' },
-          { question: 'In what city was your first job?', answer: 'London' },
-        ],
-        password: 'Password123!',
-      });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
-  });
-
   describe('Password Recovery Flows', () => {
     let testUserEmail = 'admin@acme.com';
     let recoveryEmail = 'recovery@external.com';

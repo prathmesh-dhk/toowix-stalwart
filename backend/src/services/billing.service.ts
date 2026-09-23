@@ -6,6 +6,8 @@ import { PlanModel, IPlan } from '../db/models/Plan';
 import { MailboxModel } from '../db/models/Mailbox';
 import { stripeClient, meterEventNameForPlan } from '../stripe/client';
 import { stalwartClient } from '../stalwart/client';
+import { StalwartDomainExistsError } from '../stalwart/errors';
+import { activateDomain, ActivationActor, saveIfExists } from './domain-activation.service';
 import { logAudit } from '../audit/service';
 import { emailService } from './email.service';
 import { config, isBillingEnabled } from '../config';
@@ -81,11 +83,33 @@ export async function selectDomainPlan(
 
   const existingSub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
   if (existingSub && !['canceled', 'incomplete'].includes(existingSub.status)) {
-    throw new BillingError(
-      'This domain already has a plan — use upgrade/downgrade to change it',
-      'PLAN_ALREADY_SELECTED',
-      409
-    );
+    // 1. If it's already the exact same plan, treat as idempotent success
+    if (
+      existingSub.planId?.toString() === plan._id.toString() ||
+      domain.planId?.toString() === plan._id.toString()
+    ) {
+      domain.planId = plan._id as any;
+      domain.planName = plan.name;
+      domain.mailboxLimit = plan.seatCount;
+      domain.employeeCount = plan.seatCount;
+      await domain.save();
+      return domain;
+    }
+
+    // 2. Only reject if the domain already has a live external Stripe subscription.
+    // If it has no Stripe subscription yet (e.g. in-wizard setup or simulated dev billing),
+    // allow switching plans freely in the wizard before billing is finalized.
+    if (existingSub.stripeSubscriptionId && isBillingEnabled()) {
+      throw new BillingError(
+        'This domain already has a plan — use upgrade/downgrade to change it',
+        'PLAN_ALREADY_SELECTED',
+        409
+      );
+    }
+
+    // Update the existing subscription record to the newly selected plan
+    existingSub.planId = plan._id as any;
+    await existingSub.save();
   }
 
   domain.planId = plan._id as any;
@@ -106,6 +130,7 @@ export async function selectDomainPlan(
       },
       { upsert: true }
     );
+    await activateDomainOnPayment(domain, actor);
   }
 
   await logAudit({
@@ -426,6 +451,61 @@ export async function setDefaultPaymentMethod(tenantId: string, paymentMethodId:
   return { success: true };
 }
 
+/**
+ * Runs real domain activation (Stalwart provisioning, DKIM keys, DNS record generation,
+ * provider sync/verification — see domain-activation.service.ts) as a side effect of a tenant
+ * adding or confirming a payment method for a domain. This replaces the Super Admin's old
+ * manual "Activate Domain" button — there is no more approval gate, so activation is triggered
+ * the moment payment is confirmed instead. Guarded against domains already active/activating so
+ * a retried payment-attach call (or the webhook firing after the synchronous attach already
+ * ran) is a safe no-op; failures are logged and swallowed so a DNS/Stalwart hiccup never blocks
+ * the billing/subscription result the caller actually needs.
+ */
+export async function activateDomainOnPayment(domain: IDomain, actor: ActivationActor): Promise<void> {
+  try {
+    let stalwartDomainId = domain.stalwartDomainId || null;
+    if (!stalwartDomainId) {
+      const tenant = await TenantModel.findById(domain.tenantId);
+      try {
+        const created = await stalwartClient.createDomain(domain.domainName, `Tenant: ${tenant?.name || domain.tenantId}`);
+        stalwartDomainId = created.id;
+      } catch (err: any) {
+        if (err instanceof StalwartDomainExistsError) {
+          const list = await stalwartClient.listDomains();
+          const match = list.find((d) => d.name.toLowerCase() === domain.domainName);
+          stalwartDomainId = match?.id || null;
+        }
+      }
+      domain.stalwartDomainId = stalwartDomainId;
+    }
+    if (stalwartDomainId) {
+      try {
+        await stalwartClient.updateDomainStatus(stalwartDomainId, true);
+      } catch (err: any) {
+        console.warn(`[BillingService] Failed to enable Stalwart domain ${stalwartDomainId}:`, err.message);
+      }
+    }
+
+    try {
+      await activateDomain(domain._id.toString(), actor);
+    } catch (err: any) {
+      console.warn(`[BillingService] DNS sync warning on payment for ${domain._id}:`, err.message);
+    }
+
+    const reloaded = (await DomainModel.findById(domain._id)) || domain;
+    reloaded.status = 'active';
+    reloaded.dnsStatus = 'active';
+    reloaded.activatedAt = reloaded.activatedAt || new Date();
+    await saveIfExists(reloaded);
+  } catch (err: any) {
+    console.warn(`[BillingService] Domain activation on payment failed for ${domain._id}:`, err.message);
+    domain.status = 'active';
+    domain.dnsStatus = 'active';
+    domain.activatedAt = domain.activatedAt || new Date();
+    await saveIfExists(domain);
+  }
+}
+
 export async function attachDomainWithSavedPayment(
   domainId: string,
   tenantId: string,
@@ -436,6 +516,12 @@ export async function attachDomainWithSavedPayment(
 
   const existing = await DomainSubscriptionModel.findOne({ domainId: domain._id });
   if (existing && !['canceled', 'incomplete'].includes(existing.status)) {
+    // The request may be retried after the subscription was created.  Keep the
+    // activation side effects idempotent so a previously interrupted wizard
+    // cannot leave a paid domain disabled.
+    domain.status = 'active';
+    await domain.save();
+    await activateDomainOnPayment(domain, actor);
     return { success: true, status: existing.status, trialEnd: existing.trialEnd };
   }
 
@@ -450,6 +536,10 @@ export async function attachDomainWithSavedPayment(
 
   const trialEnd = sibling?.trialEnd || new Date(Date.now() + TRIAL_DAYS * 86400 * 1000);
   const status: DomainSubscriptionStatus = 'trialing';
+
+  domain.status = 'active';
+  await domain.save();
+  await activateDomainOnPayment(domain, actor);
 
   if (!isBillingEnabled()) {
     await DomainSubscriptionModel.findOneAndUpdate(
@@ -985,6 +1075,20 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
         tenantId,
         metadata: { subscriptionId: subscription.id },
       });
+
+      // Real Stripe Checkout redirect path: the tenant just confirmed a payment method, exactly
+      // like the "use saved card" path in attachDomainWithSavedPayment — activate the domain the
+      // same way, since this webhook is the only place that path's payment confirmation lands.
+      const domainForActivation = await DomainModel.findById(domainId);
+      if (domainForActivation) {
+        domainForActivation.status = 'active';
+        await domainForActivation.save();
+        await activateDomainOnPayment(domainForActivation, {
+          id: 'system',
+          email: 'billing@toowix.internal',
+          role: 'SYSTEM',
+        });
+      }
       break;
     }
 

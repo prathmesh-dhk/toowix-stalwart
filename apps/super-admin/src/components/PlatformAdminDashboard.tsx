@@ -4,7 +4,6 @@ import {
   TenantSummary,
   SystemMetrics,
   AuditItem,
-  RegistrationApplication,
   SystemHealthDetails,
   BackupRecordItem,
   AlertConfig,
@@ -23,7 +22,6 @@ import {
   ArrowRight,
   LogOut,
   LayoutDashboard,
-  ClipboardList,
   Building2,
   Server,
   Receipt,
@@ -34,6 +32,7 @@ import {
   Printer,
   Layers,
   Archive,
+  Ticket,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
@@ -41,7 +40,6 @@ import { Alert } from './ui/Alert';
 
 // Views
 import { DashboardOverviewView } from './views/DashboardOverviewView';
-import { TenantApplicationsView } from './views/TenantApplicationsView';
 import { DeletedOrganisationsView } from './views/DeletedOrganisationsView';
 import { TenantsManagementView } from './views/TenantsManagementView';
 import { TenantDetailView } from './views/TenantDetailView';
@@ -50,9 +48,9 @@ import { AuditLogView } from './views/AuditLogView';
 import { ActiveDevicesView } from './views/ActiveDevicesView';
 import { AnalyticsView } from './views/AnalyticsView';
 import { PlansManagementView } from './views/PlansManagementView';
+import { CouponsManagementView } from './views/CouponsManagementView';
 
 // Modals
-import { ApplicationReviewModal } from './modals/ApplicationReviewModal';
 import { TenantDetailModal } from './modals/TenantDetailModal';
 import { TenantActivationModal } from './modals/TenantActivationModal';
 import { CreateTenantModal } from './modals/CreateTenantModal';
@@ -60,7 +58,7 @@ import { ManageAdminsModal } from './modals/ManageAdminsModal';
 import { UpdateQuotaModal } from './modals/UpdateQuotaModal';
 import { PlanFormModal } from './modals/PlanFormModal';
 
-export type DashboardTab = 'dashboard' | 'applications' | 'deleted-organisations' | 'tenants' | 'plans' | 'analytics' | 'operations' | 'audit' | 'devices';
+export type DashboardTab = 'dashboard' | 'deleted-organisations' | 'tenants' | 'plans' | 'coupons' | 'analytics' | 'operations' | 'audit' | 'devices';
 
 export interface PlatformAdminDashboardProps {
   user?: UserContext | null;
@@ -127,10 +125,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   });
   const [operationsLoading, setOperationsLoading] = useState(false);
 
-  const [applications, setApplications] = useState<RegistrationApplication[]>([]);
-  const [appsLoading, setAppsLoading] = useState(false);
-
-
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
@@ -141,7 +135,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   const [plansLoading, setPlansLoading] = useState(false);
 
   // Modal Triggers
-  const [reviewApp, setReviewApp] = useState<RegistrationApplication | null>(null);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [detailTenant, setDetailTenant] = useState<TenantSummary | null>(null);
   const [activateTenant, setActivateTenant] = useState<TenantSummary | null>(null);
@@ -191,17 +184,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     }
   }, []);
 
-  const loadApplications = useCallback(async () => {
-    setAppsLoading(true);
-    try {
-      const res = await api.listApplications({ limit: 100 });
-      setApplications(res.applications || []);
-    } catch (err) {
-      console.error('Failed to load applications:', err);
-    } finally {
-      setAppsLoading(false);
-    }
-  }, []);
 
   const loadOperationsData = useCallback(async () => {
     setOperationsLoading(true);
@@ -260,18 +242,16 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       setInitialLoading(true);
       await Promise.all([
         loadTenantsAndMetrics(),
-        loadApplications(),
         loadOperationsData(),
         loadAuditLogs(),
       ]);
       setInitialLoading(false);
     };
     init();
-  }, [loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs]);
+  }, [loadTenantsAndMetrics, loadOperationsData, loadAuditLogs]);
 
   // Tab change refreshes
   useEffect(() => {
-    if (activeTab === 'applications') loadApplications();
     if (activeTab === 'tenants') loadTenantsAndMetrics();
     if (activeTab === 'plans') loadPlans();
     if (activeTab === 'operations') loadOperationsData();
@@ -280,10 +260,9 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     if (activeTab === 'dashboard') {
       loadTenantsAndMetrics();
       loadOperationsData();
-      loadApplications();
       loadAnalytics();
     }
-  }, [activeTab, loadTenantsAndMetrics, loadApplications, loadOperationsData, loadAuditLogs, loadAnalytics, loadPlans]);
+  }, [activeTab, loadTenantsAndMetrics, loadOperationsData, loadAuditLogs, loadAnalytics, loadPlans]);
 
 
 
@@ -292,34 +271,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   };
 
   // Lifecycle Action Handlers
-  const handleApproveApplication = async (appId: string) => {
-    setActionAlert(null);
-    try {
-      const res = await api.approveApplication(appId);
-      showAlert(
-        'success',
-        res.emailSent
-          ? `Application approved. Domain "${res.tenant.domain}" provisioned and activation email dispatched to ${res.tenant.contactEmail}.`
-          : `Application approved. Domain "${res.tenant.domain}" provisioned.`
-      );
-      await Promise.all([loadApplications(), loadTenantsAndMetrics()]);
-    } catch (err: any) {
-      showAlert('error', err.message || 'Failed to approve application.');
-      throw err;
-    }
-  };
-
-  const handleRejectApplication = async (appId: string, reason: string) => {
-    setActionAlert(null);
-    try {
-      const res = await api.rejectApplication(appId, reason);
-      showAlert('success', `Application rejected: ${res.message || 'Reason recorded.'}`);
-      await loadApplications();
-    } catch (err: any) {
-      showAlert('error', err.message || 'Failed to reject application.');
-      throw err;
-    }
-  };
 
   const handleToggleSuspend = async (tenant: TenantSummary) => {
     const isSuspending = tenant.status === 'active';
@@ -500,7 +451,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   };
 
   // Operational badges
-  const pendingAppsCount = applications.filter((a) => a.status === 'PENDING_REVIEW').length;
   const activeTenantsCount = tenants.filter((t) => t.status === 'active').length;
 
   const mongoStatus = healthDetails?.services?.mongodb?.status || 'healthy';
@@ -625,36 +575,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               </div>
             </button>
 
-            {/* Domain Applications */}
-            <button
-              onClick={() => setActiveTab('applications')}
-              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeTab === 'applications'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-applications"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <ClipboardList
-                  className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeTab === 'applications' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                  }`}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">Domain Applications</span>
-              </div>
-              {pendingAppsCount > 0 ? (
-                <span className="text-xs font-semibold text-indigo-700 bg-indigo-100/90 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
-                  {pendingAppsCount}
-                </span>
-              ) : (
-                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
-                  0
-                </span>
-              )}
-            </button>
-
             {/* Deleted Organisations (permanent audit records) */}
             <button
               onClick={() => setActiveTab('deleted-organisations')}
@@ -719,6 +639,27 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
                   strokeWidth={1.75}
                 />
                 <span className="truncate">Plans</span>
+              </div>
+            </button>
+
+            {/* Coupons */}
+            <button
+              onClick={() => setActiveTab('coupons')}
+              className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                activeTab === 'coupons'
+                  ? 'bg-indigo-50 text-indigo-700 font-medium'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+              }`}
+              id="nav-coupons"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <Ticket
+                  className={`w-5 h-5 shrink-0 transition-colors ${
+                    activeTab === 'coupons' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                  }`}
+                  strokeWidth={1.75}
+                />
+                <span className="truncate">Coupons</span>
               </div>
             </button>
 
@@ -894,25 +835,15 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               tenants={tenants}
               metrics={metrics}
               healthDetails={healthDetails}
-              applications={applications}
               backups={backups}
               driftReport={driftReport}
               recentAuditLogs={auditLogs}
               analyticsData={analyticsData}
               onNavigateTab={(tab) => setActiveTab(tab)}
-              onReviewApplication={(app) => setReviewApp(app)}
               onActivateTenant={(tenant) => setActivateTenant(tenant)}
             />
           )}
 
-          {activeTab === 'applications' && (
-            <TenantApplicationsView
-              applications={applications}
-              loading={appsLoading}
-              onRefresh={loadApplications}
-              onReviewApplication={(app) => setReviewApp(app)}
-            />
-          )}
 
           {activeTab === 'deleted-organisations' && <DeletedOrganisationsView />}
 
@@ -966,6 +897,8 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             />
           )}
 
+          {activeTab === 'coupons' && <CouponsManagementView />}
+
           {activeTab === 'operations' && (
             <SystemOperationsView
               healthDetails={healthDetails}
@@ -1001,17 +934,6 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
         </main>
       </div>
       {/* ================= MODALS LAYER ================= */}
-      <ApplicationReviewModal
-        application={reviewApp}
-        isOpen={Boolean(reviewApp)}
-        onClose={() => setReviewApp(null)}
-        onApprove={handleApproveApplication}
-        onReject={handleRejectApplication}
-        onChanged={() => {
-          loadApplications();
-          loadTenantsAndMetrics();
-        }}
-      />
 
       <TenantDetailModal
         tenant={detailTenant}

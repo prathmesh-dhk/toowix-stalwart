@@ -8,7 +8,6 @@ import {
   DomainModel,
   AdminUserModel,
   MailboxModel,
-  RegistrationApplicationModel,
   ActivationTokenModel,
   AuditLogModel,
   BackupRecordModel,
@@ -79,7 +78,6 @@ export class BackupService {
       domains,
       adminUsers,
       mailboxes,
-      registrationApplications,
       activationTokens,
       auditLogs,
     ] = await Promise.all([
@@ -87,7 +85,6 @@ export class BackupService {
       DomainModel.find().lean(),
       AdminUserModel.find().lean(),
       MailboxModel.find().lean(),
-      RegistrationApplicationModel.find().lean(),
       ActivationTokenModel.find().lean(),
       AuditLogModel.find().lean(),
     ]);
@@ -130,7 +127,6 @@ export class BackupService {
         domains,
         adminUsers,
         mailboxes,
-        registrationApplications,
         activationTokens,
         auditLogs,
       },

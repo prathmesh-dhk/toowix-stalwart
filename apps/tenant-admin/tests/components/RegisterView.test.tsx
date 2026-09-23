@@ -9,13 +9,18 @@ vi.mock('../../src/api', () => ({
     publicSendRecoveryEmailOtp: vi.fn(),
     publicVerifyRecoveryEmailOtp: vi.fn(),
     publicRegister: vi.fn(),
+    tenantAdminLogin: vi.fn().mockResolvedValue({ user: { id: 'u1', email: 'prathmesh@dhkmail.com', role: 'TENANT_ADMIN' }, token: 'mock-token' }),
   },
+  setStoredToken: vi.fn(),
+  getStoredToken: vi.fn(),
+  clearStoredToken: vi.fn(),
 }));
 
 import { api } from '../../src/api';
 
 describe('RegisterView Component', () => {
   const onBackToLogin = vi.fn();
+  const onSuccess = vi.fn();
 
   const orgInput = () => screen.getByPlaceholderText(/e\.g\. Acme Corporation/i);
   const usernameInput = () => screen.getByPlaceholderText(/yourname/i);
@@ -238,7 +243,7 @@ describe('RegisterView Component', () => {
       message: 'Account created successfully',
     } as any);
 
-    render(<RegisterView onBackToLogin={onBackToLogin} />);
+    render(<RegisterView onBackToLogin={onBackToLogin} onSuccess={onSuccess} />);
     await fillUsernameAndPassword();
 
     // Step 3 -> 4: recovery email
@@ -275,7 +280,7 @@ describe('RegisterView Component', () => {
           { question: expect.any(String), answer: 'C' },
         ],
       });
-      expect(screen.getByText('Registration successful!')).toBeInTheDocument();
+      expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ email: 'prathmesh@dhkmail.com' }));
     });
   });
 });

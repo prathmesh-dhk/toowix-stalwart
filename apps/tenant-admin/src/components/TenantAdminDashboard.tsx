@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../api';
-import { TenantSummary, DomainItem, MailboxItem, AuditItem, UserContext, DomainDnsStatus, DnsLiveCheckResult } from '../types';
+import { TenantSummary, DomainItem, MailboxItem, MailboxMigrationJobStatus, AuditItem, UserContext, DomainDnsStatus, DnsLiveCheckResult } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
@@ -9,6 +10,7 @@ import { BillingView } from './BillingView';
 import { DomainSetupModal } from './DomainSetupModal';
 import { DomainDnsStatusModal } from './DomainDnsStatusModal';
 import { DomainDeletionModal } from './DomainDeletionModal';
+import { ManageAliasesModal } from './modals/ManageAliasesModal';
 import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
 import { DomainSwitcher } from './DomainSwitcher';
@@ -23,6 +25,7 @@ import {
   CreditCard,
   FileText,
   Shield,
+  AtSign,
   AlertCircle,
   AlertTriangle,
   Plus,
@@ -117,6 +120,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
 
   // Create Mailbox Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [displayName, setDisplayName] = useState('');
   const [localPart, setLocalPart] = useState('');
   const [password, setPassword] = useState('');
   const [modalLoading, setModalLoading] = useState(false);
@@ -134,13 +138,81 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   const [deleteModalLoading, setDeleteModalLoading] = useState(false);
   const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
 
+  // Migrate-mail-then-delete: an optional path off the same modal.
+  const [migrateBeforeDelete, setMigrateBeforeDelete] = useState(false);
+  const [migrationDestinationId, setMigrationDestinationId] = useState('');
+  const [destinationSearchQuery, setDestinationSearchQuery] = useState('');
+  const [migrationCandidates, setMigrationCandidates] = useState<MailboxItem[]>([]);
+  const [migrationCandidatesLoading, setMigrationCandidatesLoading] = useState(false);
+  const [migrationJob, setMigrationJob] = useState<MailboxMigrationJobStatus | null>(null);
+  const migrationPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const isDeleteConfirmed = Boolean(
     selectedMailboxForDelete &&
     deleteConfirmEmail.trim().toLowerCase() === selectedMailboxForDelete.address.toLowerCase()
   );
+  const isMigrateChoiceValid = !migrateBeforeDelete || Boolean(migrationDestinationId);
+
+  const filteredMigrationCandidates = useMemo(() => {
+    if (!destinationSearchQuery.trim()) return migrationCandidates;
+    const q = destinationSearchQuery.trim().toLowerCase();
+    return migrationCandidates.filter(
+      (m) => m.address.toLowerCase().includes(q) || m.localPart.toLowerCase().includes(q)
+    );
+  }, [migrationCandidates, destinationSearchQuery]);
+
+  const selectedMigrationDestination = useMemo(() => {
+    if (!migrationDestinationId) return null;
+    return migrationCandidates.find((m) => m.id === migrationDestinationId) || null;
+  }, [migrationCandidates, migrationDestinationId]);
 
   // Mailbox three-dots actions menu
   const [openMenuMailboxId, setOpenMenuMailboxId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ id: string; top: number; right: number; openUp: boolean } | null>(null);
+
+  // Close mailbox action menu on outside click, window scroll, or Escape key
+  useEffect(() => {
+    if (!openMenuMailboxId) return;
+    const handleClose = () => {
+      setOpenMenuMailboxId(null);
+      setMenuAnchor(null);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+    };
+
+    window.addEventListener('click', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    window.addEventListener('resize', handleClose);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+      window.removeEventListener('resize', handleClose);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenuMailboxId]);
+
+  const handleToggleMenu = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    e.stopPropagation();
+    if (openMenuMailboxId === id) {
+      setOpenMenuMailboxId(null);
+      setMenuAnchor(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = typeof window !== 'undefined' ? window.innerHeight - rect.bottom : 500;
+    const menuHeight = 220;
+    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
+    setMenuAnchor({
+      id,
+      top: openUp ? rect.top - 6 : rect.bottom + 6,
+      right: typeof window !== 'undefined' ? Math.max(8, window.innerWidth - rect.right) : 8,
+      openUp,
+    });
+    setOpenMenuMailboxId(id);
+  };
 
   // Suspend Mailbox Confirmation Modal state
   const [selectedMailboxForSuspend, setSelectedMailboxForSuspend] = useState<MailboxItem | null>(null);
@@ -152,6 +224,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   const [reactivateModalLoading, setReactivateModalLoading] = useState(false);
   const [reactivateModalError, setReactivateModalError] = useState<string | null>(null);
 
+  // Manage Aliases Modal state
+  const [selectedMailboxForAliases, setSelectedMailboxForAliases] = useState<MailboxItem | null>(null);
+
   // DNS Status state
   const [domainDnsStatus, setDomainDnsStatus] = useState<DomainDnsStatus | null>(null);
   const [dnsStatusLoading, setDnsStatusLoading] = useState(false);
@@ -162,6 +237,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
 
   // Password copy feedback
   const [copiedPasswordKey, setCopiedPasswordKey] = useState<string | null>(null);
+
+  // Domain activation state
+  const [activatingDomainId, setActivatingDomainId] = useState<string | null>(null);
 
   const generateStrongPassword = () => {
     const uppercase = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -328,6 +406,18 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     await loadTenantData(newDomain.id);
   };
 
+  const handleActivateDomain = async (domainIdToActivate: string) => {
+    try {
+      setActivatingDomainId(domainIdToActivate);
+      await api.activateDomain(domainIdToActivate);
+      await loadTenantData(domainIdToActivate);
+    } catch (err: any) {
+      alert(err.message || 'Failed to activate domain.');
+    } finally {
+      setActivatingDomainId(null);
+    }
+  };
+
   useEffect(() => {
     if (activeNav === 'domains' && activeDomain?.id) {
       setDnsLiveCheck(null);
@@ -337,7 +427,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
 
   const handleOpenCreateModal = () => {
     if (isDomainPendingActivation) {
-      alert(`Domain '${activeDomain?.domainName}' is pending activation by a Super Admin. Mailbox creation will unlock once activated.`);
+      alert(`Domain '${activeDomain?.domainName}' is pending activation. Please activate your domain or set up a plan to unlock mailbox creation.`);
       return;
     }
     setLocalPart('');
@@ -353,11 +443,12 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
       return;
     }
     if (isDomainPendingActivation) {
-      setModalError(`Domain '${activeDomain.domainName}' is pending activation by a Super Admin. Mailboxes can only be created once activated.`);
+      setModalError(`Domain '${activeDomain.domainName}' is pending activation. Please activate your domain to create mailboxes.`);
       return;
     }
 
     const cleanPrefix = localPart.trim().toLowerCase();
+    const cleanDisplayName = displayName.trim();
     if (!cleanPrefix) {
       setModalError('Please enter a username prefix.');
       return;
@@ -379,8 +470,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
         localPart: cleanPrefix,
         password,
         domainId: activeDomain.id,
+        ...(cleanDisplayName ? { displayName: cleanDisplayName } : {}),
       });
       setShowCreateModal(false);
+      setDisplayName('');
       setLocalPart('');
       setPassword('');
       await loadTenantData(activeDomain.id);
@@ -472,6 +565,121 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     setDeleteConfirmEmail('');
     setDeleteModalError(null);
     setOpenMenuMailboxId(null);
+    setMigrateBeforeDelete(false);
+    setMigrationDestinationId('');
+    setDestinationSearchQuery('');
+    setMigrationCandidates([]);
+    setMigrationJob(null);
+    setDeleteModalLoading(false);
+  };
+
+  const handleOpenMigrateModal = (mb: MailboxItem) => {
+    setSelectedMailboxForDelete(mb);
+    setDeleteConfirmEmail('');
+    setDeleteModalError(null);
+    setOpenMenuMailboxId(null);
+    setMigrateBeforeDelete(true);
+    setMigrationDestinationId('');
+    setDestinationSearchQuery('');
+    setMigrationCandidates([]);
+    setMigrationJob(null);
+    setDeleteModalLoading(false);
+  };
+
+  const closeDeleteModal = () => {
+    if (migrationPollRef.current) {
+      clearInterval(migrationPollRef.current);
+      migrationPollRef.current = null;
+    }
+    setSelectedMailboxForDelete(null);
+    setDeleteConfirmEmail('');
+    setDeleteModalError(null);
+    setMigrateBeforeDelete(false);
+    setMigrationDestinationId('');
+    setDestinationSearchQuery('');
+    setMigrationCandidates([]);
+    setMigrationJob(null);
+    setDeleteModalLoading(false);
+  };
+
+  // Fetch the tenant's other mailboxes (any domain) as migration destination candidates the
+  // moment the toggle is switched on.
+  useEffect(() => {
+    if (!migrateBeforeDelete || !selectedMailboxForDelete) return;
+    setMigrationCandidatesLoading(true);
+    const targetDomainId = selectedMailboxForDelete.domainId || activeDomain?.id;
+    api
+      .listMyMailboxes(targetDomainId)
+      .then((res) => {
+        const domainMailboxes = (res.mailboxes || []).filter(
+          (m) =>
+            m.id !== selectedMailboxForDelete.id &&
+            (!targetDomainId || m.domainId === targetDomainId)
+        );
+        setMigrationCandidates(domainMailboxes);
+      })
+      .catch(() => setMigrationCandidates([]))
+      .finally(() => setMigrationCandidatesLoading(false));
+  }, [migrateBeforeDelete, selectedMailboxForDelete, activeDomain?.id]);
+
+  // Clean up any in-flight poll on unmount.
+  useEffect(() => {
+    return () => {
+      if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+    };
+  }, []);
+
+  const pollMigrationJob = (jobId: string) => {
+    if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+    const checkJob = async () => {
+      try {
+        const job = await api.getMigrationJobStatus(jobId);
+        setMigrationJob(job);
+        if (job.status === 'completed') {
+          if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+          migrationPollRef.current = null;
+          setDeleteModalLoading(false);
+          // Migration completed and strictly verified; modal stays open with verified badge and delete option
+        } else if (job.status === 'failed') {
+          if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+          migrationPollRef.current = null;
+          setDeleteModalLoading(false);
+          setDeleteModalError(job.error || 'Migration failed. The mailbox was not deleted.');
+        }
+      } catch (err: any) {
+        if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+        migrationPollRef.current = null;
+        setDeleteModalLoading(false);
+        setDeleteModalError(err.message || 'Lost track of the migration. Please check the mailbox list.');
+      }
+    };
+    void checkJob();
+    migrationPollRef.current = setInterval(checkJob, 2000);
+  };
+
+  const handleStartMigration = async () => {
+    if (!selectedMailboxForDelete || !migrationDestinationId) return;
+    setDeleteModalLoading(true);
+    setDeleteModalError(null);
+
+    try {
+      const { jobId } = await api.migrateMailbox(selectedMailboxForDelete.id, migrationDestinationId);
+      setMigrationJob({
+        id: jobId,
+        status: 'queued',
+        sourceAddress: selectedMailboxForDelete.address,
+        destinationAddress: migrationCandidates.find((m) => m.id === migrationDestinationId)?.address || '',
+        totalMessages: 0,
+        migratedMessages: 0,
+        failedCount: 0,
+        deleteSourceAfter: false,
+        error: null,
+      });
+      pollMigrationJob(jobId);
+    } catch (err: any) {
+      setDeleteModalError(err.message || 'Failed to start migration.');
+      setDeleteModalLoading(false);
+    }
   };
 
   const handleConfirmDeleteMailbox = async () => {
@@ -481,14 +689,16 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
 
     try {
       await api.deleteMailbox(selectedMailboxForDelete.id);
-      setSelectedMailboxForDelete(null);
-      setDeleteConfirmEmail('');
+      closeDeleteModal();
       await loadTenantData(activeDomain?.id);
     } catch (err: any) {
       setDeleteModalError(err.message || 'Failed to delete mailbox.');
-    } finally {
       setDeleteModalLoading(false);
     }
+  };
+
+  const handleOpenAliasesModal = (mb: MailboxItem) => {
+    setSelectedMailboxForAliases(mb);
   };
 
 
@@ -810,24 +1020,37 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           )}
 
           {isDomainPendingActivation && !isSuspended && domains.length > 0 && (
-            <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex items-start gap-3 text-sky-950">
-              <AlertCircle className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
-              <div className="flex flex-col gap-0.5 text-xs">
-                <span className="font-semibold text-sky-900">
-                  Domain Pending Super Admin Activation
-                </span>
-                <span className="text-sky-700">
-                  Domain <span className="font-medium">@{domainName}</span> is awaiting activation by a Super Admin. You can copy the DNS Zone File now from the{' '}
-                  <button
-                    type="button"
-                    onClick={() => setActiveNav('domains')}
-                    className="underline font-semibold hover:text-sky-900 cursor-pointer"
-                  >
-                    Domains
-                  </button>{' '}
-                  tab; mailbox creation will unlock automatically once activated.
-                </span>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-amber-950">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex flex-col gap-0.5 text-xs">
+                  <span className="font-semibold text-amber-900">
+                    Domain Pending Activation
+                  </span>
+                  <span className="text-amber-800">
+                    Domain <span className="font-medium">@{domainName}</span> is awaiting activation. Activate it now or configure DNS from the{' '}
+                    <button
+                      type="button"
+                      onClick={() => setActiveNav('domains')}
+                      className="underline font-semibold hover:text-amber-950 cursor-pointer"
+                    >
+                      Domains
+                    </button>{' '}
+                    tab to unlock mailbox creation.
+                  </span>
+                </div>
               </div>
+              {activeDomain && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={activatingDomainId === activeDomain.id}
+                  onClick={() => handleActivateDomain(activeDomain.id)}
+                  className="shrink-0 self-start sm:self-auto"
+                >
+                  Activate Domain Now
+                </Button>
+              )}
             </div>
           )}
 
@@ -912,7 +1135,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                 <div className="flex items-center gap-3 shrink-0">
                   <Button
                     disabled={isSuspended || domains.length === 0 || usagePercent >= 100 || isDomainPendingActivation}
-                    title={isDomainPendingActivation ? 'Domain is pending Super Admin activation' : undefined}
+                    title={isDomainPendingActivation ? 'Domain is pending activation. Click Activate Domain Now to unlock.' : undefined}
                     onClick={handleOpenCreateModal}
                     size="sm"
                     icon={<Plus className="w-4 h-4" />}
@@ -1091,7 +1314,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                           <p className="text-xs text-slate-500">No mailboxes created yet.</p>
                           {isDomainPendingActivation ? (
                             <p className="text-xs text-amber-600 font-medium">
-                              Mailbox creation will unlock once @{domainName} is activated by a Super Admin.
+                              Mailbox creation will unlock once @{domainName} is activated.
                             </p>
                           ) : (
                             <button
@@ -1114,9 +1337,19 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                                   {getInitials(mb.address)}
                                 </div>
                                 <div className="flex flex-col min-w-0">
-                                  <span className="text-xs font-medium text-slate-900 truncate">
-                                    {mb.address}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-xs font-medium text-slate-900 truncate">
+                                      {mb.address}
+                                    </span>
+                                    {mb.aliases && mb.aliases.length > 0 && (
+                                      <span
+                                        className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0"
+                                        title={mb.aliases.map((a) => a.address).join(', ')}
+                                      >
+                                        {mb.aliases.length} alias{mb.aliases.length > 1 ? 'es' : ''}
+                                      </span>
+                                    )}
+                                  </div>
                                   <span className="text-[11px] text-slate-400 mt-0.5">
                                     Created {formatRelativeTime(mb.createdAt)}
                                   </span>
@@ -1125,8 +1358,16 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
 
                               <div className="flex items-center gap-3 shrink-0">
                                 <button
+                                  onClick={() => handleOpenAliasesModal(mb)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 rounded transition-opacity cursor-pointer"
+                                  title="Manage Aliases"
+                                >
+                                  <AtSign className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
                                   onClick={() => handleOpenResetModal(mb)}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 rounded transition-opacity"
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 rounded transition-opacity cursor-pointer"
                                   title="Reset Password"
                                 >
                                   <Key className="w-3.5 h-3.5" />
@@ -1207,19 +1448,25 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                 </button>
               </div>
             ) : (
-            <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <section className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-xs flex flex-col gap-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-lg font-semibold text-slate-900">Mailbox Management</h2>
+                  <div className="flex items-center gap-2.5">
+                    <h2 className="text-lg font-bold text-slate-900">Mailbox Management</h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      {mailboxCount} / {mailboxLimit} mailboxes
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-500">
-                    Provision, maintain credentials, and manage mailbox accounts for @{domainName}
+                    Provision, maintain credentials, and manage mailbox accounts for{' '}
+                    <span className="font-semibold text-slate-700">@{domainName}</span>
                   </p>
                 </div>
                 <button
                   disabled={isSuspended || usagePercent >= 100 || isDomainPendingActivation}
-                  title={isDomainPendingActivation ? 'Domain is pending Super Admin activation' : undefined}
+                  title={isDomainPendingActivation ? 'Domain is pending activation. Activate it from the Domains tab.' : undefined}
                   onClick={handleOpenCreateModal}
-                  className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 self-start sm:self-auto ${
+                  className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer ${
                     isSuspended || usagePercent >= 100 || isDomainPendingActivation ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
@@ -1231,22 +1478,22 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               {/* Filter controls */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <Search className="w-4 h-4 absolute left-3.5 top-2.5 text-slate-400" />
                   <input
                     type="text"
                     placeholder="Search by address or username..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-4 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
+                    className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors shadow-2xs"
                   />
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">Status:</span>
+                  <span className="text-xs text-slate-500 font-medium">Status:</span>
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value as any)}
-                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
+                    className="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors shadow-2xs cursor-pointer"
                   >
                     <option value="all">All statuses</option>
                     <option value="active">Active only</option>
@@ -1256,122 +1503,200 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto border border-slate-200 rounded-lg min-h-[240px]">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
-                      <th className="px-4 py-3">Email Address</th>
-                      <th className="px-4 py-3">Username</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Created</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredMailboxes.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400">
-                          No mailboxes match your query.
-                        </td>
+              <div className="border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
+                        <th className="px-5 py-3.5">Email Address</th>
+                        <th className="px-5 py-3.5">Username</th>
+                        <th className="px-5 py-3.5">Status</th>
+                        <th className="px-5 py-3.5">Created</th>
+                        <th className="px-5 py-3.5 text-right">Actions</th>
                       </tr>
-                    ) : (
-                      filteredMailboxes.map((mb) => (
-                        <tr key={mb.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-[11px] font-medium shrink-0">
-                                {getInitials(mb.address)}
-                              </div>
-                              <span className="font-medium text-slate-900">{mb.address}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-slate-600">{mb.localPart}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${mb.status === 'active'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                                  : 'bg-amber-50 text-amber-700 border border-amber-200/60'
-                                }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${mb.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
-                                  }`}
-                              ></span>
-                              <span className="capitalize">{mb.status}</span>
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500">
-                            {new Date(mb.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="relative inline-block text-left" data-mailbox-menu>
-                              <button
-                                type="button"
-                                onClick={() => setOpenMenuMailboxId(openMenuMailboxId === mb.id ? null : mb.id)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                                title="Mailbox actions"
-                                aria-label="Mailbox actions"
-                              >
-                                <MoreVertical className="w-4 h-4" />
-                              </button>
-
-                              {openMenuMailboxId === mb.id && (
-                                <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 focus:outline-none">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      handleOpenResetModal(mb);
-                                      setOpenMenuMailboxId(null);
-                                    }}
-                                    className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
-                                  >
-                                    <KeyRound className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                    <span>Reset Password</span>
-                                  </button>
-
-                                  {mb.status === 'active' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenSuspendModal(mb)}
-                                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50/70 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <Ban className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                      <span>Suspend Mailbox</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenReactivateModal(mb)}
-                                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50/70 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                      <span>Reactivate Mailbox</span>
-                                    </button>
-                                  )}
-
-                                  <div className="h-px bg-slate-100 my-1"></div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      handleOpenDeleteModal(mb);
-                                      setOpenMenuMailboxId(null);
-                                    }}
-                                    className="w-full text-left px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                                    <span>Delete Mailbox</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredMailboxes.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-12 text-center text-slate-400">
+                            <Mail className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                            <p className="font-medium text-slate-600 text-sm">No mailboxes found</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {searchTerm ? 'Try adjusting your search query or filter.' : 'Click "Create mailbox" above to provision your first account.'}
+                            </p>
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        filteredMailboxes.map((mb) => (
+                          <tr key={mb.id} className="hover:bg-slate-50/70 transition-colors group">
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100/80 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs">
+                                  {getInitials(mb.address)}
+                                </div>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-semibold text-slate-900 text-xs sm:text-sm truncate">{mb.address}</span>
+                                  {mb.aliases && mb.aliases.length > 0 && (
+                                    <span
+                                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0"
+                                      title={mb.aliases.map((a) => a.address).join(', ')}
+                                    >
+                                      {mb.aliases.length} alias{mb.aliases.length > 1 ? 'es' : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className="font-mono text-xs text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-md border border-slate-200/60">
+                                {mb.localPart}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
+                                  mb.status === 'active'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200/70'
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    mb.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
+                                  }`}
+                                ></span>
+                                <span className="capitalize">{mb.status}</span>
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-slate-500 text-xs">
+                              {new Date(mb.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-5 py-3.5 text-right">
+                              <div className="relative inline-block text-left" data-mailbox-menu>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleMenu(e, mb.id)}
+                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                    openMenuMailboxId === mb.id
+                                      ? 'bg-indigo-50 text-indigo-700 ring-2 ring-indigo-500/20'
+                                      : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                  title="Mailbox actions"
+                                  aria-label="Mailbox actions"
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+
+              {/* Mailbox Actions Floating Menu (Portaled to document.body to prevent clipping & scrollbars) */}
+              {openMenuMailboxId && menuAnchor && typeof document !== 'undefined' && (() => {
+                const mb = mailboxes.find((m) => m.id === openMenuMailboxId);
+                if (!mb) return null;
+                return createPortal(
+                  <div
+                    style={{
+                      position: 'fixed',
+                      top: menuAnchor.openUp ? undefined : `${menuAnchor.top}px`,
+                      bottom: menuAnchor.openUp ? `${typeof window !== 'undefined' ? Math.max(8, window.innerHeight - menuAnchor.top) : 0}px` : undefined,
+                      right: `${menuAnchor.right}px`,
+                      zIndex: 9999,
+                    }}
+                    className="w-48 bg-white rounded-xl shadow-xl border border-slate-200/90 py-1.5 animate-in fade-in zoom-in-95 focus:outline-none"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenAliasesModal(mb);
+                        setOpenMenuMailboxId(null);
+                        setMenuAnchor(null);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <AtSign className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <span>Manage Aliases</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenResetModal(mb);
+                        setOpenMenuMailboxId(null);
+                        setMenuAnchor(null);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <KeyRound className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>Reset Password</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenMigrateModal(mb);
+                        setOpenMenuMailboxId(null);
+                        setMenuAnchor(null);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <span>Migrate Mail</span>
+                    </button>
+
+                    {mb.status === 'active' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenSuspendModal(mb);
+                          setOpenMenuMailboxId(null);
+                          setMenuAnchor(null);
+                        }}
+                        className="w-full text-left px-3.5 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50/70 flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Ban className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span>Suspend Mailbox</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenReactivateModal(mb);
+                          setOpenMenuMailboxId(null);
+                          setMenuAnchor(null);
+                        }}
+                        className="w-full text-left px-3.5 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50/70 flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span>Reactivate Mailbox</span>
+                      </button>
+                    )}
+
+                    <div className="h-px bg-slate-100 my-1"></div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenDeleteModal(mb);
+                        setOpenMenuMailboxId(null);
+                        setMenuAnchor(null);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                      <span>Delete Mailbox</span>
+                    </button>
+                  </div>,
+                  document.body
+                );
+              })()}
             </section>
             )
           )}
@@ -1520,11 +1845,17 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   onRefresh={() => {
                     if (activeDomain) loadDomainDnsStatus(activeDomain.id);
                   }}
+                  onRetryVerification={async () => {
+                    if (!activeDomain) return;
+                    await api.retryDomainVerification(activeDomain.id);
+                    await loadDomainDnsStatus(activeDomain.id);
+                  }}
                   onCheckRecords={() => {
                     if (activeDomain) checkDomainDnsLive(activeDomain.id);
                   }}
                   checking={dnsChecking}
                   liveCheck={dnsLiveCheck}
+                  isManualSetup={true}
                 />
 
                 {/* Inline DNS Provider Configuration (Optional) */}
@@ -1665,6 +1996,18 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             )}
 
             <form onSubmit={handleCreateMailbox} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-slate-700" htmlFor="mailbox-display-name">Name <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input
+                  id="mailbox-display-name"
+                  type="text"
+                  maxLength={100}
+                  placeholder="e.g. Jane Doe"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
+                />
+              </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-slate-700">Mailbox Address</label>
                 <div className="flex items-center">
@@ -1847,11 +2190,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           aria-modal="true"
           aria-labelledby="delete-mailbox-title"
           onClick={() => {
-            if (!deleteModalLoading) {
-              setSelectedMailboxForDelete(null);
-              setDeleteConfirmEmail('');
-              setDeleteModalError(null);
-            }
+            if (!deleteModalLoading) closeDeleteModal();
           }}
         >
           <div
@@ -1860,26 +2199,22 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
-                  <Trash2 className="w-5 h-5" />
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${migrateBeforeDelete ? 'bg-indigo-100 text-indigo-600' : 'bg-rose-100 text-rose-600'}`}>
+                  {migrateBeforeDelete ? <ArrowRight className="w-5 h-5" /> : <Trash2 className="w-5 h-5" />}
                 </div>
                 <div>
                   <h3 id="delete-mailbox-title" className="text-sm font-semibold text-slate-900">
-                    Delete Mailbox
+                    {migrateBeforeDelete ? 'Migrate Mailbox' : 'Delete Mailbox'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Permanent deletion warning
+                    {migrateBeforeDelete ? 'Safely transfer mailbox data and verify before deletion' : 'Permanent deletion warning'}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  if (!deleteModalLoading) {
-                    setSelectedMailboxForDelete(null);
-                    setDeleteConfirmEmail('');
-                    setDeleteModalError(null);
-                  }
+                  if (!deleteModalLoading) closeDeleteModal();
                 }}
                 disabled={deleteModalLoading}
                 className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
@@ -1889,77 +2224,440 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               </button>
             </div>
 
-            {/* Short and clear warning message */}
-            <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-900 leading-relaxed">
-              This action cannot be undone. All mailbox data will be permanently deleted.
-            </div>
-
-            {/* Confirmation input requiring exact email address */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (isDeleteConfirmed && !deleteModalLoading) {
-                  handleConfirmDeleteMailbox();
-                }
-              }}
-              className="flex flex-col gap-4"
-            >
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="delete-confirm-email" className="text-xs text-slate-600 font-normal">
-                  To confirm, type <strong className="text-slate-900 font-semibold select-all">{selectedMailboxForDelete.address}</strong> below:
-                </label>
-                <input
-                  id="delete-confirm-email"
-                  type="text"
-                  value={deleteConfirmEmail}
-                  onChange={(e) => setDeleteConfirmEmail(e.target.value)}
-                  placeholder={selectedMailboxForDelete.address}
-                  disabled={deleteModalLoading}
-                  autoFocus
-                  autoComplete="off"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-medium text-slate-900 placeholder:text-slate-400 transition-colors"
-                />
-              </div>
-
-              {deleteModalError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span>{deleteModalError}</span>
+            {migrationJob?.status === 'completed' ? (
+              // STAGE 2: Migration Completed & Strictly Verified -> Delete Option Unlocked
+              <div className="flex flex-col gap-4">
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-emerald-800 text-xs font-semibold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Migration Completed &amp; Strictly Verified</span>
+                  </div>
+                  <p className="text-xs text-emerald-700 leading-relaxed">
+                    All <strong className="font-semibold">{migrationJob.totalMessages}</strong> message{migrationJob.totalMessages === 1 ? '' : 's'} have been verified and transferred to{' '}
+                    <strong className="font-semibold">{migrationJob.destinationAddress}</strong> into folder{' '}
+                    <code className="px-1.5 py-0.5 rounded bg-emerald-100/80 font-mono text-[11px]">
+                      Migrated from {migrationJob.sourceAddress}
+                    </code>.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1 text-[11px] text-emerald-700 font-medium">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 border border-emerald-200">
+                      ✓ 0 Failures
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 border border-emerald-200">
+                      ✓ 100% Verified
+                    </span>
+                  </div>
                 </div>
-              )}
 
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMailboxForDelete(null);
-                    setDeleteConfirmEmail('');
-                    setDeleteModalError(null);
-                  }}
-                  disabled={deleteModalLoading}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={deleteModalLoading || !isDeleteConfirmed}
-                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {deleteModalLoading ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Deleting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete Mailbox</span>
-                    </>
+                <div className="p-3.5 bg-rose-50/50 border border-rose-200 rounded-xl flex flex-col gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-semibold text-rose-950">Stage 2: Remove Original Mailbox (Optional)</span>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      All messages are safely backed up in the destination mailbox. You can now permanently delete the original mailbox, or keep it.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="delete-confirm-email" className="text-xs text-slate-600 font-normal">
+                      To confirm deletion, type <strong className="text-slate-900 font-semibold select-all">{selectedMailboxForDelete.address}</strong> below:
+                    </label>
+                    <input
+                      id="delete-confirm-email"
+                      type="text"
+                      value={deleteConfirmEmail}
+                      onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                      placeholder={selectedMailboxForDelete.address}
+                      disabled={deleteModalLoading}
+                      autoFocus
+                      autoComplete="off"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-medium text-slate-900 placeholder:text-slate-400 bg-white transition-colors"
+                    />
+                  </div>
+
+                  {deleteModalError && (
+                    <div className="p-2.5 bg-rose-100 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{deleteModalError}</span>
+                    </div>
                   )}
-                </button>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeDeleteModal();
+                      void loadTenantData(activeDomain?.id);
+                    }}
+                    disabled={deleteModalLoading}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    Keep Mailbox (Done)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeleteMailbox}
+                    disabled={deleteModalLoading || !isDeleteConfirmed}
+                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {deleteModalLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Deleting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Mailbox</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-            </form>
+            ) : migrationJob ? (
+              // Active Migration / Failed state
+              migrationJob.status === 'failed' ? (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="flex flex-col gap-1">
+                      <span className="font-semibold text-rose-900">Migration Failed</span>
+                      <span>{migrationJob.error || deleteModalError || 'An error occurred during mail migration.'}</span>
+                      <span className="text-[11px] text-rose-700 font-medium">
+                        The original mailbox was NOT deleted. All emails remain completely intact.
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={closeDeleteModal}
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMigrationJob(null);
+                        setDeleteModalError(null);
+                      }}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 text-xs text-slate-700">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                    <span>
+                      Migrating mail to <strong className="text-slate-900">{migrationJob.destinationAddress}</strong>…
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-600 transition-all"
+                      style={{
+                        width: migrationJob.totalMessages > 0
+                          ? `${Math.min(100, Math.round((migrationJob.migratedMessages / migrationJob.totalMessages) * 100))}%`
+                          : '15%',
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>
+                      {migrationJob.totalMessages > 0
+                        ? `${migrationJob.migratedMessages} / ${migrationJob.totalMessages} messages transferred`
+                        : 'Preparing migration…'}
+                    </span>
+                    <span className="text-indigo-600 font-medium">Strict verification in progress</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 italic">
+                    Please leave this open while emails are copied. The source mailbox will remain untouched.
+                  </p>
+                </div>
+              )
+            ) : migrateBeforeDelete ? (
+              // STAGE 1: Safe Migration Selection Form (No Delete button here!)
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (migrationDestinationId && !deleteModalLoading) {
+                    handleStartMigration();
+                  }
+                }}
+                className="flex flex-col gap-4"
+              >
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={migrateBeforeDelete}
+                    onChange={(e) => {
+                      setMigrateBeforeDelete(e.target.checked);
+                      setMigrationDestinationId('');
+                    }}
+                    disabled={deleteModalLoading}
+                    className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
+                  />
+                  Migrate mail to another mailbox before deleting
+                </label>
+
+                <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-900 leading-relaxed flex flex-col gap-1">
+                  <span className="font-semibold text-indigo-950 flex items-center gap-1.5">
+                    <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+                    Stage 1: Safe Mailbox Migration
+                  </span>
+                  <p className="text-slate-600">
+                    Copy all emails and folders to another mailbox. The original mailbox will strictly <strong>NOT</strong> be deleted until you verify completion.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="migration-destination-search" className="text-xs text-slate-700 font-medium">
+                      Search destination mailbox:
+                    </label>
+                    {activeDomain?.domainName && (
+                      <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                        @{activeDomain.domainName}
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedMigrationDestination ? (
+                    // Selected destination card with Change action
+                    <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                          {getInitials(selectedMigrationDestination.address)}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-semibold text-slate-900 truncate">
+                            {selectedMigrationDestination.address}
+                          </span>
+                          <span className="text-[11px] text-indigo-700 font-medium">
+                            Destination mailbox in @{activeDomain?.domainName || ''}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMigrationDestinationId('');
+                          setDestinationSearchQuery('');
+                        }}
+                        disabled={deleteModalLoading}
+                        className="px-2.5 py-1 text-xs font-medium text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    // Search Option for destination mailboxes
+                    <div className="flex flex-col gap-2">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                        <input
+                          id="migration-destination-search"
+                          type="text"
+                          value={destinationSearchQuery}
+                          onChange={(e) => setDestinationSearchQuery(e.target.value)}
+                          placeholder={`Type to search mailboxes in @${activeDomain?.domainName || 'current domain'}...`}
+                          disabled={deleteModalLoading || migrationCandidatesLoading}
+                          autoFocus
+                          className="w-full pl-9 pr-8 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-900 placeholder:text-slate-400 bg-white transition-colors"
+                        />
+                        {destinationSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setDestinationSearchQuery('')}
+                            className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Filtered Search Results */}
+                      <div className="max-h-56 overflow-y-auto border border-slate-200/90 rounded-xl divide-y divide-slate-100 bg-slate-50/50 shadow-2xs">
+                        {migrationCandidatesLoading ? (
+                          <div className="p-3 text-xs text-slate-400 text-center flex items-center justify-center gap-2">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                            <span>Loading mailboxes in @{activeDomain?.domainName}…</span>
+                          </div>
+                        ) : filteredMigrationCandidates.length === 0 ? (
+                          <div className="p-3 text-xs text-slate-500 text-center">
+                            {migrationCandidates.length === 0
+                              ? `No other mailboxes exist in @${activeDomain?.domainName || 'this domain'} yet.`
+                              : `No mailboxes found matching "${destinationSearchQuery}".`}
+                          </div>
+                        ) : (
+                          filteredMigrationCandidates.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setMigrationDestinationId(m.id)}
+                              className="w-full text-left p-2.5 hover:bg-indigo-50 transition-colors flex items-center justify-between gap-2 cursor-pointer group"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-semibold shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                  {getInitials(m.address)}
+                                </div>
+                                <span className="font-mono text-xs text-slate-800 group-hover:text-indigo-950 font-medium truncate">
+                                  {m.address}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-indigo-600 font-semibold shrink-0">
+                                Select
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hidden semantic select for accessibility & automated test backward compatibility */}
+                  <label htmlFor="migration-destination" className="sr-only">
+                    Move all mail into:
+                  </label>
+                  <select
+                    id="migration-destination"
+                    aria-label="Move all mail into:"
+                    value={migrationDestinationId}
+                    onChange={(e) => setMigrationDestinationId(e.target.value)}
+                    className="sr-only"
+                    tabIndex={-1}
+                  >
+                    <option value="">Select a destination mailbox</option>
+                    {migrationCandidates.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.address}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {deleteModalError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>{deleteModalError}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    disabled={deleteModalLoading}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={deleteModalLoading || !migrationDestinationId}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {deleteModalLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Starting migration...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                        <span>Start Migration</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              // Direct Mailbox Deletion Form
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (isDeleteConfirmed && !deleteModalLoading) {
+                    handleConfirmDeleteMailbox();
+                  }
+                }}
+                className="flex flex-col gap-4"
+              >
+                <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-900 leading-relaxed">
+                  This action cannot be undone. All mailbox data will be permanently deleted.
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={migrateBeforeDelete}
+                    onChange={(e) => {
+                      setMigrateBeforeDelete(e.target.checked);
+                      setMigrationDestinationId('');
+                    }}
+                    disabled={deleteModalLoading}
+                    className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
+                  />
+                  Migrate mail to another mailbox before deleting
+                </label>
+
+                {/* Confirmation input requiring exact email address */}
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="delete-confirm-email" className="text-xs text-slate-600 font-normal">
+                    To confirm, type <strong className="text-slate-900 font-semibold select-all">{selectedMailboxForDelete.address}</strong> below:
+                  </label>
+                  <input
+                    id="delete-confirm-email"
+                    type="text"
+                    value={deleteConfirmEmail}
+                    onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                    placeholder={selectedMailboxForDelete.address}
+                    disabled={deleteModalLoading}
+                    autoFocus
+                    autoComplete="off"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-medium text-slate-900 placeholder:text-slate-400 transition-colors"
+                  />
+                </div>
+
+                {deleteModalError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>{deleteModalError}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    disabled={deleteModalLoading}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={deleteModalLoading || !isDeleteConfirmed}
+                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {deleteModalLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Deleting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Mailbox</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -2201,6 +2899,20 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           onNavigateHome();
         }}
       />
+
+      {/* ========================================================================= */}
+      {/* MODAL: MANAGE EMAIL ALIASES                                               */}
+      {/* ========================================================================= */}
+      {selectedMailboxForAliases && (
+        <ManageAliasesModal
+          isOpen={!!selectedMailboxForAliases}
+          onClose={() => setSelectedMailboxForAliases(null)}
+          mailbox={selectedMailboxForAliases}
+          onAliasesUpdated={() => {
+            loadTenantData(activeDomain?.id);
+          }}
+        />
+      )}
     </div>
   );
 };

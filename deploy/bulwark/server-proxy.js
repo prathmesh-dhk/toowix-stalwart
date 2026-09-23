@@ -51,13 +51,14 @@ const proxy = http.createServer((req, res) => {
   const targetPort = isJmap ? parseInt(stalwartUrl.port || defaultPort, 10) : NEXT_PORT;
 
   const isSession = isJmap && req.method === 'GET' && (req.url.startsWith('/.well-known/jmap') || req.url.startsWith('/jmap/session'));
+  const isConfig = !isJmap && req.method === 'GET' && req.url.startsWith('/api/config');
 
   const headers = { ...req.headers };
   if (isJmap) {
     headers.host = `${targetHost}:${targetPort}`;
-    if (isSession) {
-      delete headers['accept-encoding']; // Request uncompressed JSON for session rewriting
-    }
+  }
+  if (isSession || isConfig) {
+    delete headers['accept-encoding']; // Request uncompressed JSON for session/config rewriting
   }
 
   const proxyReq = transport.request({
@@ -75,7 +76,7 @@ const proxy = http.createServer((req, res) => {
       resHeaders['access-control-allow-headers'] = 'Authorization, Content-Type, Accept, X-Requested-With';
     }
 
-    if (isSession && proxyRes.statusCode === 200) {
+    if ((isSession || isConfig) && proxyRes.statusCode === 200) {
       const chunks = [];
       proxyRes.on('data', (chunk) => chunks.push(chunk));
       proxyRes.on('end', () => {
@@ -90,12 +91,16 @@ const proxy = http.createServer((req, res) => {
           const baseHttp = `${proto}://${clientHost}`;
           const baseWs = `${wsProto}://${clientHost}`;
 
-          data.apiUrl = `${baseHttp}/jmap/`;
-          data.downloadUrl = `${baseHttp}/jmap/download/{accountId}/{blobId}/{name}?accept={type}`;
-          data.uploadUrl = `${baseHttp}/jmap/upload/{accountId}/`;
-          data.eventSourceUrl = `${baseHttp}/jmap/eventsource/?types={types}&closeafter={closeafter}&ping={ping}`;
-          if (data.capabilities && data.capabilities['urn:ietf:params:jmap:websocket']) {
-            data.capabilities['urn:ietf:params:jmap:websocket'].url = `${baseWs}/jmap/ws`;
+          if (isConfig) {
+            data.jmapServerUrl = baseHttp;
+          } else {
+            data.apiUrl = `${baseHttp}/jmap/`;
+            data.downloadUrl = `${baseHttp}/jmap/download/{accountId}/{blobId}/{name}?accept={type}`;
+            data.uploadUrl = `${baseHttp}/jmap/upload/{accountId}/`;
+            data.eventSourceUrl = `${baseHttp}/jmap/eventsource/?types={types}&closeafter={closeafter}&ping={ping}`;
+            if (data.capabilities && data.capabilities['urn:ietf:params:jmap:websocket']) {
+              data.capabilities['urn:ietf:params:jmap:websocket'].url = `${baseWs}/jmap/ws`;
+            }
           }
 
           const modifiedBody = Buffer.from(JSON.stringify(data));

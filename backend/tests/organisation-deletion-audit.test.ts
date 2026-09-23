@@ -250,7 +250,7 @@ describe('organisation deletion — HTTP flow and permanent audit record', () =>
 
     it('also lands every stage in the platform audit log', async () => {
       await runFullDeletionAsTenantAdmin();
-      const actions = (await AuditLogModel.find({ action: /^ORG_DELETION_/ }).sort({ timestamp: 1 })).map((a) => a.action);
+      const actions = (await AuditLogModel.find({ action: /^ORG_DELETION_/ }).sort({ timestamp: 1, _id: 1 })).map((a) => a.action);
       expect(actions).toEqual([
         'ORG_DELETION_REQUESTED',
         'ORG_DELETION_NAME_CONFIRMED',

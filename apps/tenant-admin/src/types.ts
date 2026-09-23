@@ -19,28 +19,6 @@ export interface ModeratorItem {
   createdAt: string;
 }
 
-export interface RegistrationApplication {
-  _id?: string;
-  id?: string;
-  companyName: string;
-  requestedDomain: string;
-  applicantName: string;
-  contactEmail: string;
-  employeeCount?: string | null;
-  region?: string | null;
-  phone?: string | null;
-  notes?: string | null;
-  status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
-  reviewedBy?: { _id: string; email: string } | string | null;
-  reviewedAt?: string | null;
-  rejectionReason?: string | null;
-  tenantId?: string | null;
-  domainId?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  submittedAt?: string;
-}
-
 export type DnsActivationStatus = 'not_started' | 'activating' | 'active' | 'conflict' | 'activation_failed';
 
 export interface GeneratedDnsRecord {
@@ -204,16 +182,40 @@ export interface TenantSummary {
   availableMailboxes?: number;
 }
 
+export interface MailboxAliasItem {
+  id: string;
+  localPart: string;
+  domainId: string;
+  domainName: string;
+  address: string;
+  description?: string | null;
+  createdAt: string;
+}
+
 export interface MailboxItem {
   id: string;
   tenantId: string;
   domainId: string;
   localPart: string;
+  displayName?: string | null;
   address: string;
   stalwartAccountId: string | null;
-  status: 'provisioning' | 'active' | 'failed';
+  status: 'provisioning' | 'active' | 'failed' | 'suspended';
+  aliases?: MailboxAliasItem[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MailboxMigrationJobStatus {
+  id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  sourceAddress: string;
+  destinationAddress: string;
+  totalMessages: number;
+  migratedMessages: number;
+  failedCount?: number;
+  deleteSourceAfter?: boolean;
+  error: string | null;
 }
 
 export interface AuditItem {
@@ -364,4 +366,22 @@ export interface OrganisationDeletionTimings {
 export interface OrganisationDeletionState {
   deletion: OrganisationDeletionView | null;
   timings: OrganisationDeletionTimings;
+}
+
+export interface CouponValidationResult {
+  valid: boolean;
+  code: string;
+  extraTrialDays?: number;
+  description?: string | null;
+  message: string;
+}
+
+export interface RedeemCouponResponse {
+  success: boolean;
+  coupon: {
+    code: string;
+    extraTrialDays: number;
+  };
+  newTrialEnd?: string | null;
+  message: string;
 }

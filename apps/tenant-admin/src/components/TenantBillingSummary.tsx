@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { CreditCard, RefreshCw, AlertTriangle, Receipt, ExternalLink, Globe, Plus, Trash2, Check, ShieldCheck, Sparkles } from 'lucide-react';
+import { CreditCard, RefreshCw, AlertTriangle, Receipt, ExternalLink, Globe, Plus, Trash2, Check, ShieldCheck, Sparkles, Tag, X } from 'lucide-react';
 import { api } from '../api';
 import { DomainItem, TenantBillingSummary as TenantBillingSummaryType, InvoiceItem, DomainSubscriptionStatus, PaymentMethodItem } from '../types';
 import { PaymentMethodUpdateForm } from './PaymentMethodUpdateForm';
@@ -72,6 +72,33 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
   const [paymentFormError, setPaymentFormError] = useState<string | null>(null);
   const [billingEnabled, setBillingEnabled] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Coupon state
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponFeedback, setCouponFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleRedeemCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponInput.trim()) return;
+    setCouponLoading(true);
+    setCouponFeedback(null);
+    try {
+      const res = await api.redeemCoupon(couponInput.trim(), domains[0]?.id);
+      setCouponFeedback({ type: 'success', message: res.message });
+      setCouponInput('');
+      await load();
+      setTimeout(() => {
+        setShowCouponModal(false);
+        setCouponFeedback(null);
+      }, 2000);
+    } catch (err: any) {
+      setCouponFeedback({ type: 'error', message: err.message || 'Failed to redeem coupon' });
+    } finally {
+      setCouponLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -232,6 +259,14 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Payment Method</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCouponModal(true)}
+                  className="px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Redeem Promo Code</span>
+                </button>
               </div>
             )}
           </div>
@@ -275,6 +310,16 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
                 >
                   <CreditCard className="w-3.5 h-3.5" />
                   <span>Manage / Add Card</span>
+                </button>
+              )}
+              {!showPaymentForm && billingEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setShowCouponModal(true)}
+                  className="px-3.5 py-1.5 border border-indigo-200 hover:bg-indigo-50/50 rounded-lg text-[11px] font-semibold text-indigo-700 transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>Redeem Promo Code</span>
                 </button>
               )}
               {!showPaymentForm && billingEnabled && (
@@ -476,6 +521,86 @@ export const TenantBillingSummary: React.FC<TenantBillingSummaryProps> = ({ doma
         }}
         title="Payment Methods"
       />
+
+      {/* Redeem Coupon Modal */}
+      {showCouponModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Redeem Promo Code</h3>
+                  <p className="text-[11px] text-slate-500">Apply one-time coupons for extended trials or credits</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCouponModal(false);
+                  setCouponFeedback(null);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRedeemCoupon} className="p-6 flex flex-col gap-4 text-xs">
+              {couponFeedback && (
+                <div
+                  className={`p-3 rounded-xl border flex items-center gap-2 ${
+                    couponFeedback.type === 'success'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-700'
+                  }`}
+                >
+                  {couponFeedback.type === 'success' ? (
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                  )}
+                  <span>{couponFeedback.message}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label className="font-semibold text-slate-700">Coupon Code</label>
+                <input
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="e.g. STARTUP60"
+                  className="px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs uppercase focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCouponModal(false);
+                    setCouponFeedback(null);
+                  }}
+                  className="px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-medium transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={couponLoading || !couponInput.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {couponLoading ? 'Redeeming...' : 'Redeem Code'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

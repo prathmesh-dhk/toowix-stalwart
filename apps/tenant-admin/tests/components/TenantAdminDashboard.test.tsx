@@ -16,6 +16,9 @@ vi.mock('../../src/api', () => ({
     suspendMailbox: vi.fn(),
     reactivateMailbox: vi.fn(),
     deleteMailbox: vi.fn(),
+    migrateMailbox: vi.fn(),
+    migrateMailboxAndDelete: vi.fn(),
+    getMigrationJobStatus: vi.fn(),
     listTenantDomains: vi.fn(),
     createTenantDomain: vi.fn(),
     deleteDomain: vi.fn(),
@@ -296,6 +299,84 @@ describe('TenantAdminDashboard Component', () => {
       expect(api.deleteMailbox).toHaveBeenCalledWith('mb-1');
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
+  });
+
+  it('starts a safe migration first and only presents delete option after strict verification', async () => {
+    vi.mocked(api.migrateMailbox).mockResolvedValueOnce({ jobId: 'job-1' });
+    vi.mocked(api.getMigrationJobStatus).mockReturnValue(new Promise(() => {}));
+
+    renderDashboard();
+    await screen.findByText('Admin Overview');
+    fireEvent.click(screen.getByText('View all mailboxes'));
+
+    const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
+    fireEvent.click(actionButtons[0]);
+    const deleteBtn = await screen.findByRole('button', { name: /delete mailbox/i });
+    fireEvent.click(deleteBtn);
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('checkbox'));
+
+    const destSelect = await within(dialog).findByLabelText(/move all mail into/i);
+    await waitFor(() => expect(within(destSelect).getAllByRole('option').length).toBeGreaterThan(1));
+    fireEvent.change(destSelect, { target: { value: 'mb-2' } });
+
+    // In stage 1, there is NO combined "Migrate & Delete" button!
+    expect(within(dialog).queryByRole('button', { name: /migrate & delete/i })).not.toBeInTheDocument();
+
+    const startBtn = within(dialog).getByRole('button', { name: /start migration/i });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => expect(api.migrateMailbox).toHaveBeenCalledWith('mb-1', 'mb-2'));
+    expect(api.deleteMailbox).not.toHaveBeenCalled();
+    expect(await within(dialog).findByText(/migrating mail to/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/bob@acmecorp\.com/i)).toBeInTheDocument();
+  });
+
+  it('strictly verifies completed migration and allows user to delete the mailbox afterwards', async () => {
+    vi.mocked(api.migrateMailbox).mockResolvedValueOnce({ jobId: 'job-verified-1' });
+    vi.mocked(api.getMigrationJobStatus).mockResolvedValue({
+      id: 'job-verified-1',
+      status: 'completed',
+      sourceAddress: 'alice@acmecorp.com',
+      destinationAddress: 'bob@acmecorp.com',
+      totalMessages: 15,
+      migratedMessages: 15,
+      failedCount: 0,
+      deleteSourceAfter: false,
+      error: null,
+    });
+    vi.mocked(api.deleteMailbox).mockResolvedValueOnce({ message: 'Mailbox deleted' });
+
+    renderDashboard();
+    await screen.findByText('Admin Overview');
+    fireEvent.click(screen.getByText('View all mailboxes'));
+
+    const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
+    fireEvent.click(actionButtons[0]);
+    // Use the dedicated "Migrate Mail" action directly from menu
+    const migrateMenuBtn = await screen.findByRole('button', { name: /migrate mail/i });
+    fireEvent.click(migrateMenuBtn);
+
+    const dialog = await screen.findByRole('dialog');
+    const destSelect = await within(dialog).findByLabelText(/move all mail into/i);
+    await waitFor(() => expect(within(destSelect).getAllByRole('option').length).toBeGreaterThan(1));
+    fireEvent.change(destSelect, { target: { value: 'mb-2' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /start migration/i }));
+
+    expect(await within(dialog).findByText(/Migration Completed & Strictly Verified/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/have been verified and transferred to/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/100% Verified/i)).toBeInTheDocument();
+
+    // Now delete option is unlocked
+    const confirmInput = within(dialog).getByPlaceholderText('alice@acmecorp.com');
+    fireEvent.change(confirmInput, { target: { value: 'alice@acmecorp.com' } });
+
+    const deleteBtn = within(dialog).getByRole('button', { name: /delete mailbox/i });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => expect(api.deleteMailbox).toHaveBeenCalledWith('mb-1'));
   });
 
   it('allows suspending an active mailbox via three-dots menu', async () => {

@@ -101,9 +101,14 @@ export const DomainDnsStatusModal: React.FC<DomainDnsStatusModalProps> = ({
           loading={loading}
           error={error}
           onRefresh={refresh}
+          onRetryVerification={async () => {
+            await api.retryDomainVerification(domain.id);
+            await refresh();
+          }}
           onCheckRecords={checkRecords}
           checking={checking}
           liveCheck={liveCheck}
+          isManualSetup={true}
         />
 
         {/* Connect DNS Provider Section */}

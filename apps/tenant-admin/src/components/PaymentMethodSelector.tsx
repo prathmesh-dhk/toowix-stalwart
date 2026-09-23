@@ -7,9 +7,10 @@ import {
   Plus,
   Loader2,
   ArrowRight,
+  Tag,
 } from 'lucide-react';
 import { api } from '../api';
-import { Plan, PaymentMethodItem } from '../types';
+import { Plan, PaymentMethodItem, CouponValidationResult } from '../types';
 import { PaymentMethodUpdateForm } from './PaymentMethodUpdateForm';
 
 interface PaymentMethodSelectorProps {
@@ -78,6 +79,32 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Promo / Coupon code state
+  const [couponCode, setCouponCode] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<CouponValidationResult | null>(null);
+  const [showCouponInput, setShowCouponInput] = useState(false);
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCode.trim()) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      const res = await api.validateCoupon(couponCode.trim());
+      if (res.valid) {
+        setAppliedCoupon(res);
+      } else {
+        setCouponError(res.message || 'Invalid coupon code');
+      }
+    } catch (err: any) {
+      setCouponError(err.message || 'Failed to validate coupon code');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
   // Load payment methods and billing configuration
   useEffect(() => {
     let isMounted = true;
@@ -143,6 +170,9 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
       if (autoAttachDomainId) {
         await api.attachDomainWithSavedPayment(autoAttachDomainId);
       }
+      if (appliedCoupon) {
+        await api.redeemCoupon(appliedCoupon.code, autoAttachDomainId).catch(() => {});
+      }
       const chosen = savedCards.find((c) => c.id === selectedCardId);
       onSuccess(chosen);
     } catch (err: any) {
@@ -193,6 +223,10 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         await api.attachDomainWithSavedPayment(autoAttachDomainId);
       }
 
+      if (appliedCoupon) {
+        await api.redeemCoupon(appliedCoupon.code, autoAttachDomainId).catch(() => {});
+      }
+
       onSuccess(res.paymentMethod);
     } catch (err: any) {
       setError(err?.message || 'Failed to save payment method');
@@ -230,10 +264,80 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
           </div>
           <div className="text-right">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-              60-Day Free Trial
+              {appliedCoupon
+                ? `${60 + (appliedCoupon.extraTrialDays || 0)}-Day Free Trial`
+                : '60-Day Free Trial'}
             </span>
             <span className="block text-[11px] text-slate-500 mt-0.5">₹0 charged today</span>
           </div>
+        </div>
+      )}
+
+      {/* Promo Code Section */}
+      {appliedCoupon ? (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div>
+              <span className="font-bold tracking-wider">{appliedCoupon.code}</span>
+              <span className="text-emerald-700 ml-1.5 font-medium">{appliedCoupon.message}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAppliedCoupon(null);
+              setCouponCode('');
+            }}
+            className="text-[11px] text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {!showCouponInput ? (
+            <button
+              type="button"
+              onClick={() => setShowCouponInput(true)}
+              className="self-start text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5 cursor-pointer"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              <span>Have a promo code?</span>
+            </button>
+          ) : (
+            <div className="flex flex-col gap-1.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-[11px] font-semibold text-slate-700">Enter Promo or Coupon Code</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. STARTUP60"
+                  className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono uppercase focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  disabled={couponLoading || !couponCode.trim()}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg cursor-pointer disabled:opacity-50"
+                >
+                  {couponLoading ? 'Applying...' : 'Apply'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCouponInput(false);
+                    setCouponError(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+              {couponError && <p className="text-[11px] text-rose-600">{couponError}</p>}
+            </div>
+          )}
         </div>
       )}
 

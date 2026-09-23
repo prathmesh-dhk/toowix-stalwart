@@ -8,7 +8,6 @@ vi.mock('../../src/api', () => ({
   api: {
     getSystemStatus: vi.fn(),
     listTenants: vi.fn(),
-    listApplications: vi.fn(),
     getDetailedSystemHealth: vi.fn(),
     getAuditLogs: vi.fn(),
     getAlertConfig: vi.fn(),
@@ -62,7 +61,6 @@ describe('PlatformAdminDashboard Component', () => {
       ],
     } as any);
 
-    vi.mocked(api.listApplications).mockResolvedValue({ applications: [], pagination: { total: 0, limit: 10, skip: 0 } } as any);
     vi.mocked(api.getDetailedSystemHealth).mockResolvedValue({
       status: 'healthy',
       components: { database: 'connected', stalwart: 'connected' },
@@ -88,7 +86,7 @@ describe('PlatformAdminDashboard Component', () => {
     await waitForDashboardReady();
 
     expect(screen.getByText(/Platform Console/i)).toBeInTheDocument();
-    expect(screen.getByText(/Domain Applications/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Domain Applications/i)).not.toBeInTheDocument();
   });
 
   it('switches to Tenants tab when clicked in sidebar', async () => {

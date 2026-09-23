@@ -19,6 +19,9 @@ vi.mock('../../src/api', () => ({
     detectDnsProvider: vi.fn(),
     checkDomainAvailability: vi.fn(),
     deleteDomain: vi.fn(),
+    listPaymentMethods: vi.fn(),
+    getBillingConfig: vi.fn(),
+    attachDomainWithSavedPayment: vi.fn(),
   },
 }));
 
@@ -72,6 +75,12 @@ describe('DomainSetupModal Component', () => {
       success: true,
       domain: { id: 'dom-x', domainName: 'x', mailboxLimit: 20, employeeCount: 20, planId: 'plan-pro', planName: 'Pro' },
     });
+    vi.mocked(api.listPaymentMethods).mockResolvedValue({
+      paymentMethods: [{ id: 'pm_saved', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true }],
+      defaultPaymentMethodId: 'pm_saved',
+    });
+    vi.mocked(api.getBillingConfig).mockResolvedValue({ publishableKey: '', billingEnabled: false });
+    vi.mocked(api.attachDomainWithSavedPayment).mockResolvedValue({ success: true, status: 'trialing' });
   });
 
   it('blocks advancing past the domain step when the domain is already taken, without creating a domain', async () => {
@@ -167,8 +176,10 @@ describe('DomainSetupModal Component', () => {
 
     await waitFor(() => expect(api.selectDomainPlan).toHaveBeenCalledWith('dom-new-1', 'plan-pro'));
 
-    const completeBtn = await screen.findByRole('button', { name: /^done$/i });
-    await userEvent.click(completeBtn);
+    const activateBtn = await screen.findByRole('button', { name: /activate domain . start trial/i });
+    await userEvent.click(activateBtn);
+
+    expect(api.attachDomainWithSavedPayment).toHaveBeenCalledWith('dom-new-1');
 
     expect(onDomainAdded).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -293,7 +304,7 @@ describe('DomainSetupModal Component', () => {
     expect(screen.queryByText(/missing or malformed/i)).not.toBeInTheDocument();
   });
 
-  it('offers a skippable "Add Payment Method" card on the plan step that never blocks finishing', async () => {
+  it('requires payment confirmation and finishes the wizard when the domain is auto-activated', async () => {
     const onDomainAdded = vi.fn();
     const onClose = vi.fn();
 
@@ -305,7 +316,6 @@ describe('DomainSetupModal Component', () => {
       success: true,
       domain: { id: 'dom-new-5', domainName: 'payable.io', mailboxLimit: 20, employeeCount: 20, planId: 'plan-pro', planName: 'Pro' },
     });
-    vi.mocked(api.startDomainCheckout).mockResolvedValue({ url: 'https://checkout.stripe.com/pay/test' });
 
     render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
 
@@ -320,15 +330,44 @@ describe('DomainSetupModal Component', () => {
 
     expect(await screen.findByText('Add a payment method')).toBeInTheDocument();
 
-    // Skipping does not block finishing the wizard.
-    await userEvent.click(screen.getByRole('button', { name: /skip for now/i }));
-    expect(screen.queryByText('Add a payment method')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /activate domain . start trial/i }));
 
-    await userEvent.click(screen.getByRole('button', { name: /^done$/i }));
+    expect(api.attachDomainWithSavedPayment).toHaveBeenCalledWith('dom-new-5');
     expect(onDomainAdded).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
-    expect(api.startDomainCheckout).not.toHaveBeenCalled();
     expect(api.deleteDomain).not.toHaveBeenCalled();
+  });
+
+  it('allows navigating back from payment step to plan step and continuing without error', async () => {
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: planlessDomain('dom-backnav-plan', 'backplan.io'),
+    });
+    vi.mocked(api.selectDomainPlan).mockResolvedValueOnce({
+      success: true,
+      domain: { ...planlessDomain('dom-backnav-plan', 'backplan.io'), planId: 'plan-pro' },
+    });
+
+    render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+    await enterDomainAndContinue('backplan.io');
+    await screen.findByText('How do you want to set up DNS?');
+    await userEvent.click(screen.getByRole('button', { name: /Manual DNS Setup/i }));
+    await screen.findByText('DNS Setup — backplan.io');
+
+    await userEvent.click(screen.getByRole('button', { name: /continue to plan selection/i }));
+    expect(await screen.findByText('Choose a plan')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+    expect(await screen.findByText('Add a payment method')).toBeInTheDocument();
+
+    // Click Back to return to plan selection
+    await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(await screen.findByText('Choose a plan')).toBeInTheDocument();
+
+    // Re-submit without error
+    await userEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+    expect(await screen.findByText('Add a payment method')).toBeInTheDocument();
+    expect(screen.queryByText(/this domain already has a plan/i)).not.toBeInTheDocument();
   });
 
   it('lets "Back" from an auto-skipped setup step reach the method picker as an override', async () => {

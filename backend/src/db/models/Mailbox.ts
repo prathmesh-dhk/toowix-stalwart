@@ -10,6 +10,16 @@ export interface IMailboxSecurityProfile {
   tempPasswordExpiresAt?: Date;
 }
 
+export interface IMailboxAlias {
+  _id: Types.ObjectId;
+  localPart: string;
+  domainId: Types.ObjectId;
+  domainName: string;
+  address: string;
+  description?: string | null;
+  createdAt: Date;
+}
+
 export interface IMailbox extends Document {
   tenantId: Types.ObjectId;
   domainId: Types.ObjectId;
@@ -19,6 +29,7 @@ export interface IMailbox extends Document {
   status: MailboxStatus;
   stalwartAccountId?: string;
   security: IMailboxSecurityProfile;
+  aliases: IMailboxAlias[];
   domainName?: string;
   storageBytes?: number;
   createdAt: Date;
@@ -49,6 +60,44 @@ const MailboxSecurityProfileSchema = new Schema<IMailboxSecurityProfile>(
     },
   },
   { _id: false }
+);
+
+const MailboxAliasSchema = new Schema<IMailboxAlias>(
+  {
+    localPart: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+    },
+    domainId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Domain',
+      required: true,
+    },
+    domainName: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+    },
+    address: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    createdAt: {
+      type: Date,
+      default: () => new Date(),
+    },
+  },
+  { _id: true }
 );
 
 const MailboxSchema = new Schema<IMailbox>(
@@ -101,6 +150,10 @@ const MailboxSchema = new Schema<IMailbox>(
         mustChangePassword: false,
       }),
     },
+    aliases: {
+      type: [MailboxAliasSchema],
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -112,5 +165,6 @@ const MailboxSchema = new Schema<IMailbox>(
 MailboxSchema.index({ tenantId: 1, localPart: 1 }, { unique: true });
 MailboxSchema.index({ domainId: 1, localPart: 1 }, { unique: true });
 MailboxSchema.index({ tenantId: 1, status: 1 });
+MailboxSchema.index({ 'aliases.address': 1 });
 
 export const MailboxModel = mongoose.model<IMailbox>('Mailbox', MailboxSchema);

@@ -4,7 +4,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import { generateSecret, generateSync } from 'otplib';
 import { app } from '../src/app';
-import { RegistrationApplicationModel } from '../src/db/models/RegistrationApplication';
 import { AdminUserModel } from '../src/db/models/AdminUser';
 import { TenantModel } from '../src/db/models/Tenant';
 import { hashPassword, hashSecurityAnswer, generateContactEmailVerificationToken } from '../src/auth/service';
@@ -26,7 +25,6 @@ describe('Registration Recovery Email OTP, TOTP Setup & Multi-Channel 2FA Login'
 
   beforeEach(async () => {
     await AdminUserModel.deleteMany({});
-    await RegistrationApplicationModel.deleteMany({});
     await TenantModel.deleteMany({});
     resetRecoveryEmailOtpStore();
     resetContactEmailOtpStore();
@@ -116,51 +114,6 @@ describe('Registration Recovery Email OTP, TOTP Setup & Multi-Channel 2FA Login'
       expect(verifyRes.status).toBe(200);
       expect(verifyRes.body.success).toBe(true);
       expect(verifyRes.body.totpSetupToken).toBeDefined();
-    });
-  });
-
-  describe('3. Registration Application with Recovery Email & TOTP Setup', () => {
-    it('should register tenant and store recoveryEmailVerified and twoFactorEnabled', async () => {
-      // Setup TOTP
-      const setupRes = await request(app)
-        .post('/api/public/totp/setup')
-        .send({ label: 'Wayne Corp Admin' });
-      const secret = setupRes.body.secret;
-      const validCode = generateSync({ secret });
-
-      const totpRes = await request(app)
-        .post('/api/public/totp/verify')
-        .send({ secret, code: validCode });
-
-      const totpSetupToken = totpRes.body.totpSetupToken;
-      const contactVerificationToken = generateContactEmailVerificationToken('bruce@wayne-external.test');
-
-      const regRes = await request(app)
-        .post('/api/public/register-tenant')
-        .send({
-          companyName: 'Wayne Enterprises',
-          requestedDomain: 'waynecorp.test',
-          applicantName: 'Bruce Wayne',
-          contactEmail: 'bruce@wayne-external.test',
-          contactEmailVerificationToken: contactVerificationToken,
-          recoveryEmail: 'batman@gotham-recovery.test',
-          totpSetupToken,
-          securityQuestions: [
-            { question: 'What was the name of your first pet?', answer: 'Ace' },
-            { question: 'In what city were you born?', answer: 'Gotham' },
-            { question: 'What was your childhood nickname?', answer: 'Brucey' },
-          ],
-        });
-
-      expect(regRes.status).toBe(201);
-      expect(regRes.body.application.id).toBeDefined();
-
-      const appDoc = await RegistrationApplicationModel.findById(regRes.body.application.id);
-      expect(appDoc).toBeDefined();
-      expect(appDoc?.contactEmailVerified).toBe(true);
-      expect(appDoc?.twoFactorEnabled).toBe(true);
-      expect(appDoc?.twoFactorSecret).toBe(secret);
-      expect(appDoc?.recoveryEmail).toBe('batman@gotham-recovery.test');
     });
   });
 

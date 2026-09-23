@@ -10,7 +10,6 @@ import {
   MailboxModel,
   OrganisationDeletionModel,
   BlockedRegistrationIdentityModel,
-  RegistrationApplicationModel,
 } from '../src/db/models';
 import { generateOidcToken, generateRecoveryEmailVerificationToken } from '../src/auth/service';
 import { emailService } from '../src/services/email.service';
@@ -44,7 +43,7 @@ describe('permanent registration-email block after an organisation is deleted', 
   beforeEach(async () => {
     vi.restoreAllMocks();
     await Promise.all(
-      [TenantModel, AdminUserModel, OrganisationDeletionModel, BlockedRegistrationIdentityModel, RegistrationApplicationModel].map((m) =>
+      [TenantModel, AdminUserModel, OrganisationDeletionModel, BlockedRegistrationIdentityModel].map((m) =>
         (m as mongoose.Model<any>).deleteMany({})
       )
     );
@@ -168,31 +167,6 @@ describe('permanent registration-email block after an organisation is deleted', 
     });
   });
 
-  describe('organisation application (register-tenant)', () => {
-    const apply = (overrides: Record<string, unknown>) =>
-      request(app).post('/api/public/register-tenant').send({
-        companyName: 'Acme Corp',
-        requestedDomain: 'acme-new.com',
-        contactEmail: 'owner@acme.com',
-        ...overrides,
-      });
-
-    it('blocks by registration email no matter how the organisation name is entered', async () => {
-      for (const companyName of ['Acme Corp', 'ACME CORP', 'Acme  Corp.', 'Totally Different Name']) {
-        const res = await apply({ companyName, requestedDomain: `try-${Math.random().toString(36).slice(2, 8)}.com` });
-        expect(res.status, companyName).toBe(403);
-        expect(res.body.error).toBe('REGISTRATION_EMAIL_BLOCKED');
-      }
-      expect(await RegistrationApplicationModel.countDocuments({})).toBe(0);
-    });
-
-    it('accepts a new email under the same organisation name — the block is on the identity, not the name', async () => {
-      const res = await apply({ contactEmail: 'brand.new@fresh.com', requestedDomain: 'fresh-acme.com' });
-      expect(res.status).toBe(201);
-      expect(await RegistrationApplicationModel.countDocuments({ contactEmail: 'brand.new@fresh.com' })).toBe(1);
-    });
-  });
-
   describe('the other routes that create accounts', () => {
     const superToken = () => generateOidcToken({ id: new mongoose.Types.ObjectId().toString(), email: 'root@toowix.com', role: 'SUPER_ADMIN', tenantId: null, twoFactorEnabled: false });
 
@@ -205,21 +179,6 @@ describe('permanent registration-email block after an organisation is deleted', 
       expect(res.status).toBe(403);
       expect(res.body.error).toBe('REGISTRATION_EMAIL_BLOCKED');
       expect(await AdminUserModel.countDocuments({})).toBe(0);
-    });
-
-    it('refuses to approve an application whose email was blocked after it was submitted', async () => {
-      const application = await RegistrationApplicationModel.create({
-        companyName: 'Acme Reborn',
-        requestedDomain: 'acme-reborn.com',
-        applicantName: 'Olivia Owner',
-        contactEmail: 'owner@acme.com',
-        status: 'PENDING_REVIEW',
-      });
-      const res = await request(app).post(`/api/super-admin/applications/${application._id}/approve`).set('Authorization', `Bearer ${superToken()}`);
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe('REGISTRATION_EMAIL_BLOCKED');
-      expect(await TenantModel.countDocuments({})).toBe(0);
-      expect((await RegistrationApplicationModel.findById(application._id))!.status).toBe('PENDING_REVIEW');
     });
   });
 

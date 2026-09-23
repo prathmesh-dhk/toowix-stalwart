@@ -5,6 +5,7 @@ import {
   StalwartDomain,
   StalwartAccount,
   CreateAccountInput,
+  StalwartEmailAlias,
   StalwartCreatedAccount,
   StalwartDkimKey,
   StalwartBlockedIp,
@@ -543,6 +544,48 @@ export class StalwartClient {
   }
 
   /**
+   * Updates an account's email aliases in Stalwart.
+   * Note: In Stalwart JMAP schema, `aliases` is an object map (Record<string, EmailAlias>),
+   * not a JSON array. Each alias requires `domainId` to be the Stalwart internal domain ID.
+   */
+  async updateAccountAliases(accountId: string, aliases: StalwartEmailAlias[]): Promise<void> {
+    const aliasesMap: Record<string, StalwartEmailAlias> = {};
+    aliases.forEach((alias, idx) => {
+      aliasesMap[String(idx)] = {
+        name: alias.name,
+        domainId: alias.domainId,
+        description: alias.description || null,
+        enabled: alias.enabled ?? true,
+      };
+    });
+
+    const responses = await this.dispatch([
+      [
+        'x:Account/set',
+        {
+          accountId: this.accountId,
+          update: {
+            [accountId]: {
+              aliases: aliasesMap,
+            },
+          },
+        },
+        'c_update_aliases',
+      ],
+    ]);
+
+    const result = responses[0]?.[1];
+    if (result?.notUpdated?.[accountId]) {
+      const err = result.notUpdated[accountId];
+      throw new StalwartError(
+        `Failed to update aliases in Stalwart: ${err.description || err.type}`,
+        'ALIAS_UPDATE_FAILED',
+        err
+      );
+    }
+  }
+
+  /**
    * Verifies user mailbox credentials directly against Stalwart via JMAP.
    * Returns true if Stalwart returns HTTP 200, false otherwise.
    */
@@ -851,6 +894,116 @@ export class StalwartClient {
     }
 
     return result;
+  }
+
+  /**
+   * Copies every message from `sourceAccountId` into a new Mailbox folder tree on
+   * `destAccountId` named `folderName`, preserving the source's own folder structure (Inbox,
+   * Sent, Drafts, etc.) as sub-folders under it. Uses admin-impersonated standard JMAP
+   * (Mailbox/get + Mailbox/set + Email/query + Email/copy) — the same impersonation pattern as
+   * getAccountEmailCounts. The source account is left completely untouched; the caller deletes
+   * it separately only once this resolves successfully. Calls `onProgress` after each batch so
+   * the caller can persist incremental status (e.g. for a polling job document).
+   */
+  async migrateAccountMail(
+    sourceAccountId: string,
+    destAccountId: string,
+    folderName: string,
+    onProgress?: (migrated: number, total: number) => void
+  ): Promise<{ totalMessages: number; migratedMessages: number; failedMessageIds: string[] }> {
+    // 1. List every folder on the source account.
+    const folderResponses = await this.dispatch([
+      [
+        'Mailbox/get',
+        { accountId: sourceAccountId, ids: null, properties: ['id', 'name', 'role', 'totalEmails'] },
+        'c_migrate_src_folders',
+      ],
+    ]);
+    const sourceFolders: any[] = folderResponses[0]?.[1]?.list || [];
+
+    // 2. Create the destination parent folder + one child per source folder, mirroring names/roles.
+    const parentRef = 'migrate_parent';
+    const childRefs = sourceFolders.map((_, i) => `migrate_child_${i}`);
+    const createPayload: Record<string, any> = { [parentRef]: { name: folderName } };
+    sourceFolders.forEach((f, i) => {
+      const child: any = { name: f.name, parentId: `#${parentRef}` };
+      if (typeof f.role === 'string') child.role = f.role;
+      createPayload[childRefs[i]] = child;
+    });
+
+    const createResponses = await this.dispatch([
+      ['Mailbox/set', { accountId: destAccountId, create: createPayload }, 'c_migrate_create_folders'],
+    ]);
+    const createResult = createResponses[0]?.[1];
+    if (!createResult?.created?.[parentRef]?.id) {
+      throw new StalwartError(
+        'Failed to create destination migration folder in Stalwart',
+        'MIGRATION_FOLDER_CREATE_FAILED',
+        createResult
+      );
+    }
+
+    const folderIdMap = new Map<string, string>(); // sourceFolderId -> destFolderId
+    sourceFolders.forEach((f, i) => {
+      const destId = createResult.created?.[childRefs[i]]?.id;
+      if (destId) folderIdMap.set(f.id, destId);
+    });
+
+    // 3. Copy messages folder by folder, paginating the source query and batching the copies.
+    const totalMessages = sourceFolders.reduce(
+      (sum, f) => sum + (typeof f.totalEmails === 'number' ? f.totalEmails : 0),
+      0
+    );
+    let migratedMessages = 0;
+    const failedMessageIds: string[] = [];
+    const COPY_BATCH_SIZE = 200;
+    const QUERY_PAGE_SIZE = 500;
+
+    for (const folder of sourceFolders) {
+      const destFolderId = folderIdMap.get(folder.id);
+      if (!destFolderId || !folder.totalEmails) continue;
+
+      let position = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const queryResponses = await this.dispatch([
+          [
+            'Email/query',
+            { accountId: sourceAccountId, filter: { inMailbox: folder.id }, position, limit: QUERY_PAGE_SIZE },
+            'c_migrate_query',
+          ],
+        ]);
+        const ids: string[] = queryResponses[0]?.[1]?.ids || [];
+        if (ids.length === 0) break;
+
+        for (let i = 0; i < ids.length; i += COPY_BATCH_SIZE) {
+          const batchIds = ids.slice(i, i + COPY_BATCH_SIZE);
+          const create: Record<string, any> = {};
+          batchIds.forEach((id, idx) => {
+            create[`m_${idx}`] = { id, mailboxIds: { [destFolderId]: true } };
+          });
+
+          const copyResponses = await this.dispatch([
+            ['Email/copy', { fromAccountId: sourceAccountId, accountId: destAccountId, create }, 'c_migrate_copy'],
+          ]);
+          const copyResult = copyResponses[0]?.[1];
+          migratedMessages += copyResult?.created ? Object.keys(copyResult.created).length : 0;
+
+          if (copyResult?.notCreated) {
+            batchIds.forEach((id, idx) => {
+              if (copyResult.notCreated[`m_${idx}`]) failedMessageIds.push(id);
+            });
+          }
+
+          onProgress?.(migratedMessages, totalMessages);
+        }
+
+        if (ids.length < QUERY_PAGE_SIZE) break;
+        position += ids.length;
+      }
+    }
+
+    return { totalMessages, migratedMessages, failedMessageIds };
   }
 
   // --- IP Address Management (Blocked & Allowed IPs) ---

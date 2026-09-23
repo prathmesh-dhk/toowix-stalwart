@@ -18,6 +18,7 @@ import { auditRouter } from './api/audit.routes';
 import { plansRouter } from './api/plans.routes';
 import { tenantBillingRouter } from './api/billing.routes';
 import { tenantModeratorRouter } from './api/tenant-moderator.routes';
+import { couponRouter } from './api/coupon.routes';
 import { stripeWebhookRouter } from './api/stripe-webhook.routes';
 import { metricsService } from './services/metrics.service';
 
@@ -74,6 +75,7 @@ app.use('/api/tenants', tenantMeRouter);
 app.use('/api/mailboxes', mailboxRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/plans', plansRouter);
+app.use('/api/admin/coupons', couponRouter);
 app.use('/api/system', systemRouter);
 
 // Prometheus Metrics Endpoint

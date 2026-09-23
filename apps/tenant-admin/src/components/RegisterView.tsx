@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api } from '../api';
+import { api, setStoredToken } from '../api';
+import { UserContext } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import {
   AlertCircle,
@@ -12,6 +13,7 @@ import {
 
 interface RegisterViewProps {
   onBackToLogin: () => void;
+  onSuccess: (user: UserContext) => void;
 }
 
 /** Display only — the server is authoritative and returns the full address it will create. */
@@ -65,7 +67,7 @@ const SECURITY_QUESTIONS_POOL = [
   'What was the title of the first album you bought?',
 ];
 
-export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => {
+export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuccess }) => {
   // Wizard: 1 = Org + Username, 2 = Password, 3 = Recovery email, 4 = OTP, 5 = Security questions, 6 = Done
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
@@ -350,7 +352,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
 
     setLoading(true);
     try {
-      await api.publicRegister({
+      const registration = await api.publicRegister({
         username: username.trim().toLowerCase(),
         password,
         recoveryEmail: recoveryEmail.trim().toLowerCase(),
@@ -362,7 +364,14 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin }) => 
           { question: sq3Question, answer: sq3Answer.trim() },
         ],
       });
-      setCurrentStep(6);
+      // A direct self-service registration has no 2FA gate yet, so establish
+      // the session immediately and take the new tenant to domain setup.
+      const login = await api.tenantAdminLogin(registration.user.email, password);
+      if (!login.token || login.requires2FA) {
+        throw new Error('Your account was created, but automatic sign-in could not be completed. Please sign in to continue.');
+      }
+      setStoredToken(login.token);
+      onSuccess(login.user);
     } catch (err: any) {
       if (err.code === 'PASSWORD_TOO_WEAK') {
         // The mail server has its own strength policy; show the message where the password is fixed.

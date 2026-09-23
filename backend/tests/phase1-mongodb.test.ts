@@ -7,7 +7,6 @@ import {
   DomainModel,
   AdminUserModel,
   MailboxModel,
-  RegistrationApplicationModel,
   ActivationTokenModel,
   AuditLogModel,
 } from '../src/db/models';
@@ -234,19 +233,7 @@ describe('Phase 1: Foundation & MongoDB Data Layer', () => {
     });
   });
 
-  describe('RegistrationApplication & ActivationToken Models', () => {
-    it('should create a registration application in PENDING_REVIEW status', async () => {
-      const app = await RegistrationApplicationModel.create({
-        companyName: 'New Org Inc',
-        requestedDomain: 'neworg.com',
-        applicantName: 'Alice Smith',
-        contactEmail: 'alice@external.com',
-      });
-
-      expect(app.status).toBe('PENDING_REVIEW');
-      expect(app.requestedDomain).toBe('neworg.com');
-    });
-
+  describe('ActivationToken Model', () => {
     it('should create an activation token with TTL expiration', async () => {
       const tenant = await TenantModel.create({ name: 'Token Org' });
       const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48h

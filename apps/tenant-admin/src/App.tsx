@@ -142,7 +142,15 @@ export const App: React.FC = () => {
     }
 
     if (currentPath === '/register') {
-      return <RegisterView onBackToLogin={navigateToLogin} />;
+      return (
+        <RegisterView
+          onBackToLogin={navigateToLogin}
+          onSuccess={(user) => {
+            setCurrentUser(user);
+            navigateHome();
+          }}
+        />
+      );
     }
 
     if (currentPath === '/forgot-password') {

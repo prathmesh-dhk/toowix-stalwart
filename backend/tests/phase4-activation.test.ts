@@ -9,7 +9,6 @@ import {
   AdminUserModel,
   TenantModel,
   DomainModel,
-  RegistrationApplicationModel,
   ActivationTokenModel,
   AuditLogModel,
 } from '../src/db/models';
@@ -52,7 +51,6 @@ describe('Phase 4: Stalwart Pre-Flight Verification & Tenant Activation Flow', (
     ]);
 
     // Clean DB collections
-    await RegistrationApplicationModel.deleteMany({});
     await DomainModel.deleteMany({});
     await TenantModel.deleteMany({});
     await AdminUserModel.deleteMany({});
@@ -83,6 +81,7 @@ describe('Phase 4: Stalwart Pre-Flight Verification & Tenant Activation Flow', (
       status: 'approved_pending_setup',
       mailboxLimit: 50,
       mailboxCount: 0,
+      contactEmail: 'bruce@wayne-foundation.org',
     });
     tenantId = tenant._id.toString();
 
@@ -91,17 +90,6 @@ describe('Phase 4: Stalwart Pre-Flight Verification & Tenant Activation Flow', (
       domainName: 'waynecorp.com',
       stalwartDomainId: 'dom_wayne',
       status: 'suspended',
-    });
-
-    // 3. Create linked RegistrationApplication
-    await RegistrationApplicationModel.create({
-      companyName: 'Wayne Enterprises',
-      requestedDomain: 'waynecorp.com',
-      applicantName: 'Bruce Wayne',
-      contactEmail: 'bruce@wayne-foundation.org',
-      status: 'APPROVED',
-      reviewedBy: superAdmin._id,
-      reviewedAt: new Date(),
     });
   });
 
@@ -372,23 +360,19 @@ describe('Phase 4: Stalwart Pre-Flight Verification & Tenant Activation Flow', (
     });
 
     it('should verify registration password via /api/public/verify-activation-password', async () => {
-      // Set a registration password hash on the application
-      const regPassHash = await hashPassword('RegisteredPass123!');
-      await RegistrationApplicationModel.updateOne({ requestedDomain: 'waynecorp.com' }, { passwordHash: regPassHash });
-
-      // Check wrong password -> 401
-      const wrongRes = await request(app)
+      // Check password too short -> 400
+      const shortRes = await request(app)
         .post('/api/public/verify-activation-password')
         .send({
           token: rawActivationToken,
-          password: 'WrongPassword!',
+          password: 'short',
         });
 
-      expect(wrongRes.status).toBe(401);
-      expect(wrongRes.body.valid).toBe(false);
-      expect(wrongRes.body.message).toContain('does not match');
+      expect(shortRes.status).toBe(400);
+      expect(shortRes.body.valid).toBe(false);
+      expect(shortRes.body.error).toBe('INVALID_PASSWORD');
 
-      // Check correct password -> 200
+      // Check valid password -> 200
       const correctRes = await request(app)
         .post('/api/public/verify-activation-password')
         .send({
@@ -400,29 +384,10 @@ describe('Phase 4: Stalwart Pre-Flight Verification & Tenant Activation Flow', (
       expect(correctRes.body.valid).toBe(true);
     });
 
-    it('should reject final activation if password does not match registration password', async () => {
-      // Set a registration password hash on the application
-      const regPassHash = await hashPassword('RegisteredPass123!');
-      await RegistrationApplicationModel.updateOne({ requestedDomain: 'waynecorp.com' }, { passwordHash: regPassHash });
-
+    it('should complete final activation with valid password and TOTP', async () => {
       const validCode = generateSync({ secret: generatedTotpSecret });
 
-      // Attempt activate with mismatching password
-      const res = await request(app)
-        .post('/api/public/activate')
-        .send({
-          token: rawActivationToken,
-          email: 'bruce@waynecorp.com',
-          password: 'DifferentPassword123!',
-          totpSecret: generatedTotpSecret,
-          totpCode: validCode,
-        });
-
-      expect(res.status).toBe(401);
-      expect(res.body.error).toBe('INVALID_PASSWORD');
-      expect(res.body.message).toContain('does not match');
-
-      // Attempt activate with matching registration password -> succeeds
+      // Attempt activate with valid password and TOTP -> succeeds
       const successRes = await request(app)
         .post('/api/public/activate')
         .send({

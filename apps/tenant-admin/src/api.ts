@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, AuditItem, SystemMetrics, RegistrationApplication, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, PaymentMethodItem, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView, ModeratorItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, MailboxMigrationJobStatus, AuditItem, SystemMetrics, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, PaymentMethodItem, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView, ModeratorItem } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -359,6 +359,18 @@ export const api = {
   checkDnsRecordsLive: (domainId: string) =>
     request<DnsLiveCheckResult>(`/api/tenants/me/domains/${domainId}/dns-check`),
 
+  retryDomainVerification: (domainId: string) =>
+    request<{ success: boolean; status: DomainDnsStatus }>(
+      `/api/tenants/me/domains/${encodeURIComponent(domainId)}/retry-verify`,
+      { method: 'POST' }
+    ),
+
+  activateDomain: (domainId: string) =>
+    request<{ success: boolean; domain: DomainItem }>(
+      `/api/tenants/me/domains/${encodeURIComponent(domainId)}/activate`,
+      { method: 'POST' }
+    ),
+
   /** Deletes a domain immediately — allowed only when it has zero mailboxes, no Super Admin approval needed. */
   deleteDomain: (domainId: string) =>
     request<{ success: boolean; domainName: string }>(`/api/tenants/me/domains/${domainId}`, {
@@ -402,6 +414,18 @@ export const api = {
     request<{ message: string; mailbox: MailboxItem }>(`/api/mailboxes/${mailboxId}/reactivate`, { method: 'POST' }),
   deleteMailbox: (mailboxId: string) =>
     request<{ message: string }>(`/api/mailboxes/${mailboxId}`, { method: 'DELETE' }),
+  migrateMailbox: (sourceMailboxId: string, destinationMailboxId: string) =>
+    request<{ jobId: string }>(`/api/mailboxes/${sourceMailboxId}/migrate`, {
+      method: 'POST',
+      body: JSON.stringify({ destinationMailboxId }),
+    }),
+  migrateMailboxAndDelete: (sourceMailboxId: string, destinationMailboxId: string) =>
+    request<{ jobId: string }>(`/api/mailboxes/${sourceMailboxId}/migrate-and-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ destinationMailboxId }),
+    }),
+  getMigrationJobStatus: (jobId: string) =>
+    request<MailboxMigrationJobStatus>(`/api/mailboxes/migration-jobs/${jobId}`),
   getStorageUsage: (domainId?: string) => {
     const q = domainId ? `?domainId=${encodeURIComponent(domainId)}` : '';
     return request<TenantStorageResponse>(`/api/tenants/me/storage${q}`);
@@ -481,72 +505,6 @@ export const api = {
       body: JSON.stringify({ secret, code }),
     }),
 
-  publicRegisterTenant: (body: {
-    companyName: string;
-    requestedDomain: string;
-    applicantName?: string;
-    firstName?: string;
-    lastName?: string;
-    contactEmail: string;
-    phone?: string;
-    notes?: string;
-    employeeCount?: string;
-    region?: string;
-    password?: string;
-    recoveryEmail?: string;
-    recoveryEmailVerificationToken?: string;
-    contactEmailVerificationToken?: string;
-    totpSetupToken?: string;
-    securityQuestions?: Array<{ question: string; answer: string }>;
-  }) =>
-    request<{
-      success: boolean;
-      message: string;
-      application: {
-        id: string;
-        companyName: string;
-        requestedDomain: string;
-        status: string;
-        createdAt: string;
-      };
-    }>('/api/public/register-tenant', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
-  // Phase 3: Super Admin Application Queue
-  listApplications: (params?: { status?: string; limit?: number; skip?: number }) => {
-    const q = new URLSearchParams();
-    if (params?.status) q.set('status', params.status);
-    if (params?.limit) q.set('limit', String(params.limit));
-    if (params?.skip) q.set('skip', String(params.skip));
-    return request<{
-      applications: RegistrationApplication[];
-      pagination: { total: number; limit: number; skip: number };
-    }>(`/api/super-admin/applications?${q.toString()}`);
-  },
-
-  getApplication: (id: string) =>
-    request<{ application: RegistrationApplication }>(`/api/super-admin/applications/${id}`),
-
-  approveApplication: (id: string) =>
-    request<{
-      success: boolean;
-      message: string;
-      tenant: { id: string; name: string; status: string; domain: string; contactEmail: string };
-    }>(`/api/super-admin/applications/${id}/approve`, {
-      method: 'POST',
-    }),
-
-  rejectApplication: (id: string, reason: string) =>
-    request<{
-      success: boolean;
-      message: string;
-      application: { id: string; status: string; rejectionReason: string };
-    }>(`/api/super-admin/applications/${id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    }),
 
   // Phase 4: Tenant Activation
   validateActivationToken: (token: string) =>

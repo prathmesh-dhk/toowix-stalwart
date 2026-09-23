@@ -11,12 +11,10 @@ import {
   Trash2,
   Building2,
   Globe,
-  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
-import { DomainActivationModal } from './DomainActivationModal';
 import { dnsStatusBadgeProps } from '../../utils/dnsStatus';
 
 interface TenantDetailModalProps {
@@ -45,7 +43,6 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [passwordResetSuccess, setPasswordResetSuccess] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);
-  const [activationDomain, setActivationDomain] = useState<TenantDomainSummary | null>(null);
 
   useEffect(() => {
     if (!isOpen || !tenant) return;
@@ -178,10 +175,6 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                         <span className="text-[11px] text-slate-500">
                           {dom.mailboxLimit ? `${dom.mailboxLimit} seats` : 'Active'}
                         </span>
-                        <Button size="sm" variant="secondary" onClick={() => setActivationDomain(dom)}>
-                          <ShieldCheck size={12} />
-                          <span>{dom.dnsStatus === 'active' ? 'View DNS' : 'Activate'}</span>
-                        </Button>
                       </div>
                     </div>
                   );
@@ -326,12 +319,6 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
         </div>
       </div>
 
-      <DomainActivationModal
-        tenant={tenant}
-        domain={activationDomain}
-        isOpen={!!activationDomain}
-        onClose={() => setActivationDomain(null)}
-      />
     </div>
   );
 };

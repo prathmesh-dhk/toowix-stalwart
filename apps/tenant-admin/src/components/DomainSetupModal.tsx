@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
-import { DomainItem, DomainDnsStatus, Plan } from '../types';
+import { DomainItem, DomainDnsStatus, Plan, DnsLiveCheckResult } from '../types';
 import {
   AlertCircle,
   Loader2,
@@ -12,7 +12,6 @@ import {
   CreditCard,
   HelpCircle,
   Star,
-  Check,
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm, type SuccessInfo } from './DnsProviderCredentialForm';
@@ -87,9 +86,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [liveCheck, setLiveCheck] = useState<DnsLiveCheckResult | null>(null);
+  const [checkingRecords, setCheckingRecords] = useState(false);
 
-  // Payment method CTA state on the status step
-  const [paymentCardDismissed, setPaymentCardDismissed] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [billingEnabled, setBillingEnabled] = useState(true);
@@ -184,7 +183,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setStatusLoading(false);
     setStatusError(null);
     setConnected(false);
-    setPaymentCardDismissed(false);
+    setLiveCheck(null);
+    setCheckingRecords(false);
     setStartingCheckout(false);
     setCheckoutError(null);
     onClose();
@@ -218,6 +218,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     } else if (step === 'plan') {
       navigateBack('status');
     } else if (step === 'payment') {
+      if (createdDomain?.planId) setSelectedPlanId(createdDomain.planId);
       navigateBack('plan');
     }
   };
@@ -333,10 +334,25 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     navigateTo('status');
     if (targetDomain) {
       refreshDnsStatus(targetDomain.id);
+      handleCheckLiveRecords(targetDomain.id);
       if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(() => {
         refreshDnsStatus(targetDomain.id);
       }, 5000);
+    }
+  };
+
+  const handleCheckLiveRecords = async (domainId?: string) => {
+    const id = domainId || createdDomain?.id;
+    if (!id || typeof api.checkDnsRecordsLive !== 'function') return;
+    setCheckingRecords(true);
+    try {
+      const res = await api.checkDnsRecordsLive(id);
+      setLiveCheck(res);
+    } catch (err: any) {
+      console.warn('Failed to check live DNS records:', err);
+    } finally {
+      setCheckingRecords(false);
     }
   };
 
@@ -392,6 +408,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     e.preventDefault();
     if (!selectedPlanId || !createdDomain) {
       setError('Please select a plan to continue');
+      return;
+    }
+
+    // If the domain already has this exact plan assigned (e.g. user went to payment and came back),
+    // proceed directly to payment without re-requesting plan assignment
+    if (createdDomain.planId === selectedPlanId && planAssigned) {
+      setError(null);
+      navigateTo('payment');
       return;
     }
 
@@ -874,7 +898,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   loading={statusLoading}
                   error={statusError}
                   onRefresh={() => refreshDnsStatus()}
+                  onRetryVerification={async () => {
+                    if (!createdDomain) return;
+                    await api.retryDomainVerification(createdDomain.id);
+                    await refreshDnsStatus();
+                  }}
                   connectedProviderLabel={method === 'provider' && connected ? PROVIDER_LABEL[provider] : null}
+                  onCheckRecords={() => handleCheckLiveRecords()}
+                  checking={checkingRecords}
+                  liveCheck={liveCheck}
+                  isManualSetup={method === 'manual'}
                   theme="light"
                 />
 
@@ -1034,58 +1067,23 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <div className="flex flex-col gap-6">
                 <div className="mb-2">
                   <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
-                    {paymentCardDismissed ? "You're all set" : "Add a payment method"}
+                    Add a payment method
                   </h1>
                   <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
-                    {paymentCardDismissed
-                      ? "Payment method skipped. You can add one later from Domain Settings or Tenant Billing."
-                      : selectedPlan
+                    {selectedPlan
                       ? `Your 60-day free trial on ${selectedPlan.name} starts now. You won't be charged today.`
                       : "Your 60-day free trial starts now. You won't be charged today."}
                   </p>
                 </div>
 
-                {!paymentCardDismissed ? (
-                  <>
-                    <PaymentMethodSelector
-                      selectedPlan={selectedPlan}
-                      domainName={createdDomain?.domainName || domainName}
-                      autoAttachDomainId={createdDomain?.id}
-                      onSuccess={() => {
-                        handleFinish();
-                      }}
-                      onSkip={() => {
-                        setPaymentCardDismissed(true);
-                      }}
-                      submitLabel="Save Payment Method & Finish"
-                      showSkip={true}
-                    />
-
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={handleFinish}
-                        className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
-                        id="btn-complete-domain-setup"
-                      >
-                        <span>Done</span>
-                        <Check className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={handleFinish}
-                      className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
-                      id="btn-complete-domain-setup"
-                    >
-                      <span>Done</span>
-                      <Check className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                <PaymentMethodSelector
+                  selectedPlan={selectedPlan}
+                  domainName={createdDomain?.domainName || domainName}
+                  autoAttachDomainId={createdDomain?.id}
+                  onSuccess={handleFinish}
+                  submitLabel="Activate Domain & Start Trial"
+                  showSkip={false}
+                />
               </div>
             )}
           </main>

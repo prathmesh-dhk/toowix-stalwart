@@ -26,6 +26,13 @@ export interface CreateAccountInput {
   description?: string;
 }
 
+export interface StalwartEmailAlias {
+  name: string; // local-part
+  domainId: string; // Stalwart domain ID
+  description?: string | null;
+  enabled: boolean;
+}
+
 export interface StalwartCreatedAccount {
   id: string;
   name: string;

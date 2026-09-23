@@ -20,6 +20,7 @@ import {
   BillingError,
 } from '../services/billing.service';
 import { config, isBillingEnabled } from '../config';
+import { couponService } from '../services/coupon.service';
 
 export const tenantBillingRouter = Router();
 
@@ -265,6 +266,54 @@ tenantBillingRouter.post('/domains/:domainId/attach-payment', async (req: Reques
     res.json(result);
   } catch (err: any) {
     handleBillingError(res, err);
+  }
+});
+
+const validateCouponSchema = z.object({
+  code: z.string().trim().min(1, 'Coupon code is required'),
+});
+
+tenantBillingRouter.post('/validate-coupon', async (req: Request, res: Response): Promise<void> => {
+  const parseResult = validateCouponSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
+    return;
+  }
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await couponService.validateCoupon(parseResult.data.code, tenantId);
+    if (!result.valid) {
+      res.status(400).json({ error: 'INVALID_COUPON', message: result.message });
+      return;
+    }
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+const redeemCouponSchema = z.object({
+  code: z.string().trim().min(1, 'Coupon code is required'),
+  domainId: z.string().optional().nullable(),
+});
+
+tenantBillingRouter.post('/redeem-coupon', async (req: Request, res: Response): Promise<void> => {
+  const parseResult = redeemCouponSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
+    return;
+  }
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await couponService.redeemCoupon(
+      parseResult.data.code,
+      tenantId,
+      parseResult.data.domainId,
+      req.adminUser?.id || null
+    );
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: 'REDEEM_COUPON_FAILED', message: err.message });
   }
 });
 
