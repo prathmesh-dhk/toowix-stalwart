@@ -33,6 +33,34 @@ async function loadDomainForActor(domainId: string, tenantId: string): Promise<I
 }
 
 /**
+ * Resolves which Stripe Price a domain's subscription item should use. Licensed (fixed) prices
+ * are safe to reuse across every item on a subscription. Metered prices are not — Stripe's
+ * Billing Meter aggregates usage by customer only, with no per-item key — so if another domain
+ * on this same tenant already occupies the plan's shared metered price, this domain gets its
+ * own dedicated Price + Meter instead (see stripeClient.createDedicatedMeteredPrice).
+ */
+async function resolvePriceForDomainAttachment(
+  tenantId: string,
+  domain: IDomain,
+  plan: IPlan
+): Promise<{ priceId: string; dedicatedMeterEventName: string | null }> {
+  if (plan.billingMode !== 'metered') {
+    return { priceId: await stripeClient.getOrCreatePrice(plan), dedicatedMeterEventName: null };
+  }
+  const collidesWithSibling = await DomainSubscriptionModel.exists({
+    tenantId,
+    planId: plan._id,
+    domainId: { $ne: domain._id },
+    status: { $nin: ['canceled', 'incomplete'] },
+  });
+  if (!collidesWithSibling) {
+    return { priceId: await stripeClient.getOrCreatePrice(plan), dedicatedMeterEventName: null };
+  }
+  const { priceId, meterEventName } = await stripeClient.createDedicatedMeteredPrice(plan, domain.domainName);
+  return { priceId, dedicatedMeterEventName: meterEventName };
+}
+
+/**
  * First-time plan selection for a Domain created without one — the domain-setup wizard now
  * creates the domain up front (so it can walk the tenant through DNS setup) and only asks for a
  * plan at the very end, once DNS is configured. Sets the domain's planId/planName/mailboxLimit/
@@ -155,7 +183,8 @@ export async function startCheckout(
   });
 
   if (sibling) {
-    const item = await stripeClient.addSubscriptionItem(sibling.stripeSubscriptionId, priceId, quantity);
+    const attachment = await resolvePriceForDomainAttachment(tenantId, domain, plan);
+    const item = await stripeClient.addSubscriptionItem(sibling.stripeSubscriptionId, attachment.priceId, quantity);
     await DomainSubscriptionModel.findOneAndUpdate(
       { domainId: domain._id },
       {
@@ -168,6 +197,8 @@ export async function startCheckout(
         currentPeriodEnd: sibling.currentPeriodEnd,
         trialEnd: sibling.trialEnd,
         cancelAtPeriodEnd: false,
+        dedicatedStripePriceId: attachment.dedicatedMeterEventName ? attachment.priceId : null,
+        dedicatedMeterEventName: attachment.dedicatedMeterEventName,
       },
       { upsert: true }
     );
@@ -410,7 +441,8 @@ export async function reportMeteredUsage(domainId: string): Promise<void> {
   await sub.save();
 
   try {
-    await stripeClient.reportMeteredUsage(meterEventNameForPlan(plan), tenant.stripeCustomerId, newPeak);
+    const eventName = sub.dedicatedMeterEventName || meterEventNameForPlan(plan);
+    await stripeClient.reportMeteredUsage(eventName, tenant.stripeCustomerId, newPeak);
   } catch (err: any) {
     console.warn(`[BillingService] Failed to report metered usage for domain ${domainId}:`, err.message);
   }
@@ -457,15 +489,17 @@ export async function requestUpgrade(domainId: string, tenantId: string, newPlan
   const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
   if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
 
-  const newPriceId = await stripeClient.getOrCreatePrice(newPlan);
+  const attachment = await resolvePriceForDomainAttachment(tenantId, domain, newPlan);
   await stripeClient.updateSubscriptionItemPrice(
     sub.stripeSubscriptionId,
     sub.stripeSubscriptionItemId,
-    newPriceId,
+    attachment.priceId,
     newPlan.billingMode === 'fixed' ? newPlan.seatCount : undefined
   );
 
   sub.planId = newPlan._id as any;
+  sub.dedicatedStripePriceId = attachment.dedicatedMeterEventName ? attachment.priceId : null;
+  sub.dedicatedMeterEventName = attachment.dedicatedMeterEventName;
   await sub.save();
   domain.planId = newPlan._id as any;
   domain.planName = newPlan.name;

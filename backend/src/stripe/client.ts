@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { randomUUID } from 'crypto';
 import { config } from '../config';
 import { IPlan } from '../db/models/Plan';
 import { ITenant } from '../db/models/Tenant';
@@ -69,6 +70,32 @@ export class ToowixStripeClient {
     plan.stripePriceId = price.id;
     await plan.save();
     return price.id;
+  }
+
+  /**
+   * Mints a Price + Meter dedicated to one domain's subscription item — used when another
+   * domain on the same tenant already occupies the plan's shared metered Price/Meter. Stripe
+   * meters aggregate usage by customer only (no per-item key in a meter event's payload), so
+   * two subscription items can't safely share one meter. Never cached on the Plan document —
+   * it's instance-specific and disposable.
+   */
+  async createDedicatedMeteredPrice(plan: IPlan, label: string): Promise<{ priceId: string; meterEventName: string }> {
+    const stripe = getStripe();
+    const meterEventName = `${METER_EVENT_PREFIX}_${plan._id.toString()}_${randomUUID()}`;
+    const meter = await stripe.billing.meters.create({
+      display_name: `${plan.name} — ${label}`,
+      event_name: meterEventName,
+      default_aggregation: { formula: 'last' },
+      customer_mapping: { event_payload_key: 'stripe_customer_id', type: 'by_id' },
+      value_settings: { event_payload_key: 'value' },
+    });
+    const price = await stripe.prices.create({
+      currency: CURRENCY,
+      unit_amount: plan.monthlyPriceInPaise,
+      recurring: { interval: 'month', usage_type: 'metered', meter: meter.id },
+      product_data: { name: `${plan.name} (${label})` },
+    });
+    return { priceId: price.id, meterEventName };
   }
 
   /** Lazily creates the one Stripe Customer per Tenant. */
@@ -179,10 +206,14 @@ export class ToowixStripeClient {
     });
   }
 
-  /** Detaches one domain's item from the shared subscription, leaving the subscription (and every other domain on it) untouched. */
+  /**
+   * Detaches one domain's item from the shared subscription, leaving the subscription (and
+   * every other domain on it) untouched. No proration — the tenant stays billed for this item
+   * through the current period's end rather than getting an immediate refund/credit.
+   */
   async removeSubscriptionItem(subscriptionItemId: string): Promise<void> {
     const stripe = getStripe();
-    await stripe.subscriptionItems.del(subscriptionItemId, { proration_behavior: 'create_prorations' });
+    await stripe.subscriptionItems.del(subscriptionItemId, { proration_behavior: 'none' });
   }
 
   /** Immediately cancels a subscription on Stripe. */

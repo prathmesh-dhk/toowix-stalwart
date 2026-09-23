@@ -19,6 +19,7 @@ vi.mock('../src/stripe/client', () => ({
     createSetupIntent: vi.fn(),
     addSubscriptionItem: vi.fn(),
     removeSubscriptionItem: vi.fn(),
+    createDedicatedMeteredPrice: vi.fn(),
   },
   meterEventNameForPlan: (plan: any) => `mailbox_count_${plan._id.toString()}`,
 }));
@@ -196,6 +197,55 @@ describe('billing.service', () => {
       // Rides the remainder of the existing (still-trialing) shared subscription.
       expect(sub2?.status).toBe('trialing');
       expect(sub2?.trialEnd?.toISOString()).toBe(new Date('2026-10-01').toISOString());
+      // Licensed (fixed) prices are safe to reuse — no dedicated price minted.
+      expect(sub2?.dedicatedStripePriceId).toBeFalsy();
+      expect(sub2?.dedicatedMeterEventName).toBeFalsy();
+    });
+
+    it('mints a dedicated Price/Meter when a second domain attaches to a metered plan a sibling domain already uses', async () => {
+      const domain1 = await DomainModel.create({
+        tenantId,
+        domainName: 'first-metered.com',
+        planId: meteredPlanId,
+        status: 'active',
+        isPrimary: true,
+      });
+      await DomainSubscriptionModel.create({
+        domainId: domain1._id,
+        tenantId,
+        planId: meteredPlanId,
+        stripeSubscriptionId: 'sub_shared_metered',
+        stripeSubscriptionItemId: 'si_first_metered',
+        status: 'active',
+      });
+
+      const domain2 = await DomainModel.create({
+        tenantId,
+        domainName: 'second-metered.com',
+        planId: meteredPlanId,
+        status: 'active',
+        isPrimary: false,
+      });
+
+      vi.mocked(stripeClient.createDedicatedMeteredPrice).mockResolvedValue({
+        priceId: 'price_dedicated_1',
+        meterEventName: 'mailbox_count_custom_dedicated_1',
+      });
+      vi.mocked(stripeClient.addSubscriptionItem).mockResolvedValue({ id: 'si_second_metered' } as any);
+
+      const result = await startCheckout(domain2._id.toString(), tenantId, actor);
+
+      expect(result).toEqual({ attached: true });
+      expect(stripeClient.createDedicatedMeteredPrice).toHaveBeenCalledWith(
+        expect.objectContaining({ _id: expect.anything() }),
+        'second-metered.com'
+      );
+      // The dedicated price is what actually gets attached, not the shared one.
+      expect(stripeClient.addSubscriptionItem).toHaveBeenCalledWith('sub_shared_metered', 'price_dedicated_1', undefined);
+
+      const sub2 = await DomainSubscriptionModel.findOne({ domainId: domain2._id });
+      expect(sub2?.dedicatedStripePriceId).toBe('price_dedicated_1');
+      expect(sub2?.dedicatedMeterEventName).toBe('mailbox_count_custom_dedicated_1');
     });
   });
 
@@ -392,6 +442,26 @@ describe('billing.service', () => {
       await reportMeteredUsage(domain._id.toString());
       expect(stripeClient.reportMeteredUsage).not.toHaveBeenCalled();
     });
+
+    it('reports to the dedicated meter when this domain has one, instead of the plan\'s shared meter', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'dedicated.com', planId: meteredPlanId, status: 'active' });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: meteredPlanId,
+        stripeSubscriptionId: 'sub_metered_2',
+        stripeSubscriptionItemId: 'si_metered_2',
+        status: 'active',
+        dedicatedStripePriceId: 'price_dedicated_1',
+        dedicatedMeterEventName: 'mailbox_count_custom_dedicated_1',
+      });
+      await TenantModel.updateOne({ _id: tenantId }, { stripeCustomerId: 'cus_test123' });
+      await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'c', address: 'c@dedicated.com', status: 'active' });
+
+      await reportMeteredUsage(domain._id.toString());
+
+      expect(stripeClient.reportMeteredUsage).toHaveBeenLastCalledWith('mailbox_count_custom_dedicated_1', 'cus_test123', 1);
+    });
   });
 
   describe('upgrade / downgrade / cancel', () => {
@@ -419,6 +489,46 @@ describe('billing.service', () => {
 
       expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_up', 'si_up', 'price_bigger', 25);
       expect((await DomainModel.findById(domain._id))?.mailboxLimit).toBe(25);
+    });
+
+    it('requestUpgrade mints a dedicated Price/Meter when a sibling domain already uses the target metered plan', async () => {
+      const sibling = await DomainModel.create({ tenantId, domainName: 'sibling-on-target.com', planId: meteredPlanId, status: 'active' });
+      await DomainSubscriptionModel.create({
+        domainId: sibling._id,
+        tenantId,
+        planId: meteredPlanId,
+        stripeSubscriptionId: 'sub_shared_up',
+        stripeSubscriptionItemId: 'si_sibling_up',
+        status: 'active',
+      });
+
+      const domain = await DomainModel.create({ tenantId, domainName: 'upgrading.com', planId: fixedPlanId, status: 'active' });
+      await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_shared_up',
+        stripeSubscriptionItemId: 'si_upgrading',
+        status: 'active',
+      });
+
+      vi.mocked(stripeClient.createDedicatedMeteredPrice).mockResolvedValue({
+        priceId: 'price_dedicated_2',
+        meterEventName: 'mailbox_count_custom_dedicated_2',
+      });
+
+      await requestUpgrade(domain._id.toString(), tenantId, meteredPlanId, actor);
+
+      expect(stripeClient.createDedicatedMeteredPrice).toHaveBeenCalled();
+      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith(
+        'sub_shared_up',
+        'si_upgrading',
+        'price_dedicated_2',
+        undefined
+      );
+      const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+      expect(sub?.dedicatedStripePriceId).toBe('price_dedicated_2');
+      expect(sub?.dedicatedMeterEventName).toBe('mailbox_count_custom_dedicated_2');
     });
 
     it('requestDowngrade schedules the change without touching Domain.mailboxLimit yet', async () => {

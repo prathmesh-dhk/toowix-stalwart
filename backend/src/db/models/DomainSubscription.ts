@@ -39,6 +39,12 @@ export interface IDomainSubscription extends Document {
   // change (downgrade scheduled for next renewal) — Stripe's schedule is
   // the actual source of truth; this is for display only.
   pendingDowngradePlanId?: Types.ObjectId | null;
+  // Set only when this domain needed a dedicated Price/Meter because another domain on the
+  // same tenant already occupies the plan's shared one (see resolvePriceForDomainAttachment in
+  // billing.service.ts). Null means "use the plan's shared price" — the common,
+  // single-domain-per-plan case.
+  dedicatedStripePriceId?: string | null;
+  dedicatedMeterEventName?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -101,6 +107,14 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
     pendingDowngradePlanId: {
       type: Schema.Types.ObjectId,
       ref: 'Plan',
+      default: null,
+    },
+    dedicatedStripePriceId: {
+      type: String,
+      default: null,
+    },
+    dedicatedMeterEventName: {
+      type: String,
       default: null,
     },
   },
