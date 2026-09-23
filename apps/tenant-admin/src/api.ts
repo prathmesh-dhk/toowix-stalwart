@@ -266,18 +266,6 @@ export const api = {
   cancelDomainSubscription: (domainId: string) =>
     request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/cancel`, { method: 'POST' }),
 
-  // dhkmail.com (the shared platform domain) — an implicit per-tenant subscription, not a :domainId
-  // route, since a tenant has at most one. Same combined-subscription semantics as a real domain's
-  // checkout: {url} on a first checkout, {attached: true} once already on a Stripe subscription.
-  startDhkmailCheckout: (planId: string) =>
-    request<{ url: string } | { attached: true }>('/api/tenants/me/billing/dhkmail/checkout', {
-      method: 'POST',
-      body: JSON.stringify({ planId }),
-    }),
-  getDhkmailBillingStatus: () => request<DomainBillingStatus>('/api/tenants/me/billing/dhkmail'),
-  cancelDhkmailSubscription: () =>
-    request<{ success: boolean }>('/api/tenants/me/billing/dhkmail/cancel', { method: 'POST' }),
-
   detectDnsProvider: (domain: string) =>
     request<{ provider: 'godaddy' | 'hostinger' | 'cloudflare' | null; nameservers: string[] }>(
       `/api/tenants/me/domains/detect-dns-provider?domain=${encodeURIComponent(domain)}`

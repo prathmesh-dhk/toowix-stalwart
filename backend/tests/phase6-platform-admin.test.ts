@@ -179,51 +179,6 @@ describe('Phase 6: Platform Administration, Cascade Tenant Deletion & Live Drift
       expect(res.body.stats.totalStorageBytes).toBe(0);
     });
 
-    it("shows a tenant's own dhkmail mailboxes under that tenant, never under the platform tenant that raw-owns the shared domain", async () => {
-      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active', mailboxLimit: 1000000, mailboxCount: 0 });
-      const platformDomain = await DomainModel.create({
-        tenantId: platformTenant._id,
-        domainName: 'dhkmail.com',
-        status: 'active',
-        dnsStatus: 'active',
-        isPrimary: true,
-        mailboxLimit: 1000000,
-      });
-
-      // Tenant A's own dhkmail mailbox: raw tenantId is the platform tenant (ownership-link
-      // design), ownerTenantId is Tenant A — the real owner.
-      await MailboxModel.create({
-        tenantId: platformTenant._id,
-        ownerTenantId: tenantAId,
-        domainId: platformDomain._id,
-        localPart: 'sales',
-        address: 'sales@dhkmail.com',
-        status: 'active',
-      });
-      // A login-identity mailbox genuinely belonging to the platform tenant (no ownerTenantId).
-      await MailboxModel.create({
-        tenantId: platformTenant._id,
-        domainId: platformDomain._id,
-        localPart: 'someone',
-        address: 'someone@dhkmail.com',
-        status: 'active',
-      });
-
-      const tenantARes = await request(app)
-        .get(`/api/platform/tenants/${tenantAId}`)
-        .set('Authorization', `Bearer ${superAdminToken}`);
-      expect(tenantARes.status).toBe(200);
-      expect(tenantARes.body.mailboxes.map((m: any) => m.address)).toEqual(['sales@dhkmail.com']);
-
-      const platformTenantRes = await request(app)
-        .get(`/api/platform/tenants/${platformTenant._id}`)
-        .set('Authorization', `Bearer ${superAdminToken}`);
-      expect(platformTenantRes.status).toBe(200);
-      // Only the login-identity mailbox — NOT tenant A's dhkmail mailbox, even though its raw
-      // tenantId also points at the platform tenant.
-      expect(platformTenantRes.body.mailboxes.map((m: any) => m.address)).toEqual(['someone@dhkmail.com']);
-    });
-
     it('should return 400 for malformed tenant id', async () => {
       const res = await request(app)
         .get('/api/platform/tenants/invalid-mongo-id')

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DomainSetupModal } from '../../src/components/DomainSetupModal';
 import { api } from '../../src/api';
@@ -18,8 +18,6 @@ vi.mock('../../src/api', () => ({
     detectDnsProvider: vi.fn(),
     checkDomainAvailability: vi.fn(),
     deleteDomain: vi.fn(),
-    startDhkmailCheckout: vi.fn(),
-    getDhkmailBillingStatus: vi.fn(),
   },
 }));
 
@@ -60,7 +58,6 @@ describe('DomainSetupModal Component', () => {
     vi.mocked(api.checkDomainAvailability).mockResolvedValue({ available: false });
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await userEvent.type(screen.getByPlaceholderText(/enter your domain name|acme-tech\.com/i), 'takenbrand.com');
     await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
@@ -73,7 +70,6 @@ describe('DomainSetupModal Component', () => {
 
   it('renders the domain step, then the fetched plan tiers (Starter, Pro, Enterprise) on the next step', async () => {
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     expect(screen.getByText(/Let's start with a name for your domain/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/enter your domain name|acme-tech\.com/i)).toBeInTheDocument();
@@ -117,7 +113,6 @@ describe('DomainSetupModal Component', () => {
     });
 
     render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     // Step 1: domain name
     await enterDomainAndContinue('newbrand.io');
@@ -194,7 +189,6 @@ describe('DomainSetupModal Component', () => {
     });
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('otherbrand.io');
     await screen.findAllByText('Pro'); // default-selected (Pro is isDefault: true); findAll because WizardStepGraphic also shows it
@@ -243,7 +237,6 @@ describe('DomainSetupModal Component', () => {
     });
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('thirdbrand.dev');
     await screen.findAllByText('Pro');
@@ -293,7 +286,6 @@ describe('DomainSetupModal Component', () => {
     });
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('manualbrand.io');
     await screen.findAllByText('Pro');
@@ -328,7 +320,6 @@ describe('DomainSetupModal Component', () => {
     });
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
     await enterDomainAndContinue('refreshme.io');
     await screen.findAllByText('Pro');
     await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
@@ -366,7 +357,6 @@ describe('DomainSetupModal Component', () => {
     vi.mocked(api.startDomainCheckout).mockResolvedValue({ url: 'https://checkout.stripe.com/pay/test' });
 
     render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('payable.io');
     await screen.findAllByText('Pro');
@@ -393,7 +383,6 @@ describe('DomainSetupModal Component', () => {
     });
 
     render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('backnav.io');
     await screen.findAllByText('Pro');
@@ -452,7 +441,6 @@ describe('DomainSetupModal Component', () => {
     const onDomainAdded = vi.fn();
     const onClose = vi.fn();
     render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
-    fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
     await enterDomainAndContinue('dhkinnovations.com');
     await screen.findAllByText('Pro');
@@ -501,7 +489,6 @@ describe('DomainSetupModal Component', () => {
       const onClose = vi.fn();
 
       render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
-      fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await enterDomainAndContinue('abandoned.io');
       await screen.findAllByText('Pro');
       await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
@@ -518,7 +505,6 @@ describe('DomainSetupModal Component', () => {
     it('deletes nothing when it is cancelled before any domain was created', async () => {
       const onClose = vi.fn();
       render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={vi.fn()} />);
-      fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
 
       await enterDomainAndContinue('neverwritten.io');
       await screen.findAllByText('Pro');
@@ -550,7 +536,6 @@ describe('DomainSetupModal Component', () => {
       const onClose = vi.fn();
 
       render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={vi.fn()} />);
-      fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await enterDomainAndContinue('flaky.io');
       await screen.findAllByText('Pro');
       await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
@@ -570,7 +555,6 @@ describe('DomainSetupModal Component', () => {
       const onDomainAdded = vi.fn();
 
       render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={onDomainAdded} />);
-      fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await enterDomainAndContinue('inflight.io');
       await screen.findAllByText('Pro');
       await userEvent.click(screen.getByRole('button', { name: /continue to dns setup/i }));
@@ -642,7 +626,6 @@ describe('DomainSetupModal Component', () => {
         .mockResolvedValue({ available: false, ownedByYou: true });
 
       render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-      fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await reachStatusStep('again.io');
       await backToDomainStep();
 
@@ -692,7 +675,6 @@ describe('DomainSetupModal Component', () => {
     });
 
       render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-      fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await reachStatusStep('first.io');
       await backToDomainStep();
 
@@ -713,73 +695,12 @@ describe('DomainSetupModal Component', () => {
       vi.mocked(api.checkDomainAvailability).mockResolvedValue({ available: false, ownedByYou: true });
 
       render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-      fireEvent.click(screen.getByRole('button', { name: /connect a domain you own/i }));
       await userEvent.type(domainField(), 'mine.io');
       await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
       expect(await screen.findByText(/already added this domain/i)).toBeInTheDocument();
       expect(screen.queryByText(/another organization/i)).not.toBeInTheDocument();
       expect(screen.queryByText('Choose a plan')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('using dhkmail.com instead of an owned domain', () => {
-    it('skips the domain-name step entirely and goes straight to plan selection', async () => {
-      render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-
-      await userEvent.click(screen.getByRole('button', { name: /use dhkmail\.com instead/i }));
-
-      await screen.findByText('Choose a plan');
-      expect(api.detectDnsProvider).not.toHaveBeenCalled();
-      expect(api.checkDomainAvailability).not.toHaveBeenCalled();
-    });
-
-    it('attaches immediately (no DNS/status step) when the tenant already has a Stripe subscription', async () => {
-      vi.mocked(api.startDhkmailCheckout).mockResolvedValue({ attached: true });
-      vi.mocked(api.getDhkmailBillingStatus).mockResolvedValue({
-        domainId: 'shared-domain-id',
-        domainName: 'dhkmail.com',
-        subscription: { status: 'active' },
-      });
-      const onDomainAdded = vi.fn();
-      const onClose = vi.fn();
-
-      render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={onDomainAdded} />);
-      await userEvent.click(screen.getByRole('button', { name: /use dhkmail\.com instead/i }));
-      await screen.findByText('Choose a plan');
-      await userEvent.click(screen.getByRole('button', { name: /continue to mailbox setup/i }));
-
-      await waitFor(() => expect(api.startDhkmailCheckout).toHaveBeenCalledWith('plan-pro'));
-      await waitFor(() => expect(onDomainAdded).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'shared-domain-id', domainName: 'dhkmail.com', isSharedDomain: true })
-      ));
-      expect(onClose).toHaveBeenCalled();
-      // No DNS/provider machinery is ever touched for dhkmail.
-      expect(api.createTenantDomain).not.toHaveBeenCalled();
-      expect(api.detectDnsProvider).not.toHaveBeenCalled();
-    });
-
-    it('shows the dhkmail checkout error inline and does not close the wizard', async () => {
-      vi.mocked(api.startDhkmailCheckout).mockRejectedValue(new Error('Payment provider unreachable'));
-      const onClose = vi.fn();
-
-      render(<DomainSetupModal isOpen={true} onClose={onClose} onDomainAdded={vi.fn()} />);
-      await userEvent.click(screen.getByRole('button', { name: /use dhkmail\.com instead/i }));
-      await screen.findByText('Choose a plan');
-      await userEvent.click(screen.getByRole('button', { name: /continue to mailbox setup/i }));
-
-      expect(await screen.findByText(/payment provider unreachable/i)).toBeInTheDocument();
-      expect(onClose).not.toHaveBeenCalled();
-    });
-
-    it('"Back" from the plan step returns to the choice step, not the domain-name step', async () => {
-      render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
-      await userEvent.click(screen.getByRole('button', { name: /use dhkmail\.com instead/i }));
-      await screen.findByText('Choose a plan');
-
-      await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
-
-      expect(await screen.findByText('How do you want to add a domain?')).toBeInTheDocument();
     });
   });
 });

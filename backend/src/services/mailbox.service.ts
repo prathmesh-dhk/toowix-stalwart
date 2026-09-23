@@ -17,11 +17,7 @@ export interface CreateMailboxInput {
 
 export interface MailboxRecord {
   id: string;
-  // Always the real/paying owner — for a shared-domain mailbox this is ownerTenantId, not the raw
-  // DB row's tenantId (which names the domain's platform owner, an implementation detail).
   tenantId: string;
-  // Set only for a mailbox on the shared platform domain; null for an ordinary tenant-owned one.
-  ownerTenantId: string | null;
   domainId: string;
   localPart: string;
   address: string;
@@ -294,7 +290,6 @@ export class MailboxService {
     return {
       id: mailboxDoc._id.toString(),
       tenantId: tenant._id.toString(),
-      ownerTenantId: null,
       domainId: domain._id.toString(),
       localPart: mailboxDoc.localPart,
       address: mailboxDoc.address,
@@ -313,13 +308,7 @@ export class MailboxService {
       return [];
     }
 
-    // A tenant's mailboxes are either filed under their own tenantId with no override (ordinary
-    // domains, or their own login-identity mailbox) or under the shared platform domain's owner
-    // with ownerTenantId pointing back at them (dhkmail). The `ownerTenantId: null` guard on the
-    // first branch matters specifically for the platform tenant itself: every dhkmail mailbox's
-    // raw tenantId is the platform tenant, so without it, listing "for" the platform tenant would
-    // wrongly include every OTHER tenant's dhkmail mailboxes too.
-    const filter: any = { $or: [{ tenantId, ownerTenantId: null }, { ownerTenantId: tenantId }] };
+    const filter: any = { tenantId };
     if (domainId && mongoose.Types.ObjectId.isValid(domainId)) {
       filter.domainId = domainId;
     }
@@ -328,8 +317,7 @@ export class MailboxService {
 
     return docs.map((doc) => ({
       id: doc._id.toString(),
-      tenantId: doc.ownerTenantId ? doc.ownerTenantId.toString() : doc.tenantId.toString(),
-      ownerTenantId: doc.ownerTenantId ? doc.ownerTenantId.toString() : null,
+      tenantId: doc.tenantId.toString(),
       domainId: doc.domainId.toString(),
       localPart: doc.localPart,
       address: doc.address,
@@ -353,7 +341,7 @@ export class MailboxService {
       if (!mongoose.Types.ObjectId.isValid(tenantId)) {
         return null;
       }
-      filter.$or = [{ tenantId, ownerTenantId: null }, { ownerTenantId: tenantId }];
+      filter.tenantId = tenantId;
     }
 
     const doc = await MailboxModel.findOne(filter);
@@ -361,8 +349,7 @@ export class MailboxService {
 
     return {
       id: doc._id.toString(),
-      tenantId: doc.ownerTenantId ? doc.ownerTenantId.toString() : doc.tenantId.toString(),
-      ownerTenantId: doc.ownerTenantId ? doc.ownerTenantId.toString() : null,
+      tenantId: doc.tenantId.toString(),
       domainId: doc.domainId.toString(),
       localPart: doc.localPart,
       address: doc.address,
@@ -477,20 +464,11 @@ export class MailboxService {
     // 2. Delete from MongoDB
     await MailboxModel.deleteOne({ _id: mailbox.id });
 
-    // 3. Atomically decrement the seat count it was reserved against. A shared-domain mailbox never
-    // touched Tenant.mailboxCount (createSharedDomainMailbox reserves on DomainSubscription instead),
-    // so it must be released there, not on the tenant.
-    if (mailbox.ownerTenantId) {
-      await DomainSubscriptionModel.updateOne(
-        { domainId: mailbox.domainId, tenantId: mailbox.ownerTenantId, mailboxCount: { $gt: 0 } },
-        { $inc: { mailboxCount: -1 } }
-      );
-    } else {
-      await TenantModel.updateOne(
-        { _id: mailbox.tenantId, mailboxCount: { $gt: 0 } },
-        { $inc: { mailboxCount: -1 } }
-      );
-    }
+    // 3. Atomically decrement mailbox count
+    await TenantModel.updateOne(
+      { _id: mailbox.tenantId, mailboxCount: { $gt: 0 } },
+      { $inc: { mailboxCount: -1 } }
+    );
 
     await logAudit({
       actorId,
@@ -558,8 +536,7 @@ export class MailboxService {
 
     return {
       id: updatedDoc!._id.toString(),
-      tenantId: updatedDoc!.ownerTenantId ? updatedDoc!.ownerTenantId.toString() : updatedDoc!.tenantId.toString(),
-      ownerTenantId: updatedDoc!.ownerTenantId ? updatedDoc!.ownerTenantId.toString() : null,
+      tenantId: updatedDoc!.tenantId.toString(),
       domainId: updatedDoc!.domainId.toString(),
       localPart: updatedDoc!.localPart,
       address: updatedDoc!.address,
@@ -624,8 +601,7 @@ export class MailboxService {
 
     return {
       id: updatedDoc!._id.toString(),
-      tenantId: updatedDoc!.ownerTenantId ? updatedDoc!.ownerTenantId.toString() : updatedDoc!.tenantId.toString(),
-      ownerTenantId: updatedDoc!.ownerTenantId ? updatedDoc!.ownerTenantId.toString() : null,
+      tenantId: updatedDoc!.tenantId.toString(),
       domainId: updatedDoc!.domainId.toString(),
       localPart: updatedDoc!.localPart,
       address: updatedDoc!.address,
@@ -734,185 +710,6 @@ export class MailboxService {
       id: mailboxDoc._id.toString(),
       address,
       stalwartAccountId: mailboxDoc.stalwartAccountId,
-    };
-  }
-
-  /**
-   * Creates an ordinary mailbox on the shared platform domain (dhkmail.com) for a tenant who has
-   * chosen to use it as a substitute for owning their own domain — a tenant-billed sibling of
-   * createPlatformIdentityMailbox above, which is unauthenticated and free (the one login mailbox
-   * every signup gets). This one is authenticated, capped by the caller's own subscription seat
-   * count, and can be created as many times as that allows (sales@, support@, ...).
-   *
-   * Not routed through createMailbox(): that resolves the domain by `{_id, tenantId}`, which can
-   * never match here — the shared Domain's owning tenant is the platform, not the caller — and it
-   * spends the caller's Tenant.mailboxCount, which must stay reserved for the caller's own domains
-   * (a shared-domain seat cap is tracked per-tenant on DomainSubscription instead; see its model
-   * doc). The Mongo row is written first as the reservation, exactly like
-   * createPlatformIdentityMailbox — Mailbox.address is globally unique across every tenant on this
-   * domain, so two tenants racing for the same local part produce one winner and one E11000.
-   */
-  static async createSharedDomainMailbox(
-    tenantId: string,
-    localPart: string,
-    password: string,
-    actorId?: string,
-    actorRole = 'TENANT_ADMIN'
-  ): Promise<MailboxRecord> {
-    const cleanLocalPart = localPart.trim().toLowerCase();
-    if (!/^[a-zA-Z0-9._-]+$/.test(cleanLocalPart)) {
-      throw {
-        status: 400,
-        code: 'INVALID_LOCAL_PART',
-        message: 'Local part can only contain letters, numbers, dots, hyphens, and underscores',
-      };
-    }
-    if (!password || password.length < 8) {
-      throw { status: 400, code: 'PASSWORD_TOO_SHORT', message: 'Password must be at least 8 characters long' };
-    }
-
-    const domain = await DomainModel.findOne({ domainName: config.platformMailDomain });
-    if (!domain) {
-      throw {
-        status: 503,
-        code: 'PLATFORM_DOMAIN_MISSING',
-        message: `Platform identity domain '${config.platformMailDomain}' is not provisioned yet.`,
-      };
-    }
-
-    // Atomic per-tenant seat reservation — the same conditional-$inc pattern createMailbox uses
-    // for Tenant.mailboxCount, just scoped to this tenant's own row on a domain many tenants share.
-    const sub = await DomainSubscriptionModel.findOneAndUpdate(
-      {
-        domainId: domain._id,
-        tenantId,
-        status: { $nin: ['incomplete', 'canceled', 'suspended'] },
-        $expr: { $lt: ['$mailboxCount', '$mailboxLimit'] },
-      },
-      { $inc: { mailboxCount: 1 } },
-      { returnDocument: 'after' }
-    );
-
-    if (!sub) {
-      const existing = await DomainSubscriptionModel.findOne({ domainId: domain._id, tenantId });
-      if (!existing || ['incomplete', 'canceled', 'suspended'].includes(existing.status)) {
-        throw {
-          status: 402,
-          code: 'PAYMENT_REQUIRED',
-          message: `Set up ${config.platformMailDomain} for this organisation before creating mailboxes on it.`,
-        };
-      }
-      throw {
-        status: 409,
-        code: 'DOMAIN_QUOTA_EXCEEDED',
-        message: `Mailbox limit of ${existing.mailboxLimit} reached for ${config.platformMailDomain}`,
-      };
-    }
-
-    const rollback = () =>
-      DomainSubscriptionModel.updateOne({ _id: sub._id, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
-
-    const address = `${cleanLocalPart}@${config.platformMailDomain}`;
-
-    let mailboxDoc;
-    try {
-      mailboxDoc = await MailboxModel.create({
-        // Filed under the domain's real (platform) owner, exactly like createPlatformIdentityMailbox
-        // — this is what keeps {tenantId, localPart} a genuinely global uniqueness check instead of
-        // one scoped per calling tenant (which would let every tenant claim their own "sales@").
-        tenantId: domain.tenantId,
-        ownerTenantId: tenantId,
-        domainId: domain._id,
-        localPart: cleanLocalPart,
-        address,
-        status: 'active',
-      });
-    } catch (err: any) {
-      await rollback();
-      if (err?.code === 11000) {
-        throw { status: 409, code: 'USERNAME_TAKEN', message: `'${address}' is already taken.` };
-      }
-      throw err;
-    }
-
-    try {
-      let account;
-      try {
-        account = await stalwartClient.createAccount({
-          name: cleanLocalPart,
-          domainId: await resolvePlatformStalwartDomainId(domain),
-          password,
-          description: address,
-        });
-      } catch (err: any) {
-        if (err.message && err.message.includes('invalidForeignKey')) {
-          account = await stalwartClient.createAccount({
-            name: cleanLocalPart,
-            domainId: await resolvePlatformStalwartDomainId(domain, true),
-            password,
-            description: address,
-          });
-        } else {
-          throw err;
-        }
-      }
-      mailboxDoc.stalwartAccountId = account.id;
-      await mailboxDoc.save();
-    } catch (err: any) {
-      await MailboxModel.deleteOne({ _id: mailboxDoc._id });
-      await rollback();
-
-      await logAudit({
-        actorId,
-        actorRole,
-        tenantId,
-        action: 'MAILBOX_PROVISION_FAILED',
-        resource: 'MAILBOX',
-        metadata: { address, error: err.message },
-        success: false,
-      });
-
-      if (err instanceof StalwartAccountExistsError || err.code === 'ACCOUNT_EXISTS') {
-        throw { status: 409, code: 'USERNAME_TAKEN', message: `'${address}' is already taken.` };
-      }
-      if (err.message && err.message.toLowerCase().includes('password is too weak')) {
-        throw {
-          status: 400,
-          code: 'PASSWORD_TOO_WEAK',
-          message: `Stalwart rejected this password as too weak/common: ${err.message}`,
-        };
-      }
-      throw {
-        status: 503,
-        code: 'STALWART_UNAVAILABLE',
-        message: `Failed to provision mailbox on Stalwart mail engine: ${err.message}`,
-      };
-    }
-
-    await logAudit({
-      actorId,
-      actorRole,
-      tenantId,
-      action: 'SHARED_DOMAIN_MAILBOX_CREATED',
-      resource: 'MAILBOX',
-      resourceId: mailboxDoc._id.toString(),
-      metadata: { address, stalwartAccountId: mailboxDoc.stalwartAccountId },
-      success: true,
-    });
-
-    return {
-      id: mailboxDoc._id.toString(),
-      // API-facing tenantId is the CALLER's tenant (what every other mailbox response means by this
-      // field) — the raw DB row's tenantId is the domain's platform owner, an implementation detail.
-      tenantId,
-      ownerTenantId: tenantId,
-      domainId: domain._id.toString(),
-      localPart: mailboxDoc.localPart,
-      address: mailboxDoc.address,
-      stalwartAccountId: mailboxDoc.stalwartAccountId || null,
-      status: mailboxDoc.status,
-      createdAt: mailboxDoc.createdAt.toISOString(),
-      updatedAt: mailboxDoc.updatedAt.toISOString(),
     };
   }
 

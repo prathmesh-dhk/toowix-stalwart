@@ -45,47 +45,6 @@ export const tenantMeRouter = Router();
 // security-ip) to Tenant-Admin-only, matching the settled scope for this role.
 tenantMeRouter.use(requireTenantAdminOrModerator);
 
-/**
- * The shared platform domain (dhkmail.com) as a domain-list entry for this tenant, if they have an
- * active (non-canceled, non-incomplete) subscription against it. Seat cap/count come off the
- * DomainSubscription row, not the (shared, unusable-per-tenant) Domain document — same reasoning as
- * mailbox.service.ts's createSharedDomainMailbox. Returns null when the tenant hasn't subscribed.
- */
-export async function getSharedDomainListEntry(tenantId: string) {
-  const domain = await DomainModel.findOne({ domainName: config.platformMailDomain });
-  if (!domain) return null;
-
-  const sub = await DomainSubscriptionModel.findOne({
-    domainId: domain._id,
-    tenantId,
-    status: { $nin: ['canceled', 'incomplete'] },
-  }).populate('planId');
-  if (!sub) return null;
-
-  const mailboxCount = await MailboxModel.countDocuments({ domainId: domain._id, ownerTenantId: tenantId });
-  const plan = sub.planId as unknown as IPlan | null;
-
-  return {
-    id: domain._id.toString(),
-    domainName: domain.domainName,
-    stalwartDomainId: domain.stalwartDomainId || null,
-    // Reported as the domain's own status/dnsStatus for a uniform domain-list shape; dhkmail is
-    // never suspended at the Domain level (see billing.service.ts's suspendDomainForNonPayment) —
-    // a suspended subscription here means this tenant's own mailboxes, not the shared domain.
-    status: 'active',
-    dnsStatus: 'active',
-    mailboxLimit: sub.mailboxLimit,
-    employeeCount: sub.mailboxLimit,
-    planId: plan?._id?.toString() || null,
-    planName: plan?.name || null,
-    mailboxCount,
-    isPrimary: false,
-    isSharedDomain: true,
-    subscriptionStatus: sub.status,
-    createdAt: sub.createdAt.toISOString(),
-  };
-}
-
 tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.adminUser?.tenantId;
 
@@ -127,9 +86,6 @@ tenantMeRouter.get('/me', async (req: Request, res: Response): Promise<void> => 
         createdAt: d.createdAt.toISOString(),
       };
     });
-
-    const sharedDomainEntry = await getSharedDomainListEntry(tenant._id.toString());
-    if (sharedDomainEntry) mappedDomains.push(sharedDomainEntry as any);
 
     // A Moderator only ever sees their own scoped domains — everything else must be completely
     // invisible, not merely read-only.
@@ -194,9 +150,6 @@ tenantMeRouter.get(['/me/domains', '/domains'], async (req: Request, res: Respon
       isPrimary: !!d.isPrimary,
       createdAt: d.createdAt.toISOString(),
     }));
-
-    const sharedDomainEntry = await getSharedDomainListEntry(tenantId);
-    if (sharedDomainEntry) mappedDomains.push(sharedDomainEntry as any);
 
     const visibleDomains =
       req.adminUser!.role === 'TENANT_MODERATOR'

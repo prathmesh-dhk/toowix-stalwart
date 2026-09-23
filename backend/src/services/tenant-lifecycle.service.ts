@@ -6,7 +6,6 @@ import { AdminSessionModel } from '../db/models/AdminSession';
 import { ActivationTokenModel } from '../db/models/ActivationToken';
 import { TenantDnsCredentialModel } from '../db/models/TenantDnsCredential';
 import { TenantModel } from '../db/models/Tenant';
-import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { stalwartClient } from '../stalwart/client';
 import { executeDeletionCascade } from './domain-deletion.service';
 
@@ -116,20 +115,15 @@ export async function restoreTenantInfrastructure(tenantId: string | Types.Objec
 
 /**
  * Groups deleted mailboxes that belonged to a DIFFERENT tenant (the platform one) by owner, so
- * that tenant's Tenant.mailboxCount can be refunded. Shared-domain (dhkmail) mailboxes are
- * excluded even though their raw tenantId is also the platform tenant: creating one never
- * incremented Tenant.mailboxCount in the first place (it reserves a seat on the caller's own
- * DomainSubscription row instead — see MailboxService.createSharedDomainMailbox), so refunding it
- * here would inflate the platform tenant's counter. Only true login-identity mailboxes
- * (ownerTenantId null, matched by admin email) ever counted against it.
+ * that tenant's Tenant.mailboxCount can be refunded. Only true login-identity mailboxes
+ * (matched by admin email) ever counted against it.
  */
 function countByForeignTenant(
-  mailboxes: { tenantId: Types.ObjectId; ownerTenantId?: Types.ObjectId | null }[],
+  mailboxes: { tenantId: Types.ObjectId }[],
   ownTenantId: string | Types.ObjectId
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const m of mailboxes) {
-    if (m.ownerTenantId) continue;
     const owner = m.tenantId.toString();
     if (owner === ownTenantId.toString()) continue;
     counts.set(owner, (counts.get(owner) || 0) + 1);
@@ -153,12 +147,11 @@ export async function purgeTenant(tenantId: string | Types.ObjectId): Promise<Pu
   // tenant, not this one, so a plain {tenantId} sweep would leave them orphaned on the mail server.
   // Collect the addresses before the admin rows are deleted below.
   const adminEmails = (await AdminUserModel.find({ tenantId }).select('email')).map((u) => u.email);
-  // Own-domain mailboxes; this tenant's login-identity mailbox (matched by address, filed under the
-  // platform tenant); and this tenant's OWN dhkmail mailboxes (ownerTenantId, also filed under the
-  // platform tenant) — their local parts are freed back to the pool for another tenant to claim,
-  // unlike the login identity's address, which stays permanently blocked (see registration-block
-  // service) and is deliberately NOT deleted from that block here.
-  const mailboxFilter = { $or: [{ tenantId }, { address: { $in: adminEmails } }, { ownerTenantId: tenantId }] };
+  // Own-domain mailboxes and this tenant's login-identity mailbox (matched by address, filed under
+  // the platform tenant) — their local parts are freed back to the pool for another tenant to
+  // claim, unlike the login identity's address, which stays permanently blocked (see
+  // registration-block service) and is deliberately NOT deleted from that block here.
+  const mailboxFilter = { $or: [{ tenantId }, { address: { $in: adminEmails } }] };
 
   const mailboxes = await MailboxModel.find(mailboxFilter);
   for (const m of mailboxes) {
@@ -183,12 +176,6 @@ export async function purgeTenant(tenantId: string | Types.ObjectId): Promise<Pu
     await executeDeletionCascade(domain._id, tenantId);
   }
   await DomainModel.deleteMany({ tenantId });
-
-  // The shared platform domain (dhkmail) is never in `domains` above — it's never owned by this
-  // tenant — so this tenant's own subscription row against it (if any) isn't touched by that loop.
-  // Delete it directly; the shared Domain document itself is untouched, since every other tenant's
-  // dhkmail usage depends on it.
-  await DomainSubscriptionModel.deleteMany({ tenantId, domainId: { $nin: domains.map((d) => d._id) } });
 
   const adminIds = (await AdminUserModel.find({ tenantId }).select('_id')).map((u) => u._id);
   await AdminSessionModel.deleteMany({ userId: { $in: adminIds } });

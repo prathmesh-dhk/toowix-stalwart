@@ -135,63 +135,6 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
       expect(await AdminUserModel.countDocuments({ role: 'TENANT_MODERATOR' })).toBe(0);
     });
 
-    it("refuses another tenant's dhkmail mailbox even though the address format is valid", async () => {
-      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active', mailboxLimit: 1000000, mailboxCount: 0 });
-      const platformDomain = await DomainModel.create({
-        tenantId: platformTenant._id,
-        domainName: 'dhkmail.com',
-        status: 'active',
-        dnsStatus: 'active',
-        isPrimary: true,
-        mailboxLimit: 1000000,
-      });
-      const otherTenantId = (await TenantModel.create({ name: 'Rival Inc', status: 'active' }))._id.toString();
-      await MailboxModel.create({
-        tenantId: platformTenant._id,
-        ownerTenantId: otherTenantId,
-        domainId: platformDomain._id,
-        localPart: 'sales',
-        address: 'sales@dhkmail.com',
-        status: 'active',
-      });
-
-      const res = await request(app)
-        .post('/api/tenants/me/moderators')
-        .set('Authorization', `Bearer ${tenantAdminToken}`)
-        .send({ email: 'sales@dhkmail.com', password: 'Password123!', scopedDomainIds: [] });
-
-      expect(res.status).toBe(404);
-      expect(res.body.error).toBe('MAILBOX_NOT_FOUND');
-    });
-
-    it("accepts this tenant's own dhkmail mailbox as a Moderator login", async () => {
-      const platformTenant = await TenantModel.create({ name: 'Toowix Platform Identities', status: 'active', mailboxLimit: 1000000, mailboxCount: 0 });
-      const platformDomain = await DomainModel.create({
-        tenantId: platformTenant._id,
-        domainName: 'dhkmail.com',
-        status: 'active',
-        dnsStatus: 'active',
-        isPrimary: true,
-        mailboxLimit: 1000000,
-      });
-      await MailboxModel.create({
-        tenantId: platformTenant._id,
-        ownerTenantId: tenantId,
-        domainId: platformDomain._id,
-        localPart: 'support',
-        address: 'support@dhkmail.com',
-        status: 'active',
-      });
-
-      const res = await request(app)
-        .post('/api/tenants/me/moderators')
-        .set('Authorization', `Bearer ${tenantAdminToken}`)
-        .send({ email: 'support@dhkmail.com', password: 'Password123!', scopedDomainIds: [] });
-
-      expect(res.status).toBe(201);
-      expect(res.body.moderator.email).toBe('support@dhkmail.com');
-    });
-
     it('lists Moderators for this tenant', async () => {
       await createModerator();
       const res = await request(app).get('/api/tenants/me/moderators').set('Authorization', `Bearer ${tenantAdminToken}`);

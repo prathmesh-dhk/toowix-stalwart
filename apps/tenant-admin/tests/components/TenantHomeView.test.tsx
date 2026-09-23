@@ -349,7 +349,7 @@ describe('TenantHomeView Component', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
-      expect(screen.getByText(/how do you want to add a domain\?/i)).toBeInTheDocument();
+      expect(screen.getByText(/Let's start with a name for your domain/i)).toBeInTheDocument();
     });
 
     // Close the modal

@@ -10,11 +10,9 @@ import {
   ShieldCheck,
   FileText,
   CreditCard,
-  Globe,
-  Mail,
-  Sparkles,
   HelpCircle,
   Star,
+  Check,
 } from 'lucide-react';
 import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm, type SuccessInfo } from './DnsProviderCredentialForm';
@@ -27,7 +25,7 @@ interface DomainSetupModalProps {
 }
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
-export type WizardStep = 'choice' | 'domain' | 'plan' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status';
+export type WizardStep = 'domain' | 'plan' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status';
 export type SetupMethod = 'provider' | 'manual' | null;
 
 export const PROVIDER_LABEL: Record<DnsProvider, string> = {
@@ -38,17 +36,12 @@ export const PROVIDER_LABEL: Record<DnsProvider, string> = {
 
 const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
-// Mirrors the backend's default config.platformMailDomain — used only for display copy before the
-// modal has fetched anything from the server that would name it.
-const PLATFORM_MAIL_DOMAIN = 'dhkmail.com';
-
 /**
  * Per-step vertical positioning:
  * Shorter content steps (e.g. domain name input) are positioned lower down to sit in the vertical
  * center of the screen, while taller content steps (e.g. manual DNS zone file) start higher up.
  */
 const STEP_TOP_PADDING: Record<WizardStep, string> = {
-  choice: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[19vh]',
   domain: 'pt-14 sm:pt-20 md:pt-28 lg:pt-36 xl:pt-[26vh]',
   plan: 'pt-20 sm:pt-24 xl:pt-[17vh] pb-6 sm:pb-8',
   method: 'pt-10 sm:pt-14 md:pt-16 lg:pt-20 xl:pt-[16vh]',
@@ -73,14 +66,10 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Wizard state: choice -> [domain -> plan -> method -> provider/status] OR [plan -> done]
-  const [step, setStep] = useState<WizardStep>('choice');
+  // Wizard state: domain -> plan -> method -> provider/status
+  const [step, setStep] = useState<WizardStep>('domain');
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [createdDomain, setCreatedDomain] = useState<DomainItem | null>(null);
-  // dhkmail.com is a full substitute for owning a domain: no domain name, no DNS/provider steps —
-  // picking it at the choice step goes straight from plan selection to a working subscription.
-  const [isSharedDomain, setIsSharedDomain] = useState(false);
-  const [dhkmailSubmitting, setDhkmailSubmitting] = useState(false);
 
   // Method state
   const [method, setMethod] = useState<SetupMethod>(null);
@@ -177,11 +166,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setLoading(false);
     setCheckingAvailability(false);
     setError(null);
-    setStep('choice');
+    setStep('domain');
     setDirection('forward');
     setCreatedDomain(null);
-    setIsSharedDomain(false);
-    setDhkmailSubmitting(false);
     setMethod(null);
     setProvider('godaddy');
     setMethodAutoSkipped(false);
@@ -208,10 +195,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   // Back button handler
   const goBack = () => {
     setError(null);
-    if (step === 'domain') {
-      navigateBack('choice');
-    } else if (step === 'plan') {
-      navigateBack(isSharedDomain ? 'choice' : 'domain');
+    if (step === 'plan') {
+      navigateBack('domain');
     } else if (step === 'method') {
       navigateBack('plan');
     } else if (step === 'godaddy' || step === 'hostinger' || step === 'cloudflare') {
@@ -277,39 +262,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     navigateTo('plan');
   };
 
-  // STEP 2 (dhkmail): PLAN SUBMIT -> already-active subscription, no DNS/status step at all.
-  const handleDhkmailPlanSubmit = async () => {
-    setDhkmailSubmitting(true);
-    try {
-      const res = await api.startDhkmailCheckout(selectedPlanId);
-      if ('url' in res && res.url) {
-        // First billing item for this tenant — hand off to Stripe Checkout, same as a first owned
-        // domain would. The tenant lands back in the app once payment is set up.
-        window.location.href = res.url;
-        return;
-      }
-      // Already had a Stripe subscription (another domain, or a re-attach) — active immediately.
-      const status = await api.getDhkmailBillingStatus();
-      const domainItem: DomainItem = {
-        id: status.domainId,
-        domainName: status.domainName,
-        status: 'active',
-        dnsStatus: 'active',
-        mailboxLimit: 0,
-        employeeCount: 0,
-        mailboxCount: 0,
-        isPrimary: false,
-        isSharedDomain: true,
-      };
-      commitDomain(domainItem);
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || `Failed to set up ${PLATFORM_MAIL_DOMAIN}. Please try again.`);
-    } finally {
-      setDhkmailSubmitting(false);
-    }
-  };
-
   // STEP 2 -> STEP 3: PLAN SUBMIT
   const handlePlanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -319,12 +271,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     }
 
     setError(null);
-
-    if (isSharedDomain) {
-      await handleDhkmailPlanSubmit();
-      return;
-    }
-
     setLoading(true);
 
     const session = sessionRef.current;
@@ -484,10 +430,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
   let headline: React.ReactNode = null;
   let subhead: React.ReactNode = null;
-  if (step === 'choice') {
-    headline = 'How do you want to add a domain?';
-    subhead = 'Connect a domain you already own, or use a Toowix-owned domain instead.';
-  } else if (step === 'domain') {
+  if (step === 'domain') {
     headline = (
       <span className="flex items-baseline flex-wrap gap-2">
         <span>Let's start with a name for your domain</span>
@@ -503,9 +446,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     subhead = "You'll need to own this domain and be able to manage its DNS records.";
   } else if (step === 'plan') {
     headline = 'Choose a plan';
-    subhead = isSharedDomain
-      ? `Sets how many ${PLATFORM_MAIL_DOMAIN} mailboxes your organisation can create — you can change it anytime.`
-      : 'Sets how many mailboxes this domain can create — you can change it anytime.';
+    subhead = 'Sets how many mailboxes this domain can create — you can change it anytime.';
   } else if (step === 'method') {
     headline = 'How do you want to set up DNS?';
     subhead = 'Pick your DNS provider for automatic setup, or configure records manually.';
@@ -554,7 +495,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             <span className="text-slate-900 font-semibold text-lg sm:text-xl tracking-tight select-none">
               Add a domain
             </span>
-            {step !== 'choice' && (
+            {step !== 'domain' && (
               <button
                 type="button"
                 onClick={goBack}
@@ -579,81 +520,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                 <span>{error}</span>
-              </div>
-            )}
-
-            {/* STEP 0: CHOICE — own domain vs. dhkmail.com */}
-            {step === 'choice' && (
-              <div>
-                <div className="mb-8">
-                  <h1 className="text-4xl sm:text-[44px] font-extrabold text-slate-900 tracking-tight leading-[1.12]">
-                    <span className="sr-only">How do you want to add a domain?</span>
-                    <span aria-hidden="true">
-                      How do you want to
-                      <br />
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-500">
-                        add a domain?
-                      </span>
-                    </span>
-                  </h1>
-                  <p className="text-slate-500 text-[15px] sm:text-base mt-4 font-normal leading-relaxed max-w-lg">
-                    Connect a domain you already own, or use a Toowix-owned domain instead.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3.5 max-w-lg">
-                  <button
-                    type="button"
-                    aria-label="Connect a domain you own"
-                    onClick={() => {
-                      setIsSharedDomain(false);
-                      setError(null);
-                      navigateTo('domain');
-                    }}
-                    className="w-full group p-5 rounded-2xl border-2 border-indigo-200/90 bg-gradient-to-r from-indigo-50/50 via-purple-50/20 to-white hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer flex items-center justify-between text-left"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-100/80 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-200/80 transition-colors">
-                        <Globe className="w-5 h-5 stroke-[2]" />
-                      </div>
-                      <div>
-                        <span className="text-[15px] font-bold text-slate-900 block">
-                          Connect a domain you own
-                        </span>
-                        <span className="text-xs text-slate-500 block mt-0.5">
-                          Use your own domain name for mailboxes — DNS setup required
-                        </span>
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-indigo-600 group-hover:translate-x-1 transition-transform" />
-                  </button>
-
-                  <button
-                    type="button"
-                    aria-label={`Use ${PLATFORM_MAIL_DOMAIN} instead`}
-                    onClick={() => {
-                      setIsSharedDomain(true);
-                      setError(null);
-                      navigateTo('plan');
-                    }}
-                    className="w-full group p-5 rounded-2xl border border-slate-200/90 bg-white hover:border-indigo-200 hover:bg-slate-50/50 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between text-left"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 transition-colors">
-                        <Sparkles className="w-5 h-5 stroke-[2]" />
-                      </div>
-                      <div>
-                        <span className="text-[15px] font-bold text-slate-900 block">
-                          Use {PLATFORM_MAIL_DOMAIN} instead
-                        </span>
-                        <span className="text-xs text-slate-500 block mt-0.5">
-                          No domain to buy or DNS to configure — mailboxes work immediately
-                        </span>
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                </div>
               </div>
             )}
 
@@ -837,18 +703,18 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
                     <button
                       type="submit"
-                      disabled={loading || dhkmailSubmitting || !selectedPlanId}
+                      disabled={loading || !selectedPlanId}
                       className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs gap-2"
                       id="btn-submit-domain-wizard"
                     >
-                      {loading || dhkmailSubmitting ? (
+                      {loading ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>{isSharedDomain ? 'Setting up...' : 'Detecting DNS provider...'}</span>
+                          <span>Detecting DNS provider...</span>
                         </span>
                       ) : (
                         <>
-                          <span>{isSharedDomain ? 'Continue to Mailbox Setup' : 'Continue to DNS Setup'}</span>
+                          <span>Continue to DNS Setup</span>
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}

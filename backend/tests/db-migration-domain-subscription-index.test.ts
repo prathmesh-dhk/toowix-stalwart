@@ -17,15 +17,18 @@ describe('DomainSubscription stale-index migration', () => {
   });
 
   it(
-    "drops a pre-existing single-field unique domainId index so multiple tenants can subscribe to the same (shared) domain — " +
-      'reproduces the E11000 a live deployment hits after the compound-index schema change until this migration runs',
+    'drops a pre-existing compound {domainId, tenantId} unique index so the single-field unique ' +
+      'domainId index (one subscription per domain) is enforced again — reproduces the E11000 a live ' +
+      'deployment hits after the compound index was removed, until this migration runs',
     async () => {
-      // Simulate a database that predates the compound-unique-index schema change: the collection
-      // already has the OLD single-field unique index on domainId, created before this feature.
+      // Simulate a database that predates this schema change: the collection already has the OLD
+      // compound unique index on {domainId, tenantId}, created before this feature was removed.
       const rawClient = new mongoose.mongo.MongoClient(mongoServer.getUri());
       await rawClient.connect();
       const rawDb = rawClient.db();
-      await rawDb.collection('domain_subscriptions').createIndex({ domainId: 1 }, { unique: true, name: 'domainId_1' });
+      await rawDb
+        .collection('domain_subscriptions')
+        .createIndex({ domainId: 1, tenantId: 1 }, { unique: true, name: 'domainId_1_tenantId_1' });
       await rawClient.close();
 
       // Now connect the normal way — this is what every server boot does, and must self-heal.
@@ -44,8 +47,8 @@ describe('DomainSubscription stale-index migration', () => {
         status: 'active',
       });
 
-      // Before the migration, this second insert (same domainId, different tenant — exactly the
-      // dhkmail multi-tenant scenario) would throw E11000 against the stale domainId_1 index.
+      // Before the migration, a second row for the same domainId under a DIFFERENT tenant would
+      // have been allowed by the stale compound index. It must be rejected now.
       await expect(
         DomainSubscriptionModel.create({
           domainId,
@@ -53,19 +56,6 @@ describe('DomainSubscription stale-index migration', () => {
           planId: new mongoose.Types.ObjectId(),
           stripeSubscriptionId: 'sub_b',
           stripeSubscriptionItemId: 'si_b',
-          status: 'active',
-        })
-      ).resolves.toMatchObject({ domainId, tenantId: tenantBId });
-
-      // The compound uniqueness is still enforced: the SAME tenant can't hold two rows for the
-      // same domain.
-      await expect(
-        DomainSubscriptionModel.create({
-          domainId,
-          tenantId: tenantAId,
-          planId: new mongoose.Types.ObjectId(),
-          stripeSubscriptionId: 'sub_a2',
-          stripeSubscriptionItemId: 'si_a2',
           status: 'active',
         })
       ).rejects.toMatchObject({ code: 11000 });

@@ -14,24 +14,27 @@ import {
 } from './models';
 
 /**
- * Drops any index on `domain_subscriptions` that still enforces the old single-field
- * `{domainId: 1}` uniqueness, now that the shared platform domain (dhkmail.com) needs many
- * tenants to hold a row against the same domainId — see DomainSubscriptionSchema's compound
- * `{domainId, tenantId}` unique index. Mongoose's createIndexes() only ADDS indexes missing from
- * the current schema; it never drops ones that predate a schema change, so every environment that
- * had this collection before that change (including already-deployed servers) keeps the stale
- * unique constraint forever unless something explicitly removes it. Idempotent and self-healing:
- * a no-op once the old index is gone, safe to run on every boot.
+ * Drops any index on `domain_subscriptions` involving `domainId` that doesn't match the current
+ * schema's single-field unique index on `domainId` — covers both the old compound
+ * `{domainId: 1, tenantId: 1}` unique index (a leftover from a since-removed feature that let many
+ * tenants hold a row against the same domainId) and a plain non-unique `{domainId: 1}` index (from
+ * an even earlier schema revision, before domainId was unique at all). Mongoose's createIndexes()
+ * only ADDS indexes missing from the current schema; it never drops or upgrades ones that predate
+ * a schema change — including a same-named index with the wrong `unique` flag, which it refuses to
+ * recreate over (IndexKeySpecsConflict). Idempotent and self-healing: a no-op once the index
+ * already matches, safe to run on every boot.
  */
 async function dropStaleDomainSubscriptionIndex(): Promise<void> {
   try {
     const indexes = await DomainSubscriptionModel.collection.indexes();
-    const stale = indexes.find(
-      (idx) => idx.unique && Object.keys(idx.key).length === 1 && idx.key.domainId === 1
-    );
+    const stale = indexes.find((idx) => {
+      const keys = Object.keys(idx.key);
+      if (keys.length === 1 && idx.key.domainId === 1) return !idx.unique;
+      return keys.length === 2 && idx.key.domainId === 1 && idx.key.tenantId === 1;
+    });
     if (stale?.name) {
       await DomainSubscriptionModel.collection.dropIndex(stale.name);
-      console.log(`[DB Migration] Dropped stale single-field unique index '${stale.name}' on domain_subscriptions`);
+      console.log(`[DB Migration] Dropped stale index '${stale.name}' on domain_subscriptions`);
     }
   } catch (err: any) {
     // Collection may not exist yet on a fresh database — nothing to migrate.

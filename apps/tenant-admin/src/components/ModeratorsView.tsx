@@ -76,8 +76,7 @@ export const ModeratorsView: React.FC<ModeratorsViewProps> = ({ domains }) => {
 
   // A Moderator login must be an existing mailbox (see backend's MAILBOX_NOT_FOUND check) — this
   // fetches the tenant's full mailbox list once when the Add modal opens, across every domain
-  // they own (their own dhkmail mailboxes included; MailboxService.listMailboxes already excludes
-  // every other tenant's).
+  // they own.
   useEffect(() => {
     if (!showAddModal) return;
     setMailboxOptionsLoading(true);

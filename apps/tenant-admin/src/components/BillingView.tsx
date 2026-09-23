@@ -73,7 +73,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
         .catch(() => ({ invoices: [] }));
 
       const [billingRes, plansRes, invoicesRes, configRes] = await Promise.all([
-        activeDomain.isSharedDomain ? api.getDhkmailBillingStatus() : api.getDomainBillingStatus(activeDomain.id),
+        api.getDomainBillingStatus(activeDomain.id),
         api.listPlans(),
         invoicesPromise,
         configPromise,
@@ -182,11 +182,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
     setActionLoading('cancel');
     setActionError(null);
     try {
-      if (activeDomain.isSharedDomain) {
-        await api.cancelDhkmailSubscription();
-      } else {
-        await api.cancelDomainSubscription(activeDomain.id);
-      }
+      await api.cancelDomainSubscription(activeDomain.id);
       await loadBilling();
     } catch (err: any) {
       setActionError(err.message || 'Failed to cancel subscription.');
@@ -248,7 +244,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
                 ? 'Billing is currently bypassed for this platform. All domains and mailboxes have full access with no payment required.'
                 : 'This domain has no active subscription. Add a payment method to get 1 month free, then monthly billing begins automatically.'}
             </p>
-            {billingEnabled && !activeDomain.isSharedDomain && (
+            {billingEnabled && (
               <button
                 type="button"
                 onClick={handleStartCheckout}
@@ -328,9 +324,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
 
             {billingEnabled && (
               <div className="flex items-center gap-2 pt-1">
-                {/* dhkmail's payment method is set once at checkout, tied to the tenant's combined
-                    Stripe subscription — there's no separate per-domain setup-intent route for it. */}
-                {!showPaymentForm && !activeDomain.isSharedDomain && (
+                {!showPaymentForm && (
                   <button
                     type="button"
                     onClick={handleOpenPaymentForm}
@@ -369,9 +363,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ activeDomain }) => {
         )}
       </div>
 
-      {/* Plan picker — not offered for dhkmail yet: only checkout/status/cancel exist for it, no
-          per-tenant upgrade/downgrade route (see billing.service.ts's startSharedDomainCheckout). */}
-      {!activeDomain.isSharedDomain && ((sub && sub.status !== 'canceled') || !billingEnabled) && otherPlans.length > 0 && (
+      {((sub && sub.status !== 'canceled') || !billingEnabled) && otherPlans.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
           <span className="text-xs font-semibold text-slate-500 block mb-3">Change Plan</span>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">

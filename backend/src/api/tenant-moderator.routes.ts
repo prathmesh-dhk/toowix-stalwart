@@ -8,7 +8,6 @@ import { AuditLogModel } from '../db/models/AuditLog';
 import { hashPassword } from '../auth/service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
 import { MailboxService } from '../services/mailbox.service';
-import { getSharedDomainListEntry } from './tenant.routes';
 
 /**
  * Tenant Admin's own CRUD for TENANT_MODERATOR accounts within their tenant — the direct-create
@@ -32,17 +31,10 @@ function mapModerator(m: InstanceType<typeof AdminUserModel>) {
   };
 }
 
-/** Every domain ID a scope assignment is allowed to name: this tenant's own domains, plus the
- * shared platform domain (dhkmail.com) if they've subscribed to it — the same set they'd see in
- * their own domain list. */
+/** Every domain ID a scope assignment is allowed to name: this tenant's own domains. */
 async function validDomainIdsForTenant(tenantId: string): Promise<Set<string>> {
-  const [ownDomains, sharedEntry] = await Promise.all([
-    DomainModel.find({ tenantId }).select('_id'),
-    getSharedDomainListEntry(tenantId),
-  ]);
-  const ids = new Set(ownDomains.map((d) => d._id.toString()));
-  if (sharedEntry) ids.add(sharedEntry.id);
-  return ids;
+  const ownDomains = await DomainModel.find({ tenantId }).select('_id');
+  return new Set(ownDomains.map((d) => d._id.toString()));
 }
 
 const scopedDomainIdsSchema = z.array(z.string()).default([]);
@@ -85,8 +77,7 @@ tenantModeratorRouter.post('/', async (req: Request, res: Response): Promise<voi
 
   // A Moderator's login must be an existing mailbox this tenant owns — the frontend offers a
   // picker over MailboxService.listMailboxes rather than a free-text email field, but the backend
-  // re-checks rather than trusting that, since listMailboxes is exactly what already excludes
-  // every other tenant's dhkmail mailboxes (via ownerTenantId) from this tenant's own list.
+  // re-checks rather than trusting that.
   const ownMailboxes = await MailboxService.listMailboxes(tenantId);
   if (!ownMailboxes.some((m) => m.address.toLowerCase() === normalizedEmail)) {
     res.status(404).json({

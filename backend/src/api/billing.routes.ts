@@ -10,9 +10,6 @@ import {
   requestUpgrade,
   requestDowngrade,
   cancelSubscription,
-  startSharedDomainCheckout,
-  getSharedDomainBillingStatus,
-  cancelSharedDomainSubscription,
   BillingError,
 } from '../services/billing.service';
 import { config, isBillingEnabled } from '../config';
@@ -155,58 +152,6 @@ tenantBillingRouter.post('/domains/:domainId/cancel', async (req: Request, res: 
   const tenantId = req.adminUser!.tenantId!;
   try {
     await cancelSubscription(req.params.domainId, tenantId, actorFromReq(req));
-    res.json({ success: true });
-  } catch (err: any) {
-    handleBillingError(res, err);
-  }
-});
-
-// dhkmail.com (the shared platform domain) is one implicit per-tenant subscription rather than a
-// :domainId route — a tenant has at most one.
-tenantBillingRouter.post('/dhkmail/checkout', async (req: Request, res: Response): Promise<void> => {
-  const parseResult = planIdSchema.safeParse(req.body);
-  if (!parseResult.success) {
-    res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
-    return;
-  }
-  const tenantId = req.adminUser!.tenantId!;
-  try {
-    const result = await startSharedDomainCheckout(tenantId, parseResult.data.planId, actorFromReq(req));
-    res.json(result);
-  } catch (err: any) {
-    handleBillingError(res, err);
-  }
-});
-
-tenantBillingRouter.get('/dhkmail', async (req: Request, res: Response): Promise<void> => {
-  const tenantId = req.adminUser!.tenantId!;
-  try {
-    const { domain, subscription } = await getSharedDomainBillingStatus(tenantId);
-    res.json({
-      domainId: domain._id.toString(),
-      domainName: domain.domainName,
-      subscription: subscription
-        ? {
-            status: subscription.status,
-            planId: subscription.planId,
-            currentPeriodEnd: subscription.currentPeriodEnd,
-            trialEnd: subscription.trialEnd,
-            gracePeriodEndsAt: subscription.gracePeriodEndsAt,
-            cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-            mailboxLimit: subscription.mailboxLimit,
-            mailboxCount: subscription.mailboxCount,
-          }
-        : null,
-    });
-  } catch (err: any) {
-    handleBillingError(res, err);
-  }
-});
-
-tenantBillingRouter.post('/dhkmail/cancel', async (req: Request, res: Response): Promise<void> => {
-  const tenantId = req.adminUser!.tenantId!;
-  try {
-    await cancelSharedDomainSubscription(tenantId, actorFromReq(req));
     res.json({ success: true });
   } catch (err: any) {
     handleBillingError(res, err);
