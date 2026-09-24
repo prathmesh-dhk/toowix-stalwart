@@ -279,7 +279,7 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
       expect(selectRes.body.error).toBe('PLAN_ALREADY_SELECTED');
     });
 
-    it('with billing bypassed, select-plan also activates a free subscription so mailboxes can be created immediately', async () => {
+    it('select-plan does NOT auto-activate — mailboxes are created on billing hold until payment is confirmed', async () => {
       const prevSkip = process.env.SKIP_BILLING;
       process.env.SKIP_BILLING = 'true';
       try {
@@ -296,14 +296,38 @@ describe('Multi-Domain & Domain Scoping API Tests', () => {
           .send({ planId: plan10Id });
         expect(selectRes.status).toBe(200);
 
+        // No subscription yet — plan selection alone must not activate anything.
+        const subBeforePayment = await DomainSubscriptionModel.findOne({ domainId });
+        expect(subBeforePayment).toBeNull();
+
+        // Creating a user before payment works, but the mailbox is held (suspended) until activation.
+        const heldRes = await request(app)
+          .post('/api/tenants/me/mailboxes')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ localPart: 'dave', password: 'Password123!', domainId });
+        expect(heldRes.status).toBe(201);
+        expect(heldRes.body.status).toBe('suspended');
+        expect(heldRes.body.billingHold).toBe(true);
+
+        // Simulate the "Cart" flow: the tenant adds a payment method, which attaches and
+        // activates the domain (mirrors PaymentMethodSelector's saved/sandbox-card path).
+        const attachRes = await request(app)
+          .post(`/api/tenants/me/billing/domains/${domainId}/attach-payment`)
+          .set('Authorization', `Bearer ${adminToken}`);
+        expect(attachRes.status).toBe(200);
+
         const sub = await DomainSubscriptionModel.findOne({ domainId });
-        expect(sub?.status).toBe('active');
+        expect(sub?.status).toBe('trialing');
+        const released = await MailboxModel.findOne({ address: 'dave@freeplan.com' });
+        expect(released?.status).toBe('active');
+        expect(released?.billingHold).toBe(false);
 
         const mailboxRes = await request(app)
           .post('/api/tenants/me/mailboxes')
           .set('Authorization', `Bearer ${adminToken}`)
           .send({ localPart: 'carol', password: 'Password123!', domainId });
         expect(mailboxRes.status).toBe(201);
+        expect(mailboxRes.body.status).toBe('active');
       } finally {
         if (prevSkip === undefined) delete process.env.SKIP_BILLING;
         else process.env.SKIP_BILLING = prevSkip;

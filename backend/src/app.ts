@@ -17,6 +17,7 @@ import { tenantMailboxRouter, mailboxRouter } from './api/mailbox.routes';
 import { auditRouter } from './api/audit.routes';
 import { plansRouter } from './api/plans.routes';
 import { tenantBillingRouter } from './api/billing.routes';
+import { cartRouter } from './api/cart.routes';
 import { tenantModeratorRouter } from './api/tenant-moderator.routes';
 import { couponRouter } from './api/coupon.routes';
 import { stripeWebhookRouter } from './api/stripe-webhook.routes';
@@ -70,6 +71,7 @@ app.use('/api/platform/deleted-organisations', deletedOrganisationsRouter);
 // — including these siblings — before Express ever reaches their own, differently-scoped gates.
 app.use('/api/tenants/me/mailboxes', tenantMailboxRouter);
 app.use('/api/tenants/me/billing', tenantBillingRouter);
+app.use('/api/tenants/me/cart', cartRouter);
 app.use('/api/tenants/me/moderators', tenantModeratorRouter);
 app.use('/api/tenants', tenantMeRouter);
 app.use('/api/mailboxes', mailboxRouter);

@@ -255,7 +255,7 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
       expect(res.body.error).toBe('VALIDATION_ERROR');
     });
 
-    it('should reject creation if domain is not active (pending Super Admin activation)', async () => {
+    it('still creates the mailbox while the domain is still activating — DNS status no longer blocks users', async () => {
       await DomainModel.updateOne({ _id: domainAId }, { dnsStatus: 'not_started' });
 
       const res = await request(app)
@@ -266,8 +266,7 @@ describe('Phase 5: Tenant Admin Portal, Mailbox CRUD & Atomic Quota Engine', () 
           password: 'AlfredSecretPass2026!',
         });
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe('DOMAIN_NOT_ACTIVATED');
+      expect(res.status).toBe(201);
     });
 
     it('should successfully create mailbox, increment mailboxCount, and emit audit log', async () => {

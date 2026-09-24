@@ -7,9 +7,7 @@ import {
   X,
   ArrowLeft,
   ArrowRight,
-  ShieldCheck,
   FileText,
-  CreditCard,
   HelpCircle,
   Star,
 } from 'lucide-react';
@@ -24,7 +22,7 @@ interface DomainSetupModalProps {
 }
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
-export type WizardStep = 'domain' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status' | 'plan' | 'payment';
+export type WizardStep = 'domain' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status' | 'plan';
 export type SetupMethod = 'provider' | 'manual' | null;
 
 export const PROVIDER_LABEL: Record<DnsProvider, string> = {
@@ -43,7 +41,6 @@ const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0
 const STEP_TOP_PADDING: Record<WizardStep, string> = {
   domain: 'pt-14 sm:pt-20 md:pt-28 lg:pt-36 xl:pt-[26vh]',
   plan: 'pt-20 sm:pt-24 xl:pt-[17vh] pb-6 sm:pb-8',
-  payment: 'pt-14 sm:pt-20 xl:pt-[15vh] pb-6 sm:pb-8',
   method: 'pt-10 sm:pt-14 md:pt-16 lg:pt-20 xl:pt-[16vh]',
   godaddy: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[20vh]',
   hostinger: 'pt-14 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
@@ -52,7 +49,6 @@ const STEP_TOP_PADDING: Record<WizardStep, string> = {
 };
 
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
-import { PaymentMethodSelector } from './PaymentMethodSelector';
 
 export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   isOpen,
@@ -89,9 +85,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   const [liveCheck, setLiveCheck] = useState<DnsLiveCheckResult | null>(null);
   const [checkingRecords, setCheckingRecords] = useState(false);
 
-  const [startingCheckout, setStartingCheckout] = useState(false);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [billingEnabled, setBillingEnabled] = useState(true);
+
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const detectedProviderPromiseRef = useRef<Promise<any> | null>(null);
@@ -113,14 +107,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       .catch(() => {})
       .finally(() => setPlansLoading(false));
 
-    Promise.resolve()
-      .then(() => (api as any).getBillingConfig?.())
-      .then((cfg: any) => {
-        if (cfg && cfg.billingEnabled !== undefined) {
-          setBillingEnabled(cfg.billingEnabled);
-        }
-      })
-      .catch(() => {});
+
   }, [isOpen]);
 
   // A domain is created (in MongoDB AND in Stalwart) the moment a setup method is chosen, but it only
@@ -185,8 +172,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setConnected(false);
     setLiveCheck(null);
     setCheckingRecords(false);
-    setStartingCheckout(false);
-    setCheckoutError(null);
     onClose();
   };
 
@@ -217,9 +202,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       }
     } else if (step === 'plan') {
       navigateBack('status');
-    } else if (step === 'payment') {
-      if (createdDomain?.planId) setSelectedPlanId(createdDomain.planId);
-      navigateBack('plan');
     }
   };
 
@@ -334,7 +316,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     navigateTo('status');
     if (targetDomain) {
       refreshDnsStatus(targetDomain.id);
-      handleCheckLiveRecords(targetDomain.id);
       if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(() => {
         refreshDnsStatus(targetDomain.id);
@@ -378,30 +359,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     }
   };
 
-  const handleStartCheckout = async () => {
-    if (!createdDomain) return;
-    setStartingCheckout(true);
-    setCheckoutError(null);
-    try {
-      const res = await api.startDomainCheckout(createdDomain.id);
-      if (res?.url) {
-        window.location.href = res.url;
-      } else {
-        setCheckoutError('Checkout session could not be created. You can add payment later in Domain Settings.');
-      }
-    } catch (err: any) {
-      setCheckoutError(err?.message || 'Failed to initiate checkout. You can add payment later.');
-    } finally {
-      setStartingCheckout(false);
-    }
-  };
 
-  const handleFinish = () => {
-    if (createdDomain) {
-      commitDomain(createdDomain);
-    }
-    handleClose();
-  };
 
   // STEP 4 -> STEP 5: PLAN SUBMIT — the domain already exists; this just attaches a plan to it.
   const handleSelectPlanSubmit = async (e: React.FormEvent) => {
@@ -411,11 +369,13 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       return;
     }
 
-    // If the domain already has this exact plan assigned (e.g. user went to payment and came back),
-    // proceed directly to payment without re-requesting plan assignment
+    // If the domain already has this exact plan assigned (e.g. user came back to this step),
+    // finish immediately without re-requesting plan assignment — payment is handled later, from
+    // the Billing tab or when the tenant first tries to create a mailbox.
     if (createdDomain.planId === selectedPlanId && planAssigned) {
       setError(null);
-      navigateTo('payment');
+      commitDomain(createdDomain);
+      handleClose();
       return;
     }
 
@@ -427,7 +387,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       createdRef.current = updated;
       setCreatedDomain(updated);
       setPlanAssigned(true);
-      navigateTo('payment');
+      commitDomain(updated);
+      handleClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save the selected plan. Please try again.');
     } finally {
@@ -484,12 +445,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   } else if (step === 'status') {
     headline = `DNS Setup — ${createdDomain?.domainName || domainName}`;
     subhead = 'Track activation and grab your records, whether or not a provider is connected.';
-  } else if (step === 'payment') {
-    headline = 'Add or select payment method';
-    subhead = `60-day free trial on your plan. You won't be charged today.`;
   }
-
-  const selectedPlan = plans.find((p) => p.id === selectedPlanId);
 
   return (
     <div className="fixed inset-0 z-50 bg-white overflow-y-auto overflow-x-hidden" role="dialog" aria-modal="true">
@@ -1062,30 +1018,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </div>
             )}
 
-            {/* STEP: PAYMENT METHOD */}
-            {step === 'payment' && (
-              <div className="flex flex-col gap-6">
-                <div className="mb-2">
-                  <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
-                    Add a payment method
-                  </h1>
-                  <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
-                    {selectedPlan
-                      ? `Your 60-day free trial on ${selectedPlan.name} starts now. You won't be charged today.`
-                      : "Your 60-day free trial starts now. You won't be charged today."}
-                  </p>
-                </div>
-
-                <PaymentMethodSelector
-                  selectedPlan={selectedPlan}
-                  domainName={createdDomain?.domainName || domainName}
-                  autoAttachDomainId={createdDomain?.id}
-                  onSuccess={handleFinish}
-                  submitLabel="Activate Domain & Start Trial"
-                  showSkip={false}
-                />
-              </div>
-            )}
           </main>
 
           {/* Right Graphic: Positioned in right space on desktop, unique per step */}

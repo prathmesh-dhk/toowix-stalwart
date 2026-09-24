@@ -18,6 +18,17 @@ vi.mock('../src/stripe/client', () => ({
     reportMeteredUsage: vi.fn(),
     listInvoices: vi.fn().mockResolvedValue([]),
     createSetupIntent: vi.fn().mockResolvedValue({ client_secret: 'seti_test_secret' }),
+    addSubscriptionItem: vi.fn().mockResolvedValue({ id: 'si_added' }),
+    addDomainSubscriptionItem: vi.fn().mockResolvedValue({ id: 'si_domain_added' }),
+    syncDomainUserQuantity: vi.fn().mockResolvedValue({}),
+    listPaymentMethods: vi.fn().mockResolvedValue([{ id: 'pm_real_1' }]),
+    attachPaymentMethod: vi.fn().mockResolvedValue({}),
+    setDefaultPaymentMethod: vi.fn().mockResolvedValue({}),
+    createActivationCheckoutSession: vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/activation-session' }),
+    createCardUpdateCheckoutSession: vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/card-session' }),
+    retrieveCheckoutSession: vi.fn(),
+    retrieveSubscriptionExpanded: vi.fn(),
+    setSubscriptionDefaultPaymentMethod: vi.fn().mockResolvedValue(undefined),
   },
   meterEventNameForPlan: (plan: any) => `mailbox_count_${plan._id.toString()}`,
 }));
@@ -144,39 +155,227 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(res.body.error).toBe('NO_SUBSCRIPTION');
   });
 
-  it('blocks the first mailbox with 402 when the domain has no subscription', async () => {
-    // domainId (from the shared beforeEach) has a plan but no DomainSubscription yet.
+  it('creates a mailbox on billing hold (suspended, pending activation) when the tenant has not confirmed a payment method', async () => {
+    const { stalwartClient } = await import('../src/stalwart/client');
+    vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([{ id: 'stalwart-dom-1', name: 'acme.com' } as any]);
+    vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({ id: 'acc-held', name: 'held' } as any);
+    const suspendSpy = vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue(undefined as any);
+
     const res = await request(app)
       .post('/api/tenants/me/mailboxes')
       .set('Authorization', `Bearer ${tenantAdminToken}`)
-      .send({ localPart: 'blocked', password: 'Password123!', domainId });
+      .send({ localPart: 'held', password: 'Password123!', domainId });
 
-    expect(res.status).toBe(402);
-    expect(res.body.error).toBe('PAYMENT_REQUIRED');
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('suspended');
+    expect(res.body.billingHold).toBe(true);
+    expect(suspendSpy).toHaveBeenCalledWith('acc-held', true);
+
+    const cart = await request(app).get('/api/tenants/me/cart').set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(cart.status).toBe(200);
+    expect(cart.body.requiresActivation).toBe(true);
+    expect(cart.body.trial.started).toBe(false);
+    expect(cart.body.pendingMailboxes.map((m: any) => m.address)).toEqual(['held@acme.com']);
+
+    // A held mailbox can't be reactivated by hand — it has to go through the cart.
+    const reactivate = await request(app)
+      .post(`/api/mailboxes/${res.body.id}/reactivate`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(reactivate.status).toBe(402);
+    expect(reactivate.body.error).toBe('PAYMENT_METHOD_REQUIRED');
   });
 
-  it('allows mailbox creation without subscription when SKIP_BILLING is true', async () => {
+  it('cart activation confirms the card, starts ONE trial, releases held mailboxes, and later mailboxes are live at once', async () => {
     process.env.SKIP_BILLING = 'true';
     try {
       const { stalwartClient } = await import('../src/stalwart/client');
       vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([{ id: 'stalwart-dom-1', name: 'acme.com' } as any]);
-      vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({
-        id: 'acc-skip-bill',
-        name: 'freeuser',
-        domainId: 'stalwart-dom-1',
-        emailAddress: 'freeuser@acme.com',
-      } as any);
+      vi.spyOn(stalwartClient, 'createAccount')
+        .mockResolvedValueOnce({ id: 'acc-1', name: 'one' } as any)
+        .mockResolvedValueOnce({ id: 'acc-2', name: 'two' } as any);
+      vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue(undefined as any);
 
-      const res = await request(app)
+      const first = await request(app)
         .post('/api/tenants/me/mailboxes')
         .set('Authorization', `Bearer ${tenantAdminToken}`)
-        .send({ localPart: 'freeuser', password: 'Password123!', domainId });
+        .send({ localPart: 'one', password: 'Password123!', domainId });
+      expect(first.body.status).toBe('suspended');
 
-      expect(res.status).toBe(201);
-      expect(res.body.address).toBe('freeuser@acme.com');
+      const activate = await request(app)
+        .post('/api/tenants/me/cart/activate')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030 });
+      expect(activate.status).toBe(200);
+      expect(activate.body.activatedMailboxes).toBe(1);
+      expect(activate.body.cart.trial.started).toBe(true);
+      expect(activate.body.cart.pendingMailboxes).toEqual([]);
+
+      const trialStart = (await TenantModel.findById(tenantId))!.trialStartedAt!.getTime();
+      expect((await MailboxModel.findOne({ address: 'one@acme.com' }))?.status).toBe('active');
+
+      // Activating again never restarts the trial.
+      const again = await request(app)
+        .post('/api/tenants/me/cart/activate')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({});
+      expect(again.status).toBe(200);
+      expect((await TenantModel.findById(tenantId))!.trialStartedAt!.getTime()).toBe(trialStart);
+
+      const second = await request(app)
+        .post('/api/tenants/me/mailboxes')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ localPart: 'two', password: 'Password123!', domainId });
+      expect(second.status).toBe(201);
+      expect(second.body.status).toBe('active');
+      expect(second.body.billingHold).toBe(false);
     } finally {
       delete process.env.SKIP_BILLING;
     }
+  });
+
+  async function holdOneMailbox(localPart = 'held', accountId = 'acc-held') {
+    const { stalwartClient } = await import('../src/stalwart/client');
+    vi.spyOn(stalwartClient, 'listDomains').mockResolvedValue([{ id: 'stalwart-dom-1', name: 'acme.com' } as any]);
+    vi.spyOn(stalwartClient, 'createAccount').mockResolvedValue({ id: accountId, name: localPart } as any);
+    vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue(undefined as any);
+    const res = await request(app)
+      .post('/api/tenants/me/mailboxes')
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ localPart, password: 'Password123!', domainId });
+    expect(res.body.billingHold).toBe(true);
+    return res.body;
+  }
+
+  it('with Stripe, sandbox activation is refused — the trial only starts through Stripe checkout', async () => {
+    await holdOneMailbox();
+    const res = await request(app)
+      .post('/api/tenants/me/cart/activate')
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ brand: 'visa', last4: '4242' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('USE_CHECKOUT');
+    expect((await TenantModel.findById(tenantId))!.trialStartedAt).toBeNull();
+  });
+
+  it('cart checkout: sandbox without Stripe; with Stripe a subscription checkout with one line per domain that has users, nothing charged today', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    process.env.SKIP_BILLING = 'true';
+    const sandbox = await request(app).post('/api/tenants/me/cart/checkout').set('Authorization', `Bearer ${tenantAdminToken}`).send({});
+    delete process.env.SKIP_BILLING;
+    expect(sandbox.body).toEqual({ sandbox: true });
+
+    // Nothing to buy yet.
+    const empty = await request(app).post('/api/tenants/me/cart/checkout').set('Authorization', `Bearer ${tenantAdminToken}`).send({});
+    expect(empty.status).toBe(400);
+    expect(empty.body.error).toBe('CART_EMPTY');
+
+    await holdOneMailbox();
+    const started = await request(app).post('/api/tenants/me/cart/checkout').set('Authorization', `Bearer ${tenantAdminToken}`).send({});
+    expect(started.status).toBe(200);
+    expect(started.body.url).toBe('https://checkout.stripe.com/activation-session');
+    expect(stripeClient.createActivationCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trialDays: 60,
+        lines: [expect.objectContaining({ name: 'Team — acme.com', unitAmountPaise: 100000, quantity: 1, domainId, planId })],
+        successUrl: expect.stringContaining('/cart?checkout=success&session_id={CHECKOUT_SESSION_ID}'),
+        metadata: expect.objectContaining({ tenantId, purpose: 'cart_activation' }),
+      })
+    );
+  });
+
+  it('a valid promo code lengthens the Stripe trial by its extra days', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const { CouponModel } = await import('../src/db/models');
+    await CouponModel.create({ code: 'BONUS30', extraTrialDays: 30, maxUses: 5, usedCount: 0, status: 'active', redemptions: [] } as any);
+    await holdOneMailbox();
+
+    const started = await request(app).post('/api/tenants/me/cart/checkout').set('Authorization', `Bearer ${tenantAdminToken}`).send({ promoCode: 'bonus30' });
+    expect(started.status).toBe(200);
+    expect(stripeClient.createActivationCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({ trialDays: 90 }));
+
+    const bad = await request(app).post('/api/tenants/me/cart/checkout').set('Authorization', `Bearer ${tenantAdminToken}`).send({ promoCode: 'NOPE' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe('INVALID_COUPON');
+  });
+
+  it('return trip: rejects a foreign/unfinished session; adopts the Stripe subscription (trial dates, card, per-domain rows) and releases held mailboxes', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    await holdOneMailbox();
+    const trialEnd = Math.floor(Date.now() / 1000) + 60 * 86400;
+
+    vi.mocked(stripeClient.retrieveCheckoutSession).mockResolvedValueOnce({ metadata: { tenantId: 'someone-else', purpose: 'cart_activation' }, status: 'complete', subscription: 'sub_x' } as any);
+    const foreign = await request(app).post('/api/tenants/me/cart/complete').set('Authorization', `Bearer ${tenantAdminToken}`).send({ sessionId: 'cs_foreign' });
+    expect(foreign.status).toBe(403);
+
+    vi.mocked(stripeClient.retrieveCheckoutSession).mockResolvedValueOnce({ metadata: { tenantId, purpose: 'cart_activation' }, status: 'open', subscription: null } as any);
+    const open = await request(app).post('/api/tenants/me/cart/complete').set('Authorization', `Bearer ${tenantAdminToken}`).send({ sessionId: 'cs_open' });
+    expect(open.status).toBe(402);
+    expect((await TenantModel.findById(tenantId))!.trialStartedAt).toBeNull();
+
+    vi.mocked(stripeClient.retrieveCheckoutSession).mockResolvedValue({ id: 'cs_ok', metadata: { tenantId, purpose: 'cart_activation' }, status: 'complete', subscription: 'sub_master' } as any);
+    vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValue({
+      id: 'sub_master',
+      trial_start: trialEnd - 60 * 86400,
+      trial_end: trialEnd,
+      default_payment_method: { id: 'pm_real_1', card: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } },
+      items: { data: [{ id: 'si_dom', price: { product: { metadata: { domainId, planId } } } }] },
+    } as any);
+
+    const done = await request(app).post('/api/tenants/me/cart/complete').set('Authorization', `Bearer ${tenantAdminToken}`).send({ sessionId: 'cs_ok' });
+    expect(done.status).toBe(200);
+    expect(done.body.activatedMailboxes).toBe(1);
+    expect(done.body.cart.trial.started).toBe(true);
+
+    const tenant = await TenantModel.findById(tenantId);
+    expect(tenant!.stripeSubscriptionId).toBe('sub_master');
+    expect(tenant!.trialEndsAt!.getTime()).toBe(trialEnd * 1000);
+    expect(tenant!.paymentMethods?.[0]?.last4).toBe('4242');
+    const sub = await DomainSubscriptionModel.findOne({ domainId });
+    expect(sub).toMatchObject({ stripeSubscriptionId: 'sub_master', stripeSubscriptionItemId: 'si_dom', status: 'trialing' });
+    expect((await MailboxModel.findOne({ address: 'held@acme.com' }))?.status).toBe('active');
+
+    // Refreshing the return URL (or the webhook arriving second) changes nothing.
+    const again = await request(app).post('/api/tenants/me/cart/complete').set('Authorization', `Bearer ${tenantAdminToken}`).send({ sessionId: 'cs_ok' });
+    expect(again.status).toBe(200);
+    expect(again.body.alreadyStarted).toBe(true);
+    expect(vi.mocked(stripeClient.retrieveSubscriptionExpanded)).toHaveBeenCalledTimes(1);
+  });
+
+  it('checkout.session.completed webhook adopts the same way (whichever lands first wins)', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const { handleWebhookEvent } = await import('../src/services/billing.service');
+    await holdOneMailbox();
+    const trialEnd = Math.floor(Date.now() / 1000) + 60 * 86400;
+    vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValue({
+      id: 'sub_hook', trial_start: trialEnd - 60 * 86400, trial_end: trialEnd, default_payment_method: null,
+      items: { data: [{ id: 'si_hook', price: { product: { metadata: { domainId, planId } } } }] },
+    } as any);
+
+    await handleWebhookEvent({
+      id: 'evt_hook', type: 'checkout.session.completed',
+      data: { object: { id: 'cs_hook', subscription: 'sub_hook', status: 'complete', metadata: { tenantId, purpose: 'cart_activation' } } },
+    } as any);
+
+    expect((await TenantModel.findById(tenantId))!.stripeSubscriptionId).toBe('sub_hook');
+    expect((await MailboxModel.findOne({ address: 'held@acme.com' }))?.billingHold).toBe(false);
+  });
+
+  it('change card: hosted Stripe screen, then the new card becomes the default on the customer AND the subscription', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    await TenantModel.updateOne({ _id: tenantId }, { trialStartedAt: new Date(), trialEndsAt: new Date(Date.now() + 86400000), stripeSubscriptionId: 'sub_live' });
+
+    const started = await request(app).post('/api/tenants/me/cart/card-update').set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(started.body.url).toBe('https://checkout.stripe.com/card-session');
+
+    vi.mocked(stripeClient.retrieveCheckoutSession).mockResolvedValueOnce({
+      metadata: { tenantId, purpose: 'card_update' }, status: 'complete',
+      setup_intent: { payment_method: { id: 'pm_new', card: { brand: 'mastercard', last4: '1111', exp_month: 1, exp_year: 2031 } } },
+    } as any);
+    const done = await request(app).post('/api/tenants/me/cart/card-update/complete').set('Authorization', `Bearer ${tenantAdminToken}`).send({ sessionId: 'cs_card' });
+    expect(done.status).toBe(200);
+    expect(stripeClient.setDefaultPaymentMethod).toHaveBeenCalledWith('cus_test', 'pm_new');
+    expect(stripeClient.setSubscriptionDefaultPaymentMethod).toHaveBeenCalledWith('sub_live', 'pm_new');
+    expect((await TenantModel.findById(tenantId))!.paymentMethods?.some((m) => m.last4 === '1111' && m.isDefault)).toBe(true);
   });
 
   it('allows mailbox creation once the domain has a trialing subscription', async () => {
@@ -238,13 +437,12 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(setupRes.status).toBe(200);
     expect(setupRes.body.clientSecret).toBeDefined();
 
-    // 5. Attach payment to domain starts trialing subscription
+    // 5. Per-domain attach is sandbox-only — with Stripe the trial starts through checkout
     const attachRes = await request(app)
       .post(`/api/tenants/me/billing/domains/${domainId}/attach-payment`)
       .set('Authorization', `Bearer ${tenantAdminToken}`);
-    expect(attachRes.status).toBe(200);
-    expect(attachRes.body.success).toBe(true);
-    expect(attachRes.body.status).toBe('trialing');
+    expect(attachRes.status).toBe(400);
+    expect(attachRes.body.error).toBe('USE_CHECKOUT');
 
     // 6. Delete payment method
     const pmId = listRes2.body.paymentMethods[0].id;

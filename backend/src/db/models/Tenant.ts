@@ -32,7 +32,14 @@ export interface ITenant extends Document {
   // any of the tenant's domains, shared (one payment method) across every
   // domain's own Subscription. See backend/src/services/billing.service.ts.
   stripeCustomerId?: string | null;
+  // Master consolidated Stripe Subscription for this tenant
+  stripeSubscriptionId?: string | null;
+  // Set while a trial activation is in flight so two simultaneous clicks/webhooks can't create two
+  // Stripe subscriptions. Stale after 5 minutes.
+  activationLock?: Date | null;
   paymentMethods?: ITenantPaymentMethod[];
+  trialRemindersSent?: number[];
+  cardFingerprint?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -89,6 +96,24 @@ const TenantSchema = new Schema<ITenant>(
       default: null,
     },
     stripeCustomerId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    stripeSubscriptionId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    activationLock: {
+      type: Date,
+      default: null,
+    },
+    trialRemindersSent: {
+      type: [Number],
+      default: [],
+    },
+    cardFingerprint: {
       type: String,
       default: null,
       index: true,

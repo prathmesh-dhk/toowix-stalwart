@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { TenantSummary, DomainItem, AuditItem, UserContext, TenantBillingSummary as TenantBillingSummaryType } from '../types';
+import { TenantSummary, DomainItem, AuditItem, UserContext, CartData, TenantBillingSummary as TenantBillingSummaryType } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { dnsStatusPill } from './DomainSwitcher';
 import { DomainSetupModal } from './DomainSetupModal';
@@ -10,6 +10,8 @@ import { ActiveDevicesView } from './ActiveDevicesView';
 import { TenantBillingSummary } from './TenantBillingSummary';
 import { ApiKeysView } from './ApiKeysView';
 import { ModeratorsView } from './ModeratorsView';
+import { goToCart } from './cart/format';
+import { CartNavButton } from './cart/CartNavButton';
 import {
   Loader2,
   LogOut,
@@ -88,16 +90,39 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   });
   const [is2FaEnabled, setIs2FaEnabled] = useState<boolean>(Boolean(user?.twoFactorEnabled));
   const [hasSavedDnsCredential, setHasSavedDnsCredential] = useState(false);
+  const [cart, setCart] = useState<CartData | null>(null);
+  const [cartSeenAt, setCartSeenAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('toowix_cart_seen_at');
+    } catch {
+      return null;
+    }
+  });
+
+  const openCart = () => {
+    const now = new Date().toISOString();
+    setCartSeenAt(now);
+    try {
+      localStorage.setItem('toowix_cart_seen_at', now);
+    } catch {
+      /* ignore */
+    }
+    goToCart();
+  };
 
   const load = async () => {
     try {
-      const [tenantRes, domainsRes, auditRes, billingRes, dnsCredentialsRes] = await Promise.all([
+      const [tenantRes, domainsRes, auditRes, billingRes, dnsCredentialsRes, cartRes] = await Promise.all([
         api.getTenantMe(),
         api.listTenantDomains().catch(() => ({ domains: [] })),
         api.getAuditLogs({ limit: 50 }).catch(() => ({ logs: [] })),
         api.getTenantBillingSummary().catch(() => null),
         api.listTenantDnsCredentials().catch(() => ({ credentials: [] })),
+        Promise.resolve()
+          .then(() => api.getCart())
+          .catch(() => null),
       ]);
+      setCart(cartRes);
       setHasSavedDnsCredential(dnsCredentialsRes.credentials.length > 0);
       setTenant(tenantRes.tenant);
       setDomains(domainsRes.domains || []);
@@ -318,15 +343,18 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                     {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowDomainModal(true)}
-                  className="self-start sm:self-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer shrink-0"
-                  id="btn-add-domain-overview"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Domain</span>
-                </button>
+                <div className="self-start sm:self-auto flex items-center gap-3 shrink-0">
+                  <CartNavButton cart={cart} lastSeenAt={cartSeenAt} onClick={openCart} />
+                  <button
+                    type="button"
+                    onClick={() => setShowDomainModal(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                    id="btn-add-domain-overview"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Domain</span>
+                  </button>
+                </div>
               </section>
 
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -756,7 +784,14 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
 
           {activeTab === 'apikeys' && <ApiKeysView />}
 
-          {activeTab === 'billing' && <TenantBillingSummary domains={domains} />}
+          {activeTab === 'billing' && (
+            <TenantBillingSummary
+              domains={domains}
+              cart={cart}
+              onOpenCart={openCart}
+              onCartUpdated={(c) => setCart(c)}
+            />
+          )}
 
           {activeTab === 'security' && user && (
             <SecurityView user={user} on2FaStatusChange={setIs2FaEnabled}>

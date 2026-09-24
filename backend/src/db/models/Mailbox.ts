@@ -27,6 +27,11 @@ export interface IMailbox extends Document {
   address: string;
   displayName?: string | null;
   status: MailboxStatus;
+  // Created before the tenant's payment method/trial was confirmed: kept suspended and listed in the
+  // cart until the tenant activates (see billing.service.ts activateTenantWithPayment).
+  billingHold?: boolean;
+  // Set once the "your unactivated mailboxes expire soon" email went out (see held-mailbox-sweep.job.ts).
+  heldNoticeSentAt?: Date | null;
   stalwartAccountId?: string;
   security: IMailboxSecurityProfile;
   aliases: IMailboxAlias[];
@@ -138,6 +143,15 @@ const MailboxSchema = new Schema<IMailbox>(
       enum: ['active', 'suspended'],
       default: 'active',
       index: true,
+    },
+    billingHold: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    heldNoticeSentAt: {
+      type: Date,
+      default: null,
     },
     stalwartAccountId: {
       type: String,

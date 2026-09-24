@@ -946,6 +946,56 @@ Update your payment method from the Billing tab in Toowix Tenant Admin.
       return { success: false, error: err.message };
     }
   }
+
+  /**
+   * One template for every billing lifecycle notice (held-mailbox expiry, trial ending, payment
+   * failed reminders, read-only / retention warnings): a subject, a headline and short paragraphs.
+   */
+  async sendBillingNoticeEmail(params: {
+    to: string;
+    recipientName?: string | null;
+    subject: string;
+    headline: string;
+    paragraphs: string[];
+    previewText?: string;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const greeting = `Hello ${params.recipientName || 'Administrator'},`;
+    const text = `TOOWIX MAIL PLATFORM — BILLING NOTICE
+
+${greeting}
+
+${params.paragraphs.join('\n\n')}
+
+Manage billing from the Cart or Billing page in Toowix Tenant Admin.
+
+— The Toowix Platform Team`.trim();
+
+    const contentHtml = `
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.6;">${greeting}</p>
+      ${params.paragraphs
+        .map((p) => `<p style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.6;">${p}</p>`)
+        .join('\n')}
+      <p style="margin: 0; font-size: 13px; color: #64748B; line-height: 1.6;">
+        Manage billing from the Cart or Billing page in Toowix Tenant Admin.
+      </p>
+    `;
+
+    const html = renderEmailShell({
+      title: params.headline,
+      previewText: params.previewText || params.headline,
+      contentHtml,
+    });
+
+    try {
+      const transporter = this.getTransporter();
+      const info = await transporter.sendMail({ from: config.smtp.from, to: params.to, subject: params.subject, text, html });
+      console.log(`[EMAIL DISPATCH: SUCCESS] Billing notice "${params.subject}" -> ${params.to}`);
+      return { success: true, messageId: info.messageId };
+    } catch (err: any) {
+      console.warn(`[EMAIL DISPATCH: FALLBACK / LOGGED] Billing notice to ${params.to}: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
 }
 
 export const emailService = new EmailService();

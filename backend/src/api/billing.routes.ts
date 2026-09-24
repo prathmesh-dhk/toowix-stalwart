@@ -16,7 +16,10 @@ import {
   requestUpgrade,
   requestDowngrade,
   cancelSubscription,
+  cancelTenantSubscription,
+  resumeTenantSubscription,
   selectDomainPlan,
+  startTenantTrialWithPayment,
   BillingError,
 } from '../services/billing.service';
 import { config, isBillingEnabled } from '../config';
@@ -194,7 +197,56 @@ tenantBillingRouter.post('/domains/:domainId/cancel', async (req: Request, res: 
   }
 });
 
+// Master Tenant Subscription Cancellation (at period end)
+tenantBillingRouter.post('/cancel', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    await cancelTenantSubscription(tenantId, actorFromReq(req));
+    res.json({ success: true });
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+// Master Tenant Subscription Resume (undo scheduled cancellation)
+tenantBillingRouter.post('/resume', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    await resumeTenantSubscription(tenantId, actorFromReq(req));
+    res.json({ success: true });
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
 // Tenant-wide Payment Methods
+
+// Starts the 60-day trial with a payment method — called from the seamless first-mailbox
+// creation flow when the admin has no card on file yet. Saves the card, sets trial dates,
+// and creates the master Stripe subscription across all configured domains.
+const startTrialSchema = z.object({
+  paymentMethodId: z.string().optional(),
+  brand: z.string().optional(),
+  last4: z.string().optional(),
+  expMonth: z.number().optional(),
+  expYear: z.number().optional(),
+});
+
+tenantBillingRouter.post('/start-trial-with-payment', async (req: Request, res: Response): Promise<void> => {
+  const parseResult = startTrialSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.flatten().fieldErrors });
+    return;
+  }
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    const result = await startTenantTrialWithPayment(tenantId, parseResult.data, actorFromReq(req));
+    res.json(result);
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
 tenantBillingRouter.get('/payment-methods', async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.adminUser!.tenantId!;
   try {

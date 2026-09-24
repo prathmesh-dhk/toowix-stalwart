@@ -14,7 +14,6 @@ describe('DnsStatusPanel Component', () => {
   it('renders not_started state without referencing Super Admin', () => {
     render(<DnsStatusPanel {...defaultProps} status={{ dnsStatus: 'not_started', dnsRecords: [], dnsConflicts: [] }} />);
 
-    expect(screen.getByText('Not Started')).toBeInTheDocument();
     expect(screen.getByText(/Mailbox creation unlocks when DNS activation completes/i)).toBeInTheDocument();
     expect(screen.queryByText(/super admin/i)).not.toBeInTheDocument();
   });
@@ -22,7 +21,6 @@ describe('DnsStatusPanel Component', () => {
   it('renders activating state and does not mention Super Admin', () => {
     render(<DnsStatusPanel {...defaultProps} status={{ dnsStatus: 'activating', dnsRecords: [], dnsConflicts: [] }} />);
 
-    expect(screen.getByText('Activating')).toBeInTheDocument();
     expect(screen.getByText(/propagation is checked automatically/i)).toBeInTheDocument();
     expect(screen.queryByText(/super admin/i)).not.toBeInTheDocument();
   });
@@ -37,7 +35,6 @@ describe('DnsStatusPanel Component', () => {
 
     render(<DnsStatusPanel {...defaultProps} status={status} onRetryVerification={onRetry} />);
 
-    expect(screen.getByText('Conflict')).toBeInTheDocument();
     expect(screen.getByText(/Existing conflicting DNS records found/i)).toBeInTheDocument();
     expect(screen.queryByText(/super admin/i)).not.toBeInTheDocument();
 
@@ -57,7 +54,6 @@ describe('DnsStatusPanel Component', () => {
 
     render(<DnsStatusPanel {...defaultProps} status={status} onRetryVerification={onRetry} />);
 
-    expect(screen.getByText('Activation Failed')).toBeInTheDocument();
     expect(screen.getByText(/DNS propagation did not complete within the allowed window/i)).toBeInTheDocument();
     expect(screen.queryByText(/super admin/i)).not.toBeInTheDocument();
 
@@ -76,11 +72,10 @@ describe('DnsStatusPanel Component', () => {
 
     render(<DnsStatusPanel {...defaultProps} status={status} />);
 
-    expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByText(/Domain is fully active\. Mail service is live\./i)).toBeInTheDocument();
   });
 
-  it('omits active status banner in manual DNS setup mode and renders missing records view', () => {
+  it('omits active status banner in manual DNS setup mode and shows the zone file', () => {
     const status: DomainDnsStatus = {
       dnsStatus: 'active',
       dnsRecords: [
@@ -88,40 +83,17 @@ describe('DnsStatusPanel Component', () => {
         { type: 'TXT', name: '@', value: 'v=spf1 include:mail.toowix.com ~all', purpose: 'SPF verification' },
       ],
       dnsConflicts: [],
+      dnsZoneFile: '; zone file\nexample.com. IN MX 10 mail.toowix.com.\n',
     };
 
-    const liveCheck = {
-      allFound: false,
-      checkedAt: new Date().toISOString(),
-      results: [
-        { type: 'MX', name: '@', expectedValue: 'mail.toowix.com', purpose: 'Mail routing', found: true },
-        { type: 'TXT', name: '@', expectedValue: 'v=spf1 include:mail.toowix.com ~all', purpose: 'SPF verification', found: false },
-      ],
-    };
-
-    const onCheck = vi.fn();
-
-    render(
-      <DnsStatusPanel
-        {...defaultProps}
-        status={status}
-        liveCheck={liveCheck}
-        onCheckRecords={onCheck}
-        isManualSetup={true}
-      />
-    );
+    render(<DnsStatusPanel {...defaultProps} status={status} isManualSetup={true} />);
 
     // Should NOT show the premature "Domain is fully active" box in manual setup
     expect(screen.queryByText(/Domain is fully active\. Mail service is live\./i)).not.toBeInTheDocument();
-    expect(screen.getByText('DNS Activation Status')).toBeInTheDocument();
 
-    // Should clearly show the missing records
-    expect(screen.getByText(/1 Missing DNS Record Detected/i)).toBeInTheDocument();
-    expect(screen.getByText('Missing')).toBeInTheDocument();
-    expect(screen.getByText('Detected')).toBeInTheDocument();
-    expect(screen.getByText('Re-scan DNS')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByText('Re-scan DNS'));
-    expect(onCheck).toHaveBeenCalled();
+    // No status badges or a required-records checklist anymore — just the zone file
+    expect(screen.queryByText('DNS Activation Status')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Required DNS Records/i)).not.toBeInTheDocument();
+    expect(screen.getByText('DNS Zone File')).toBeInTheDocument();
   });
 });

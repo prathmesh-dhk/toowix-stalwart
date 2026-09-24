@@ -6,17 +6,18 @@ export interface IPlan extends Document {
   name: string;
   badge?: string | null;
   description?: string | null;
+  // Plan capacity ceiling (maximum active users allowed for domain)
   seatCount: number;
+  maxUsers?: number;
   displayOrder: number;
   isActive: boolean;
   isDefault: boolean;
   // Billing (see backend/src/services/billing.service.ts):
-  // 'fixed' = flat committed price for seatCount seats, charged in full
-  // regardless of actual usage, hard-blocked on overage.
-  // 'metered' = pay-as-you-go, Stripe reports actual mailbox count with
-  // `max` aggregation; seatCount is not used for pricing on this mode.
+  // Pay-as-you-go per active user: monthlyPriceInPaise is the price per active user per month.
+  // Capacity ceiling is defined by seatCount / maxUsers.
   billingMode: PlanBillingMode;
   monthlyPriceInPaise: number;
+  pricePerUserMonthlyPaise?: number;
   stripePriceId?: string | null;
   // Only set for billingMode 'metered' — the Stripe Billing Meter this
   // plan's Price reports usage against. See backend/src/stripe/client.ts.

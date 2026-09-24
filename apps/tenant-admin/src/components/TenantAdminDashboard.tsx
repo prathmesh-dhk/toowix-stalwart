@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
-import { TenantSummary, DomainItem, MailboxItem, MailboxMigrationJobStatus, AuditItem, UserContext, DomainDnsStatus, DnsLiveCheckResult } from '../types';
+import { TenantSummary, DomainItem, MailboxItem, MailboxMigrationJobStatus, AuditItem, UserContext, DomainDnsStatus, DnsLiveCheckResult, CartData } from '../types';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
@@ -16,6 +16,8 @@ import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSecurityView } from './DomainSecurityView';
 import { ModeratorsView } from './ModeratorsView';
+import { goToCart } from './cart/format';
+import { CartNavButton } from './cart/CartNavButton';
 import {
   Loader2,
   LogOut,
@@ -235,11 +237,21 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   const [dnsChecking, setDnsChecking] = useState(false);
   const [showInlineProviderForm, setShowInlineProviderForm] = useState(false);
 
+  // Cart: running billing/usage basket + activation of mailboxes waiting for a confirmed card
+  const [cart, setCart] = useState<CartData | null>(null);
+  const [cartSeenAt, setCartSeenAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('toowix_cart_seen_at');
+    } catch {
+      return null;
+    }
+  });
+  const [toast, setToast] = useState<string | null>(null);
+
   // Password copy feedback
   const [copiedPasswordKey, setCopiedPasswordKey] = useState<string | null>(null);
 
   // Domain activation state
-  const [activatingDomainId, setActivatingDomainId] = useState<string | null>(null);
 
   const generateStrongPassword = () => {
     const uppercase = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -343,6 +355,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
         setMailboxes([]);
         setDomainDnsStatus(null);
       }
+      // Refresh active cart safely
+      if (typeof api.getCart === 'function') {
+        api.getCart().then((c) => setCart(c)).catch(() => {});
+      }
     } catch (err) {
       console.error('Failed to load tenant data:', err);
     } finally {
@@ -406,18 +422,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     await loadTenantData(newDomain.id);
   };
 
-  const handleActivateDomain = async (domainIdToActivate: string) => {
-    try {
-      setActivatingDomainId(domainIdToActivate);
-      await api.activateDomain(domainIdToActivate);
-      await loadTenantData(domainIdToActivate);
-    } catch (err: any) {
-      alert(err.message || 'Failed to activate domain.');
-    } finally {
-      setActivatingDomainId(null);
-    }
-  };
-
   useEffect(() => {
     if (activeNav === 'domains' && activeDomain?.id) {
       setDnsLiveCheck(null);
@@ -426,24 +430,32 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   }, [activeNav, activeDomain?.id]);
 
   const handleOpenCreateModal = () => {
-    if (isDomainPendingActivation) {
-      alert(`Domain '${activeDomain?.domainName}' is pending activation. Please activate your domain or set up a plan to unlock mailbox creation.`);
-      return;
-    }
     setLocalPart('');
     setPassword(generateStrongPassword());
     setModalError(null);
     setShowCreateModal(true);
   };
 
+  const openCart = () => {
+    const now = new Date().toISOString();
+    setCartSeenAt(now);
+    try {
+      localStorage.setItem('toowix_cart_seen_at', now);
+    } catch {
+      /* ignore */
+    }
+    goToCart();
+  };
+
+  const showToast = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast((t) => (t === message ? null : t)), 6000);
+  };
+
   const handleCreateMailbox = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeDomain) {
       setModalError('Please add or select a domain before creating mailboxes.');
-      return;
-    }
-    if (isDomainPendingActivation) {
-      setModalError(`Domain '${activeDomain.domainName}' is pending activation. Please activate your domain to create mailboxes.`);
       return;
     }
 
@@ -466,13 +478,18 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     setModalError(null);
 
     try {
-      await api.createMailbox({
+      const created = await api.createMailbox({
         localPart: cleanPrefix,
         password,
         domainId: activeDomain.id,
         ...(cleanDisplayName ? { displayName: cleanDisplayName } : {}),
       });
       setShowCreateModal(false);
+      showToast(
+        created.billingHold
+          ? `${created.address} created — it stays suspended until you activate it from the Cart.`
+          : `${created.address} added`
+      );
       setDisplayName('');
       setLocalPart('');
       setPassword('');
@@ -763,7 +780,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   const usagePercent = Math.min(100, Math.round((mailboxCount / Math.max(1, mailboxLimit)) * 100));
   const availableCount = Math.max(0, mailboxLimit - mailboxCount);
   const isSuspended = tenant?.status === 'suspended';
-  const isDomainPendingActivation = Boolean(activeDomain && activeDomain.dnsStatus !== 'active');
+  const pendingActivationCount = cart?.requiresActivation ? cart.pendingMailboxes.length : 0;
 
   // Fallback admin email & initials
   const adminEmail = user?.email || (tenant ? `admin@${domainName}` : 'admin@toowix.com');
@@ -815,7 +832,12 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           </div>
 
           {/* Right Utility Actions */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* Cart Nav Button */}
+            {!isModerator && (
+              <CartNavButton cart={cart} lastSeenAt={cartSeenAt} onClick={openCart} />
+            )}
+
             {/* Admin Profile */}
             <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
               <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
@@ -950,6 +972,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   />
                   <span className="truncate">Billing</span>
                 </div>
+                {pendingActivationCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Mailboxes waiting for activation" />
+                )}
               </button>
             )}
           </div>
@@ -1019,38 +1044,22 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             </div>
           )}
 
-          {isDomainPendingActivation && !isSuspended && domains.length > 0 && (
+          {pendingActivationCount > 0 && !isSuspended && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-amber-950">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="flex flex-col gap-0.5 text-xs">
                   <span className="font-semibold text-amber-900">
-                    Domain Pending Activation
+                    {pendingActivationCount} mailbox{pendingActivationCount === 1 ? '' : 'es'} waiting for activation
                   </span>
                   <span className="text-amber-800">
-                    Domain <span className="font-medium">@{domainName}</span> is awaiting activation. Activate it now or configure DNS from the{' '}
-                    <button
-                      type="button"
-                      onClick={() => setActiveNav('domains')}
-                      className="underline font-semibold hover:text-amber-950 cursor-pointer"
-                    >
-                      Domains
-                    </button>{' '}
-                    tab to unlock mailbox creation.
+                    Your users are created but suspended. Open the Cart, confirm a card and your 60-day free trial starts — then they all switch on.
                   </span>
                 </div>
               </div>
-              {activeDomain && (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  loading={activatingDomainId === activeDomain.id}
-                  onClick={() => handleActivateDomain(activeDomain.id)}
-                  className="shrink-0 self-start sm:self-auto"
-                >
-                  Activate Domain Now
-                </Button>
-              )}
+              <Button size="sm" variant="primary" onClick={openCart} className="shrink-0 self-start sm:self-auto">
+                Open Cart
+              </Button>
             </div>
           )}
 
@@ -1134,8 +1143,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <Button
-                    disabled={isSuspended || domains.length === 0 || usagePercent >= 100 || isDomainPendingActivation}
-                    title={isDomainPendingActivation ? 'Domain is pending activation. Click Activate Domain Now to unlock.' : undefined}
+                    disabled={isSuspended || domains.length === 0 || usagePercent >= 100}
                     onClick={handleOpenCreateModal}
                     size="sm"
                     icon={<Plus className="w-4 h-4" />}
@@ -1312,18 +1320,12 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                         <div className="py-8 text-center flex flex-col items-center gap-2 text-slate-400">
                           <Mail className="w-7 h-7 text-slate-300" />
                           <p className="text-xs text-slate-500">No mailboxes created yet.</p>
-                          {isDomainPendingActivation ? (
-                            <p className="text-xs text-amber-600 font-medium">
-                              Mailbox creation will unlock once @{domainName} is activated.
-                            </p>
-                          ) : (
-                            <button
-                              onClick={handleOpenCreateModal}
-                              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
-                            >
-                              + Create your first mailbox
-                            </button>
-                          )}
+                          <button
+                            onClick={handleOpenCreateModal}
+                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                          >
+                            + Create your first mailbox
+                          </button>
                         </div>
                       ) : (
                         <div className="flex flex-col divide-y divide-slate-100">
@@ -1373,7 +1375,13 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                                   <Key className="w-3.5 h-3.5" />
                                 </button>
 
-                                <StatusBadge status={mb.status} label={mb.status} />
+                                {mb.billingHold ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200" title="Suspended until activated from the Cart">
+                                    pending activation
+                                  </span>
+                                ) : (
+                                  <StatusBadge status={mb.status} label={mb.status} />
+                                )}
                               </div>
                             </div>
                           ))}
@@ -1463,11 +1471,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   </p>
                 </div>
                 <button
-                  disabled={isSuspended || usagePercent >= 100 || isDomainPendingActivation}
-                  title={isDomainPendingActivation ? 'Domain is pending activation. Activate it from the Domains tab.' : undefined}
+                  disabled={isSuspended || usagePercent >= 100}
                   onClick={handleOpenCreateModal}
                   className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer ${
-                    isSuspended || usagePercent >= 100 || isDomainPendingActivation ? 'opacity-50 cursor-not-allowed' : ''
+                    isSuspended || usagePercent >= 100 ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
                   <Plus className="w-4 h-4" />
@@ -1759,54 +1766,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               </div>
               {/* Domain Health Card */}
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-5 h-5 text-indigo-600" />
-                    <h2 className="text-sm font-semibold text-slate-900">
-                      Authoritative Domain Verification
-                    </h2>
-                  </div>
-                  {(() => {
-                    const currentStatus = domainDnsStatus?.dnsStatus || activeDomain?.dnsStatus || 'not_started';
-                    if (currentStatus === 'active') {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          Verified & Active
-                        </span>
-                      );
-                    }
-                    if (currentStatus === 'activating') {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                          Activating / Propagating
-                        </span>
-                      );
-                    }
-                    if (currentStatus === 'conflict') {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                          DNS Conflict
-                        </span>
-                      );
-                    }
-                    if (currentStatus === 'activation_failed') {
-                      return (
-                        <span className="inline-flex items-center gap-1.5 text-xs text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                          Activation Failed
-                        </span>
-                      );
-                    }
-                    return (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200 font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                        Pending DNS Setup
-                      </span>
-                    );
-                  })()}
+                <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                  <Globe className="w-5 h-5 text-indigo-600" />
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Authoritative Domain Verification
+                  </h2>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -1954,7 +1918,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           {/* VIEW: BILLING (per-domain Stripe subscription)                        */}
           {/* ===================================================================== */}
           {activeNav === 'billing' && (
-            <BillingView activeDomain={activeDomain} />
+            <BillingView
+              cart={cart}
+              onOpenCart={openCart}
+              onCartUpdated={(c) => setCart(c)}
+            />
           )}
 
           {/* ===================================================================== */}
@@ -1979,7 +1947,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[1px] p-4">
           <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-slate-200 p-6 flex flex-col gap-5 page-content-scaled">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900">Create New Mailbox</h3>
+              <h3 className="text-sm font-semibold text-slate-900">
+                Create New Mailbox
+              </h3>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
@@ -1995,95 +1965,98 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleCreateMailbox} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700" htmlFor="mailbox-display-name">Name <span className="text-slate-400 font-normal">(optional)</span></label>
-                <input
-                  id="mailbox-display-name"
-                  type="text"
-                  maxLength={100}
-                  placeholder="e.g. Jane Doe"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700">Mailbox Address</label>
-                <div className="flex items-center">
+            {(
+              /* ── Normal create-mailbox form ────────────────────────────────── */
+              <form onSubmit={handleCreateMailbox} className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700" htmlFor="mailbox-display-name">Name <span className="text-slate-400 font-normal">(optional)</span></label>
                   <input
+                    id="mailbox-display-name"
                     type="text"
-                    required
-                    placeholder="username"
-                    value={localPart}
-                    onChange={(e) => setLocalPart(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
-                    className="flex-1 px-3 py-1.5 text-xs rounded-l-lg border border-r-0 border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
+                    maxLength={100}
+                    placeholder="e.g. Jane Doe"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
                   />
-                  <span className="px-3 py-1.5 bg-slate-50 border border-slate-300 text-xs font-mono text-slate-500 rounded-r-lg">
-                    @{domainName}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Mailbox Address</label>
+                  <div className="flex items-center">
+                    <input
+                      type="text"
+                      required
+                      placeholder="username"
+                      value={localPart}
+                      onChange={(e) => setLocalPart(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                      className="flex-1 px-3 py-1.5 text-xs rounded-l-lg border border-r-0 border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
+                    />
+                    <span className="px-3 py-1.5 bg-slate-50 border border-slate-300 text-xs font-mono text-slate-500 rounded-r-lg">
+                      @{domainName}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-slate-700">Temporary Password</label>
+                    <button
+                      type="button"
+                      onClick={() => setPassword(generateStrongPassword())}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Generate strong</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="flex-1 px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPassword(password, 'create-modal')}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium flex items-center gap-1 transition-colors shrink-0 shadow-xs"
+                      title="Copy password to clipboard"
+                    >
+                      {copiedPasswordKey === 'create-modal' ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      )}
+                      <span>{copiedPasswordKey === 'create-modal' ? 'Copied!' : 'Copy'}</span>
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    User will be prompted to reset password on first sign-in.
                   </span>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-slate-700">Temporary Password</label>
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 mt-2">
                   <button
                     type="button"
-                    onClick={() => setPassword(generateStrongPassword())}
-                    className="text-[11px] text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
+                    onClick={() => setShowCreateModal(false)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Generate strong</span>
+                    Cancel
                   </button>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600"
-                  />
                   <button
-                    type="button"
-                    onClick={() => handleCopyPassword(password, 'create-modal')}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium flex items-center gap-1 transition-colors shrink-0 shadow-xs"
-                    title="Copy password to clipboard"
+                    type="submit"
+                    disabled={modalLoading}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
-                    {copiedPasswordKey === 'create-modal' ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                    {modalLoading && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     )}
-                    <span>{copiedPasswordKey === 'create-modal' ? 'Copied!' : 'Copy'}</span>
+                    <span>Create Mailbox</span>
                   </button>
                 </div>
-                <span className="text-[11px] text-slate-400">
-                  User will be prompted to reset password on first sign-in.
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={modalLoading}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
-                >
-                  {modalLoading && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Create Mailbox</span>
-                </button>
-              </div>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -2912,6 +2885,15 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             loadTenantData(activeDomain?.id);
           }}
         />
+      )}
+
+      {toast && (
+        <div role="status" className="fixed bottom-5 right-5 z-[60] max-w-sm bg-slate-900 text-white text-xs rounded-xl shadow-xl px-4 py-3 flex items-start gap-3">
+          <span className="flex-1">{toast}</span>
+          <button type="button" onClick={() => setToast(null)} aria-label="Dismiss" className="text-slate-400 hover:text-white">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );

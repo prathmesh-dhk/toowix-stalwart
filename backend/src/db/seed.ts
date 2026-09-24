@@ -84,46 +84,59 @@ const DEFAULT_PLANS = [
   {
     name: 'Starter',
     badge: 'Basic',
-    description: 'Essential email for solo founders and small teams',
+    description: 'Essential email for solo founders and small teams (Up to 10 users)',
     seatCount: 10,
     displayOrder: 1,
     isDefault: false,
     billingMode: 'metered' as const,
-    monthlyPriceInPaise: 4900,
-    storageQuotaGb: 5,
+    monthlyPriceInPaise: 19900, // ₹199 per active user / month
+    storageQuotaGb: 10,
     apps: ['email'],
-    features: ['5 GB Mailbox Storage', 'Up to 10 mailboxes', 'Custom domain webmail & IMAP/SMTP'],
+    features: ['Up to 10 users capacity', '₹199 per active user/month', '10 GB storage per user', 'Custom domain webmail & IMAP/SMTP', '60-day free trial'],
   },
   {
-    name: 'Pro',
+    name: 'Business',
     badge: 'Most Popular',
-    description: 'Full workspace suite with Toowix Meet & Sign',
-    seatCount: 20,
+    description: 'Full workspace suite for growing teams (Up to 50 users)',
+    seatCount: 50,
     displayOrder: 2,
     isDefault: true,
     billingMode: 'metered' as const,
-    monthlyPriceInPaise: 9900,
-    storageQuotaGb: 20,
+    monthlyPriceInPaise: 39900, // ₹399 per active user / month
+    storageQuotaGb: 25,
     apps: ['email', 'meet', 'sign'],
-    features: ['20 GB Mailbox Storage', 'Up to 20 mailboxes', 'Toowix Suite (Meet & Sign)', 'Priority Deliverability'],
+    features: ['Up to 50 users capacity', '₹399 per active user/month', '25 GB storage per user', 'Toowix Suite (Meet & Sign)', 'Priority Deliverability', '60-day free trial'],
   },
   {
     name: 'Enterprise',
     badge: 'High Capacity',
-    description: 'High-capacity workspace with unlimited mailboxes',
-    seatCount: 999999,
+    description: 'High-capacity workspace with dedicated support (Up to 500 users)',
+    seatCount: 500,
     displayOrder: 3,
     isDefault: false,
     billingMode: 'metered' as const,
-    monthlyPriceInPaise: 14900,
-    storageQuotaGb: 30,
+    monthlyPriceInPaise: 59900, // ₹599 per active user / month
+    storageQuotaGb: 50,
     apps: ['email', 'meet', 'sign'],
-    features: ['30 GB Mailbox Storage', 'Unlimited mailboxes', 'Toowix Suite (Meet & Sign)', 'Full Audit Logs'],
+    features: ['Up to 500 users capacity', '₹599 per active user/month', '50 GB storage per user', 'Toowix Suite (Meet & Sign)', 'Full Audit Logs', '60-day free trial'],
+  },
+  {
+    name: 'Pro',
+    badge: 'Standard',
+    description: 'Professional email workspace (Up to 20 users)',
+    seatCount: 20,
+    displayOrder: 4,
+    isDefault: false,
+    billingMode: 'metered' as const,
+    monthlyPriceInPaise: 29900,
+    storageQuotaGb: 20,
+    apps: ['email', 'meet', 'sign'],
+    features: ['Up to 20 users capacity', '₹299 per active user/month', '20 GB storage per user', '60-day free trial'],
   },
 ];
 
 // Retired tiers from earlier seed sets — deactivated rather than deleted
-const RETIRED_PLAN_NAMES = ['Individual', 'Team', 'Growth', 'Custom', 'Business', 'Scale'];
+const RETIRED_PLAN_NAMES = ['Individual', 'Team', 'Growth', 'Custom', 'Scale'];
 
 export async function seedDefaultPlans(): Promise<void> {
   try {

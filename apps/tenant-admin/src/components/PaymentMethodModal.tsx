@@ -1,5 +1,4 @@
-import React from 'react';
-import { X, CreditCard, Shield } from 'lucide-react';
+import { X, CreditCard } from 'lucide-react';
 import { PaymentMethodSelector } from './PaymentMethodSelector';
 import { PaymentMethodItem, Plan } from '../types';
 

@@ -40,6 +40,32 @@ vi.mock('../../src/api', () => ({
       ]
     }),
     listModerators: vi.fn().mockResolvedValue({ moderators: [] }),
+    getTenantBillingSummary: vi.fn().mockResolvedValue({
+      hasSubscription: true,
+      status: 'active',
+      currentPeriodEnd: null,
+      trialEnd: null,
+      cancelAtPeriodEnd: false,
+      domains: [],
+    }),
+    getDomainBillingStatus: vi.fn().mockResolvedValue({
+      domainId: 'dom-1',
+      domainName: 'acmecorp.com',
+      subscription: { status: 'active', planId: 'plan-1', cancelAtPeriodEnd: false },
+    }),
+    getCart: vi.fn().mockResolvedValue({
+      trial: { started: true, startedAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-10-31T00:00:00.000Z', daysRemaining: 40, isTrialing: true },
+      hasPaymentMethod: true,
+      paymentMethod: { brand: 'visa', last4: '4242' },
+      requiresActivation: false,
+      pendingMailboxes: [],
+      domains: [],
+      estimatedMonthlyPaise: 0,
+      previousEstimatedMonthlyPaise: 0,
+      dueTodayPaise: 0,
+      recentChanges: [],
+    }),
+    activateCart: vi.fn(),
   },
   clearStoredToken: vi.fn(),
 }));
@@ -213,6 +239,54 @@ describe('TenantAdminDashboard Component', () => {
         })
       );
     });
+  });
+
+  it('a mailbox created before payment is confirmed is held: toast says so, and it shows up in the cart banner', async () => {
+    const pendingCart = {
+      trial: { started: false, startedAt: null, endsAt: null, daysRemaining: 0, isTrialing: false },
+      hasPaymentMethod: false,
+      paymentMethod: null,
+      requiresActivation: true,
+      pendingMailboxes: [
+        { id: 'mb-9', address: 'dana@acmecorp.com', domainId: 'dom-1', domainName: 'acmecorp.com', planName: 'Starter', ratePaise: 10000, createdAt: '2026-09-24T00:00:00.000Z' },
+      ],
+      domains: [],
+      estimatedMonthlyPaise: 10000,
+      previousEstimatedMonthlyPaise: 0,
+      dueTodayPaise: 0,
+      recentChanges: [],
+    };
+    vi.mocked(api.getCart).mockResolvedValue(pendingCart as any);
+    vi.mocked(api.createMailbox).mockResolvedValueOnce({
+      id: 'mb-9',
+      tenantId: 'tenant-123',
+      domainId: 'dom-1',
+      localPart: 'dana',
+      address: 'dana@acmecorp.com',
+      stalwartAccountId: 'acc-dana',
+      status: 'suspended',
+      billingHold: true,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      updatedAt: '2026-09-24T00:00:00.000Z',
+    });
+
+    renderDashboard();
+    await screen.findByText('Admin Overview');
+
+    // Banner + cart badge point at the waiting mailbox.
+    expect(await screen.findByText(/1 mailbox waiting for activation/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /create mailbox/i })[0]);
+    await userEvent.type(await screen.findByPlaceholderText('username'), 'dana');
+    fireEvent.click(screen.getAllByRole('button', { name: /create mailbox/i })[1]);
+
+    expect(await screen.findByText(/stays suspended until you activate it from the Cart/i)).toBeInTheDocument();
+    // Creating never takes you to the cart by itself.
+    expect(window.location.pathname).not.toBe('/cart');
+
+    // The cart is its own page — the button navigates there.
+    fireEvent.click(screen.getAllByRole('button', { name: /^cart/i })[0]);
+    expect(window.location.pathname).toBe('/cart');
   });
 
   it('displays quota exceeded error when mailbox limit reached', async () => {
@@ -614,7 +688,6 @@ describe('TenantAdminDashboard Component', () => {
       await waitFor(() => {
         expect(screen.getByText('Authoritative DNS Zone Configuration')).toBeInTheDocument();
         expect(screen.getByText(/Authoritative Zone file for acmecorp\.com/i)).toBeInTheDocument();
-        expect(screen.getByText('DNS Activation Status')).toBeInTheDocument();
       });
 
       // Dummy hardcoded records should not exist

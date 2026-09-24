@@ -4,6 +4,9 @@ import { connectDatabase } from './db/connection';
 import { seedAll } from './db/seed';
 import * as dnsPropagationSweepJob from './jobs/dns-propagation-sweep.job';
 import * as billingGraceSweepJob from './jobs/billing-grace-sweep.job';
+import * as heldMailboxSweepJob from './jobs/held-mailbox-sweep.job';
+import * as trialReminderSweepJob from './jobs/trial-reminder-sweep.job';
+import * as billingReconcileJob from './jobs/billing-reconcile.job';
 
 let memoryServer: any = null;
 
@@ -49,6 +52,9 @@ async function startServer() {
 
     dnsPropagationSweepJob.start();
     billingGraceSweepJob.start();
+    heldMailboxSweepJob.start();
+    trialReminderSweepJob.start();
+    billingReconcileJob.start();
 
     const server = app.listen(config.port, () => {
       console.log(`[Server] Toowix Mail Backend listening on http://localhost:${config.port}`);
@@ -60,6 +66,9 @@ async function startServer() {
       console.log('\n[Server] Shutting down gracefully...');
       dnsPropagationSweepJob.stop();
       billingGraceSweepJob.stop();
+      heldMailboxSweepJob.stop();
+      trialReminderSweepJob.stop();
+      billingReconcileJob.stop();
       server.close();
       if (memoryServer) {
         await memoryServer.stop();

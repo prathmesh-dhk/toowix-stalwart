@@ -406,20 +406,6 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
     const actorRole = (req.adminUser?.role || req.user?.role || 'TENANT_ADMIN') as any;
     const actorEmail = req.adminUser?.email || req.user?.email || 'admin@toowix.internal';
 
-    if (plan && !isBillingEnabled()) {
-      await DomainSubscriptionModel.findOneAndUpdate(
-        { domainId: newDomain._id },
-        {
-          domainId: newDomain._id,
-          tenantId: tenant._id,
-          planId: plan._id,
-          status: 'active',
-          cancelAtPeriodEnd: false,
-        },
-        { upsert: true }
-      );
-    }
-
     // Audit log
 
     await AuditLogModel.create({
@@ -817,6 +803,15 @@ tenantMeRouter.post(['/me/domains/:domainId/activate', '/domains/:domainId/activ
   const domain = await DomainModel.findOne({ _id: req.params.domainId, tenantId });
   if (!domain) {
     res.status(404).json({ error: 'DOMAIN_NOT_FOUND', message: 'Domain not found for this tenant' });
+    return;
+  }
+
+  const subscription = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+  if (!subscription || ['incomplete', 'canceled'].includes(subscription.status)) {
+    res.status(402).json({
+      error: 'PAYMENT_METHOD_REQUIRED',
+      message: `Add a payment method for domain '${domain.domainName}' to activate it.`,
+    });
     return;
   }
 

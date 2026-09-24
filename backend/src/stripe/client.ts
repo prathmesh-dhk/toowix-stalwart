@@ -142,6 +142,102 @@ export class ToowixStripeClient {
     });
   }
 
+  /**
+   * Hosted Stripe screen that starts the tenant's ONE trial: a subscription Checkout with a card
+   * (3-D Secure / RBI e-mandate is handled by Stripe for India cards) and one line per domain that
+   * already has users. Nothing is charged today. Each line's product carries {domainId, planId} in
+   * its metadata so the subscription can be adopted back into our per-domain rows on completion.
+   */
+  async createActivationCheckoutSession(params: {
+    customerId: string;
+    lines: Array<{ name: string; unitAmountPaise: number; quantity: number; domainId: string; planId: string }>;
+    trialDays: number;
+    successUrl: string;
+    cancelUrl: string;
+    metadata: Record<string, string>;
+  }): Promise<Stripe.Checkout.Session> {
+    const stripe = getStripe();
+    return stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: params.customerId,
+      payment_method_types: ['card'],
+      payment_method_collection: 'always',
+      line_items: params.lines.map((l) => ({
+        quantity: Math.max(1, l.quantity),
+        price_data: {
+          currency: CURRENCY,
+          unit_amount: l.unitAmountPaise,
+          recurring: { interval: 'month' as const },
+          product_data: { name: l.name, metadata: { domainId: l.domainId, planId: l.planId } },
+        },
+      })),
+      subscription_data: {
+        trial_period_days: params.trialDays,
+        trial_settings: { end_behavior: { missing_payment_method: 'cancel' } },
+        metadata: params.metadata,
+      },
+      metadata: params.metadata,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+    });
+  }
+
+  /** Hosted Stripe screen to replace the card (setup mode; India mandates are re-registered by Stripe). */
+  async createCardUpdateCheckoutSession(params: {
+    customerId: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata: Record<string, string>;
+  }): Promise<Stripe.Checkout.Session> {
+    const stripe = getStripe();
+    return stripe.checkout.sessions.create({
+      mode: 'setup',
+      customer: params.customerId,
+      payment_method_types: ['card'],
+      currency: CURRENCY,
+      metadata: params.metadata,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+    });
+  }
+
+  async retrieveCheckoutSession(sessionId: string, expand: string[] = []): Promise<Stripe.Checkout.Session> {
+    const stripe = getStripe();
+    return stripe.checkout.sessions.retrieve(sessionId, expand.length ? { expand } : undefined);
+  }
+
+  /** Subscription with each item's product (domain/plan metadata) and the default card expanded. */
+  async retrieveSubscriptionExpanded(subscriptionId: string): Promise<Stripe.Subscription> {
+    const stripe = getStripe();
+    return stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ['items.data.price.product', 'default_payment_method'],
+    });
+  }
+
+  /** Adds one domain to the tenant's subscription with an invoice line that names the domain. */
+  async addDomainSubscriptionItem(
+    subscriptionId: string,
+    params: { name: string; unitAmountPaise: number; quantity: number; domainId: string; planId: string }
+  ): Promise<Stripe.SubscriptionItem> {
+    const stripe = getStripe();
+    return stripe.subscriptionItems.create({
+      subscription: subscriptionId,
+      quantity: Math.max(0, params.quantity),
+      proration_behavior: 'create_prorations',
+      price_data: {
+        currency: CURRENCY,
+        unit_amount: params.unitAmountPaise,
+        recurring: { interval: 'month' },
+        product_data: { name: params.name, metadata: { domainId: params.domainId, planId: params.planId } },
+      } as any,
+    });
+  }
+
+  async setSubscriptionDefaultPaymentMethod(subscriptionId: string, paymentMethodId: string): Promise<void> {
+    const stripe = getStripe();
+    await stripe.subscriptions.update(subscriptionId, { default_payment_method: paymentMethodId });
+  }
+
   async createSetupIntent(customerId: string): Promise<Stripe.SetupIntent> {
     const stripe = getStripe();
     return stripe.setupIntents.create({ customer: customerId });
@@ -254,10 +350,51 @@ export class ToowixStripeClient {
     });
   }
 
+  /** Creates a master consolidated subscription for a tenant across one or more domains with a 60-day trial */
+  async createMasterTenantSubscription(params: {
+    customerId: string;
+    items: Array<{ priceId: string; quantity: number; metadata?: Record<string, string> }>;
+    trialPeriodDays?: number;
+    metadata?: Record<string, string>;
+    idempotencyKey?: string;
+  }): Promise<Stripe.Subscription> {
+    const stripe = getStripe();
+    return stripe.subscriptions.create(
+      {
+        customer: params.customerId,
+        items: params.items.map((it) => ({
+          price: it.priceId,
+          quantity: Math.max(0, it.quantity),
+          metadata: it.metadata,
+        })),
+        trial_period_days: params.trialPeriodDays,
+        metadata: params.metadata,
+        proration_behavior: 'create_prorations',
+      },
+      params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined
+    );
+  }
+
+  /** Synchronizes active billable user count as the quantity on a domain's subscription item */
+  async syncDomainUserQuantity(subscriptionItemId: string, quantity: number): Promise<Stripe.SubscriptionItem> {
+    const stripe = getStripe();
+    const qty = Math.max(0, quantity);
+    return stripe.subscriptionItems.update(subscriptionItemId, {
+      quantity: qty,
+      proration_behavior: 'create_prorations',
+    });
+  }
+
   async listInvoices(customerId: string, limit = 50): Promise<Stripe.Invoice[]> {
     const stripe = getStripe();
     const result = await stripe.invoices.list({ customer: customerId, limit });
     return result.data;
+  }
+
+  /** Attempts payment on an unpaid invoice (used during grace-period retries). */
+  async payInvoice(invoiceId: string): Promise<Stripe.Invoice> {
+    const stripe = getStripe();
+    return stripe.invoices.pay(invoiceId);
   }
 
   constructWebhookEvent(rawBody: Buffer, signature: string): Stripe.Event {

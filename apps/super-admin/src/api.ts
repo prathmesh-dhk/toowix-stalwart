@@ -16,6 +16,9 @@ import {
   OrganisationDeletionState,
   OrganisationDeletionView,
   DeletedOrganisationRecord,
+  CouponItem,
+  CreateCouponInput,
+  BatchCreateCouponInput,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -414,6 +417,41 @@ export const api = {
   // Analytics
   getAnalytics: () =>
     request<PlatformAnalytics>('/api/system/analytics'),
+
+  // Coupons
+  listCoupons: (query: { status?: string; search?: string; limit?: number; skip?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (query.status) params.set('status', query.status);
+    if (query.search) params.set('search', query.search);
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.skip !== undefined) params.set('skip', String(query.skip));
+    const qs = params.toString();
+    return request<{ coupons: CouponItem[]; total: number; activeCount: number; usedCount: number }>(
+      `/api/admin/coupons${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  createCoupon: (data: CreateCouponInput) =>
+    request<{ coupon: CouponItem }>('/api/admin/coupons', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  createBatchCoupons: (data: BatchCreateCouponInput) =>
+    request<{ coupons: CouponItem[]; count: number }>('/api/admin/coupons/batch', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  revokeCoupon: (id: string) =>
+    request<{ success: boolean; message: string }>(`/api/admin/coupons/${id}/revoke`, {
+      method: 'PATCH',
+    }),
+
+  deleteCoupon: (id: string) =>
+    request<{ success: boolean; message: string }>(`/api/admin/coupons/${id}`, {
+      method: 'DELETE',
+    }),
 
 };
 

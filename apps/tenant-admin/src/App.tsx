@@ -8,6 +8,7 @@ import { TenantAdminDashboard } from './components/TenantAdminDashboard';
 import { TenantHomeView } from './components/TenantHomeView';
 import { ForgotPasswordView } from './components/ForgotPasswordView';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { CartPage } from './components/cart/CartPage';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
@@ -170,6 +171,14 @@ export const App: React.FC = () => {
         onGoToRegister={navigateToRegister}
         onForgotPassword={navigateToForgotPassword}
       />
+    );
+  }
+
+  if (currentPath === '/cart' && currentUser.role !== 'TENANT_MODERATOR') {
+    return (
+      <ErrorBoundary fallbackTitle="Unable to load your cart" onReset={navigateHome}>
+        <CartPage onBack={navigateHome} user={currentUser} onLogout={handleLogout} />
+      </ErrorBoundary>
     );
   }
 

@@ -714,23 +714,37 @@ export class StalwartClient {
   }
 
   /**
-   * Updates an account's active/suspended status in Stalwart.
-   * When suspended: sets permissions to @type Replace with empty sets,
-   *   which gives the account zero permissions (blocks all auth and mail sending).
-   * When reactivated: restores default inherited permissions via @type Inherit.
+   * Sets granular account access mode in Stalwart:
+   * - 'full': inherits default role permissions (send + receive + imap/jmap/pop).
+   * - 'read_only': can authenticate and read (IMAP/POP/JMAP) for export/inbox access, but cannot send mail (SMTP).
+   * - 'none': zero permissions, blocks authentication and sending completely.
    */
-  async updateAccountStatus(accountId: string, isSuspended: boolean): Promise<void> {
-    // Suspended: Replace all permissions with empty sets → zero permissions, cannot authenticate
-    // Active: Inherit permissions from role (default User role)
-    const permissionsPayload = isSuspended
-      ? {
-          '@type': 'Replace',
-          enabledPermissions: {},
-          disabledPermissions: {},
-        }
-      : {
-          '@type': 'Inherit',
-        };
+  async updateAccountAccess(accountId: string, mode: 'full' | 'read_only' | 'none'): Promise<void> {
+    let permissionsPayload: any;
+    if (mode === 'none') {
+      permissionsPayload = {
+        '@type': 'Replace',
+        enabledPermissions: {},
+        disabledPermissions: {},
+      };
+    } else if (mode === 'read_only') {
+      permissionsPayload = {
+        '@type': 'Replace',
+        enabledPermissions: {
+          imapAccess: true,
+          popAccess: true,
+          webmailAccess: true,
+        },
+        disabledPermissions: {
+          emailSend: true,
+          smtpSubmission: true,
+        },
+      };
+    } else {
+      permissionsPayload = {
+        '@type': 'Inherit',
+      };
+    }
 
     const responses = await this.dispatch([
       [
@@ -751,11 +765,20 @@ export class StalwartClient {
     if (result?.notUpdated?.[accountId]) {
       const err = result.notUpdated[accountId];
       throw new StalwartError(
-        `Failed to update account status in Stalwart: ${err.description || err.type}`,
+        `Failed to update account access mode in Stalwart: ${err.description || err.type}`,
         'ACCOUNT_UPDATE_FAILED',
         err
       );
     }
+  }
+
+  /**
+   * Updates an account's active/suspended status in Stalwart.
+   * When suspended: sets permissions to @type Replace with empty sets (blocks all auth and sending).
+   * When reactivated: restores default inherited permissions via @type Inherit.
+   */
+  async updateAccountStatus(accountId: string, isSuspended: boolean): Promise<void> {
+    return this.updateAccountAccess(accountId, isSuspended ? 'none' : 'full');
   }
 
   /**

@@ -1,4 +1,4 @@
-import { UserContext, TenantSummary, DomainItem, MailboxItem, MailboxMigrationJobStatus, AuditItem, SystemMetrics, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, PaymentMethodItem, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView, ModeratorItem } from './types';
+import { UserContext, TenantSummary, DomainItem, MailboxItem, MailboxMigrationJobStatus, AuditItem, SystemMetrics, SessionItem, SecuritySettings, TenantStorageResponse, DomainDnsStatus, DnsLiveCheckResult, BlockedIpItem, AllowedIpItem, IpCheckResult, Plan, DomainBillingStatus, TenantBillingSummary, PaymentMethodItem, InvoiceItem, DnsProviderName, TenantDnsCredentialSummary, OrganisationDeletionState, OrganisationDeletionView, ModeratorItem, CartData, MailboxAliasItem, CouponValidationResult, RedeemCouponResponse } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
 
@@ -300,6 +300,58 @@ export const api = {
     }),
   cancelDomainSubscription: (domainId: string) =>
     request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/cancel`, { method: 'POST' }),
+  cancelTenantSubscription: () =>
+    request<{ success: boolean }>('/api/tenants/me/billing/cancel', { method: 'POST' }),
+  resumeTenantSubscription: () =>
+    request<{ success: boolean }>('/api/tenants/me/billing/resume', { method: 'POST' }),
+
+  // Cart — running billing/usage basket; activation = card confirmation + 60-day trial start
+  getCart: () => request<CartData>('/api/tenants/me/cart'),
+  activateCart: (card: { paymentMethodId?: string; brand?: string; last4?: string; expMonth?: number; expYear?: number } = {}) =>
+    request<{ success: boolean; activatedMailboxes: number; trialEndsAt: string; cart: CartData }>(
+      '/api/tenants/me/cart/activate',
+      { method: 'POST', body: JSON.stringify(card) }
+    ),
+
+  startCartCheckout: (promoCode?: string | null) =>
+    request<{ url: string } | { sandbox: true }>('/api/tenants/me/cart/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ promoCode: promoCode || null }),
+    }),
+  startCardUpdate: () => request<{ url: string } | { sandbox: true }>('/api/tenants/me/cart/card-update', { method: 'POST' }),
+  completeCardUpdate: (sessionId: string) =>
+    request<{ success: boolean; cart: CartData }>('/api/tenants/me/cart/card-update/complete', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    }),
+  completeCartCheckout: (sessionId: string) =>
+    request<{ success: boolean; activatedMailboxes: number; trialEndsAt: string; cart: CartData }>('/api/tenants/me/cart/complete', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    }),
+
+  // Mailbox aliases
+  listMailboxAliases: (mailboxId: string) =>
+    request<{ aliases: MailboxAliasItem[] }>(`/api/mailboxes/${mailboxId}/aliases`),
+  addMailboxAlias: (mailboxId: string, body: { localPart: string; description?: string }) =>
+    request<{ alias: MailboxAliasItem }>(`/api/mailboxes/${mailboxId}/aliases`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deleteMailboxAlias: (mailboxId: string, aliasId: string) =>
+    request<{ success: boolean }>(`/api/mailboxes/${mailboxId}/aliases/${aliasId}`, { method: 'DELETE' }),
+
+  // Coupons (extra free-trial days)
+  validateCoupon: (code: string) =>
+    request<CouponValidationResult>('/api/tenants/me/billing/validate-coupon', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  redeemCoupon: (code: string, domainId?: string | null) =>
+    request<RedeemCouponResponse>('/api/tenants/me/billing/redeem-coupon', {
+      method: 'POST',
+      body: JSON.stringify({ code, domainId: domainId ?? null }),
+    }),
 
   detectDnsProvider: (domain: string) =>
     request<{ provider: 'godaddy' | 'hostinger' | 'cloudflare' | null; nameservers: string[] }>(

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { config } from '../config';
 
 /**
  * AES-256-GCM encrypt/decrypt for tenant-supplied secrets that must never be
@@ -12,6 +13,7 @@ import crypto from 'crypto';
  */
 const SALT = 'toowix-godaddy-credential-key-salt';
 const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 12; // 96 bits for GCM
 
 function deriveKey(): Buffer {
   const secret = process.env.GODADDY_CREDENTIAL_ENCRYPTION_KEY;
@@ -55,5 +57,53 @@ export function decrypt(ciphertext: string): string {
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
   const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+  return decrypted.toString('utf8');
+}
+
+/**
+ * Derives a 32-byte key from config.jwtSecret or an explicit ENCRYPTION_KEY.
+ * Used for staged cart mailbox credentials.
+ */
+function getCartEncryptionKey(): Buffer {
+  const secret = process.env.ENCRYPTION_KEY || config.jwtSecret;
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+/**
+ * Encrypts a plaintext string using AES-256-GCM.
+ * Output format: iv:authTag:ciphertext (hex-encoded)
+ */
+export function encryptCredential(plaintext: string): string {
+  if (!plaintext) return '';
+  const key = getCartEncryptionKey();
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+/**
+ * Decrypts a ciphertext string produced by encryptCredential.
+ */
+export function decryptCredential(encryptedText: string): string {
+  if (!encryptedText) return '';
+  const parts = encryptedText.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted credential format');
+  }
+
+  const [ivHex, authTagHex, encryptedHex] = parts;
+  const key = getCartEncryptionKey();
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const encrypted = Buffer.from(encryptedHex, 'hex');
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
   return decrypted.toString('utf8');
 }

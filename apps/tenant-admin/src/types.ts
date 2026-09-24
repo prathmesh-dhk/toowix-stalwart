@@ -201,6 +201,8 @@ export interface MailboxItem {
   address: string;
   stalwartAccountId: string | null;
   status: 'provisioning' | 'active' | 'failed' | 'suspended';
+  /** Created before the tenant confirmed a payment method — suspended until activated from the cart. */
+  billingHold?: boolean;
   aliases?: MailboxAliasItem[];
   createdAt: string;
   updatedAt: string;
@@ -384,4 +386,59 @@ export interface RedeemCouponResponse {
   };
   newTrialEnd?: string | null;
   message: string;
+}
+
+export type CartChangeKind = 'USER_ADDED' | 'USER_REMOVED' | 'USER_SUSPENDED' | 'USER_REACTIVATED' | 'PLAN_CHANGED';
+
+export interface CartPendingMailbox {
+  id: string;
+  address: string;
+  domainId: string;
+  domainName: string;
+  planName: string | null;
+  ratePaise: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface CartDomainRow {
+  domainId: string;
+  domainName: string;
+  planId: string | null;
+  planName: string | null;
+  activeUsers: number;
+  pendingUsers: number;
+  maxUsers: number;
+  ratePaise: number;
+  monthlyPaise: number;
+  users: Array<{ id: string; address: string; status: 'active' | 'suspended'; pendingActivation: boolean }>;
+}
+
+export interface CartChange {
+  id: string;
+  at: string;
+  kind: CartChangeKind;
+  label: string;
+  domainName: string | null;
+  monthlyDeltaPaise: number;
+}
+
+/** Running billing/usage basket — never an approval gate. */
+export interface CartData {
+  trial: {
+    started: boolean;
+    startedAt: string | null;
+    endsAt: string | null;
+    daysRemaining: number;
+    isTrialing: boolean;
+  };
+  hasPaymentMethod: boolean;
+  paymentMethod: { brand: string; last4: string } | null;
+  requiresActivation: boolean;
+  pendingMailboxes: CartPendingMailbox[];
+  domains: CartDomainRow[];
+  estimatedMonthlyPaise: number;
+  previousEstimatedMonthlyPaise: number;
+  dueTodayPaise: number;
+  recentChanges: CartChange[];
 }

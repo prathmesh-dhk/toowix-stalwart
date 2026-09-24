@@ -1,11 +1,13 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export type DomainSubscriptionStatus =
+  | 'not_started'
   | 'incomplete'
   | 'trialing'
   | 'active'
   | 'past_due'
   | 'grace'
+  | 'read_only'
   | 'suspended'
   | 'canceled';
 
@@ -22,10 +24,20 @@ export interface IDomainSubscription extends Document {
   status: DomainSubscriptionStatus;
   currentPeriodEnd?: Date | null;
   trialEnd?: Date | null;
+  // Pay-as-you-go active user tracking (capacity ceiling vs active users):
+  activeUserCount?: number;
+  maxUsers?: number;
+  pricePerUserMonthlyPaise?: number;
   // Set the moment a renewal/trial-end charge fails (status flips to
   // 'grace'); the billing-grace-sweep job suspends the domain once this
   // passes. Cleared on successful payment.
   gracePeriodEndsAt?: Date | null;
+  graceNoticesSent?: number[];
+  lastPaymentFailedInvoiceId?: string | null;
+  lastPaymentRetryAt?: Date | null;
+  readOnlyUntil?: Date | null;
+  retentionEndsAt?: Date | null;
+  deletionScheduledAt?: Date | null;
   cancelAtPeriodEnd: boolean;
   // Metered (Custom plan) domains only. Stripe's Billing Meters API only
   // supports 'sum'/'count'/'last' aggregation, not 'max' — the confirmed
@@ -79,9 +91,24 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
     },
     status: {
       type: String,
-      enum: ['incomplete', 'trialing', 'active', 'past_due', 'grace', 'suspended', 'canceled'],
+      enum: ['not_started', 'incomplete', 'trialing', 'active', 'past_due', 'grace', 'read_only', 'suspended', 'canceled'],
       default: 'incomplete',
       index: true,
+    },
+    activeUserCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    maxUsers: {
+      type: Number,
+      default: 10,
+      min: 1,
+    },
+    pricePerUserMonthlyPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     currentPeriodEnd: {
       type: Date,
@@ -92,6 +119,30 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
       default: null,
     },
     gracePeriodEndsAt: {
+      type: Date,
+      default: null,
+    },
+    graceNoticesSent: {
+      type: [Number],
+      default: [],
+    },
+    lastPaymentFailedInvoiceId: {
+      type: String,
+      default: null,
+    },
+    lastPaymentRetryAt: {
+      type: Date,
+      default: null,
+    },
+    readOnlyUntil: {
+      type: Date,
+      default: null,
+    },
+    retentionEndsAt: {
+      type: Date,
+      default: null,
+    },
+    deletionScheduledAt: {
       type: Date,
       default: null,
     },

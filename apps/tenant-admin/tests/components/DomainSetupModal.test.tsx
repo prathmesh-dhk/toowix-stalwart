@@ -176,10 +176,9 @@ describe('DomainSetupModal Component', () => {
 
     await waitFor(() => expect(api.selectDomainPlan).toHaveBeenCalledWith('dom-new-1', 'plan-pro'));
 
-    const activateBtn = await screen.findByRole('button', { name: /activate domain . start trial/i });
-    await userEvent.click(activateBtn);
-
-    expect(api.attachDomainWithSavedPayment).toHaveBeenCalledWith('dom-new-1');
+    // Wizard finishes right after plan selection — no payment step, payment is
+    // deferred to the Billing tab / first mailbox creation.
+    expect(api.attachDomainWithSavedPayment).not.toHaveBeenCalled();
 
     expect(onDomainAdded).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -282,7 +281,7 @@ describe('DomainSetupModal Component', () => {
     expect(screen.getByText(/manualbrand\.io\. IN MX 10 mail\.toowix\.com\./)).toBeInTheDocument();
   });
 
-  it('refreshes DNS status for the created domain when the refresh button is clicked (not with the click event)', async () => {
+  it('polls DNS status for the created domain with the domain id (not a click event)', async () => {
     vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
       success: true,
       domain: planlessDomain('64b7f0f0f0f0f0f0f0f0f0a1', 'refreshme.io'),
@@ -294,17 +293,14 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByRole('button', { name: /Manual DNS Setup/i }));
     await screen.findByText('DNS Setup — refreshme.io');
 
-    vi.mocked(api.getDomainDnsStatus).mockClear();
-    await userEvent.click(screen.getByRole('button', { name: /refresh status/i }));
-
-    // The id must be the domain's id — a click event here becomes "/domains/[object PointerEvent]/…",
-    // which the server rejects as "Domain ID is missing or malformed".
+    // The id must be the domain's id, never a click/PointerEvent leaking through — the server
+    // rejects "/domains/[object PointerEvent]/…" as "Domain ID is missing or malformed".
     await waitFor(() => expect(api.getDomainDnsStatus).toHaveBeenCalledWith('64b7f0f0f0f0f0f0f0f0f0a1'));
     for (const [arg] of vi.mocked(api.getDomainDnsStatus).mock.calls) expect(typeof arg).toBe('string');
     expect(screen.queryByText(/missing or malformed/i)).not.toBeInTheDocument();
   });
 
-  it('requires payment confirmation and finishes the wizard when the domain is auto-activated', async () => {
+  it('finishes the wizard right after plan selection — no payment step, payment is deferred', async () => {
     const onDomainAdded = vi.fn();
     const onClose = vi.fn();
 
@@ -328,17 +324,15 @@ describe('DomainSetupModal Component', () => {
     await screen.findByText('Choose a plan');
     await userEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
-    expect(await screen.findByText('Add a payment method')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: /activate domain . start trial/i }));
-
-    expect(api.attachDomainWithSavedPayment).toHaveBeenCalledWith('dom-new-5');
-    expect(onDomainAdded).toHaveBeenCalled();
+    await waitFor(() => expect(onDomainAdded).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByText('Add a payment method')).not.toBeInTheDocument();
+    expect(api.attachDomainWithSavedPayment).not.toHaveBeenCalled();
     expect(api.deleteDomain).not.toHaveBeenCalled();
   });
 
-  it('allows navigating back from payment step to plan step and continuing without error', async () => {
+  it('going back from the plan step to status, then re-selecting the same plan, finishes without re-requesting plan assignment', async () => {
+    const onDomainAdded = vi.fn();
     vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
       success: true,
       domain: planlessDomain('dom-backnav-plan', 'backplan.io'),
@@ -348,7 +342,7 @@ describe('DomainSetupModal Component', () => {
       domain: { ...planlessDomain('dom-backnav-plan', 'backplan.io'), planId: 'plan-pro' },
     });
 
-    render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+    render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={onDomainAdded} />);
     await enterDomainAndContinue('backplan.io');
     await screen.findByText('How do you want to set up DNS?');
     await userEvent.click(screen.getByRole('button', { name: /Manual DNS Setup/i }));
@@ -357,17 +351,15 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByRole('button', { name: /continue to plan selection/i }));
     expect(await screen.findByText('Choose a plan')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /finish setup/i }));
-    expect(await screen.findByText('Add a payment method')).toBeInTheDocument();
-
-    // Click Back to return to plan selection
+    // Back to status, then forward to plan again — selectDomainPlan hasn't been called yet.
     await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(await screen.findByText('DNS Setup — backplan.io')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /continue to plan selection/i }));
     expect(await screen.findByText('Choose a plan')).toBeInTheDocument();
 
-    // Re-submit without error
     await userEvent.click(screen.getByRole('button', { name: /finish setup/i }));
-    expect(await screen.findByText('Add a payment method')).toBeInTheDocument();
-    expect(screen.queryByText(/this domain already has a plan/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(onDomainAdded).toHaveBeenCalled());
+    expect(api.selectDomainPlan).toHaveBeenCalledTimes(1);
   });
 
   it('lets "Back" from an auto-skipped setup step reach the method picker as an override', async () => {

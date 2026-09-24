@@ -10,7 +10,6 @@ import {
   Lock,
   Check,
   HardDrive,
-  CreditCard,
 } from 'lucide-react';
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
 import { Plan } from '../types';
@@ -597,49 +596,6 @@ export const WizardStepGraphic: React.FC<WizardStepGraphicProps> = ({
         </div>
       )}
 
-      {/* =========================================================================
-          STEP: PAYMENT — "Payment Method & 60-Day Trial"
-          ========================================================================= */}
-      {step === 'payment' && (
-        <div className="relative w-full h-full flex items-center justify-center">
-          <div className="w-[380px] rounded-2xl bg-white border border-slate-200 shadow-xl p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                  <CreditCard className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">Secure Payment</h4>
-                  <span className="text-[11px] text-slate-500">256-bit SSL encrypted</span>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                60 Days Free
-              </span>
-            </div>
-
-            <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex flex-col gap-1.5 text-xs text-slate-600">
-              <div className="flex justify-between font-medium">
-                <span>Trial Period:</span>
-                <span className="text-slate-900">60 Days</span>
-              </div>
-              <div className="flex justify-between font-medium">
-                <span>Due Today:</span>
-                <span className="text-emerald-700 font-bold">₹0.00</span>
-              </div>
-              <div className="flex justify-between font-medium">
-                <span>Billing Cycle:</span>
-                <span className="text-slate-900">Monthly after trial</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-[11px] text-slate-400">
-              <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span>Cancel or change plans anytime before trial ends.</span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

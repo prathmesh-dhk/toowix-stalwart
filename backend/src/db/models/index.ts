@@ -16,3 +16,4 @@ export * from './RateLimitEntry';
 export * from './OrganisationDeletion';
 export * from './BlockedRegistrationIdentity';
 export * from './Coupon';
+export * from './StripeEvent';

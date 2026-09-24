@@ -7,8 +7,12 @@ import { logAudit } from '../audit/service';
 import { StalwartAccountExistsError, StalwartError } from '../stalwart/errors';
 import { StalwartEmailAlias } from '../stalwart/types';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
-import { reportMeteredUsage } from './billing.service';
-import { config, isBillingEnabled } from '../config';
+import { reportMeteredUsage, syncDomainActiveUserCount, ensureDomainSubscription } from './billing.service';
+import { config } from '../config';
+
+/** Unactivated (billing-hold) mailboxes a tenant may keep, and how long they wait before being removed. */
+export const HELD_MAILBOX_LIMIT = 5;
+export const HELD_MAILBOX_TTL_DAYS = 14;
 
 export interface CreateMailboxInput {
   displayName?: string;
@@ -41,6 +45,7 @@ export interface MailboxRecord {
   address: string;
   stalwartAccountId: string | null;
   status: 'active' | 'suspended';
+  billingHold: boolean;
   aliases?: MailboxAliasRecord[];
   createdAt: string;
   updatedAt: string;
@@ -57,6 +62,7 @@ export class MailboxService {
       address: doc.address,
       stalwartAccountId: doc.stalwartAccountId || null,
       status: doc.status,
+      billingHold: !!doc.billingHold,
       aliases: (doc.aliases || []).map((a: any) => ({
         id: a._id.toString(),
         localPart: a.localPart,
@@ -166,34 +172,35 @@ export class MailboxService {
       }
     }
 
-    // 2b. Block mailbox creation if the domain is suspended or not yet activated
-    if (domain.status === 'suspended' || domain.dnsStatus !== 'active') {
-      // Rollback quota
+    // 2b. Suspended domains can't get new mailboxes.
+    if (domain.status === 'suspended') {
       await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
       throw {
         status: 403,
         code: 'DOMAIN_NOT_ACTIVATED',
-        message:
-          domain.status === 'suspended'
-            ? `Domain '${domain.domainName}' is suspended.`
-            : `Domain '${domain.domainName}' is pending activation. Mailboxes can only be created once the domain is active.`,
+        message: `Domain '${domain.domainName}' is suspended.`,
       };
     }
 
-    // 2c. Billing gate: a domain must have a non-incomplete/canceled/suspended
-    // subscription before its first mailbox can be created when billing is enabled.
-    // When billing is bypassed/skipped, this check is skipped entirely.
-    if (isBillingEnabled()) {
-      const subscription = await DomainSubscriptionModel.findOne({ domainId: domain._id });
-      if (!subscription || ['incomplete', 'canceled', 'suspended'].includes(subscription.status)) {
-        // Rollback quota
+    // 2c. Billing hold — TENANT-level, not per domain. Until the tenant has confirmed a payment method
+    // (which starts its single 60-day trial), new mailboxes are still created and listed, but stay
+    // suspended and sit in the cart. Once the trial is running, mailboxes on every domain are live at once.
+    const existingSub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+    const hasLiveSub = !!existingSub && !['incomplete', 'canceled'].includes(existingSub.status);
+    const onBillingHold = !tenant.trialStartedAt && !hasLiveSub;
+    if (onBillingHold) {
+      const held = await MailboxModel.countDocuments({ tenantId, billingHold: true });
+      if (held >= HELD_MAILBOX_LIMIT) {
         await TenantModel.updateOne({ _id: tenantId, mailboxCount: { $gt: 0 } }, { $inc: { mailboxCount: -1 } });
         throw {
-          status: 402,
-          code: 'PAYMENT_REQUIRED',
-          message: `Add a payment method for domain '${domain.domainName}' before creating mailboxes.`,
+          status: 409,
+          code: 'HELD_LIMIT_REACHED',
+          message: `You can add up to ${HELD_MAILBOX_LIMIT} users before activating your free trial. Open the Cart and confirm your card to add more.`,
         };
       }
+    }
+    if (!onBillingHold && !hasLiveSub) {
+      await ensureDomainSubscription(domain, { id: actorId || 'system', email: 'billing@toowix.internal', role: actorRole || 'SYSTEM' });
     }
 
     // Check domain-level mailboxLimit if configured
@@ -205,7 +212,7 @@ export class MailboxService {
         throw {
           status: 409,
           code: 'DOMAIN_QUOTA_EXCEEDED',
-          message: `Mailbox limit of ${domain.mailboxLimit} reached for domain '${domain.domainName}'`,
+          message: `${domain.planName || 'Plan'} user limit reached (${domain.mailboxLimit} users) for '${domain.domainName}'. Change plan to add more users.`,
         };
       }
     }
@@ -315,8 +322,17 @@ export class MailboxService {
       displayName,
       address: fullAddress,
       stalwartAccountId: stalwartAccount.id,
-      status: 'active',
+      status: onBillingHold ? 'suspended' : 'active',
+      billingHold: onBillingHold,
     });
+
+    if (onBillingHold) {
+      try {
+        await stalwartClient.updateAccountStatus(stalwartAccount.id, true);
+      } catch (err: any) {
+        console.warn(`[MailboxService] Could not hold ${fullAddress} in Stalwart:`, err.message);
+      }
+    }
 
     await logAudit({
       actorId,
@@ -325,7 +341,7 @@ export class MailboxService {
       action: 'MAILBOX_CREATED',
       resource: 'MAILBOX',
       resourceId: mailboxDoc._id.toString(),
-      metadata: { address: fullAddress, stalwartAccountId: stalwartAccount.id },
+      metadata: { address: fullAddress, stalwartAccountId: stalwartAccount.id, pendingActivation: onBillingHold },
       success: true,
     });
 
@@ -333,6 +349,11 @@ export class MailboxService {
     // Never let a Stripe hiccup block mailbox creation itself.
     reportMeteredUsage(domain._id.toString()).catch((err) =>
       console.warn(`[MailboxService] reportMeteredUsage failed for domain ${domain._id}:`, err.message)
+    );
+
+    // Pay-as-you-go: sync active user count to Stripe subscription item quantity
+    syncDomainActiveUserCount(domain._id.toString()).catch((err) =>
+      console.warn(`[MailboxService] syncDomainActiveUserCount failed for domain ${domain._id}:`, err.message)
     );
 
     return this.mapToRecord(mailboxDoc);
@@ -498,6 +519,11 @@ export class MailboxService {
       metadata: { address: mailbox.address },
       success: true,
     });
+
+    // Pay-as-you-go: sync active user count after deletion
+    syncDomainActiveUserCount(mailbox.domainId).catch((err) =>
+      console.warn(`[MailboxService] syncDomainActiveUserCount failed for domain ${mailbox.domainId}:`, err.message)
+    );
   }
 
   /**
@@ -552,6 +578,11 @@ export class MailboxService {
       success: true,
     });
 
+    // Pay-as-you-go: suspended users are not billable
+    syncDomainActiveUserCount(mailbox.domainId).catch((err) =>
+      console.warn(`[MailboxService] syncDomainActiveUserCount failed for domain ${mailbox.domainId}:`, err.message)
+    );
+
     return this.mapToRecord(updatedDoc!);
   }
 
@@ -582,6 +613,14 @@ export class MailboxService {
       };
     }
 
+    if (mailbox.billingHold) {
+      throw {
+        status: 402,
+        code: 'PAYMENT_METHOD_REQUIRED',
+        message: 'This mailbox is pending activation. Open the cart, add a payment method and confirm to activate it.',
+      };
+    }
+
     if (mailbox.stalwartAccountId) {
       try {
         await stalwartClient.updateAccountStatus(mailbox.stalwartAccountId, false);
@@ -606,6 +645,11 @@ export class MailboxService {
       metadata: { address: mailbox.address },
       success: true,
     });
+
+    // Pay-as-you-go: reactivated user becomes billable again
+    syncDomainActiveUserCount(mailbox.domainId).catch((err) =>
+      console.warn(`[MailboxService] syncDomainActiveUserCount failed for domain ${mailbox.domainId}:`, err.message)
+    );
 
     return this.mapToRecord(updatedDoc!);
   }
