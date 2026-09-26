@@ -866,7 +866,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               title="Back to all domains"
             >
               <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain shrink-0" />
-              <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight select-none group-hover:text-indigo-600 transition-colors">
+              <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight select-none group-hover:text-indigo-600 transition-colors whitespace-nowrap">
                 TOOWIX ADMIN
               </span>
             </button>

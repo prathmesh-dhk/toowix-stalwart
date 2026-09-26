@@ -248,7 +248,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({
 
             <div className="flex items-center gap-2.5 sm:gap-3 select-none">
               <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain shrink-0" />
-              <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight">TOOWIX ADMIN</span>
+              <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight whitespace-nowrap">TOOWIX ADMIN</span>
             </div>
             <span className="text-slate-300 font-light text-base hidden md:inline select-none">/</span>
             <div className="hidden md:inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">

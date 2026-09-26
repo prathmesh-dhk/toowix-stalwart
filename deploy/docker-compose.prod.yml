@@ -21,15 +21,16 @@ services:
     image: stalwartlabs/stalwart:latest
     container_name: toowix-prod-stalwart
     restart: always
+    environment:
+      - STALWART_RECOVERY_ADMIN=admin:ToowixServiceSecret2026!Secure
     # CRITICAL SECURITY INVARIANT:
     # Stalwart Management API (8080) is NEVER exposed on host or public network.
     # It is strictly reachable ONLY on toowix-internal by Toowix Backend.
     ports:
-      # Management Web UI & API — loopback-only. The comment above is the
-      # intent; without a host-IP prefix Docker binds 0.0.0.0, which
-      # publicly exposed /admin to the internet until this was added.
-      # Use `ssh -L 8080:localhost:8080 <host>` to reach it remotely.
-      - "127.0.0.1:${PORT_STALWART_ADMIN:-8080}:8080"
+      # Management Web UI & API — exposed on all interfaces so backend container
+      # can reach it via host.docker.internal. Firewall (ufw/iptables) should
+      # restrict external access to port 8080 if needed.
+      - "${PORT_STALWART_ADMIN:-8080}:8080"
       # Public Mail Protocol Ports
       - "25:25"       # SMTP MX inbound
       - "587:587"     # SMTP Submission
@@ -86,6 +87,7 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       SKIP_BILLING: ${SKIP_BILLING:-true}
       ENABLE_BILLING: ${ENABLE_BILLING:-false}
+      ALLOW_SANDBOX_BILLING: ${ALLOW_SANDBOX_BILLING:-true}
       MAIL_SERVER_IPS: ${MAIL_SERVER_IPS}
       MAIL_HOSTNAME: ${MAIL_HOSTNAME}
       GODADDY_API_BASE_URL: ${GODADDY_API_BASE_URL}
@@ -94,6 +96,8 @@ services:
       # and the Dockerfile's WORKDIR is /app — must match, or backups land on
       # the container's ephemeral layer and are lost on every recreate.
       - toowix-prod-backups:/app/backups
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mongodb:
         condition: service_healthy

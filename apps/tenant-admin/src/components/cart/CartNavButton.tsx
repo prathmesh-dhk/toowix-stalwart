@@ -25,7 +25,7 @@ export const CartNavButton: React.FC<CartNavButtonProps> = ({ cart, lastSeenAt, 
     <button
       type="button"
       onClick={onClick}
-      className={`relative inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+      className={`relative inline-flex items-center gap-1.5 px-2 py-1.5 sm:px-3 rounded-xl text-xs font-semibold transition-all border ${
         needsAttention
           ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
           : count > 0
@@ -40,8 +40,8 @@ export const CartNavButton: React.FC<CartNavButtonProps> = ({ cart, lastSeenAt, 
             : 'View cart'
       }
     >
-      <ShoppingCart className={`w-4 h-4 ${needsAttention ? 'text-amber-600' : count > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
-      <span>Cart</span>
+      <ShoppingCart className={`w-4 h-4 shrink-0 ${needsAttention ? 'text-amber-600' : count > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
+      <span className="hidden sm:inline">Cart</span>
       {count > 0 && (
         <span
           className={`inline-flex items-center justify-center px-1.5 text-[10px] font-bold rounded-full text-white min-w-[18px] h-[18px] ${
