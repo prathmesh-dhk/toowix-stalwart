@@ -33,6 +33,7 @@ import {
   Layers,
   Archive,
   Ticket,
+  Menu,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
@@ -42,7 +43,7 @@ import { Alert } from './ui/Alert';
 import { DashboardOverviewView } from './views/DashboardOverviewView';
 import { DeletedOrganisationsView } from './views/DeletedOrganisationsView';
 import { TenantsManagementView } from './views/TenantsManagementView';
-import { TenantDetailView } from './views/TenantDetailView';
+import { TenantDetailView, TenantDetailSubTab } from './views/TenantDetailView';
 import { SystemOperationsView } from './views/SystemOperationsView';
 import { AuditLogView } from './views/AuditLogView';
 import { ActiveDevicesView } from './views/ActiveDevicesView';
@@ -51,7 +52,7 @@ import { PlansManagementView } from './views/PlansManagementView';
 import { CouponsManagementView } from './views/CouponsManagementView';
 
 // Modals
-import { TenantDetailModal } from './modals/TenantDetailModal';
+import { ActiveSessionsModal } from './modals/ActiveSessionsModal';
 import { TenantActivationModal } from './modals/TenantActivationModal';
 import { CreateTenantModal } from './modals/CreateTenantModal';
 import { ManageAdminsModal } from './modals/ManageAdminsModal';
@@ -64,15 +65,75 @@ export interface PlatformAdminDashboardProps {
   user?: UserContext | null;
   onLogout?: () => void;
   onUserUpdated?: (user: UserContext) => void;
+  activeTab?: DashboardTab;
+  onTabChange?: (tab: DashboardTab) => void;
+  selectedTenantId?: string | null;
+  onSelectTenant?: (tenantId: string | null) => void;
+  tenantSubTab?: TenantDetailSubTab;
+  onTenantSubTabChange?: (tab: TenantDetailSubTab) => void;
 }
 
 export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   user,
   onLogout,
   onUserUpdated,
+  activeTab: controlledActiveTab,
+  onTabChange,
+  selectedTenantId: controlledSelectedTenantId,
+  onSelectTenant,
+  tenantSubTab,
+  onTenantSubTabChange,
 }) => {
   // Navigation State
-  const [activeTab, setActiveTab] = useState<DashboardTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(controlledActiveTab || 'dashboard');
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(
+    controlledSelectedTenantId !== undefined ? controlledSelectedTenantId : null
+  );
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (controlledActiveTab && controlledActiveTab !== activeTab) {
+      setActiveTab(controlledActiveTab);
+    }
+  }, [controlledActiveTab]);
+
+  useEffect(() => {
+    if (controlledSelectedTenantId !== undefined && controlledSelectedTenantId !== selectedTenantId) {
+      setSelectedTenantId(controlledSelectedTenantId);
+    }
+  }, [controlledSelectedTenantId]);
+
+  // Lock body scroll and close on Escape when mobile drawer is open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobileNavOpen) {
+        setIsMobileNavOpen(false);
+      }
+    };
+    if (isMobileNavOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileNavOpen]);
+
+  const handleTabChange = (tab: DashboardTab) => {
+    setActiveTab(tab);
+    setIsMobileNavOpen(false);
+    onTabChange?.(tab);
+  };
+
+  const handleSelectTenant = (tenantId: string | null) => {
+    setSelectedTenantId(tenantId);
+    setIsMobileNavOpen(false);
+    onSelectTenant?.(tenantId);
+  };
+
   const [initialLoading, setInitialLoading] = useState(true);
 
   // Global Action Feedback Banner
@@ -135,8 +196,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   const [plansLoading, setPlansLoading] = useState(false);
 
   // Modal Triggers
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
-  const [detailTenant, setDetailTenant] = useState<TenantSummary | null>(null);
+  const [showSessionsModal, setShowSessionsModal] = useState(false);
   const [activateTenant, setActivateTenant] = useState<TenantSummary | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [adminTenant, setAdminTenant] = useState<TenantSummary | null>(null);
@@ -297,9 +357,8 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
   // Organisation deletion is a multi-day security flow (reason, name, OTP) with a permanent
   // audit record, so "Delete" opens the organisation's Danger Zone instead of deleting on one click.
   const handleDeleteTenant = (tenant: TenantSummary) => {
-    setDetailTenant(null);
-    setActiveTab('tenants');
-    setSelectedTenantId(tenant.id);
+    handleTabChange('tenants');
+    handleSelectTenant(tenant.id);
   };
 
   // 2FA Setup Handlers
@@ -477,17 +536,34 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       {/* TOP HEADER (MATCHING TENANT ADMIN & STITCH DESIGN)                        */}
       {/* ========================================================================= */}
       <header className="fixed top-0 inset-x-0 z-40 bg-white border-b border-slate-200 h-16">
-        <div className="h-full px-6 flex items-center justify-between">
+        <div className="h-full px-4 sm:px-6 flex items-center justify-between">
           {/* Brand & Platform Context */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 sm:gap-6">
+            {/* Mobile Hamburger Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+              className="lg:hidden p-2 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              aria-label={isMobileNavOpen ? 'Close navigation' : 'Open navigation'}
+            >
+              {isMobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
             {/* Brand */}
-            <div className="flex items-center gap-3 w-56">
-              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
+            <div
+              onClick={() => {
+                handleTabChange('dashboard');
+                handleSelectTenant(null);
+              }}
+              className="flex items-center gap-3 cursor-pointer select-none group"
+              title="Return to Dashboard"
+            >
+              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain shrink-0" />
               <div className="flex flex-col">
-                <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight">
+                <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight group-hover:text-indigo-600 transition-colors">
                   TOOWIX MAIL
                 </span>
-                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider hidden sm:inline">
                   Platform Console
                 </span>
               </div>
@@ -496,12 +572,12 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
           </div>
 
           {/* Right Utility Actions */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
 
             {/* 2FA Security Pill / Setup */}
             {user?.twoFactorEnabled ? (
               <span
-                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60"
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60"
                 title="Two-factor authentication is active"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -510,7 +586,7 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             ) : (
               <button
                 onClick={handleOpen2FaSetup}
-                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
                 title="Set up two-factor authentication"
               >
                 <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
@@ -518,8 +594,19 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               </button>
             )}
 
+            {/* Active Sessions & Devices Modal Trigger */}
+            <button
+              type="button"
+              onClick={() => setShowSessionsModal(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition-colors"
+              title="Manage Active Devices & Sessions"
+            >
+              <Laptop className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden md:inline">Sessions</span>
+            </button>
+
             {/* Super Admin Profile */}
-            <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
+            <div className="flex items-center gap-2 sm:gap-3 pl-2 border-l border-slate-200">
               <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
                 {userInitials}
               </div>
@@ -548,15 +635,54 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       </header>
 
       {/* ========================================================================= */}
-      {/* SIDEBAR NAVIGATION RAIL (MATCHING GOOGLE ADMIN & DESIGN.MD)               */}
+      {/* MOBILE DRAWER BACKDROP (BELOW LG)                                         */}
       {/* ========================================================================= */}
-      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
-        <div className="flex flex-col gap-1 overflow-y-auto">
+      {isMobileNavOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* SIDEBAR NAVIGATION RAIL (RESPONSIVE OFF-CANVAS ON < LG)                   */}
+      {/* ========================================================================= */}
+      <aside
+        role="navigation"
+        aria-label="Platform Console Navigation"
+        style={{
+          paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+        }}
+        className={`fixed left-0 top-0 lg:top-16 bottom-0 w-72 lg:w-60 bg-white border-r border-slate-200 z-50 lg:z-30 flex flex-col justify-start px-3 py-4 select-none transform transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          isMobileNavOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        }`}
+      >
+        {/* Mobile-only drawer header */}
+        <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-100 lg:hidden shrink-0">
+          <div className="flex items-center gap-2">
+            <img src={toowixLogo} alt="Toowix" className="w-6 h-6 object-contain" />
+            <span className="font-semibold text-slate-900 text-sm">Platform Console</span>
+          </div>
+          <button
+            onClick={() => setIsMobileNavOpen(false)}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            aria-label="Close navigation"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1 overflow-y-auto flex-1">
+
           {/* Main Navigation Group */}
           <div className="flex flex-col gap-0.5">
             {/* Dashboard */}
             <button
-              onClick={() => setActiveTab('dashboard')}
+              onClick={() => {
+                handleTabChange('dashboard');
+                handleSelectTenant(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'dashboard'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -575,30 +701,11 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               </div>
             </button>
 
-            {/* Deleted Organisations (permanent audit records) */}
-            <button
-              onClick={() => setActiveTab('deleted-organisations')}
-              className={`w-full h-10 px-4 flex items-center gap-3.5 rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeTab === 'deleted-organisations'
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-              }`}
-              id="nav-deleted-organisations"
-            >
-              <Archive
-                className={`w-5 h-5 shrink-0 transition-colors ${
-                  activeTab === 'deleted-organisations' ? 'text-rose-600' : 'text-slate-500 group-hover:text-slate-700'
-                }`}
-                strokeWidth={1.75}
-              />
-              <span className="truncate">Deleted Organisations</span>
-            </button>
-
             {/* Tenants */}
             <button
               onClick={() => {
-                setActiveTab('tenants');
-                setSelectedTenantId(null);
+                handleTabChange('tenants');
+                handleSelectTenant(null);
               }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'tenants'
@@ -623,7 +730,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
             {/* Plans */}
             <button
-              onClick={() => setActiveTab('plans')}
+              onClick={() => {
+                handleTabChange('plans');
+                handleSelectTenant(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'plans'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -644,7 +754,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
             {/* Coupons */}
             <button
-              onClick={() => setActiveTab('coupons')}
+              onClick={() => {
+                handleTabChange('coupons');
+                handleSelectTenant(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'coupons'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -665,7 +778,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
             {/* Analytics */}
             <button
-              onClick={() => setActiveTab('analytics')}
+              onClick={() => {
+                handleTabChange('analytics');
+                handleSelectTenant(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'analytics'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -692,7 +808,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
           <div className="flex flex-col gap-0.5">
             {/* System Health */}
             <button
-              onClick={() => setActiveTab('operations')}
+              onClick={() => {
+                handleTabChange('operations');
+                handleSelectTenant(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'operations'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -716,7 +835,10 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
             {/* Audit Log */}
             <button
-              onClick={() => setActiveTab('audit')}
+              onClick={() => {
+                handleTabChange('audit');
+                handleSelectTenant(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeTab === 'audit'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -735,24 +857,27 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               </div>
             </button>
 
-            {/* Devices */}
+            {/* Deleted Organisations (permanent audit archive) */}
             <button
-              onClick={() => setActiveTab('devices')}
+              onClick={() => {
+                handleTabChange('deleted-organisations');
+                handleSelectTenant(null);
+              }}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                activeTab === 'devices'
+                activeTab === 'deleted-organisations'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
               }`}
-              id="nav-devices"
+              id="nav-deleted-organisations"
             >
               <div className="flex items-center gap-3.5 min-w-0">
-                <Laptop
+                <Archive
                   className={`w-5 h-5 shrink-0 transition-colors ${
-                    activeTab === 'devices' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    activeTab === 'deleted-organisations' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
                   }`}
                   strokeWidth={1.75}
                 />
-                <span className="truncate">Active Devices</span>
+                <span className="truncate">Deleted Archive</span>
               </div>
             </button>
           </div>
@@ -762,8 +887,8 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       {/* ========================================================================= */}
       {/* MAIN VIEW CONTAINER                                                       */}
       {/* ========================================================================= */}
-      <div className="pl-60 pt-16 min-h-screen bg-[#f8fafc]">
-        <main className="page-content-scaled max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
+      <div className="pl-0 lg:pl-60 pt-16 min-h-screen bg-[#f8fafc]">
+        <main className="page-content-scaled max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10 flex flex-col gap-6 sm:gap-8">
           {/* Global Action Alert */}
           {actionAlert && (
             <Alert
@@ -839,8 +964,12 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
               driftReport={driftReport}
               recentAuditLogs={auditLogs}
               analyticsData={analyticsData}
-              onNavigateTab={(tab) => setActiveTab(tab)}
+              onNavigateTab={(tab) => {
+                handleTabChange(tab);
+                handleSelectTenant(null);
+              }}
               onActivateTenant={(tenant) => setActivateTenant(tenant)}
+              onCreateTenant={() => setShowCreateModal(true)}
             />
           )}
 
@@ -851,10 +980,12 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
             selectedTenantId ? (
               <TenantDetailView
                 tenantId={selectedTenantId}
-                onBack={() => setSelectedTenantId(null)}
+                onBack={() => handleSelectTenant(null)}
                 onTenantUpdated={loadTenantsAndMetrics}
                 onShowAlert={showAlert}
                 onActivateTenant={(tenant) => setActivateTenant(tenant)}
+                activeSubTab={tenantSubTab}
+                onSubTabChange={onTenantSubTabChange}
               />
             ) : (
               <TenantsManagementView
@@ -862,12 +993,13 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
                 loading={tenantsLoading}
                 onRefresh={loadTenantsAndMetrics}
                 onCreateTenant={() => setShowCreateModal(true)}
-                onViewDetails={(tenant) => setSelectedTenantId(tenant.id)}
+                onViewDetails={(tenant) => handleSelectTenant(tenant.id)}
                 onActivateTenant={(tenant) => setActivateTenant(tenant)}
                 onToggleSuspend={handleToggleSuspend}
                 onManageAdmins={(tenant) => setAdminTenant(tenant)}
                 onUpdateQuota={(tenant) => setQuotaTenant(tenant)}
                 onDeleteTenant={handleDeleteTenant}
+                onViewDeletedArchive={() => handleTabChange('deleted-organisations')}
               />
             )
           )}
@@ -935,24 +1067,9 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
       </div>
       {/* ================= MODALS LAYER ================= */}
 
-      <TenantDetailModal
-        tenant={detailTenant}
-        isOpen={Boolean(detailTenant)}
-        onClose={() => setDetailTenant(null)}
-        onActivateTenant={(t: TenantSummary) => {
-          setDetailTenant(null);
-          setActivateTenant(t);
-        }}
-        onToggleSuspend={handleToggleSuspend}
-        onManageAdmins={(t: TenantSummary) => {
-          setDetailTenant(null);
-          setAdminTenant(t);
-        }}
-        onUpdateQuota={(t: TenantSummary) => {
-          setDetailTenant(null);
-          setQuotaTenant(t);
-        }}
-        onDeleteTenant={handleDeleteTenant}
+      <ActiveSessionsModal
+        isOpen={showSessionsModal}
+        onClose={() => setShowSessionsModal(false)}
       />
 
       <TenantActivationModal

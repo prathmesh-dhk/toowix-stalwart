@@ -109,32 +109,34 @@ export const ManageAliasesModal: React.FC<ManageAliasesModalProps> = ({
         </p>
 
         {/* Minimalist Single-Line Add Form */}
-        <form onSubmit={handleAddAlias} className="flex items-center gap-1.5">
-          <input
-            type="text"
-            value={localPart}
-            onChange={(e) => setLocalPart(e.target.value.toLowerCase())}
-            placeholder="alias"
-            className="flex-1 min-w-0 text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1.5 focus:ring-indigo-500 font-mono bg-white"
-            required
-            autoFocus
-          />
+        <form onSubmit={handleAddAlias} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <input
+              type="text"
+              value={localPart}
+              onChange={(e) => setLocalPart(e.target.value.toLowerCase())}
+              placeholder="alias"
+              className="flex-1 min-w-0 text-base sm:text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1.5 focus:ring-indigo-500 font-mono bg-white min-h-[44px] sm:min-h-0"
+              required
+              autoFocus
+            />
 
-          <span className="text-xs font-mono text-slate-600 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg select-none shrink-0">
-            @{mailboxDomain}
-          </span>
+            <span className="text-xs font-mono text-slate-600 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg select-none shrink-0 min-h-[44px] sm:min-h-0 flex items-center">
+              @{mailboxDomain}
+            </span>
+          </div>
 
           <button
             type="submit"
             disabled={adding || !localPart.trim()}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors shrink-0 flex items-center justify-center gap-1 cursor-pointer min-h-[44px]"
           >
             {adding ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add</span>
+                <Plus className="w-4 h-4" />
+                <span>Add Alias</span>
               </>
             )}
           </button>
@@ -166,11 +168,11 @@ export const ManageAliasesModal: React.FC<ManageAliasesModalProps> = ({
               No aliases added yet.
             </p>
           ) : (
-            <div className="space-y-1 max-h-56 overflow-y-auto">
+            <div className="space-y-1.5 max-h-56 overflow-y-auto">
               {aliases.map((alias) => (
                 <div
                   key={alias.id}
-                  className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/60 rounded-lg text-xs transition-colors group"
+                  className="flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/60 rounded-lg text-xs transition-colors group"
                 >
                   <span className="font-mono text-slate-800 font-medium truncate">
                     {alias.address}
@@ -179,14 +181,14 @@ export const ManageAliasesModal: React.FC<ManageAliasesModalProps> = ({
                     type="button"
                     onClick={() => handleDeleteAlias(alias)}
                     disabled={deletingId === alias.id}
-                    className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-400 hover:text-rose-600 rounded transition-colors disabled:opacity-50 cursor-pointer shrink-0"
                     title={`Delete alias ${alias.address}`}
                     aria-label={`Delete alias ${alias.address}`}
                   >
                     {deletingId === alias.id ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                      <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
                     ) : (
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     )}
                   </button>
                 </div>

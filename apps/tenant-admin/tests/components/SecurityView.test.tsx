@@ -115,8 +115,8 @@ describe('DomainSecurityView Component (Per-Domain IP Security)', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Allowed IPs \(1\)/i)).toBeInTheDocument();
-      expect(screen.getByText('198.51.100.0/24')).toBeInTheDocument();
-      expect(screen.getByText('Branch Office')).toBeInTheDocument();
+      expect(screen.getAllByText('198.51.100.0/24')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('Branch Office')[0]).toBeInTheDocument();
     });
   });
 });
@@ -230,7 +230,7 @@ describe('AllowedIpsView Component', () => {
     render(<AllowedIpsView />);
 
     await waitFor(() => {
-      expect(screen.getByText('10.50.0.1')).toBeInTheDocument();
+      expect(screen.getAllByText('10.50.0.1')[0]).toBeInTheDocument();
     });
 
     const openAddBtn = screen.getAllByRole('button', { name: /Add IP/i })[0];

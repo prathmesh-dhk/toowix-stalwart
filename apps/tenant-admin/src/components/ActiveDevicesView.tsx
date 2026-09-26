@@ -126,7 +126,7 @@ export const ActiveDevicesView: React.FC = () => {
   return (
     <div className="flex flex-col gap-6">
       {/* Top Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 shrink-0">
             <Monitor size={26} />
@@ -141,13 +141,14 @@ export const ActiveDevicesView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <Button
             variant="secondary"
             size="sm"
             onClick={fetchSessions}
             disabled={loading}
             icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />}
+            className="min-h-[44px] sm:min-h-0 flex-1 sm:flex-initial justify-center"
           >
             Refresh
           </Button>
@@ -158,6 +159,7 @@ export const ActiveDevicesView: React.FC = () => {
               size="sm"
               onClick={() => setConfirmRevokeOthers(true)}
               icon={<LogOut size={14} />}
+              className="min-h-[44px] sm:min-h-0 flex-1 sm:flex-initial justify-center"
             >
               Sign out other devices ({otherSessionsCount})
             </Button>
@@ -205,8 +207,8 @@ export const ActiveDevicesView: React.FC = () => {
       )}
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Active Sessions</span>
             <div className="text-2xl font-bold text-slate-900 mt-1">{sessions.length}</div>
@@ -216,7 +218,7 @@ export const ActiveDevicesView: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Device</span>
             <div className="text-sm font-semibold text-slate-900 mt-1">
@@ -232,7 +234,7 @@ export const ActiveDevicesView: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between sm:col-span-2 md:col-span-1">
           <div>
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Other Authorized Devices</span>
             <div className="text-2xl font-bold text-slate-900 mt-1">{otherSessionsCount}</div>
@@ -248,14 +250,14 @@ export const ActiveDevicesView: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Table Controls */}
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-50/50">
-          <div className="relative flex-1 max-w-sm">
+          <div className="relative flex-1 w-full sm:max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search by browser, OS, device, or IP..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+              className="w-full pl-9 pr-3 py-2 sm:py-1.5 text-base sm:text-xs min-h-[44px] sm:min-h-0 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
             />
           </div>
 
@@ -288,32 +290,32 @@ export const ActiveDevicesView: React.FC = () => {
               return (
                 <div
                   key={session.sessionId}
-                  className={`p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${
+                  className={`p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${
                     isCurrent ? 'bg-indigo-50/20' : 'hover:bg-slate-50/60'
                   }`}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs shrink-0 mt-0.5">
+                  <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+                    <div className="p-2.5 sm:p-3 bg-white border border-slate-200 rounded-xl shadow-xs shrink-0 mt-0.5">
                       {getDeviceIcon(session.deviceType)}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-slate-900">
+                        <span className="text-sm font-bold text-slate-900 truncate">
                           {session.browser || 'Unknown Browser'} on {session.os || 'Unknown OS'}
                         </span>
                         {isCurrent ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                             This Device (Current Session)
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 uppercase tracking-wider">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 uppercase tracking-wider shrink-0">
                             {session.deviceType}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 flex-wrap">
+                      <div className="flex items-center gap-2 sm:gap-4 mt-2 text-xs text-slate-500 flex-wrap">
                         <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700 border border-slate-200/60 tabular-nums font-medium">
                           IP: {session.ipAddress}
                         </span>
@@ -327,15 +329,15 @@ export const ActiveDevicesView: React.FC = () => {
                           <Clock size={12} className="text-slate-400" />
                           <span>{formatActivity(session.lastActiveAt, isCurrent)}</span>
                         </span>
-                        <span className="text-slate-400">•</span>
-                        <span>Signed in: {new Date(session.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-slate-400 hidden sm:inline">•</span>
+                        <span className="text-[11px]">Signed in: {new Date(session.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                  <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                     {isCurrent ? (
-                      <span className="text-xs text-slate-400 italic px-3 py-1 bg-slate-50 rounded-md border border-slate-200/60">
+                      <span className="text-xs text-slate-400 italic px-3 py-1 bg-slate-50 rounded-md border border-slate-200/60 w-full sm:w-auto text-center">
                         Current active device
                       </span>
                     ) : (
@@ -346,7 +348,7 @@ export const ActiveDevicesView: React.FC = () => {
                         loading={isRevokingThis}
                         disabled={isRevokingThis || revokingOthers}
                         icon={<LogOut size={13} />}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 hover:border-red-200"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 hover:border-red-200 min-h-[44px] sm:min-h-0 w-full sm:w-auto justify-center"
                       >
                         Sign out device
                       </Button>

@@ -14,6 +14,8 @@ vi.mock('../../src/api', () => ({
     listBackups: vi.fn(),
     getReconciliationReport: vi.fn(),
     getAnalytics: vi.fn().mockResolvedValue(null),
+    listAllPlans: vi.fn().mockResolvedValue({ plans: [] }),
+    getTenantDetails: vi.fn(),
     setup2Fa: vi.fn().mockResolvedValue({ secret: 'MOCKSECRET', qrCodeDataUrl: 'data:image/png;base64,mock' }),
     confirm2Fa: vi.fn().mockResolvedValue({ success: true, backupCodes: [] }),
   },
@@ -85,7 +87,7 @@ describe('PlatformAdminDashboard Component', () => {
     render(<PlatformAdminDashboard user={mockUser} onLogout={onLogout} />);
     await waitForDashboardReady();
 
-    expect(screen.getByText(/Platform Console/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Platform Console/i)[0]).toBeInTheDocument();
     expect(screen.queryByText(/Domain Applications/i)).not.toBeInTheDocument();
   });
 
@@ -94,12 +96,13 @@ describe('PlatformAdminDashboard Component', () => {
     await waitForDashboardReady();
 
     // Click on "Tenants" navigation tab
-    const tenantsTab = screen.getByRole('button', { name: /tenants/i });
+    const tenantsTab = screen.getAllByRole('button', { name: /tenants/i })[0];
     fireEvent.click(tenantsTab);
 
     // Should load the tenants view and display the tenant from api.listTenants
-    expect(await screen.findByText('Nexus Tech')).toBeInTheDocument();
-    expect(screen.getByText('nexus.tech')).toBeInTheDocument();
+    const nexusTech = await screen.findAllByText('Nexus Tech');
+    expect(nexusTech[0]).toBeInTheDocument();
+    expect(screen.getAllByText('nexus.tech')[0]).toBeInTheDocument();
   });
 
   it('calls onLogout when clicking Sign Out button', async () => {
@@ -177,6 +180,79 @@ describe('PlatformAdminDashboard Component', () => {
       await waitForDashboardReady();
 
       expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Router Integration & Navigation Callbacks', () => {
+    it('notifies onTabChange when sidebar navigation item is clicked', async () => {
+      const onTabChange = vi.fn();
+      render(<PlatformAdminDashboard user={mockUser} onLogout={onLogout} onTabChange={onTabChange} />);
+      await waitForDashboardReady();
+
+      const plansTab = screen.getAllByRole('button', { name: /^plans/i })[0];
+      fireEvent.click(plansTab);
+
+      expect(onTabChange).toHaveBeenCalledWith('plans');
+    });
+
+    it('notifies onSelectTenant when view details is clicked in tenants management', async () => {
+      const onSelectTenant = vi.fn();
+      render(
+        <PlatformAdminDashboard
+          user={mockUser}
+          onLogout={onLogout}
+          activeTab="tenants"
+          onSelectTenant={onSelectTenant}
+        />
+      );
+      await waitForDashboardReady();
+
+      const tenantRow = (await screen.findAllByText('Nexus Tech'))[0];
+      fireEvent.click(tenantRow);
+
+      expect(onSelectTenant).toHaveBeenCalledWith('t-1');
+    });
+
+    it('renders controlled activeTab and selectedTenantId deep link', async () => {
+      vi.mocked(api.getTenantDetails).mockResolvedValue({
+        tenant: {
+          id: 't-1',
+          name: 'Nexus Tech',
+          status: 'active',
+          mailboxLimit: 50,
+          mailboxCount: 20,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        domains: [],
+        admins: [],
+        mailboxes: [],
+        auditLogs: [],
+        stats: {
+          totalDomains: 0,
+          activeDomains: 0,
+          totalMailboxes: 0,
+          activeMailboxes: 0,
+          suspendedMailboxes: 0,
+          totalStorageBytes: 0,
+          mailboxLimit: 50,
+          usagePercent: 40,
+        },
+      } as any);
+
+      render(
+        <PlatformAdminDashboard
+          user={mockUser}
+          onLogout={onLogout}
+          activeTab="tenants"
+          selectedTenantId="t-1"
+        />
+      );
+      await waitForDashboardReady();
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Nexus Tech' })).toBeInTheDocument();
+      });
     });
   });
 });

@@ -127,13 +127,13 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
   };
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
+    <section className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-xs flex flex-col gap-4 sm:gap-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-lg font-semibold text-slate-900">One-Time Coupon Codes</h2>
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200 shrink-0">
               One-Time Use Guaranteed
             </span>
           </div>
@@ -142,8 +142,15 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <Button size="sm" variant="secondary" onClick={load} disabled={loading} title="Refresh coupons">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={load}
+            disabled={loading}
+            title="Refresh coupons"
+            className="min-h-[44px] sm:min-h-0 flex-1 sm:flex-initial justify-center"
+          >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
           </Button>
@@ -152,6 +159,7 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
             variant="primary"
             onClick={() => setShowCreateModal(true)}
             icon={<Plus className="w-4 h-4" />}
+            className="min-h-[44px] sm:min-h-0 flex-1 sm:flex-initial justify-center"
           >
             Generate Coupon
           </Button>
@@ -159,22 +167,22 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
       </div>
 
       {/* Metric Cards Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="p-3.5 sm:p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-1">
           <span className="text-[11px] font-semibold text-slate-500">Total Codes</span>
-          <span className="text-2xl font-bold text-slate-900 tabular-nums">{totalCount}</span>
+          <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">{totalCount}</span>
         </div>
-        <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl flex flex-col gap-1">
+        <div className="p-3.5 sm:p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl flex flex-col gap-1">
           <span className="text-[11px] font-semibold text-emerald-800">Active (Unredeemed)</span>
-          <span className="text-2xl font-bold text-emerald-700 tabular-nums">{activeCount}</span>
+          <span className="text-xl sm:text-2xl font-bold text-emerald-700 tabular-nums">{activeCount}</span>
         </div>
-        <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-xl flex flex-col gap-1">
+        <div className="p-3.5 sm:p-4 bg-indigo-50/60 border border-indigo-200 rounded-xl flex flex-col gap-1">
           <span className="text-[11px] font-semibold text-indigo-800">Redeemed</span>
-          <span className="text-2xl font-bold text-indigo-700 tabular-nums">{usedCount}</span>
+          <span className="text-xl sm:text-2xl font-bold text-indigo-700 tabular-nums">{usedCount}</span>
         </div>
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-1">
+        <div className="p-3.5 sm:p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-1">
           <span className="text-[11px] font-semibold text-slate-500">Redemption Rate</span>
-          <span className="text-2xl font-bold text-slate-700 tabular-nums">
+          <span className="text-xl sm:text-2xl font-bold text-slate-700 tabular-nums">
             {totalCount > 0 ? `${Math.round((usedCount / totalCount) * 100)}%` : '0%'}
           </span>
         </div>
@@ -183,7 +191,7 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
       {/* Filter / Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         {/* Status Filter Tabs */}
-        <div className="flex bg-slate-100 p-1 rounded-xl gap-1 text-xs">
+        <div className="flex overflow-x-auto no-scrollbar bg-slate-100 p-1 rounded-xl gap-1 text-xs max-w-full">
           {[
             { id: 'all', label: 'All' },
             { id: 'active', label: 'Active' },
@@ -195,7 +203,7 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
               key={tab.id}
               type="button"
               onClick={() => setStatusFilter(tab.id)}
-              className={`px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer shrink-0 ${
                 statusFilter === tab.id
                   ? 'bg-white text-indigo-700 shadow-xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -207,14 +215,14 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
         </div>
 
         {/* Search */}
-        <div className="relative min-w-[240px]">
+        <div className="relative w-full sm:w-auto sm:min-w-[240px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search code or description..."
-            className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:border-indigo-500"
+            className="w-full pl-8 pr-3 py-2 sm:py-1.5 border border-slate-200 rounded-xl text-base sm:text-xs min-h-[44px] sm:min-h-0 focus:outline-hidden focus:border-indigo-500"
           />
         </div>
       </div>
@@ -244,155 +252,274 @@ export const CouponsManagementView: React.FC<CouponsManagementViewProps> = () =>
             </Button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Coupon Code</th>
-                  <th>Discount Benefit</th>
-                  <th>Limit / Uses</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Redeemed By</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coupons.map((coupon) => {
-                  const badge = statusBadge(coupon.status);
-                  const redemption = coupon.redemptions[0];
+          <>
+            {/* Desktop Table View (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Coupon Code</th>
+                    <th>Discount Benefit</th>
+                    <th>Limit / Uses</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Redeemed By</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coupons.map((coupon) => {
+                    const badge = statusBadge(coupon.status);
+                    const redemption = coupon.redemptions[0];
 
-                  return (
-                    <tr key={coupon.id}>
-                      {/* Code */}
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <code className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            {coupon.code}
-                          </code>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyCode(coupon.code)}
-                            className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer"
-                            title="Copy code"
-                          >
-                            {copiedCode === coupon.code ? (
-                              <Check size={13} className="text-emerald-600" />
-                            ) : (
-                              <Copy size={13} />
-                            )}
-                          </button>
-                        </div>
-                        {coupon.description && (
-                          <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-xs" title={coupon.description}>
-                            {coupon.description}
+                    return (
+                      <tr key={coupon.id}>
+                        {/* Code */}
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <code className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {coupon.code}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyCode(coupon.code)}
+                              className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer"
+                              title="Copy code"
+                            >
+                              {copiedCode === coupon.code ? (
+                                <Check size={13} className="text-emerald-600" />
+                              ) : (
+                                <Copy size={13} />
+                              )}
+                            </button>
                           </div>
-                        )}
-                      </td>
+                          {coupon.description && (
+                            <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-xs" title={coupon.description}>
+                              {coupon.description}
+                            </div>
+                          )}
+                        </td>
 
-                      {/* Benefit */}
-                      <td>
+                        {/* Benefit */}
+                        <td>
+                          <span className="font-semibold text-slate-800 text-xs">
+                            {formatDiscount(coupon.extraTrialDays)}
+                          </span>
+                        </td>
+
+                        {/* Limit / Uses */}
+                        <td>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium text-slate-700">
+                              {coupon.usedCount} / {coupon.maxUses}
+                            </span>
+                            <span className="text-[10px] text-slate-400">One-Time Code</span>
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td>
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border inline-block"
+                            style={{ background: badge.bg, color: badge.color, borderColor: badge.border }}
+                          >
+                            {badge.label}
+                          </span>
+                          {coupon.expiresAt && coupon.status === 'active' && (
+                            <span className="block text-[10px] text-slate-400 mt-0.5">
+                              Expires {formatDate(coupon.expiresAt)}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Created */}
+                        <td>
+                          <div className="flex flex-col text-xs text-slate-600">
+                            <span className="tabular-nums">{formatDate(coupon.createdAt)}</span>
+                            {coupon.createdByEmail && (
+                              <span className="text-[10px] text-slate-400 truncate max-w-[120px]" title={coupon.createdByEmail}>
+                                {coupon.createdByEmail}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Redeemed By */}
+                        <td>
+                          {redemption ? (
+                            <div className="flex flex-col text-xs">
+                              <span className="font-semibold text-slate-800">
+                                {redemption.tenantName || 'Tenant'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 tabular-nums">
+                                {formatDate(redemption.redeemedAt)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td style={{ textAlign: 'right' }}>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyCode(coupon.code)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              title="Copy code"
+                            >
+                              <Copy size={13} />
+                            </button>
+
+                            {coupon.status === 'active' && (
+                              <button
+                                type="button"
+                                onClick={() => handleRevoke(coupon.id)}
+                                disabled={actionLoadingId === coupon.id}
+                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                title="Revoke coupon"
+                              >
+                                <Ban size={13} />
+                              </button>
+                            )}
+
+                            {coupon.usedCount === 0 && coupon.status !== 'used' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(coupon.id)}
+                                disabled={actionLoadingId === coupon.id}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                title="Delete unused coupon"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Stacked Cards View (< 768px) */}
+            <div className="md:hidden space-y-3 p-1">
+              {coupons.map((coupon) => {
+                const badge = statusBadge(coupon.status);
+                const redemption = coupon.redemptions[0];
+
+                return (
+                  <div
+                    key={coupon.id}
+                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 shadow-xs transition-all space-y-3"
+                  >
+                    {/* Header: Code & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <code className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                          {coupon.code}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCode(coupon.code)}
+                          className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          title="Copy code"
+                        >
+                          {copiedCode === coupon.code ? (
+                            <Check size={16} className="text-emerald-600" />
+                          ) : (
+                            <Copy size={16} />
+                          )}
+                        </button>
+                      </div>
+
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full border inline-block shrink-0"
+                        style={{ background: badge.bg, color: badge.color, borderColor: badge.border }}
+                      >
+                        {badge.label}
+                      </span>
+                    </div>
+
+                    {coupon.description && (
+                      <p className="text-xs text-slate-500">
+                        {coupon.description}
+                      </p>
+                    )}
+
+                    {/* Benefit & Usage info */}
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Benefit</span>
                         <span className="font-semibold text-slate-800 text-xs">
                           {formatDiscount(coupon.extraTrialDays)}
                         </span>
-                      </td>
-
-                      {/* Limit / Uses */}
-                      <td>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-medium text-slate-700">
-                            {coupon.usedCount} / {coupon.maxUses}
-                          </span>
-                          <span className="text-[10px] text-slate-400">One-Time Code</span>
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td>
-                        <span
-                          className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border inline-block"
-                          style={{ background: badge.bg, color: badge.color, borderColor: badge.border }}
-                        >
-                          {badge.label}
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Usage</span>
+                        <span className="font-semibold text-slate-800 text-xs">
+                          {coupon.usedCount} / {coupon.maxUses}
                         </span>
-                        {coupon.expiresAt && coupon.status === 'active' && (
-                          <span className="block text-[10px] text-slate-400 mt-0.5">
-                            Expires {formatDate(coupon.expiresAt)}
-                          </span>
-                        )}
-                      </td>
+                      </div>
+                    </div>
 
-                      {/* Created */}
-                      <td>
-                        <div className="flex flex-col text-xs text-slate-600">
-                          <span className="tabular-nums">{formatDate(coupon.createdAt)}</span>
-                          {coupon.createdByEmail && (
-                            <span className="text-[10px] text-slate-400 truncate max-w-[120px]" title={coupon.createdByEmail}>
-                              {coupon.createdByEmail}
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                    {/* Meta info: Created & Redeemed */}
+                    <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-1 pt-1 border-t border-slate-100">
+                      <span>Created: {formatDate(coupon.createdAt)}</span>
+                      {coupon.expiresAt && coupon.status === 'active' && (
+                        <span className="text-amber-700 font-medium">Expires: {formatDate(coupon.expiresAt)}</span>
+                      )}
+                      {redemption && (
+                        <span className="text-slate-700 w-full mt-1">
+                          Redeemed by: <strong className="text-slate-900">{redemption.tenantName || 'Tenant'}</strong> ({formatDate(redemption.redeemedAt)})
+                        </span>
+                      )}
+                    </div>
 
-                      {/* Redeemed By */}
-                      <td>
-                        {redemption ? (
-                          <div className="flex flex-col text-xs">
-                            <span className="font-semibold text-slate-800">
-                              {redemption.tenantName || 'Tenant'}
-                            </span>
-                            <span className="text-[10px] text-slate-400 tabular-nums">
-                              {formatDate(redemption.redeemedAt)}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
+                    {/* Card Actions Footer */}
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleCopyCode(coupon.code)}
+                        className="min-h-[44px] flex-1 justify-center text-xs"
+                      >
+                        <Copy size={14} />
+                        <span>Copy</span>
+                      </Button>
 
-                      {/* Actions */}
-                      <td style={{ textAlign: 'right' }}>
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleCopyCode(coupon.code)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                            title="Copy code"
-                          >
-                            <Copy size={13} />
-                          </button>
+                      {coupon.status === 'active' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleRevoke(coupon.id)}
+                          disabled={actionLoadingId === coupon.id}
+                          className="min-h-[44px] flex-1 justify-center text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        >
+                          <Ban size={14} />
+                          <span>Revoke</span>
+                        </Button>
+                      )}
 
-                          {coupon.status === 'active' && (
-                            <button
-                              type="button"
-                              onClick={() => handleRevoke(coupon.id)}
-                              disabled={actionLoadingId === coupon.id}
-                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                              title="Revoke coupon"
-                            >
-                              <Ban size={13} />
-                            </button>
-                          )}
-
-                          {coupon.usedCount === 0 && coupon.status !== 'used' && (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(coupon.id)}
-                              disabled={actionLoadingId === coupon.id}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                              title="Delete unused coupon"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      {coupon.usedCount === 0 && coupon.status !== 'used' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDelete(coupon.id)}
+                          disabled={actionLoadingId === coupon.id}
+                          className="min-h-[44px] px-3 justify-center text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 

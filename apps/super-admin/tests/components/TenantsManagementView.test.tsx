@@ -58,10 +58,10 @@ describe('TenantsManagementView Component', () => {
   it('renders tenant list with company name, domain, and mailbox quota', () => {
     render(<TenantsManagementView {...defaultProps} />);
 
-    expect(screen.getByText('Acme Global')).toBeInTheDocument();
-    expect(screen.getByText('acmeglobal.com')).toBeInTheDocument();
-    expect(screen.getByText('Suspended Industries')).toBeInTheDocument();
-    expect(screen.getByText('suspended.test')).toBeInTheDocument();
+    expect(screen.getAllByText('Acme Global')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('acmeglobal.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Suspended Industries')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('suspended.test')[0]).toBeInTheDocument();
   });
 
   it('filters tenants by search query', async () => {
@@ -70,7 +70,7 @@ describe('TenantsManagementView Component', () => {
     const searchInput = screen.getByPlaceholderText(/search organization or domain/i);
     await userEvent.type(searchInput, 'acme');
 
-    expect(screen.getByText('Acme Global')).toBeInTheDocument();
+    expect(screen.getAllByText('Acme Global')[0]).toBeInTheDocument();
     expect(screen.queryByText('Suspended Industries')).not.toBeInTheDocument();
   });
 
@@ -82,7 +82,7 @@ describe('TenantsManagementView Component', () => {
     fireEvent.click(suspendedTab);
 
     expect(screen.queryByText('Acme Global')).not.toBeInTheDocument();
-    expect(screen.getByText('Suspended Industries')).toBeInTheDocument();
+    expect(screen.getAllByText('Suspended Industries')[0]).toBeInTheDocument();
   });
 
   it('calls action callbacks for quota and suspend toggles', () => {
@@ -103,7 +103,7 @@ describe('TenantsManagementView Component', () => {
     render(<TenantsManagementView {...defaultProps} />);
 
     // Click anywhere on Acme Global row text
-    const acmeName = screen.getByText('Acme Global');
+    const acmeName = screen.getAllByText('Acme Global')[0];
     fireEvent.click(acmeName);
     expect(defaultProps.onViewDetails).toHaveBeenCalledWith(mockTenants[0]);
   });

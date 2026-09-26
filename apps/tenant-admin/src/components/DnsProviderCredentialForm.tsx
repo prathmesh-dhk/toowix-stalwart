@@ -19,7 +19,7 @@ const PROVIDER_ICONS: Record<DnsProvider, React.FC<{ className?: string }>> = {
 };
 
 const inputClass =
-  'w-full px-4 py-3 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 transition-colors placeholder:text-slate-400 bg-white text-slate-900 font-mono';
+  'w-full px-4 py-3 text-base sm:text-sm min-h-[44px] rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-600 transition-colors placeholder:text-slate-400 bg-white text-slate-900 font-mono';
 
 export interface SuccessInfo {
   verifiedProviderDomain?: string | null;
@@ -61,7 +61,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
 }) => {
   const isDark = theme === 'dark';
   const effectiveInputClass = isDark
-    ? 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-500 bg-slate-900 text-white font-mono'
+    ? 'w-full px-3.5 py-2.5 text-base sm:text-sm min-h-[44px] rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-500 bg-slate-900 text-white font-mono'
     : inputClass;
   const [provider, setProvider] = useState<DnsProvider | null>(forcedProvider || null);
   const [apiKey, setApiKey] = useState('');
@@ -268,7 +268,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
                 setProvider(p);
                 setError(null);
               }}
-              className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
+              className="w-full group px-5 py-4 min-h-[56px] rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 transition-all cursor-pointer flex items-center justify-between shadow-xs hover:shadow-sm bg-white"
             >
               <div className="flex items-center gap-3.5">
                 <Icon className="w-7 h-7 shrink-0" />
@@ -300,7 +300,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
           onClick={handleUseSaved}
           disabled={connectingStage !== null}
           aria-label="Use saved key"
-          className="w-full group px-5 py-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/20 transition-colors cursor-pointer flex items-center justify-between bg-white text-left disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full group px-5 py-4 min-h-[56px] rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/20 transition-colors cursor-pointer flex items-center justify-between bg-white text-left disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <div className="flex items-center gap-3.5">
             <Icon className="w-7 h-7 shrink-0" />
@@ -328,7 +328,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             type="button"
             onClick={() => setEntryChoice('manual')}
             disabled={connectingStage !== null}
-            className="text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline transition-colors cursor-pointer"
+            className="min-h-[44px] inline-flex items-center text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline transition-colors cursor-pointer"
           >
             Enter different credentials
           </button>
@@ -354,7 +354,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
               setProvider(null);
               setError(null);
             }}
-            className="ml-auto text-xs font-medium text-indigo-600 hover:underline cursor-pointer"
+            className="ml-auto min-h-[44px] inline-flex items-center text-xs font-medium text-indigo-600 hover:underline cursor-pointer"
           >
             Switch provider
           </button>
@@ -364,7 +364,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       {(domainId || domainName) && savedForProvider && (
         <p className="text-xs text-slate-500 -mt-3">
           This replaces your saved {PROVIDER_LABELS[provider]} key.{' '}
-          <button type="button" onClick={() => setEntryChoice('pending')} className="text-indigo-600 hover:underline cursor-pointer">
+          <button type="button" onClick={() => setEntryChoice('pending')} className="min-h-[44px] inline-flex items-center text-indigo-600 hover:underline cursor-pointer">
             Use the saved one instead
           </button>
         </p>
@@ -381,7 +381,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
               href="https://classic-developer.godaddy.com/keys"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer w-fit"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer"
             >
               <GoDaddyIcon className="w-4 h-4 shrink-0" />
               <span>Get API Keys</span>
@@ -417,7 +417,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
               href="https://hpanel.hostinger.com/api"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer w-fit"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer"
             >
               <HostingerIcon className="w-4 h-4 shrink-0" />
               <span>Get API Keys</span>
@@ -442,7 +442,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
               href="https://dash.cloudflare.com/profile/api-tokens"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer w-fit"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors cursor-pointer"
             >
               <CloudflareIcon className="w-4 h-4 shrink-0" />
               <span>Get API Keys</span>
@@ -481,12 +481,12 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       )}
 
       {(domainId || domainName) && (
-        <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+        <label className={`flex items-center gap-2 text-xs cursor-pointer select-none py-1.5 min-h-[44px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           <input
             type="checkbox"
             checked={saveForFuture}
             onChange={(e) => setSaveForFuture(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
+            className="w-4 h-4 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
           />
           Save these credentials for future domains
         </label>
@@ -501,11 +501,11 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
       )}
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-start gap-3 pt-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-start gap-3 pt-2">
         <button
           type="submit"
           disabled={!canSubmit}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {connectingStage !== null ? (
             <>
@@ -524,7 +524,7 @@ export const DnsProviderCredentialForm: React.FC<DnsProviderCredentialFormProps>
             type="button"
             onClick={onCancel}
             disabled={connectingStage !== null}
-            className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+            className={`w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer inline-flex items-center justify-center ${
               isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:bg-slate-100'
             }`}
           >

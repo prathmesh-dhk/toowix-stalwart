@@ -39,13 +39,13 @@ const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0
  * center of the screen, while taller content steps (e.g. manual DNS zone file) start higher up.
  */
 const STEP_TOP_PADDING: Record<WizardStep, string> = {
-  domain: 'pt-14 sm:pt-20 md:pt-28 lg:pt-36 xl:pt-[26vh]',
-  plan: 'pt-20 sm:pt-24 xl:pt-[17vh] pb-6 sm:pb-8',
-  method: 'pt-10 sm:pt-14 md:pt-16 lg:pt-20 xl:pt-[16vh]',
-  godaddy: 'pt-12 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[20vh]',
-  hostinger: 'pt-14 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
-  cloudflare: 'pt-14 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
-  status: 'pt-8 sm:pt-12 lg:pt-16 xl:pt-[12vh]',
+  domain: 'pt-4 sm:pt-20 md:pt-28 lg:pt-36 xl:pt-[26vh]',
+  plan: 'pt-4 sm:pt-24 xl:pt-[17vh] pb-6 sm:pb-8',
+  method: 'pt-4 sm:pt-14 md:pt-16 lg:pt-20 xl:pt-[16vh]',
+  godaddy: 'pt-4 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[20vh]',
+  hostinger: 'pt-4 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
+  cloudflare: 'pt-4 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
+  status: 'pt-4 sm:pt-12 lg:pt-16 xl:pt-[12vh]',
 };
 
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
@@ -463,27 +463,27 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
 
       <div className="min-h-screen flex flex-col bg-transparent overflow-x-hidden relative z-10">
         {/* Top bar: close, title, back */}
-        <div className="flex items-center justify-between px-6 sm:px-8 md:px-10 lg:px-12 pt-7 pb-4 shrink-0 bg-transparent sticky top-0 z-20">
-          <div className="flex items-center gap-3.5">
+        <div className="flex items-center justify-between px-4 sm:px-8 md:px-10 lg:px-12 pt-4 sm:pt-7 pb-3 sm:pb-4 shrink-0 bg-transparent sticky top-0 z-20">
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
             <button
               type="button"
               onClick={handleClose}
-              className="p-1 -ml-1 text-slate-400 hover:text-slate-800 transition-colors rounded-md focus:outline-none cursor-pointer"
+              className="min-w-[44px] min-h-[44px] p-2 -ml-2 text-slate-400 hover:text-slate-800 transition-colors rounded-lg focus:outline-none cursor-pointer flex items-center justify-center shrink-0"
               aria-label="Exit domain setup"
             >
               <X className="w-6 h-6 stroke-[2.3]" />
             </button>
-            <span className="text-slate-900 font-semibold text-lg sm:text-xl tracking-tight select-none">
+            <span className="text-slate-900 font-semibold text-base sm:text-xl tracking-tight select-none">
               Add a domain
             </span>
             {step !== 'domain' && (
               <button
                 type="button"
                 onClick={goBack}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer ml-3 border border-slate-300"
+                className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ml-2 sm:ml-3 border border-slate-300 min-h-[40px]"
               >
                 <ArrowLeft className="w-4 h-4" />
-                Back
+                <span>Back</span>
               </button>
             )}
           </div>
@@ -492,11 +492,18 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         {/* Unified Single-Focus Layout across all wizard pages */}
         <div
           key={step}
-          className={`flex-1 flex flex-row items-start w-full pl-6 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] pr-6 sm:pr-8 overflow-x-hidden ${
+          className={`flex-1 flex flex-row items-start w-full px-4 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] sm:pr-8 overflow-x-hidden ${
             direction === 'backward' ? 'animate-slide-in-left' : 'animate-slide-in-right'
           }`}
         >
           <main className={`w-full ${step === 'plan' ? 'max-w-xl xl:max-w-2xl' : 'max-w-xl'} shrink-0 ${STEP_TOP_PADDING[step]} ${step !== 'plan' ? 'pb-12' : ''} flex flex-col text-left`}>
+            {/* Mobile Step Badge */}
+            <div className="sm:hidden mb-4 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold self-start">
+              <span>Step {step === 'domain' ? '1' : step === 'method' || step === 'godaddy' || step === 'hostinger' || step === 'cloudflare' ? '2' : step === 'status' ? '3' : '4'} of 4</span>
+              <span>•</span>
+              <span className="capitalize">{step === 'domain' ? 'Domain Name' : step === 'status' ? 'Verify DNS' : step === 'plan' ? 'Choose Plan' : 'DNS Setup'}</span>
+            </div>
+
             {error && (
               <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -507,8 +514,8 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
             {/* STEP 1: DOMAIN */}
             {step === 'domain' && (
               <div>
-                <div className="mb-8">
-                  <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
+                <div className="mb-6 sm:mb-8">
+                  <h1 className="text-2xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
                     <span>Let's start with a name for your domain</span>
                     <button
                       type="button"
@@ -519,7 +526,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       <HelpCircle className="w-5 h-5 text-slate-400 hover:text-slate-600" />
                     </button>
                   </h1>
-                  <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
+                  <p className="text-slate-500 text-sm sm:text-[15px] mt-2 sm:mt-3 font-normal leading-relaxed">
                     You'll need to own this domain and be able to manage its DNS records.
                   </p>
                 </div>
@@ -544,7 +551,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         if (val.includes('/')) val = val.split('/')[0];
                         setDomainName(val);
                       }}
-                      className="w-full px-4 py-3.5 bg-white text-slate-900 placeholder:text-slate-400 text-lg border border-slate-300 rounded-lg focus:border-indigo-600 transition-colors outline-none font-sans"
+                      className="w-full px-4 py-3 bg-white text-slate-900 placeholder:text-slate-400 text-base sm:text-lg border border-slate-300 rounded-lg focus:border-indigo-600 transition-colors outline-none font-sans min-h-[48px]"
                     />
                   </div>
 
@@ -553,7 +560,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       id="continue-button"
                       type="submit"
                       disabled={!domainNameValid || checkingAvailability || loading}
-                      className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer min-h-[48px]"
                       data-purpose="submit-domain"
                     >
                       {checkingAvailability || loading ? (
@@ -871,7 +878,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <button
                     type="button"
                     onClick={() => navigateTo('plan')}
-                    className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
+                    className="w-full sm:w-auto min-h-[48px] px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center gap-2 cursor-pointer"
                     id="btn-continue-to-plan"
                   >
                     <span>Continue to Plan Selection</span>
@@ -990,11 +997,11 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                       )}
 
                       {/* Actions & Trial Banner */}
-                      <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
+                      <div className="pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-4">
                         <button
                           type="submit"
                           disabled={planSubmitting || !selectedPlanId}
-                          className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs gap-2"
+                          className="w-full sm:w-auto min-h-[48px] inline-flex items-center justify-center px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm rounded-lg transition-colors focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs gap-2"
                           id="btn-submit-domain-wizard"
                         >
                           {planSubmitting ? (
@@ -1010,7 +1017,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                           )}
                         </button>
 
-                        <span className="text-xs text-slate-400 font-normal">
+                        <span className="text-xs text-slate-400 font-normal text-center sm:text-left">
                           60-day free trial · Cancel or change plans anytime
                         </span>
                       </div>

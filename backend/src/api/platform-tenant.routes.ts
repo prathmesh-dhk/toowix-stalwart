@@ -15,6 +15,7 @@ import { emailService } from '../services/email.service';
 import { config } from '../config';
 import { suspendTenantInfrastructure, restoreTenantInfrastructure } from '../services/tenant-lifecycle.service';
 import { forceDeleteOrganisation, OrganisationDeletionError } from '../services/organisation-deletion.service';
+import { deleteDomainDirectly, DomainDeletionError } from '../services/domain-deletion.service';
 import { captureRequestContext } from '../services/request-context.service';
 import { MailboxService } from '../services/mailbox.service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
@@ -465,6 +466,30 @@ platformTenantRouter.get('/:id/domains/:domainId/dns-check', async (req: Request
   } catch (err: any) {
     console.error('[Domain DNS Check Error]:', err);
     return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to check DNS records.' });
+  }
+});
+
+// 2g. Delete Domain from Tenant (Super Admin action)
+platformTenantRouter.delete('/:id/domains/:domainId', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.domainId)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant or domain ID' });
+  }
+
+  const actor = {
+    id: req.adminUser!.id,
+    email: req.adminUser!.email,
+    role: req.adminUser!.role,
+  };
+
+  try {
+    const result = await deleteDomainDirectly(req.params.domainId, req.params.id, actor);
+    return res.status(200).json(result);
+  } catch (err: any) {
+    if (err instanceof DomainDeletionError) {
+      return res.status(err.statusCode).json({ error: err.code, message: err.message });
+    }
+    console.error('[Platform Domain Delete Error]:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to delete domain.' });
   }
 });
 

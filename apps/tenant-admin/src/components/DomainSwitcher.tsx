@@ -53,7 +53,7 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
     // empty state instead of an "Add Domain" affordance that would silently no-op when clicked.
     if (!onOpenAddDomain) {
       return (
-        <div className="mb-3 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-xs">
+        <div className="mb-3 px-3 py-2.5 min-h-[44px] flex items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-xs">
           No domains assigned yet.
         </div>
       );
@@ -63,7 +63,7 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
         <button
           type="button"
           onClick={onOpenAddDomain}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium cursor-pointer shadow-2xs"
+          className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium cursor-pointer shadow-2xs"
           id="btn-add-first-domain-sidebar"
         >
           <div className="flex items-center gap-2 min-w-0">
@@ -86,7 +86,7 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         id="domain-switcher-trigger"
-        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+        className={`w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all text-left cursor-pointer ${
           isOpen
             ? 'bg-slate-50 border-indigo-300 shadow-sm ring-2 ring-indigo-500/10'
             : 'bg-white hover:bg-slate-50 border-slate-200/90 shadow-2xs'
@@ -123,7 +123,7 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
                     onSelectDomain(domain);
                     setIsOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                  className={`w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-left text-xs transition-colors cursor-pointer ${
                     isSelected
                       ? 'bg-indigo-50 text-indigo-700 font-semibold'
                       : 'hover:bg-slate-50 text-slate-700 font-normal'
@@ -150,7 +150,7 @@ export const DomainSwitcher: React.FC<DomainSwitcherProps> = ({
                   setIsOpen(false);
                   onOpenAddDomain();
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                className="w-full min-h-[44px] flex items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                 id="btn-add-domain-switcher-item"
               >
                 <Plus className="w-3.5 h-3.5 text-indigo-600 shrink-0" />

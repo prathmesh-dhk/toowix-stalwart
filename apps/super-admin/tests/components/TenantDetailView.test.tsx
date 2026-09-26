@@ -151,9 +151,9 @@ describe('TenantDetailView Component in Super Admin', () => {
     expect(screen.getByText('Storage Consumed')).toBeInTheDocument();
 
     // Domains table in first tab
-    expect(screen.getByText('waynecorp.com')).toBeInTheDocument();
-    expect(screen.getByText('wayne-tech.test')).toBeInTheDocument();
-    expect(screen.getByText('Primary')).toBeInTheDocument();
+    expect(screen.getAllByText('waynecorp.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('wayne-tech.test')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Primary')[0]).toBeInTheDocument();
   });
 
   it('calls onBack when clicking "Back to Tenants"', async () => {
@@ -179,21 +179,21 @@ describe('TenantDetailView Component in Super Admin', () => {
     const mailboxesTab = screen.getByRole('button', { name: /^mailboxes/i });
     fireEvent.click(mailboxesTab);
     expect(screen.getByText('Provisioned Mailboxes')).toBeInTheDocument();
-    expect(screen.getByText('bruce@waynecorp.com')).toBeInTheDocument();
-    expect(screen.getByText('alfred@waynecorp.com')).toBeInTheDocument();
+    expect(screen.getAllByText('bruce@waynecorp.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('alfred@waynecorp.com')[0]).toBeInTheDocument();
 
     // 2. Admins tab
     const adminsTab = screen.getByRole('button', { name: /^administrators/i });
     fireEvent.click(adminsTab);
     expect(screen.getByText('Tenant Administrators')).toBeInTheDocument();
-    expect(screen.getByText('2FA Protected')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /reset password/i })).toBeInTheDocument();
+    expect(screen.getAllByText('2FA Protected')[0]).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /reset password/i })[0]).toBeInTheDocument();
 
     // 3. Audit tab
     const auditTab = screen.getByRole('button', { name: /^audit trail/i });
     fireEvent.click(auditTab);
     expect(screen.getByText('Tenant Audit History')).toBeInTheDocument();
-    expect(screen.getByText('MAILBOX_CREATE')).toBeInTheDocument();
+    expect(screen.getAllByText('MAILBOX_CREATE')[0]).toBeInTheDocument();
 
     // 4. Governance tab
     const govTab = screen.getByRole('button', { name: /governance & danger zone/i });
@@ -216,7 +216,7 @@ describe('TenantDetailView Component in Super Admin', () => {
     fireEvent.click(adminsTab);
 
     // Click reset password
-    const resetBtn = screen.getByRole('button', { name: /reset password/i });
+    const resetBtn = screen.getAllByRole('button', { name: /reset password/i })[0];
     fireEvent.click(resetBtn);
 
     const passwordInput = screen.getByPlaceholderText(/enter new password/i);
@@ -243,10 +243,35 @@ describe('TenantDetailView Component in Super Admin', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^administrators/i }));
 
-    await waitFor(() => expect(screen.getByText('alfred@waynecorp.com')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('alfred@waynecorp.com')[0]).toBeInTheDocument());
 
-    // Only one Reset Password button exists — for the Tenant Admin row, not the Moderator's.
-    expect(screen.getAllByRole('button', { name: /reset password/i })).toHaveLength(1);
-    expect(screen.getByText('Managed by Tenant Admin')).toBeInTheDocument();
+    // Reset Password buttons exist for the Tenant Admin row (desktop & mobile) but NOT for Moderator row.
+    expect(screen.getAllByRole('button', { name: /reset password/i })).toHaveLength(2);
+    expect(screen.getAllByText('Managed by Tenant Admin')[0]).toBeInTheDocument();
+  });
+
+  it('notifies onSubTabChange when subtab is clicked', async () => {
+    const onSubTabChange = vi.fn();
+    render(<TenantDetailView {...defaultProps} onSubTabChange={onSubTabChange} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Wayne Enterprises' })).toBeInTheDocument();
+    });
+
+    const mailboxesTab = screen.getByRole('button', { name: /^mailboxes/i });
+    fireEvent.click(mailboxesTab);
+
+    expect(onSubTabChange).toHaveBeenCalledWith('mailboxes');
+  });
+
+  it('renders with controlled activeSubTab prop directly', async () => {
+    render(<TenantDetailView {...defaultProps} activeSubTab="admins" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Wayne Enterprises' })).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByText('bruce@waynecorp.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('alfred@waynecorp.com')[0]).toBeInTheDocument();
   });
 });

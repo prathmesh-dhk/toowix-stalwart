@@ -102,7 +102,7 @@ export const CreateTenantModal: React.FC<CreateTenantModalProps> = ({
               <input
                 id="tenantOrgName"
                 type="text"
-                className="form-input"
+                className="form-input text-base sm:text-xs"
                 placeholder="e.g. Acme Corporation"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -117,7 +117,7 @@ export const CreateTenantModal: React.FC<CreateTenantModalProps> = ({
               <input
                 id="tenantDomain"
                 type="text"
-                className="form-input"
+                className="form-input text-base sm:text-xs"
                 placeholder="e.g. acme.com"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}

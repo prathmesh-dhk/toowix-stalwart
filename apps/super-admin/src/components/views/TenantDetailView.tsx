@@ -23,6 +23,10 @@ import {
   AlertTriangle,
   FileText,
   Plus,
+  CheckCircle2,
+  Activity,
+  Key,
+  AlertCircle,
 } from 'lucide-react';
 import { TenantFullDetails, TenantSummary } from '../../types';
 import { api } from '../../api';
@@ -40,12 +44,16 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+export type TenantDetailSubTab = 'domains' | 'mailboxes' | 'admins' | 'audit' | 'governance';
+
 export interface TenantDetailViewProps {
   tenantId: string;
   onBack: () => void;
   onTenantUpdated?: () => void;
   onShowAlert?: (type: 'success' | 'error', message: string) => void;
   onActivateTenant?: (tenant: TenantSummary) => void;
+  activeSubTab?: TenantDetailSubTab;
+  onSubTabChange?: (tab: TenantDetailSubTab) => void;
 }
 
 export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
@@ -54,11 +62,24 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   onTenantUpdated,
   onShowAlert,
   onActivateTenant,
+  activeSubTab: controlledActiveSubTab,
+  onSubTabChange,
 }) => {
   const [details, setDetails] = useState<TenantFullDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'domains' | 'mailboxes' | 'admins' | 'audit' | 'governance'>('domains');
+  const [activeSubTab, setActiveSubTab] = useState<TenantDetailSubTab>(controlledActiveSubTab || 'domains');
+
+  useEffect(() => {
+    if (controlledActiveSubTab && controlledActiveSubTab !== activeSubTab) {
+      setActiveSubTab(controlledActiveSubTab);
+    }
+  }, [controlledActiveSubTab]);
+
+  const handleSubTabChange = (tab: TenantDetailSubTab) => {
+    setActiveSubTab(tab);
+    onSubTabChange?.(tab);
+  };
   const [copiedId, setCopiedId] = useState(false);
 
   // Search & Filter
@@ -90,6 +111,16 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
   // Lifecycle action loading
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
+
+  // Domain actions
+  const [checkingDnsDomainId, setCheckingDnsDomainId] = useState<string | null>(null);
+  const [dnsCheckResult, setDnsCheckResult] = useState<{ domain: string; allConfigured: boolean; records: any[] } | null>(null);
+  const [deletingDomainId, setDeletingDomainId] = useState<string | null>(null);
+
+  // Mailbox actions
+  const [resettingMailboxId, setResettingMailboxId] = useState<string | null>(null);
+  const [newMailboxPassword, setNewMailboxPassword] = useState('');
+  const [mailboxActionLoading, setMailboxActionLoading] = useState(false);
 
   const fetchTenantDetails = useCallback(async () => {
     setLoading(true);
@@ -244,6 +275,93 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
     }
   };
 
+  const handleCheckDomainDns = async (domainId: string, domainName: string) => {
+    setCheckingDnsDomainId(domainId);
+    try {
+      const res = await api.checkDomainDns(tenantId, domainId);
+      setDnsCheckResult(res);
+      if (res.allConfigured) {
+        onShowAlert?.('success', `DNS verification passed for ${domainName}! All required records are live.`);
+      } else {
+        onShowAlert?.('error', `DNS check incomplete for ${domainName}. Some records are missing or not propagated yet.`);
+      }
+      await fetchTenantDetails();
+    } catch (err: any) {
+      onShowAlert?.('error', err.message || 'Failed to check DNS records.');
+    } finally {
+      setCheckingDnsDomainId(null);
+    }
+  };
+
+  const handleDeleteDomain = async (domainId: string, domainName: string) => {
+    const hasMailboxes = mailboxes.some((m) => m.domainId === domainId || m.domainName?.toLowerCase() === domainName.toLowerCase());
+    if (hasMailboxes) {
+      onShowAlert?.('error', `Cannot delete domain "${domainName}": mailboxes still exist on this domain. Remove all mailboxes first.`);
+      return;
+    }
+    if (!confirm(`Are you sure you want to permanently delete domain "${domainName}"? This action cannot be undone.`)) {
+      return;
+    }
+    setDeletingDomainId(domainId);
+    try {
+      await api.deleteDomain(tenantId, domainId);
+      onShowAlert?.('success', `Domain "${domainName}" deleted successfully.`);
+      await fetchTenantDetails();
+      onTenantUpdated?.();
+    } catch (err: any) {
+      onShowAlert?.('error', err.message || 'Failed to delete domain.');
+    } finally {
+      setDeletingDomainId(null);
+    }
+  };
+
+  const handleResetMailboxPassword = async (mailboxId: string) => {
+    if (!newMailboxPassword || newMailboxPassword.length < 8) {
+      onShowAlert?.('error', 'New password must be at least 8 characters long.');
+      return;
+    }
+    setMailboxActionLoading(true);
+    try {
+      await api.resetMailboxPassword(mailboxId, newMailboxPassword);
+      onShowAlert?.('success', 'Mailbox password reset successfully.');
+      setResettingMailboxId(null);
+      setNewMailboxPassword('');
+    } catch (err: any) {
+      onShowAlert?.('error', err.message || 'Failed to reset mailbox password.');
+    } finally {
+      setMailboxActionLoading(false);
+    }
+  };
+
+  const handleToggleSuspendMailbox = async (mailboxId: string, isCurrentlyActive: boolean) => {
+    try {
+      if (isCurrentlyActive) {
+        await api.suspendMailbox(mailboxId);
+        onShowAlert?.('success', 'Mailbox suspended.');
+      } else {
+        await api.reactivateMailbox(mailboxId);
+        onShowAlert?.('success', 'Mailbox reactivated.');
+      }
+      await fetchTenantDetails();
+    } catch (err: any) {
+      onShowAlert?.('error', err.message || 'Failed to update mailbox status.');
+    }
+  };
+
+  const handleDeleteMailbox = async (mailboxId: string, address: string) => {
+    if (!confirm(`Are you sure you want to permanently delete mailbox "${address}"? All messages and attachments will be deleted.`)) {
+      return;
+    }
+    try {
+      await api.deleteMailbox(mailboxId);
+      onShowAlert?.('success', `Mailbox "${address}" deleted successfully.`);
+      await fetchTenantDetails();
+      onTenantUpdated?.();
+    } catch (err: any) {
+      onShowAlert?.('error', err.message || 'Failed to delete mailbox.');
+    }
+  };
+
   // Filtered lists
   const filteredMailboxes = useMemo(() => {
     if (!details?.mailboxes) return [];
@@ -299,8 +417,8 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
   if (!details) return null;
 
-  const { tenant, domains, admins, mailboxes, auditLogs, stats } = details;
-  const usagePercent = stats.usagePercent || 0;
+  const { tenant, domains = [], admins = [], mailboxes = [], auditLogs = [], stats = { totalDomains: 0, activeDomains: 0, totalMailboxes: 0, activeMailboxes: 0, suspendedMailboxes: 0, totalStorageBytes: 0, mailboxLimit: 0, usagePercent: 0 } } = details;
+  const usagePercent = stats?.usagePercent || 0;
   const isSuspended = tenant.status === 'suspended';
   const isPending = tenant.status === 'approved_pending_setup';
   const isActive = tenant.status === 'active';
@@ -421,7 +539,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setActiveSubTab('governance')}
+              onClick={() => handleSubTabChange('governance')}
               className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-1.5"
             >
               <Sliders className="w-3.5 h-3.5 text-slate-500" />
@@ -512,7 +630,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
       <div className="flex border-b border-slate-200 bg-white px-4 rounded-t-xl overflow-x-auto">
         <button
           type="button"
-          onClick={() => setActiveSubTab('domains')}
+          onClick={() => handleSubTabChange('domains')}
           className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
             activeSubTab === 'domains'
               ? 'border-indigo-600 text-indigo-600'
@@ -528,7 +646,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('mailboxes')}
+          onClick={() => handleSubTabChange('mailboxes')}
           className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
             activeSubTab === 'mailboxes'
               ? 'border-indigo-600 text-indigo-600'
@@ -544,7 +662,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('admins')}
+          onClick={() => handleSubTabChange('admins')}
           className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
             activeSubTab === 'admins'
               ? 'border-indigo-600 text-indigo-600'
@@ -560,7 +678,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('audit')}
+          onClick={() => handleSubTabChange('audit')}
           className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
             activeSubTab === 'audit'
               ? 'border-indigo-600 text-indigo-600'
@@ -576,7 +694,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('governance')}
+          onClick={() => handleSubTabChange('governance')}
           className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
             activeSubTab === 'governance'
               ? 'border-indigo-600 text-indigo-600'
@@ -612,72 +730,246 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
             </div>
           </div>
 
+          {/* DNS Diagnostic Result Banner */}
+          {dnsCheckResult && (
+            <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/50 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className={`w-5 h-5 ${dnsCheckResult.allConfigured ? 'text-emerald-600' : 'text-amber-500'}`} />
+                  <span className="text-sm font-semibold text-slate-900">
+                    DNS Live Check: <span className="font-mono text-indigo-700">{dnsCheckResult.domain}</span>
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${dnsCheckResult.allConfigured ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                    {dnsCheckResult.allConfigured ? 'All Records Configured' : 'Missing / Incomplete Records'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDnsCheckResult(null)}
+                  className="text-xs text-slate-400 hover:text-slate-600 font-medium"
+                >
+                  Dismiss
+                </button>
+              </div>
+
+              {dnsCheckResult.records && dnsCheckResult.records.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                      <tr>
+                        <th className="px-3 py-2">Record Type</th>
+                        <th className="px-3 py-2">Host / Name</th>
+                        <th className="px-3 py-2">Expected Value</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {dnsCheckResult.records.map((r: any, idx: number) => {
+                        const isValid = r.status === 'valid' || r.configured === true || r.valid === true;
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/50">
+                            <td className="px-3 py-2 font-mono font-bold text-slate-800">{r.type || r.recordType}</td>
+                            <td className="px-3 py-2 font-mono text-slate-600">{r.host || r.name || '@'}</td>
+                            <td className="px-3 py-2 font-mono text-slate-600 max-w-xs truncate" title={r.expectedValue || r.value}>
+                              {r.expectedValue || r.value || '-'}
+                            </td>
+                            <td className="px-3 py-2">
+                              {isValid ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Valid
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600">
+                                  <AlertCircle className="w-3.5 h-3.5" /> Pending
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {filteredDomains.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
               No domains match your search query.
             </div>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Domain Name</th>
-                    <th>Type</th>
-                    <th>DNS Status</th>
-                    <th>Mailbox Quota</th>
-                    <th>Stalwart ID</th>
-                    <th>Added</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredDomains.map((dom) => {
-                    const badge = dnsStatusBadgeProps(dom.dnsStatus);
-                    return (
-                      <tr key={dom.id}>
-                        <td>
-                          <div className="flex items-center gap-2 font-semibold text-slate-900 text-xs">
-                            <Globe className="w-4 h-4 text-indigo-600 shrink-0" />
-                            <span>{dom.domainName}</span>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Domain Name</th>
+                      <th>Type</th>
+                      <th>DNS Status</th>
+                      <th>Mailbox Quota</th>
+                      <th>Stalwart ID</th>
+                      <th>Added</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDomains.map((dom) => {
+                      const badge = dnsStatusBadgeProps(dom.dnsStatus);
+                      const hasMailboxes = mailboxes.some(
+                        (m) => m.domainId === dom.id || m.domainName?.toLowerCase() === dom.domainName.toLowerCase()
+                      );
+                      return (
+                        <tr key={dom.id}>
+                          <td>
+                            <div className="flex items-center gap-2 font-semibold text-slate-900 text-xs">
+                              <Globe className="w-4 h-4 text-indigo-600 shrink-0" />
+                              <span>{dom.domainName}</span>
+                            </div>
+                          </td>
+                          <td>
+                            {dom.isPrimary ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                                Primary
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                                Secondary
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <StatusBadge status={badge.status} label={badge.label} />
+                          </td>
+                          <td>
+                            <span className="text-xs text-slate-700 font-medium">
+                              {dom.mailboxLimit ? `${dom.mailboxLimit} seats` : 'Tenant Shared'}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="text-[11px] font-mono text-slate-500">
+                              {dom.stalwartDomainId || 'Auto-generated'}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="text-xs text-slate-500">
+                              {new Date(dom.createdAt).toLocaleDateString()}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                onClick={() => handleCheckDomainDns(dom.id, dom.domainName)}
+                                loading={checkingDnsDomainId === dom.id}
+                                icon={<Activity className="w-3.5 h-3.5 text-indigo-600" />}
+                                title="Check DNS propagation status"
+                              >
+                                Check DNS
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                onClick={() => handleDeleteDomain(dom.id, dom.domainName)}
+                                loading={deletingDomainId === dom.id}
+                                disabled={hasMailboxes}
+                                className="text-rose-600 hover:bg-rose-50 border-rose-200"
+                                icon={<Trash2 className="w-3.5 h-3.5" />}
+                                title={hasMailboxes ? 'Cannot delete domain with active mailboxes' : 'Delete Domain'}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Stacked Cards View */}
+              <div className="md:hidden space-y-3">
+                {filteredDomains.map((dom) => {
+                  const badge = dnsStatusBadgeProps(dom.dnsStatus);
+                  const hasMailboxes = mailboxes.some(
+                    (m) => m.domainId === dom.id || m.domainName?.toLowerCase() === dom.domainName.toLowerCase()
+                  );
+                  return (
+                    <div
+                      key={dom.id}
+                      className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 shadow-xs transition-all space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100 mt-0.5">
+                            <Globe size={16} />
                           </div>
-                        </td>
-                        <td>
-                          {dom.isPrimary ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-                              Primary
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                              Secondary
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <StatusBadge status={badge.status} label={badge.label} />
-                        </td>
-                        <td>
-                          <span className="text-xs text-slate-700 font-medium">
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 text-sm tracking-tight truncate">
+                              {dom.domainName}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-mono truncate">
+                              {dom.stalwartDomainId || 'Auto-generated'}
+                            </div>
+                          </div>
+                        </div>
+                        {dom.isPrimary ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                            Primary
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                            Secondary
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                        <div className="bg-slate-50 rounded-lg p-2.5">
+                          <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">DNS Status</div>
+                          <div className="mt-1">
+                            <StatusBadge status={badge.status} label={badge.label} />
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-2.5">
+                          <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Quota</div>
+                          <div className="font-medium text-slate-800 mt-1">
                             {dom.mailboxLimit ? `${dom.mailboxLimit} seats` : 'Tenant Shared'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="text-[11px] font-mono text-slate-500">
-                            {dom.stalwartDomainId || 'Auto-generated'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="text-xs text-slate-500">
-                            {new Date(dom.createdAt).toLocaleDateString()}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                        <div className="text-[11px] text-slate-400">
+                          Added {new Date(dom.createdAt).toLocaleDateString()}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="xs"
+                            variant="secondary"
+                            onClick={() => handleCheckDomainDns(dom.id, dom.domainName)}
+                            loading={checkingDnsDomainId === dom.id}
+                            icon={<Activity className="w-3.5 h-3.5 text-indigo-600" />}
+                          >
+                            Check DNS
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="secondary"
+                            onClick={() => handleDeleteDomain(dom.id, dom.domainName)}
+                            loading={deletingDomainId === dom.id}
+                            disabled={hasMailboxes}
+                            className="text-rose-600 hover:bg-rose-50 border-rose-200"
+                            icon={<Trash2 className="w-3.5 h-3.5" />}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </section>
       )}
@@ -713,54 +1005,235 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 : 'No mailboxes match your search filter.'}
             </div>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Email Address</th>
-                    <th>Domain</th>
-                    <th>Status</th>
-                    <th>Storage Used</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMailboxes.map((mb) => {
-                    const isMbActive = mb.status === 'active';
-                    return (
-                      <tr key={mb.id}>
-                        <td>
-                          <div className="flex items-center gap-2 font-medium text-slate-900 text-xs">
-                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span>{mb.address}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <span className="text-xs text-slate-600">{mb.domainName}</span>
-                        </td>
-                        <td>
-                          {isMbActive ? (
-                            <StatusBadge status="success">Active</StatusBadge>
-                          ) : (
-                            <StatusBadge status="danger">{mb.status}</StatusBadge>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Email Address</th>
+                      <th>Domain</th>
+                      <th>Status</th>
+                      <th>Storage Used</th>
+                      <th>Created</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMailboxes.map((mb) => {
+                      const isMbActive = mb.status === 'active';
+                      const isResetting = resettingMailboxId === mb.id;
+                      return (
+                        <React.Fragment key={mb.id}>
+                          <tr>
+                            <td>
+                              <div className="flex items-center gap-2 font-medium text-slate-900 text-xs">
+                                <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{mb.address}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="text-xs text-slate-600">{mb.domainName}</span>
+                            </td>
+                            <td>
+                              {isMbActive ? (
+                                <StatusBadge status="success">Active</StatusBadge>
+                              ) : (
+                                <StatusBadge status="danger">{mb.status}</StatusBadge>
+                              )}
+                            </td>
+                            <td>
+                              <span className="text-xs font-mono text-slate-700">
+                                {formatBytes(mb.storageBytes)}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="text-xs text-slate-500">
+                                {new Date(mb.createdAt).toLocaleDateString()}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="xs"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    setResettingMailboxId(isResetting ? null : mb.id);
+                                    setNewMailboxPassword('');
+                                  }}
+                                  icon={<Key className="w-3.5 h-3.5 text-slate-600" />}
+                                  title="Reset password"
+                                >
+                                  {isResetting ? 'Cancel' : 'Reset Pass'}
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  variant="secondary"
+                                  onClick={() => handleToggleSuspendMailbox(mb.id, isMbActive)}
+                                  className={isMbActive ? 'text-amber-700 hover:bg-amber-50 border-amber-200' : 'text-emerald-700 hover:bg-emerald-50 border-emerald-200'}
+                                  icon={isMbActive ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                                  title={isMbActive ? 'Suspend mailbox' : 'Reactivate mailbox'}
+                                >
+                                  {isMbActive ? 'Suspend' : 'Activate'}
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  variant="secondary"
+                                  onClick={() => handleDeleteMailbox(mb.id, mb.address)}
+                                  className="text-rose-600 hover:bg-rose-50 border-rose-200"
+                                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                                  title="Delete mailbox"
+                                />
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Inline Reset Password Panel */}
+                          {isResetting && (
+                            <tr className="bg-indigo-50/40 border-y border-indigo-100">
+                              <td colSpan={6} className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-xs font-semibold text-slate-700">
+                                    Set new password for <span className="font-mono text-indigo-700">{mb.address}</span>:
+                                  </span>
+                                  <input
+                                    type="password"
+                                    value={newMailboxPassword}
+                                    onChange={(e) => setNewMailboxPassword(e.target.value)}
+                                    placeholder="Min. 8 characters"
+                                    className="form-input h-7 text-xs w-48"
+                                  />
+                                  <Button
+                                    size="xs"
+                                    variant="primary"
+                                    onClick={() => handleResetMailboxPassword(mb.id)}
+                                    loading={mailboxActionLoading}
+                                  >
+                                    Save New Password
+                                  </Button>
+                                  <Button
+                                    size="xs"
+                                    variant="secondary"
+                                    onClick={() => {
+                                      setResettingMailboxId(null);
+                                      setNewMailboxPassword('');
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td>
-                          <span className="text-xs font-mono text-slate-700">
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Stacked Cards View */}
+              <div className="md:hidden space-y-3">
+                {filteredMailboxes.map((mb) => {
+                  const isMbActive = mb.status === 'active';
+                  const isResetting = resettingMailboxId === mb.id;
+                  return (
+                    <div
+                      key={mb.id}
+                      className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 shadow-xs transition-all space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100 mt-0.5">
+                            <Mail size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 text-sm tracking-tight truncate">
+                              {mb.address}
+                            </div>
+                            <div className="text-xs text-slate-500 truncate">{mb.domainName}</div>
+                          </div>
+                        </div>
+                        {isMbActive ? (
+                          <StatusBadge status="success">Active</StatusBadge>
+                        ) : (
+                          <StatusBadge status="danger">{mb.status}</StatusBadge>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                        <div className="bg-slate-50 rounded-lg p-2.5">
+                          <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Storage</div>
+                          <div className="font-semibold text-slate-800 font-mono mt-0.5">
                             {formatBytes(mb.storageBytes)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="text-xs text-slate-500">
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-2.5">
+                          <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Created</div>
+                          <div className="font-medium text-slate-800 mt-0.5">
                             {new Date(mb.createdAt).toLocaleDateString()}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Mobile Actions */}
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => {
+                            setResettingMailboxId(isResetting ? null : mb.id);
+                            setNewMailboxPassword('');
+                          }}
+                          icon={<Key className="w-3.5 h-3.5 text-slate-600" />}
+                        >
+                          {isResetting ? 'Cancel' : 'Reset Pass'}
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => handleToggleSuspendMailbox(mb.id, isMbActive)}
+                          className={isMbActive ? 'text-amber-700 hover:bg-amber-50 border-amber-200' : 'text-emerald-700 hover:bg-emerald-50 border-emerald-200'}
+                        >
+                          {isMbActive ? 'Suspend' : 'Activate'}
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => handleDeleteMailbox(mb.id, mb.address)}
+                          className="text-rose-600 hover:bg-rose-50 border-rose-200"
+                          icon={<Trash2 className="w-3.5 h-3.5" />}
+                        />
+                      </div>
+
+                      {/* Mobile Inline Reset Form */}
+                      {isResetting && (
+                        <div className="p-3 bg-indigo-50/50 rounded-lg border border-indigo-100 space-y-2 mt-2">
+                          <div className="text-xs font-semibold text-slate-700">Set new password:</div>
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              value={newMailboxPassword}
+                              onChange={(e) => setNewMailboxPassword(e.target.value)}
+                              placeholder="Min. 8 characters"
+                              className="form-input h-7 text-xs flex-1"
+                            />
+                            <Button
+                              size="xs"
+                              variant="primary"
+                              onClick={() => handleResetMailboxPassword(mb.id)}
+                              loading={mailboxActionLoading}
+                            >
+                              Save
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </section>
       )}
@@ -883,76 +1356,148 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
               No administrators assigned to this tenant yet.
             </div>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Administrator</th>
-                    <th>Role</th>
-                    <th>2FA Security</th>
-                    <th>Created</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {admins.map((admin) => (
-                    <tr key={admin.id}>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-xs border border-slate-200">
-                            {admin.email.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-slate-900 text-xs">{admin.email}</div>
-                            <div className="text-[10px] text-slate-400">ID: {admin.id.slice(-8)}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
-                          {admin.role}
-                        </span>
-                      </td>
-                      <td>
-                        {admin.twoFactorEnabled ? (
-                          <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                            <span>2FA Protected</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                            <Shield className="w-4 h-4 text-slate-400" />
-                            <span>Not configured</span>
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <span className="text-xs text-slate-500">
-                          {new Date(admin.createdAt).toLocaleDateString()}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {admin.role === 'TENANT_MODERATOR' ? (
-                          <span className="text-[11px] text-slate-400 italic">Managed by Tenant Admin</span>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              setResettingAdminId(resettingAdminId === admin.id ? null : admin.id);
-                              setNewAdminPassword('');
-                            }}
-                            icon={<KeyRound className="w-3.5 h-3.5 text-slate-600" />}
-                          >
-                            Reset Password
-                          </Button>
-                        )}
-                      </td>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Administrator</th>
+                      <th>Role</th>
+                      <th>2FA Security</th>
+                      <th>Created</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {admins.map((admin) => (
+                      <tr key={admin.id}>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-xs border border-slate-200">
+                              {admin.email.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-slate-900 text-xs">{admin.email}</div>
+                              <div className="text-[10px] text-slate-400">ID: {admin.id.slice(-8)}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
+                            {admin.role}
+                          </span>
+                        </td>
+                        <td>
+                          {admin.twoFactorEnabled ? (
+                            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                              <span>2FA Protected</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                              <Shield className="w-4 h-4 text-slate-400" />
+                              <span>Not configured</span>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <span className="text-xs text-slate-500">
+                            {new Date(admin.createdAt).toLocaleDateString()}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {admin.role === 'TENANT_MODERATOR' ? (
+                            <span className="text-[11px] text-slate-400 italic">Managed by Tenant Admin</span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setResettingAdminId(resettingAdminId === admin.id ? null : admin.id);
+                                setNewAdminPassword('');
+                              }}
+                              icon={<KeyRound className="w-3.5 h-3.5 text-slate-600" />}
+                            >
+                              Reset Password
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Stacked Cards View */}
+              <div className="md:hidden space-y-3">
+                {admins.map((admin) => (
+                  <div
+                    key={admin.id}
+                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 shadow-xs transition-all space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-xs border border-slate-200 shrink-0 mt-0.5">
+                          {admin.email.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-900 text-sm truncate">{admin.email}</div>
+                          <div className="text-[10px] text-slate-400">ID: {admin.id.slice(-8)}</div>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
+                        {admin.role}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                      <div className="bg-slate-50 rounded-lg p-2.5">
+                        <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Security</div>
+                        <div className="mt-1">
+                          {admin.twoFactorEnabled ? (
+                            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                              <span>2FA Enabled</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                              <Shield className="w-4 h-4 text-slate-400" />
+                              <span>No 2FA</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-lg p-2.5">
+                        <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Created</div>
+                        <div className="text-slate-800 font-medium mt-1">
+                          {new Date(admin.createdAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      {admin.role === 'TENANT_MODERATOR' ? (
+                        <span className="text-[11px] text-slate-400 italic">Managed by Tenant Admin</span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            setResettingAdminId(resettingAdminId === admin.id ? null : admin.id);
+                            setNewAdminPassword('');
+                          }}
+                          icon={<KeyRound className="w-3.5 h-3.5 text-slate-600" />}
+                          className="w-full min-h-[44px] justify-center"
+                        >
+                          Reset Password
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </section>
       )}
@@ -988,55 +1533,102 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 : 'No audit records match your search filter.'}
             </div>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Actor</th>
-                    <th>Action</th>
-                    <th>Resource</th>
-                    <th>IP Address</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAuditLogs.map((log) => (
-                    <tr key={log.id}>
-                      <td className="whitespace-nowrap">
-                        <span className="text-xs font-mono text-slate-600">
-                          {new Date(log.timestamp).toLocaleString()}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="text-xs font-medium text-slate-900">{log.actorEmail}</div>
-                        <div className="text-[10px] text-slate-400">{log.actorRole}</div>
-                      </td>
-                      <td>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-800">
-                          {log.action}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="text-xs text-slate-700">
-                          {log.resource} {log.resourceId ? `(${log.resourceId.slice(-6)})` : ''}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="text-xs font-mono text-slate-500">{log.actorIp || '—'}</span>
-                      </td>
-                      <td>
-                        {log.status === 'success' ? (
-                          <StatusBadge status="success">Success</StatusBadge>
-                        ) : (
-                          <StatusBadge status="danger">Failed</StatusBadge>
-                        )}
-                      </td>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Actor</th>
+                      <th>Action</th>
+                      <th>Resource</th>
+                      <th>IP Address</th>
+                      <th>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredAuditLogs.map((log) => (
+                      <tr key={log.id}>
+                        <td className="whitespace-nowrap">
+                          <span className="text-xs font-mono text-slate-600">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="text-xs font-medium text-slate-900">{log.actorEmail}</div>
+                          <div className="text-[10px] text-slate-400">{log.actorRole}</div>
+                        </td>
+                        <td>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-800">
+                            {log.action}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="text-xs text-slate-700">
+                            {log.resource} {log.resourceId ? `(${log.resourceId.slice(-6)})` : ''}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="text-xs font-mono text-slate-500">{log.actorIp || '—'}</span>
+                        </td>
+                        <td>
+                          {log.status === 'success' ? (
+                            <StatusBadge status="success">Success</StatusBadge>
+                          ) : (
+                            <StatusBadge status="danger">Failed</StatusBadge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Stacked Cards View */}
+              <div className="md:hidden space-y-3">
+                {filteredAuditLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 shadow-xs transition-all space-y-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-800">
+                        {log.action}
+                      </span>
+                      {log.status === 'success' ? (
+                        <StatusBadge status="success">Success</StatusBadge>
+                      ) : (
+                        <StatusBadge status="danger">Failed</StatusBadge>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-slate-800 font-medium">
+                      {log.actorEmail} <span className="text-[10px] text-slate-400 font-normal">({log.actorRole})</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                      <div className="bg-slate-50 rounded-lg p-2.5">
+                        <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Resource</div>
+                        <div className="font-medium text-slate-700 truncate mt-0.5">
+                          {log.resource} {log.resourceId ? `(${log.resourceId.slice(-6)})` : ''}
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-lg p-2.5">
+                        <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">IP Address</div>
+                        <div className="font-mono text-slate-600 truncate mt-0.5">
+                          {log.actorIp || '—'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      {new Date(log.timestamp).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </section>
       )}

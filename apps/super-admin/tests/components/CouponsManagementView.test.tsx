@@ -67,11 +67,12 @@ describe('CouponsManagementView Component', () => {
   it('renders metric cards, coupon codes, and benefit descriptions', async () => {
     render(<CouponsManagementView />);
 
-    expect(await screen.findByText('STARTUP60')).toBeInTheDocument();
-    expect(screen.getByText('VIP30')).toBeInTheDocument();
-    expect(screen.getByText('+60 Days Free Trial')).toBeInTheDocument();
-    expect(screen.getByText('+30 Days Free Trial')).toBeInTheDocument();
-    expect(screen.getByText('Nexus Tech')).toBeInTheDocument();
+    const startupCodes = await screen.findAllByText('STARTUP60');
+    expect(startupCodes[0]).toBeInTheDocument();
+    expect(screen.getAllByText('VIP30')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('+60 Days Free Trial')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('+30 Days Free Trial')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Nexus Tech')[0]).toBeInTheDocument();
 
     // Metric cards
     expect(screen.getByText('Total Codes')).toBeInTheDocument();
@@ -80,7 +81,7 @@ describe('CouponsManagementView Component', () => {
 
   it('opens the Create Coupon modal when clicking Generate Coupon', async () => {
     render(<CouponsManagementView />);
-    await screen.findByText('STARTUP60');
+    await screen.findAllByText('STARTUP60');
 
     fireEvent.click(screen.getByRole('button', { name: /generate coupon/i }));
 
@@ -91,7 +92,7 @@ describe('CouponsManagementView Component', () => {
 
   it('allows filtering by status', async () => {
     render(<CouponsManagementView />);
-    await screen.findByText('STARTUP60');
+    await screen.findAllByText('STARTUP60');
 
     fireEvent.click(screen.getByRole('button', { name: /^redeemed$/i }));
 
@@ -102,7 +103,7 @@ describe('CouponsManagementView Component', () => {
 
   it('allows searching by text', async () => {
     render(<CouponsManagementView />);
-    await screen.findByText('STARTUP60');
+    await screen.findAllByText('STARTUP60');
 
     const searchInput = screen.getByPlaceholderText('Search code or description...');
     fireEvent.change(searchInput, { target: { value: 'STARTUP' } });
@@ -117,9 +118,9 @@ describe('CouponsManagementView Component', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     render(<CouponsManagementView />);
-    await screen.findByText('STARTUP60');
+    await screen.findAllByText('STARTUP60');
 
-    const revokeBtn = screen.getByTitle('Revoke coupon');
+    const revokeBtn = screen.getAllByTitle('Revoke coupon')[0];
     fireEvent.click(revokeBtn);
 
     await waitFor(() => {
@@ -132,9 +133,9 @@ describe('CouponsManagementView Component', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     render(<CouponsManagementView />);
-    await screen.findByText('STARTUP60');
+    await screen.findAllByText('STARTUP60');
 
-    const deleteBtn = screen.getByTitle('Delete unused coupon');
+    const deleteBtn = screen.getAllByTitle('Delete unused coupon')[0];
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {

@@ -33,6 +33,7 @@ interface DashboardOverviewViewProps {
   analyticsData?: PlatformAnalytics | null;
   onNavigateTab: (tab: 'tenants' | 'operations' | 'audit' | 'analytics') => void;
   onActivateTenant: (tenant: TenantSummary) => void;
+  onCreateTenant?: () => void;
 }
 
 function formatRelativeTime(date: Date | string | undefined): string {
@@ -59,9 +60,9 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
   recentAuditLogs,
   analyticsData,
   onNavigateTab,
-  onActivateTenant,
+  onActivateTenant: _onActivateTenant,
+  onCreateTenant,
 }) => {
-  const pendingActivationTenants = tenants.filter((t) => t.status === 'approved_pending_setup');
   const activeTenants = tenants.filter((t) => t.status === 'active');
 
   const totalMailboxesUsed = tenants.reduce((acc, t) => acc + (t.mailboxCount || 0), 0);
@@ -88,24 +89,25 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
 
 
   return (
-    <div className="flex flex-col gap-8" id="view-dashboard">
+    <div className="flex flex-col gap-6 sm:gap-8" id="view-dashboard">
       {/* 1. TOP ACTION & CONTEXT BAR */}
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
+      <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">
             Admin Overview
           </h1>
           <p className="text-xs text-slate-500 font-normal">
             Platform infrastructure &amp; multi-tenant cluster telemetry
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
           <Button
             size="sm"
             variant="primary"
+            className="min-h-[44px] sm:min-h-0 justify-center"
             onClick={() => {
-              if (pendingActivationTenants.length > 0) {
-                onActivateTenant(pendingActivationTenants[0]);
+              if (onCreateTenant) {
+                onCreateTenant();
               } else {
                 onNavigateTab('tenants');
               }
@@ -117,6 +119,7 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
           <Button
             size="sm"
             variant="secondary"
+            className="min-h-[44px] sm:min-h-0 justify-center"
             onClick={() => onNavigateTab('tenants')}
           >
             Directory
@@ -125,9 +128,9 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
       </section>
 
       {/* 2. 3-PART OVERVIEW GRID (MATCHING TENANT ADMIN DASHBOARD) */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Card 1: Mailbox & Quota Allocation */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between shadow-xs">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Mailbox Allocation
@@ -242,10 +245,10 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
       </section>
 
       {/* 3. INFRASTRUCTURE TELEMETRY STRIP */}
-      <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-6 text-xs">
+      <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-4 sm:gap-6 text-xs">
           {/* Platform Health Status */}
-          <div className="flex items-center gap-2.5 pr-6 border-r border-slate-200">
+          <div className="col-span-2 sm:col-span-1 flex items-center gap-2.5 pr-0 sm:pr-6 border-b sm:border-b-0 sm:border-r border-slate-200 pb-3 sm:pb-0">
             <span
               className={`h-2.5 w-2.5 rounded-full ${
                 hasSystemIssue ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'
@@ -315,7 +318,7 @@ export const DashboardOverviewView: React.FC<DashboardOverviewViewProps> = ({
         </div>
 
         <button
-          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition"
+          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center justify-center sm:justify-start gap-1 transition min-h-[40px] pt-1 md:pt-0"
           onClick={() => onNavigateTab('operations')}
         >
           <span>View system health</span>

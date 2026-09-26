@@ -90,8 +90,8 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[calc(100dvh-24px)]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
@@ -105,9 +105,10 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="min-w-[44px] min-h-[44px] rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center"
+            aria-label="Close modal"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -193,7 +194,7 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-slate-700 font-semibold">Number of codes</label>
                 <input
@@ -202,7 +203,7 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
                   max={100}
                   value={batchCount}
                   onChange={(e) => setBatchCount(Math.max(1, Math.min(100, parseInt(e.target.value || '1', 10))))}
-                  className="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:border-indigo-500"
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-base sm:text-xs focus:outline-hidden focus:border-indigo-500"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -213,7 +214,7 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
                   onChange={(e) => setBatchPrefix(e.target.value.toUpperCase().slice(0, 8))}
                   placeholder="e.g. SUMMER"
                   maxLength={8}
-                  className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs uppercase focus:outline-hidden focus:border-indigo-500"
+                  className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-base sm:text-xs uppercase focus:outline-hidden focus:border-indigo-500"
                 />
               </div>
             </div>
@@ -233,7 +234,7 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
                   key={limit}
                   type="button"
                   onClick={() => setMaxUses(limit)}
-                  className={`flex-1 py-2 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer ${
+                  className={`flex-1 py-2 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer min-h-[38px] ${
                     maxUses === limit ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -246,7 +247,7 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
                 max={10000}
                 value={maxUses}
                 onChange={(e) => setMaxUses(Math.max(1, Math.min(10000, Number(e.target.value) || 1)))}
-                className="w-16 px-2 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-center focus:outline-hidden focus:border-indigo-500"
+                className="w-16 px-2 py-2 border border-slate-200 rounded-lg text-base sm:text-xs font-semibold text-center focus:outline-hidden focus:border-indigo-500"
               />
             </div>
           </div>
@@ -261,7 +262,7 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
               type="datetime-local"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
-              className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-hidden focus:border-indigo-500"
+              className="px-3 py-2 border border-slate-200 rounded-xl text-base sm:text-xs text-slate-700 focus:outline-hidden focus:border-indigo-500"
             />
           </div>
 
@@ -277,16 +278,29 @@ export const CreateCouponModal: React.FC<CreateCouponModalProps> = ({ isOpen, on
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Y Combinator 2026 batch"
               maxLength={280}
-              className="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:border-indigo-500"
+              className="px-3 py-2 border border-slate-200 rounded-xl text-base sm:text-xs focus:outline-hidden focus:border-indigo-500"
             />
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-            <Button type="button" variant="secondary" size="sm" onClick={onClose} disabled={loading}>
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={onClose}
+              disabled={loading}
+              className="w-full sm:w-auto min-h-[44px]"
+            >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" size="sm" disabled={loading}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={loading}
+              className="w-full sm:w-auto min-h-[44px]"
+            >
               {loading ? 'Generating...' : mode === 'single' ? 'Generate coupon' : `Generate ${batchCount} coupons`}
             </Button>
           </div>

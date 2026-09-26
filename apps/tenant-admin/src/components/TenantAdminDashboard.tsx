@@ -15,6 +15,7 @@ import { DnsStatusPanel } from './DnsStatusPanel';
 import { DnsProviderCredentialForm } from './DnsProviderCredentialForm';
 import { DomainSwitcher } from './DomainSwitcher';
 import { DomainSecurityView } from './DomainSecurityView';
+import { SecuritySettingsView } from './SecuritySettingsView';
 import { ModeratorsView } from './ModeratorsView';
 import { goToCart } from './cart/format';
 import { CartNavButton } from './cart/CartNavButton';
@@ -50,6 +51,8 @@ import {
   KeyRound,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
+  Menu,
 } from 'lucide-react';
 
 interface TenantAdminDashboardProps {
@@ -58,6 +61,8 @@ interface TenantAdminDashboardProps {
   onLogout?: () => void;
   onNavigateHome: () => void;
   onSelectDomain?: (domainId: string) => void;
+  activeNav?: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team';
+  onNavChange?: (nav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team') => void;
 }
 
 export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
@@ -66,6 +71,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   onLogout,
   onNavigateHome,
   onSelectDomain,
+  activeNav: propActiveNav,
+  onNavChange,
 }) => {
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [domains, setDomains] = useState<DomainItem[]>([]);
@@ -75,13 +82,45 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   const [showDomainDeletionModal, setShowDomainDeletionModal] = useState(false);
   const [mailboxes, setMailboxes] = useState<MailboxItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
-  // A Moderator's nav is restricted to Mailboxes only — everything else in this component
-  // (Dashboard, Storage, Billing, Domains, Security) is Tenant-Admin-only, so there's nothing to
-  // default to for them but the one tab they can actually see.
+  // A Moderator can manage Mailboxes and Security (account 2FA credentials & scoped domain firewall).
+  // Dashboard, Storage, Billing, and Domains tabs are Tenant-Admin-only.
   const isModerator = user?.role === 'TENANT_MODERATOR';
   const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team'>(
-    isModerator ? 'mailboxes' : 'dashboard'
+    propActiveNav || (isModerator ? 'mailboxes' : 'dashboard')
   );
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (propActiveNav && propActiveNav !== activeNav) {
+      setActiveNav(propActiveNav);
+    }
+  }, [propActiveNav]);
+
+  // Lock body scroll and close on Escape when mobile drawer is open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobileNavOpen) {
+        setIsMobileNavOpen(false);
+      }
+    };
+    if (isMobileNavOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileNavOpen]);
+
+  const handleNavClick = (nav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team') => {
+    setActiveNav(nav);
+    setIsMobileNavOpen(false);
+    onNavChange?.(nav);
+  };
+  const [securitySubTab, setSecuritySubTab] = useState<'account' | 'domain'>('account');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [loading, setLoading] = useState(true);
@@ -444,7 +483,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     } catch {
       /* ignore */
     }
-    goToCart();
+    const currentDomainId = activeDomain?.id || domainId;
+    goToCart(`/domains/${currentDomainId}/${activeNav}`);
   };
 
   const showToast = (message: string) => {
@@ -578,6 +618,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   };
 
   const handleOpenDeleteModal = (mb: MailboxItem) => {
+    if (isModerator) return;
     setSelectedMailboxForDelete(mb);
     setDeleteConfirmEmail('');
     setDeleteModalError(null);
@@ -700,7 +741,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   };
 
   const handleConfirmDeleteMailbox = async () => {
-    if (!selectedMailboxForDelete || !isDeleteConfirmed) return;
+    if (isModerator || !selectedMailboxForDelete || !isDeleteConfirmed) return;
     setDeleteModalLoading(true);
     setDeleteModalError(null);
 
@@ -803,18 +844,28 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
       {/* TOP HEADER (MATCHING GOOGLE STITCH DESIGN)                                */}
       {/* ========================================================================= */}
       <header className="fixed top-0 inset-x-0 z-40 bg-white border-b border-slate-200 h-16">
-        <div className="h-full px-6 flex items-center justify-between">
+        <div className="h-full px-4 sm:px-6 flex items-center justify-between">
           {/* Brand & Tenant Context */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Mobile Hamburger Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+              className="lg:hidden p-2 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              aria-label={isMobileNavOpen ? 'Close navigation' : 'Open navigation'}
+            >
+              {isMobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
             {/* Brand — clickable here: this view is one domain drilled into
                 from Tenant Home, so it's always a way back to the full list. */}
             <button
               type="button"
               onClick={onNavigateHome}
-              className="flex items-center gap-3 cursor-pointer group"
+              className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group"
               title="Back to all domains"
             >
-              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
+              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain shrink-0" />
               <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight select-none group-hover:text-indigo-600 transition-colors">
                 TOOWIX ADMIN
               </span>
@@ -832,14 +883,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           </div>
 
           {/* Right Utility Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Cart Nav Button */}
             {!isModerator && (
               <CartNavButton cart={cart} lastSeenAt={cartSeenAt} onClick={openCart} />
             )}
 
             {/* Admin Profile */}
-            <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
+            <div className="flex items-center gap-2 sm:gap-3 pl-2 border-l border-slate-200">
               <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
                 {adminInitials}
               </div>
@@ -848,7 +899,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   {adminEmail}
                 </span>
                 <span className="text-[11px] text-slate-400 font-normal leading-tight">
-                  Administrator
+                  {isModerator ? 'Moderator' : 'Administrator'}
                 </span>
               </div>
             </div>
@@ -868,24 +919,53 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
       </header>
 
       {/* ========================================================================= */}
+      {/* MOBILE DRAWER BACKDROP (BELOW LG)                                         */}
+      {/* ========================================================================= */}
+      {isMobileNavOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ========================================================================= */}
       {/* SIDEBAR NAVIGATION RAIL (MATCHING GOOGLE ADMIN & DESIGN.MD)               */}
       {/* ========================================================================= */}
-      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
-        <div className="flex flex-col gap-1 overflow-y-auto">
-          {/* Domain Switcher */}
-          <DomainSwitcher
-            domains={domains}
-            activeDomain={activeDomain}
-            onSelectDomain={handleSelectDomain}
-            onOpenAddDomain={isModerator ? undefined : () => setShowDomainModal(true)}
-          />
+      <aside
+        role="navigation"
+        aria-label="Tenant Admin Navigation"
+        style={{
+          paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+        }}
+        className={`fixed left-0 top-0 lg:top-16 bottom-0 w-72 lg:w-60 bg-white border-r border-slate-200 z-50 lg:z-30 flex flex-col justify-start px-3 py-4 select-none transform transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          isMobileNavOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        }`}
+      >
+        {/* Mobile-only drawer header */}
+        <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-100 lg:hidden shrink-0">
+          <div className="flex items-center gap-2">
+            <img src={toowixLogo} alt="Toowix" className="w-6 h-6 object-contain" />
+            <span className="font-semibold text-slate-900 text-sm">Tenant Admin</span>
+          </div>
+          <button
+            onClick={() => setIsMobileNavOpen(false)}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            aria-label="Close navigation"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Scrollable nav area — always starts at top so tabs are immediately visible */}
+        <div className="flex flex-col gap-1 overflow-y-auto flex-1">
 
           {/* Main Navigation Group */}
           <div className="flex flex-col gap-0.5">
             {/* Dashboard — Tenant-Admin-only, same reasoning as Storage/Billing/Domains/Security below */}
             {!isModerator && (
               <button
-                onClick={() => setActiveNav('dashboard')}
+                onClick={() => handleNavClick('dashboard')}
                 className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                   activeNav === 'dashboard'
                     ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -907,7 +987,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
 
             {/* Mailboxes with dynamic Count Badge */}
             <button
-              onClick={() => setActiveNav('mailboxes')}
+              onClick={() => handleNavClick('mailboxes')}
               className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                 activeNav === 'mailboxes'
                   ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -929,10 +1009,33 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               </span>
             </button>
 
+            {/* Security — visible for Moderators */}
+            {isModerator && (
+              <button
+                onClick={() => handleNavClick('security')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'security'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-security"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <Shield
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'security' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Security</span>
+                </div>
+              </button>
+            )}
+
             {/* Storage */}
             {!isModerator && (
               <button
-                onClick={() => setActiveNav('storage')}
+                onClick={() => handleNavClick('storage')}
                 className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                   activeNav === 'storage'
                     ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -955,7 +1058,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             {/* Billing */}
             {!isModerator && (
               <button
-                onClick={() => setActiveNav('billing')}
+                onClick={() => handleNavClick('billing')}
                 className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                   activeNav === 'billing'
                     ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -987,7 +1090,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             <div className="flex flex-col gap-0.5">
               {/* Domains & DNS */}
               <button
-                onClick={() => setActiveNav('domains')}
+                onClick={() => handleNavClick('domains')}
                 className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                   activeNav === 'domains'
                     ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -1008,13 +1111,23 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
             </div>
           )}
         </div>
+
+        {/* Domain Switcher — pinned to bottom so nav tabs always stay at the top */}
+        <div className="shrink-0 pt-3 border-t border-slate-200/80">
+          <DomainSwitcher
+            domains={domains}
+            activeDomain={activeDomain}
+            onSelectDomain={handleSelectDomain}
+            onOpenAddDomain={isModerator ? undefined : () => setShowDomainModal(true)}
+          />
+        </div>
       </aside>
 
       {/* ========================================================================= */}
       {/* MAIN VIEW CONTAINER                                                       */}
       {/* ========================================================================= */}
-      <div className="pl-60 pt-16 min-h-screen bg-[#f8fafc]">
-        <main className="page-content-scaled w-full max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
+      <div className="pl-0 lg:pl-60 pt-16 min-h-screen bg-[#f8fafc]">
+        <main className="page-content-scaled w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10 flex flex-col gap-6 sm:gap-8">
           {/* Operational Banners */}
           {isSuspended && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 text-rose-900">
@@ -1090,8 +1203,16 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                     <div className="mt-2.5 flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={onNavigateHome}
+                        onClick={
+                          isModerator
+                            ? () => {
+                                handleNavClick('security');
+                                setSecuritySubTab('account');
+                              }
+                            : onNavigateHome
+                        }
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
+                        id="btn-banner-setup-2fa"
                       >
                         <span>Set up 2FA</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -1308,7 +1429,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                           </h2>
                         </div>
                         <button
-                          onClick={() => setActiveNav('mailboxes')}
+                          onClick={() => handleNavClick('mailboxes')}
                           className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
                         >
                           <span>View all mailboxes</span>
@@ -1619,6 +1740,22 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                     className="w-48 bg-white rounded-xl shadow-xl border border-slate-200/90 py-1.5 animate-in fade-in zoom-in-95 focus:outline-none"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <a
+                      href={`${(import.meta as any).env?.VITE_WEBMAIL_URL || 'http://localhost:8888'}?username=${encodeURIComponent(mb.address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        setOpenMenuMailboxId(null);
+                        setMenuAnchor(null);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer no-underline"
+                      title={`Open Webmail for ${mb.address}`}
+                    >
+                      <Mail className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <span>Open in Webmail</span>
+                      <ExternalLink className="w-3 h-3 text-slate-400 ml-auto" />
+                    </a>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -1686,20 +1823,24 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                       </button>
                     )}
 
-                    <div className="h-px bg-slate-100 my-1"></div>
+                    {!isModerator && (
+                      <>
+                        <div className="h-px bg-slate-100 my-1"></div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleOpenDeleteModal(mb);
-                        setOpenMenuMailboxId(null);
-                        setMenuAnchor(null);
-                      }}
-                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <span>Delete Mailbox</span>
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenDeleteModal(mb);
+                            setOpenMenuMailboxId(null);
+                            setMenuAnchor(null);
+                          }}
+                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                          <span>Delete Mailbox</span>
+                        </button>
+                      </>
+                    )}
                   </div>,
                   document.body
                 );
@@ -1926,10 +2067,73 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           )}
 
           {/* ===================================================================== */}
-          {/* VIEW: SECURITY (per-domain Blocked & Allowed IPs)                    */}
+          {/* VIEW: SECURITY (Account Security & Domain Firewall)                  */}
           {/* ===================================================================== */}
           {activeNav === 'security' && (
-            <DomainSecurityView activeDomain={activeDomain} />
+            <div className="flex flex-col gap-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
+                      <Shield className="w-6 h-6 text-indigo-600" />
+                      <span>Security Center</span>
+                    </h1>
+                    {activeDomain && (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/70 font-mono">
+                        @{activeDomain.domainName}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Manage your account credentials, two-factor authentication (2FA), and domain firewall rules.
+                  </p>
+                </div>
+              </div>
+
+              {/* Sub-Tabs Switcher */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl max-w-fit border border-slate-200/80 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setSecuritySubTab('account')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    securitySubTab === 'account'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                  id="tab-security-account"
+                >
+                  <KeyRound size={14} className={securitySubTab === 'account' ? 'text-indigo-600' : 'text-slate-400'} />
+                  <span>Account Security & 2FA</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSecuritySubTab('domain')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    securitySubTab === 'domain'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                  id="tab-security-domain"
+                >
+                  <Shield size={14} className={securitySubTab === 'domain' ? 'text-indigo-600' : 'text-slate-400'} />
+                  <span>Domain Firewall</span>
+                </button>
+              </div>
+
+              {/* Sub-tab Content */}
+              {securitySubTab === 'account' && (
+                <SecuritySettingsView
+                  user={user}
+                  on2FaStatusChange={(enabled) => setIs2FaEnabled(enabled)}
+                />
+              )}
+
+              {securitySubTab === 'domain' && (
+                <DomainSecurityView activeDomain={activeDomain} />
+              )}
+            </div>
           )}
 
           {/* ===================================================================== */}
@@ -2180,7 +2384,9 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                     {migrateBeforeDelete ? 'Migrate Mailbox' : 'Delete Mailbox'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {migrateBeforeDelete ? 'Safely transfer mailbox data and verify before deletion' : 'Permanent deletion warning'}
+                    {migrateBeforeDelete
+                      ? (isModerator ? 'Safely transfer mailbox data to another mailbox' : 'Safely transfer mailbox data and verify before deletion')
+                      : 'Permanent deletion warning'}
                   </p>
                 </div>
               </div>
@@ -2222,38 +2428,40 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-rose-50/50 border border-rose-200 rounded-xl flex flex-col gap-3">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-semibold text-rose-950">Stage 2: Remove Original Mailbox (Optional)</span>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      All messages are safely backed up in the destination mailbox. You can now permanently delete the original mailbox, or keep it.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label htmlFor="delete-confirm-email" className="text-xs text-slate-600 font-normal">
-                      To confirm deletion, type <strong className="text-slate-900 font-semibold select-all">{selectedMailboxForDelete.address}</strong> below:
-                    </label>
-                    <input
-                      id="delete-confirm-email"
-                      type="text"
-                      value={deleteConfirmEmail}
-                      onChange={(e) => setDeleteConfirmEmail(e.target.value)}
-                      placeholder={selectedMailboxForDelete.address}
-                      disabled={deleteModalLoading}
-                      autoFocus
-                      autoComplete="off"
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-medium text-slate-900 placeholder:text-slate-400 bg-white transition-colors"
-                    />
-                  </div>
-
-                  {deleteModalError && (
-                    <div className="p-2.5 bg-rose-100 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                      <span>{deleteModalError}</span>
+                {!isModerator && (
+                  <div className="p-3.5 bg-rose-50/50 border border-rose-200 rounded-xl flex flex-col gap-3">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-semibold text-rose-950">Stage 2: Remove Original Mailbox (Optional)</span>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        All messages are safely backed up in the destination mailbox. You can now permanently delete the original mailbox, or keep it.
+                      </p>
                     </div>
-                  )}
-                </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="delete-confirm-email" className="text-xs text-slate-600 font-normal">
+                        To confirm deletion, type <strong className="text-slate-900 font-semibold select-all">{selectedMailboxForDelete.address}</strong> below:
+                      </label>
+                      <input
+                        id="delete-confirm-email"
+                        type="text"
+                        value={deleteConfirmEmail}
+                        onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                        placeholder={selectedMailboxForDelete.address}
+                        disabled={deleteModalLoading}
+                        autoFocus
+                        autoComplete="off"
+                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-medium text-slate-900 placeholder:text-slate-400 bg-white transition-colors"
+                      />
+                    </div>
+
+                    {deleteModalError && (
+                      <div className="p-2.5 bg-rose-100 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>{deleteModalError}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
                   <button
@@ -2263,28 +2471,30 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                       void loadTenantData(activeDomain?.id);
                     }}
                     disabled={deleteModalLoading}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+                    className={isModerator ? "px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors cursor-pointer shadow-xs" : "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"}
                   >
-                    Keep Mailbox (Done)
+                    {isModerator ? 'Done' : 'Keep Mailbox (Done)'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmDeleteMailbox}
-                    disabled={deleteModalLoading || !isDeleteConfirmed}
-                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {deleteModalLoading ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Deleting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete Mailbox</span>
-                      </>
-                    )}
-                  </button>
+                  {!isModerator && (
+                    <button
+                      type="button"
+                      onClick={handleConfirmDeleteMailbox}
+                      disabled={deleteModalLoading || !isDeleteConfirmed}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {deleteModalLoading ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Deleting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete Mailbox</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             ) : migrationJob ? (
@@ -2363,27 +2573,31 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                 }}
                 className="flex flex-col gap-4"
               >
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={migrateBeforeDelete}
-                    onChange={(e) => {
-                      setMigrateBeforeDelete(e.target.checked);
-                      setMigrationDestinationId('');
-                    }}
-                    disabled={deleteModalLoading}
-                    className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
-                  />
-                  Migrate mail to another mailbox before deleting
-                </label>
+                {!isModerator && (
+                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={migrateBeforeDelete}
+                      onChange={(e) => {
+                        setMigrateBeforeDelete(e.target.checked);
+                        setMigrationDestinationId('');
+                      }}
+                      disabled={deleteModalLoading}
+                      className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
+                    />
+                    Migrate mail to another mailbox before deleting
+                  </label>
+                )}
 
                 <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-900 leading-relaxed flex flex-col gap-1">
                   <span className="font-semibold text-indigo-950 flex items-center gap-1.5">
                     <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
-                    Stage 1: Safe Mailbox Migration
+                    {isModerator ? 'Safe Mailbox Migration' : 'Stage 1: Safe Mailbox Migration'}
                   </span>
                   <p className="text-slate-600">
-                    Copy all emails and folders to another mailbox. The original mailbox will strictly <strong>NOT</strong> be deleted until you verify completion.
+                    {isModerator
+                      ? 'Copy all emails and folders to another mailbox. The original mailbox will remain untouched.'
+                      : 'Copy all emails and folders to another mailbox. The original mailbox will strictly <strong>NOT</strong> be deleted until you verify completion.'}
                   </p>
                 </div>
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserContext } from '../types';
-import { Mail, LogOut, ShieldCheck, ShieldAlert, Building2, ExternalLink, X, QrCode, CheckCircle2, Laptop, Copy, Check, Printer } from 'lucide-react';
+import { Mail, LogOut, ShieldCheck, ShieldAlert, Building2, ExternalLink, X, QrCode, CheckCircle2, Laptop, Copy, Check, Printer, MoreVertical } from 'lucide-react';
 import { api } from '../api';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { ActiveSessionsModal } from './modals/ActiveSessionsModal';
@@ -14,6 +14,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated }) => {
   const [show2FaModal, setShow2FaModal] = useState(false);
   const [showSessionsModal, setShowSessionsModal] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [setupData, setSetupData] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null);
   const [totpCode, setTotpCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -171,13 +172,14 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
 
   return (
     <>
-      <header className="navbar">
-        <div className="brand">
+      <header className="navbar px-4 sm:px-6 flex items-center justify-between">
+        <div className="brand flex items-center gap-2.5">
           <img src={toowixLogo} alt="Toowix" className="w-8 h-8 brand-icon object-contain" />
-          <span>TOOWIX <span style={{ color: 'var(--primary-light)', fontWeight: 400 }}>MAIL</span></span>
+          <span className="font-semibold text-sm tracking-tight">TOOWIX <span style={{ color: 'var(--primary-light)', fontWeight: 400 }}>MAIL</span></span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Desktop Navigation Items (>= 768px) */}
+        <div className="hidden md:flex items-center gap-4">
           {user.role === 'SUPER_ADMIN' ? (
             <span className="badge badge-platform">
               <ShieldCheck size={14} /> Super Admin
@@ -244,7 +246,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
           </button>
 
           <a
-            href="http://localhost:8888"
+            href={(import.meta as any).env?.VITE_WEBMAIL_URL || 'http://localhost:8888'}
             target="_blank"
             rel="noopener noreferrer"
             className="btn btn-secondary btn-sm"
@@ -266,7 +268,71 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
             <span>Log out</span>
           </button>
         </div>
+
+        {/* Mobile Navigation Toggle (< 768px) */}
+        <div className="flex md:hidden items-center gap-1 relative">
+          <button
+            onClick={() => setShowSessionsModal(true)}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+            title="Devices"
+            aria-label="Devices"
+          >
+            <Laptop size={18} color="var(--primary)" />
+          </button>
+          <a
+            href={(import.meta as any).env?.VITE_WEBMAIL_URL || 'http://localhost:8888'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+            title="Webmail"
+            aria-label="Webmail"
+          >
+            <Mail size={18} color="var(--primary)" />
+          </a>
+          <button
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+            aria-label="More options"
+          >
+            {showMobileMenu ? <X size={18} /> : <MoreVertical size={18} />}
+          </button>
+
+          {/* Mobile Menu Dropdown */}
+          {showMobileMenu && (
+            <div className="absolute right-0 top-12 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="px-3.5 py-2.5 border-b border-slate-100">
+                <p className="text-xs font-semibold text-slate-900 truncate">{user.email}</p>
+                <p className="text-[11px] text-slate-500 capitalize">{user.role.replace(/_/g, ' ').toLowerCase()}</p>
+              </div>
+
+              {!user.twoFactorEnabled && (
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    handleOpen2FaSetup();
+                  }}
+                  className="w-full min-h-[44px] text-left px-3.5 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <ShieldAlert size={16} className="text-amber-500" />
+                  <span>Set up 2FA</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  onLogout();
+                }}
+                className="w-full min-h-[44px] text-left px-3.5 py-2.5 text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors border-t border-slate-100 cursor-pointer"
+              >
+                <LogOut size={16} />
+                <span>Log out</span>
+              </button>
+            </div>
+          )}
+        </div>
       </header>
+
 
       {/* Active Devices & Sessions Modal */}
       <ActiveSessionsModal
@@ -277,121 +343,57 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
       {/* 2FA Setup Modal */}
       {show2FaModal && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px',
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-xs animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
         >
-          <div
-            style={{
-              background: '#18181b',
-              border: '1px solid #27272a',
-              borderRadius: '12px',
-              maxWidth: '440px',
-              width: '100%',
-              padding: '24px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
-              position: 'relative',
-              color: '#fafafa',
-            }}
-          >
+          <div className="relative w-full max-w-md bg-zinc-900 text-zinc-100 rounded-2xl shadow-2xl border border-zinc-800 p-5 sm:p-6 flex flex-col gap-4 max-h-[calc(100dvh-24px)] overflow-y-auto">
             <button
+              type="button"
               onClick={() => setShow2FaModal(false)}
-              style={{
-                position: 'absolute',
-                top: '16px',
-                right: '16px',
-                background: 'transparent',
-                border: 'none',
-                color: '#a1a1aa',
-                cursor: 'pointer',
-              }}
+              className="min-w-[44px] min-h-[44px] p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer flex items-center justify-center absolute top-3 right-3"
+              aria-label="Close"
             >
               <X size={20} />
             </button>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  background: 'rgba(59, 130, 246, 0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#3b82f6',
-                }}
-              >
+            <div className="flex items-center gap-3 pr-10">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
                 <QrCode size={20} />
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Set up two-factor authentication</h3>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: '#a1a1aa' }}>Enhance account security</p>
+                <h3 className="text-base font-semibold text-zinc-100">Set up two-factor authentication</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">Enhance account security</p>
               </div>
             </div>
 
             {error && (
-              <div
-                style={{
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  color: '#f87171',
-                  borderRadius: '6px',
-                  padding: '10px 12px',
-                  fontSize: '0.85rem',
-                  marginBottom: '16px',
-                }}
-              >
+              <div className="p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-xs text-red-400">
                 {error}
               </div>
             )}
 
             {success ? (
-              <div style={{ padding: '16px 0' }}>
-                <CheckCircle2 size={40} color="#10b981" style={{ margin: '0 auto 10px', display: 'block' }} />
-                <h4 style={{ margin: '0 0 6px', fontSize: '1.05rem', color: '#10b981', textAlign: 'center' }}>Two-factor authentication enabled</h4>
-                <p style={{ margin: '0 0 16px', fontSize: '0.825rem', color: '#a1a1aa', textAlign: 'center' }}>
+              <div className="py-2">
+                <CheckCircle2 size={40} className="text-emerald-500 mx-auto mb-2.5 block" />
+                <h4 className="text-base font-semibold text-emerald-400 text-center mb-1">Two-factor authentication enabled</h4>
+                <p className="text-xs text-zinc-400 text-center mb-4 leading-relaxed">
                   {setupBackupCodes.length > 0
                     ? 'Save your 10 emergency backup codes. A copy has also been sent to your email.'
                     : 'Your account is now protected. You will be prompted for a verification code when signing in.'}
                 </p>
 
                 {setupBackupCodes.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <div
-                      style={{
-                        background: '#18181b',
-                        padding: '16px',
-                        borderRadius: '8px',
-                        border: '1px solid #27272a',
-                        fontFamily: 'monospace',
-                        fontSize: '0.9rem',
-                        fontWeight: 600,
-                        letterSpacing: '0.1em',
-                        textAlign: 'center',
-                        color: '#a5b4fc',
-                        userSelect: 'all',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                      }}
-                    >
+                  <div className="space-y-3">
+                    <div className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-800 font-mono text-xs font-semibold tracking-wider text-indigo-300 text-center select-all grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {setupBackupCodes.map((code, idx) => (
-                        <div key={idx}>
+                        <div key={idx} className="bg-zinc-900 border border-zinc-800/80 rounded-lg py-1.5 px-2">
                           {code}
                         </div>
                       ))}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
                       <button
                         type="button"
                         onClick={() => {
@@ -399,17 +401,15 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
                           setCopiedCodes(true);
                           setTimeout(() => setCopiedCodes(false), 2000);
                         }}
-                        className="btn btn-secondary"
-                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                        className="w-full sm:flex-1 min-h-[44px] px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        {copiedCodes ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
+                        {copiedCodes ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                         <span>{copiedCodes ? 'Copied' : 'Copy all'}</span>
                       </button>
                       <button
                         type="button"
                         onClick={handlePrintBackupCodes}
-                        className="btn btn-secondary"
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0 14px' }}
+                        className="w-full sm:w-auto min-h-[44px] px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <Printer size={14} />
                         <span>Print</span>
@@ -423,8 +423,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
                           setSuccess(false);
                           setSetupBackupCodes([]);
                         }}
-                        className="btn btn-primary"
-                        style={{ flex: 1 }}
+                        className="w-full sm:flex-1 min-h-[44px] px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold inline-flex items-center justify-center transition-colors cursor-pointer shadow-xs"
                       >
                         Done
                       </button>
@@ -433,50 +432,28 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
                 )}
               </div>
             ) : loading && !setupData ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#a1a1aa' }}>
+              <div className="text-center py-10 text-zinc-400 text-xs">
                 Setting up authentication...
               </div>
             ) : setupData ? (
-              <form onSubmit={handleConfirm2Fa}>
-                <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '14px', lineHeight: 1.4 }}>
+              <form onSubmit={handleConfirm2Fa} className="flex flex-col gap-3.5">
+                <p className="text-xs text-zinc-300 leading-relaxed">
                   1. Scan this QR code with your authenticator app:
                 </p>
 
-                <div
-                  style={{
-                    background: '#ffffff',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: '14px',
-                  }}
-                >
+                <div className="bg-white p-3 rounded-xl flex items-center justify-center max-w-[200px] w-full mx-auto">
                   <img
                     src={setupData.qrCodeDataUrl}
                     alt="2FA QR Code"
-                    style={{ width: '180px', height: '180px', display: 'block' }}
+                    className="w-36 h-36 object-contain block"
                   />
                 </div>
 
-                <div
-                  style={{
-                    background: '#27272a',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    fontSize: '0.8rem',
-                    fontFamily: 'monospace',
-                    color: '#e4e4e7',
-                    textAlign: 'center',
-                    marginBottom: '16px',
-                    wordBreak: 'break-all',
-                  }}
-                >
-                  Manual key: <strong>{setupData.secret}</strong>
+                <div className="bg-zinc-800/80 px-3 py-2 rounded-xl text-[11px] font-mono text-zinc-300 text-center break-all border border-zinc-700/60">
+                  Manual key: <strong className="text-zinc-100 select-all">{setupData.secret}</strong>
                 </div>
 
-                <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '8px' }}>
+                <p className="text-xs text-zinc-300 pt-1">
                   2. Enter the 6-digit code from your app:
                 </p>
 
@@ -486,37 +463,21 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onUserUpdated })
                   placeholder="123456"
                   value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    fontSize: '1.1rem',
-                    letterSpacing: '3px',
-                    textAlign: 'center',
-                    fontFamily: 'monospace',
-                    borderRadius: '6px',
-                    background: '#27272a',
-                    border: '1px solid #3f3f46',
-                    color: '#fafafa',
-                    marginBottom: '16px',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
+                  className="w-full px-4 py-2.5 min-h-[48px] text-lg font-mono text-center tracking-[0.35em] bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-zinc-500 placeholder:tracking-normal"
                 />
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2.5 pt-2 border-t border-zinc-800">
                   <button
                     type="button"
                     onClick={() => setShow2FaModal(false)}
-                    className="btn btn-secondary"
-                    style={{ flex: 1 }}
+                    className="w-full sm:flex-1 min-h-[44px] px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl text-xs font-medium transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="btn btn-primary"
+                    className="w-full sm:flex-1 min-h-[44px] px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-xs"
                     disabled={loading || totpCode.length !== 6}
-                    style={{ flex: 1 }}
                   >
                     {loading ? 'Verifying...' : 'Enable 2FA'}
                   </button>

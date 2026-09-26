@@ -74,7 +74,42 @@ curl -s -k -u "${ADMIN_USER}:${ADMIN_PASS}" \
     ]
   }' > /dev/null || true
 
+echo "[4/4] Restricting /admin and /account access (server.http.allowedEndpoints)..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/allowed-endpoints.json" ]; then
+  curl -s -k -u "${ADMIN_USER}:${ADMIN_PASS}" \
+    -H "Content-Type: application/json" \
+    -X POST "${STALWART_URL}/jmap/" \
+    --data-binary "@${SCRIPT_DIR}/allowed-endpoints.json" > /dev/null || true
+else
+  curl -s -k -u "${ADMIN_USER}:${ADMIN_PASS}" \
+    -H "Content-Type: application/json" \
+    -X POST "${STALWART_URL}/jmap/" \
+    -d '{
+      "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+      "methodCalls": [
+        ["x:Http/set", {
+          "accountId": "b",
+          "update": {
+            "singleton": {
+              "allowedEndpoints": {
+                "match": [
+                  {
+                    "if": " listener == '\''private-http'\'' || contains(['\''jmap'\'', '\''robots.txt'\'', '\''.well-known'\'', '\''api'\'', '\''auth'\'', '\''healthz'\'', '\''autodiscover'\'', '\''mail'\''], split(path, '\''/'\'')[1]) ",
+                    "then": " 200 "
+                  }
+                ],
+                "else": " 404 "
+              }
+            }
+          }
+        }, "c3"]
+      ]
+    }' > /dev/null || true
+fi
+
 echo "=============================================================================="
 echo "SUCCESS: Toowix Backend Service Account bootstrap completed!"
 echo "Service User: ${SERVICE_USER}"
+echo "Access Control: /admin and /account locked to private-http / loopback (HTTP 404 on public listener)"
 echo "=============================================================================="

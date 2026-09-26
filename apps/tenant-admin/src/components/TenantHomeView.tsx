@@ -34,6 +34,7 @@ import {
   AlertTriangle,
   Key,
   Users,
+  Menu,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -41,6 +42,8 @@ interface TenantHomeViewProps {
   user?: UserContext | null;
   onLogout?: () => void;
   onNavigateToDomain: (domainId: string) => void;
+  activeTab?: HomeTab;
+  onTabChange?: (tab: HomeTab) => void;
 }
 
 type HomeTab = 'overview' | 'domains' | 'apikeys' | 'billing' | 'security' | 'team' | 'audit' | 'devices';
@@ -70,16 +73,54 @@ function formatAuditAction(action: string, metadata?: any) {
  * Domain Dashboard) plus account-level info that applies across all
  * domains: combined billing, 2FA/security, audit trail, active sessions.
  */
-export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, onNavigateToDomain }) => {
+export const TenantHomeView: React.FC<TenantHomeViewProps> = ({
+  user,
+  onLogout,
+  onNavigateToDomain,
+  activeTab: propActiveTab,
+  onTabChange,
+}) => {
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [domains, setDomains] = useState<DomainItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [billingSummary, setBillingSummary] = useState<TenantBillingSummaryType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<HomeTab>('overview');
+  const [activeTab, setActiveTab] = useState<HomeTab>(propActiveTab || 'overview');
   const [showDomainModal, setShowDomainModal] = useState(false);
   const [domainSearch, setDomainSearch] = useState('');
   const [overviewLimit, setOverviewLimit] = useState(5);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (propActiveTab && propActiveTab !== activeTab) {
+      setActiveTab(propActiveTab);
+    }
+  }, [propActiveTab]);
+
+  // Lock body scroll and close on Escape when mobile drawer is open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobileNavOpen) {
+        setIsMobileNavOpen(false);
+      }
+    };
+    if (isMobileNavOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileNavOpen]);
+
+  const handleTabChange = (tab: HomeTab) => {
+    setActiveTab(tab);
+    setIsMobileNavOpen(false);
+    onTabChange?.(tab);
+  };
 
   const [dismissed2FaBanner, setDismissed2FaBanner] = useState<boolean>(() => {
     try {
@@ -107,7 +148,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
     } catch {
       /* ignore */
     }
-    goToCart();
+    goToCart(`/${activeTab}`);
   };
 
   const load = async () => {
@@ -193,10 +234,20 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
   return (
     <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
       <header className="fixed top-0 inset-x-0 z-40 bg-white border-b border-slate-200 h-16">
-        <div className="h-full px-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 select-none">
-              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain" />
+        <div className="h-full px-4 sm:px-6 flex items-center justify-between">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Mobile Hamburger Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+              className="lg:hidden p-2 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              aria-label={isMobileNavOpen ? 'Close navigation' : 'Open navigation'}
+            >
+              {isMobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
+            <div className="flex items-center gap-2.5 sm:gap-3 select-none">
+              <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain shrink-0" />
               <span className="font-semibold text-slate-900 text-sm tracking-tight leading-tight">TOOWIX ADMIN</span>
             </div>
             <span className="text-slate-300 font-light text-base hidden md:inline select-none">/</span>
@@ -205,8 +256,8 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
               <span className="font-medium text-slate-800 tracking-tight">{tenant?.name || 'Organization'}</span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 pl-2 border-l border-slate-200">
               <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
                 {adminInitials}
               </div>
@@ -229,10 +280,45 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
       </header>
 
       {/* ========================================================================= */}
+      {/* MOBILE DRAWER BACKDROP (BELOW LG)                                         */}
+      {/* ========================================================================= */}
+      {isMobileNavOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ========================================================================= */}
       {/* SIDEBAR NAVIGATION RAIL (matches the Domain Dashboard's rail)             */}
       {/* ========================================================================= */}
-      <aside className="fixed left-0 top-16 bottom-0 w-60 bg-white border-r border-slate-200 z-30 flex flex-col justify-between px-3 py-4 select-none">
-        <div className="flex flex-col gap-1 overflow-y-auto">
+      <aside
+        role="navigation"
+        aria-label="Tenant Workspace Navigation"
+        style={{
+          paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+        }}
+        className={`fixed left-0 top-0 lg:top-16 bottom-0 w-72 lg:w-60 bg-white border-r border-slate-200 z-50 lg:z-30 flex flex-col justify-start px-3 py-4 select-none transform transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          isMobileNavOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        }`}
+      >
+        {/* Mobile-only drawer header */}
+        <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-100 lg:hidden shrink-0">
+          <div className="flex items-center gap-2">
+            <img src={toowixLogo} alt="Toowix" className="w-6 h-6 object-contain" />
+            <span className="font-semibold text-slate-900 text-sm">Tenant Workspace</span>
+          </div>
+          <button
+            onClick={() => setIsMobileNavOpen(false)}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            aria-label="Close navigation"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1 overflow-y-auto flex-1">
           <div className="flex flex-col gap-0.5">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -240,7 +326,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => handleTabChange(tab.key)}
                   className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
                     activeTab === tab.key
                       ? 'bg-indigo-50 text-indigo-700 font-medium'
@@ -264,8 +350,9 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
         </div>
       </aside>
 
-      <main className="pl-60 pt-16 min-h-screen">
-        <div className="page-content-scaled w-full max-w-6xl mx-auto px-10 py-10 flex flex-col gap-8">
+      <main className="pl-0 lg:pl-60 pt-16 min-h-screen">
+        <div className="page-content-scaled w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10 flex flex-col gap-6 sm:gap-8">
+
           {tenant?.status === 'pending_deletion' && (
             <div role="alert" className="flex items-center justify-between gap-4 p-4 bg-rose-50 border border-rose-200 rounded-xl">
               <p className="text-sm text-rose-900">
@@ -273,7 +360,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
               </p>
               <button
                 type="button"
-                onClick={() => setActiveTab('security')}
+                onClick={() => handleTabChange('security')}
                 className="shrink-0 px-3.5 py-1.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded-full text-xs font-semibold cursor-pointer"
               >
                 Manage deletion
@@ -306,7 +393,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                     <div className="mt-2.5 flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => setActiveTab('security')}
+                        onClick={() => handleTabChange('security')}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors"
                       >
                         <span>Set up 2FA</span>
@@ -338,17 +425,17 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
             <>
               <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex flex-col gap-1">
-                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
+                  <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
                   <p className="text-xs text-slate-500">
                     {tenant?.name || 'Your organization'} at a glance — every domain, billing, and account security.
                   </p>
                 </div>
-                <div className="self-start sm:self-auto flex items-center gap-3 shrink-0">
+                <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0">
                   <CartNavButton cart={cart} lastSeenAt={cartSeenAt} onClick={openCart} />
                   <button
                     type="button"
                     onClick={() => setShowDomainModal(true)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                    className="min-h-[44px] px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
                     id="btn-add-domain-overview"
                   >
                     <Plus className="w-4 h-4" />
@@ -511,23 +598,23 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                 </section>
               ) : (
                 <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
-                  <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <Globe className="w-[18px] h-[18px] text-slate-400" />
                       <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Domains</h2>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5">
                       <button
                         type="button"
                         onClick={() => setShowDomainModal(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg transition-colors cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg transition-colors cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Add Domain</span>
                       </button>
                       <button
                         onClick={() => setActiveTab('domains')}
-                        className="text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                        className="min-h-[40px] px-2 text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         <span>View all domains</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -535,7 +622,61 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  {/* Mobile Card List (< md) */}
+                  <div className="block md:hidden divide-y divide-slate-100">
+                    {domains.slice(0, overviewLimit).map((domain) => {
+                      const isDnsActive = domain.dnsStatus === 'active';
+                      const pill = dnsStatusPill(domain.dnsStatus);
+                      const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
+                      const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
+                      return (
+                        <div
+                          key={domain.id}
+                          onClick={() => onNavigateToDomain(domain.id)}
+                          className="p-4 flex flex-col gap-2.5 active:bg-slate-50 cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold text-slate-900 text-sm truncate">{domain.domainName}</span>
+                              {domain.isPrimary && (
+                                <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 shrink-0">
+                                  Primary
+                                </span>
+                              )}
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs gap-2">
+                            <div className="flex items-center gap-1.5">
+                              {isDnsActive ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              ) : (
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              )}
+                              <span className="text-slate-600 font-medium">{pill.label}</span>
+                            </div>
+                            <span className="text-slate-500 text-[11px]">{domain.planName || 'Standard'}</span>
+                          </div>
+
+                          <div className="flex flex-col gap-1 pt-1">
+                            <div className="flex items-center justify-between text-[11px] text-slate-500">
+                              <span>Mailbox Quota</span>
+                              <span className="tabular-nums font-medium text-slate-700">
+                                {domain.mailboxCount} / {domain.mailboxLimit} ({usagePercent}%)
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div className={`h-full rounded-full ${barColor}`} style={{ width: `${usagePercent}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Table (>= md) */}
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="data-table">
                       <thead>
                         <tr>
@@ -597,6 +738,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                         })}
                       </tbody>
                     </table>
+                  </div>
                     <div className="pagination-row">
                       <span>
                         Showing {Math.min(overviewLimit, domains.length)} of {domains.length}
@@ -634,10 +776,9 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                         )}
                       </div>
                     </div>
-                  </div>
-                </section>
-              )}
-            </>
+                  </section>
+                )}
+              </>
           )}
 
           {activeTab === 'domains' && (
@@ -668,15 +809,15 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                 </section>
               ) : (
                 <section className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex flex-col gap-0.5">
-                      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Domains</h1>
+                      <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">Domains</h1>
                       <p className="text-xs text-slate-500">Every domain on this account and its mail setup.</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowDomainModal(true)}
-                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                      className="min-h-[44px] px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer self-start sm:self-auto"
                     >
                       <Plus className="w-4 h-4" />
                       <span>Add Domain</span>
@@ -690,7 +831,7 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                       value={domainSearch}
                       onChange={(e) => setDomainSearch(e.target.value)}
                       placeholder="Search by domain name..."
-                      className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400"
+                      className="w-full pl-10 pr-4 py-2.5 text-base sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 transition-all placeholder:text-slate-400 min-h-[44px]"
                     />
                   </div>
 
@@ -700,75 +841,137 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                     );
                     return (
                       <div className="data-table-container">
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              <th>Domain</th>
-                              <th>Status</th>
-                              <th>Mailboxes</th>
-                              <th>Plan</th>
-                              <th style={{ textAlign: 'right' }}></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredDomains.length === 0 ? (
-                              <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--slate-400)' }}>
-                                  No domains match "{domainSearch}".
-                                </td>
-                              </tr>
-                            ) : (
-                              filteredDomains.map((domain) => {
-                                const isDnsActive = domain.dnsStatus === 'active';
-                                const pill = dnsStatusPill(domain.dnsStatus);
-                                const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
-                                const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
-                                return (
-                                  <tr
-                                    key={domain.id}
-                                    onClick={() => onNavigateToDomain(domain.id)}
-                                    style={{ cursor: 'pointer' }}
-                                  >
-                                    <td>
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-slate-900">{domain.domainName}</span>
-                                        {domain.isPrimary && (
-                                          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
-                                            Primary
-                                          </span>
-                                        )}
-                                      </div>
-                                    </td>
-                                    <td>
-                                      <div className="flex items-center gap-1.5">
-                                        {isDnsActive ? (
-                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                        ) : (
-                                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                        )}
-                                        <span>{pill.label}</span>
-                                      </div>
-                                    </td>
-                                    <td>
-                                      <div className="flex items-center gap-2 min-w-[140px]">
-                                        <div className="flex-1 min-w-[60px] max-w-[80px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${usagePercent}%` }} />
-                                        </div>
-                                        <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">
-                                          {domain.mailboxCount} / {domain.mailboxLimit}
+                        {/* Mobile Cards for Domains Tab (< md) */}
+                        <div className="block md:hidden divide-y divide-slate-100">
+                          {filteredDomains.length === 0 ? (
+                            <div className="p-8 text-center text-slate-400 text-xs">
+                              No domains match "{domainSearch}".
+                            </div>
+                          ) : (
+                            filteredDomains.map((domain) => {
+                              const isDnsActive = domain.dnsStatus === 'active';
+                              const pill = dnsStatusPill(domain.dnsStatus);
+                              const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
+                              const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
+                              return (
+                                <div
+                                  key={domain.id}
+                                  onClick={() => onNavigateToDomain(domain.id)}
+                                  className="p-4 flex flex-col gap-2.5 active:bg-slate-50 cursor-pointer transition-colors"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="font-semibold text-slate-900 text-sm truncate">{domain.domainName}</span>
+                                      {domain.isPrimary && (
+                                        <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 shrink-0">
+                                          Primary
                                         </span>
-                                      </div>
-                                    </td>
-                                    <td>{domain.planName || '—'}</td>
-                                    <td style={{ textAlign: 'right' }}>
-                                      <ChevronRight className="w-4 h-4 text-slate-300 inline-block" />
-                                    </td>
-                                  </tr>
-                                );
-                              })
-                            )}
-                          </tbody>
-                        </table>
+                                      )}
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                                  </div>
+
+                                  <div className="flex items-center justify-between text-xs gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                      {isDnsActive ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      ) : (
+                                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                      )}
+                                      <span className="text-slate-600 font-medium">{pill.label}</span>
+                                    </div>
+                                    <span className="text-slate-500 text-[11px]">{domain.planName || 'Standard'}</span>
+                                  </div>
+
+                                  <div className="flex flex-col gap-1 pt-1">
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                                      <span>Mailbox Quota</span>
+                                      <span className="tabular-nums font-medium text-slate-700">
+                                        {domain.mailboxCount} / {domain.mailboxLimit} ({usagePercent}%)
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${usagePercent}%` }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* Desktop Table (>= md) */}
+                        <div className="hidden md:block overflow-x-auto">
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th>Domain</th>
+                                <th>Status</th>
+                                <th>Mailboxes</th>
+                                <th>Plan</th>
+                                <th style={{ textAlign: 'right' }}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredDomains.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--slate-400)' }}>
+                                    No domains match "{domainSearch}".
+                                  </td>
+                                </tr>
+                              ) : (
+                                filteredDomains.map((domain) => {
+                                  const isDnsActive = domain.dnsStatus === 'active';
+                                  const pill = dnsStatusPill(domain.dnsStatus);
+                                  const usagePercent = Math.min(100, Math.round((domain.mailboxCount / Math.max(1, domain.mailboxLimit)) * 100));
+                                  const barColor = usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 75 ? 'bg-amber-500' : 'bg-indigo-600';
+                                  return (
+                                    <tr
+                                      key={domain.id}
+                                      onClick={() => onNavigateToDomain(domain.id)}
+                                      style={{ cursor: 'pointer' }}
+                                    >
+                                      <td>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-semibold text-slate-900">{domain.domainName}</span>
+                                          {domain.isPrimary && (
+                                            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                              Primary
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td>
+                                        <div className="flex items-center gap-1.5">
+                                          {isDnsActive ? (
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                          ) : (
+                                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                          )}
+                                          <span>{pill.label}</span>
+                                        </div>
+                                      </td>
+                                      <td>
+                                        <div className="flex items-center gap-2 min-w-[140px]">
+                                          <div className="flex-1 min-w-[60px] max-w-[80px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                            <div className={`h-full rounded-full ${barColor}`} style={{ width: `${usagePercent}%` }} />
+                                          </div>
+                                          <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">
+                                            {domain.mailboxCount} / {domain.mailboxLimit}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td>{domain.planName || '—'}</td>
+                                      <td style={{ textAlign: 'right' }}>
+                                        <ChevronRight className="w-4 h-4 text-slate-300 inline-block" />
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
                         <div className="pagination-row">
                           <span>
                             Showing {filteredDomains.length} of {domains.length}
@@ -814,7 +1017,39 @@ export const TenantHomeView: React.FC<TenantHomeViewProps> = ({ user, onLogout, 
                   Immutable record of all administrative activities, mailbox operations, and security events.
                 </p>
               </div>
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              {/* Mobile Audit Cards (< md) */}
+              <div className="block md:hidden border border-slate-200 rounded-lg divide-y divide-slate-100">
+                {auditLogs.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    No audit log records found.
+                  </div>
+                ) : (
+                  auditLogs.map((log) => (
+                    <div key={log.id} className="p-3.5 flex flex-col gap-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-xs font-semibold text-slate-900 leading-snug">
+                          {formatAuditAction(log.action, log.metadata)}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${
+                            log.success ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                          }`}
+                        >
+                          {log.success ? 'Success' : 'Failed'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 gap-2">
+                        <span className="font-mono text-slate-600 truncate">{log.resource || '—'}</span>
+                        <span className="shrink-0">{new Date(log.timestamp).toLocaleDateString()}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">Actor: {log.actor_role}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table (>= md) */}
+              <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-lg">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">

@@ -122,14 +122,14 @@ export const DeletedOrganisationsView: React.FC = () => {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="inline-flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs w-full sm:w-auto justify-between sm:justify-start">
           {(['completed', 'active'] as ListMode[]).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={`px-3 py-1.5 rounded-md font-medium cursor-pointer transition-all ${
+              className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-md font-medium cursor-pointer transition-all min-h-[38px] sm:min-h-0 flex items-center justify-center ${
                 mode === m ? 'bg-white text-indigo-600 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -137,14 +137,14 @@ export const DeletedOrganisationsView: React.FC = () => {
             </button>
           ))}
         </div>
-        <div className="relative">
+        <div className="relative w-full sm:w-64">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name, email or domain"
             aria-label="Search deleted organisations"
-            className="form-input h-8 text-xs pl-8 w-64"
+            className="form-input h-10 sm:h-8 text-base sm:text-xs pl-8 w-full"
           />
         </div>
       </div>
@@ -160,54 +160,142 @@ export const DeletedOrganisationsView: React.FC = () => {
           {mode === 'completed' ? 'No organisation has been deleted yet.' : 'No deletions are currently in progress.'}
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                <th className="py-2 pr-4 font-semibold">Organisation</th>
-                <th className="py-2 pr-4 font-semibold">Registered email</th>
-                <th className="py-2 pr-4 font-semibold">Initiated</th>
-                <th className="py-2 pr-4 font-semibold">{mode === 'completed' ? 'Completed' : 'Stage'}</th>
-                <th className="py-2 pr-4 font-semibold">Completed by</th>
-                <th className="py-2 pr-4 font-semibold">IP · Location</th>
-                <th className="py-2 pr-4 font-semibold">Device</th>
-                <th className="py-2 pr-4 font-semibold">OTP</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => {
-                const by = row.completedBy ?? row.initiatedBy;
-                const net = row.completedNetwork ?? row.initiatedNetwork;
-                return (
-                  <tr
-                    key={row.id}
-                    onClick={() => openDetail(row)}
-                    className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer align-top transition-colors"
-                  >
-                    <td className="py-3 pr-4">
-                      <div className="font-semibold text-slate-900">{row.organisationName}</div>
-                      <div className="text-[11px] text-slate-500 font-mono">{row.organisationId}</div>
-                      {row.path === 'forced' && <span className="text-[10px] font-semibold text-amber-700">Forced delete</span>}
-                    </td>
-                    <td className="py-3 pr-4 text-slate-700">{row.registrationEmail ?? '—'}</td>
-                    <td className="py-3 pr-4 text-slate-700">{formatDateTime(row.initiatedAt)}</td>
-                    <td className="py-3 pr-4 text-slate-700">
-                      {mode === 'completed' ? formatDateTime(row.completedAt) : <StatusBadge status={row.stage} />}
-                    </td>
-                    <td className="py-3 pr-4 text-slate-700">{actorLine(by)}</td>
-                    <td className="py-3 pr-4 text-slate-700">
-                      <div className="font-mono">{net.ip}</div>
-                      <div className="text-slate-500">{net.location}</div>
-                    </td>
-                    <td className="py-3 pr-4 text-slate-700">{deviceLine(net)}</td>
-                    <td className="py-3 pr-4 text-slate-700 capitalize">{row.otpVerification.replace('_', ' ')}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                  <th className="py-2 pr-4 font-semibold">Organisation</th>
+                  <th className="py-2 pr-4 font-semibold">Registered email</th>
+                  <th className="py-2 pr-4 font-semibold">Initiated</th>
+                  <th className="py-2 pr-4 font-semibold">{mode === 'completed' ? 'Completed' : 'Stage'}</th>
+                  <th className="py-2 pr-4 font-semibold">Completed by</th>
+                  <th className="py-2 pr-4 font-semibold">IP · Location</th>
+                  <th className="py-2 pr-4 font-semibold">Device</th>
+                  <th className="py-2 pr-4 font-semibold">OTP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row) => {
+                  const by = row.completedBy ?? row.initiatedBy;
+                  const net = row.completedNetwork ?? row.initiatedNetwork;
+                  return (
+                    <tr
+                      key={row.id}
+                      onClick={() => openDetail(row)}
+                      className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer align-top transition-colors"
+                    >
+                      <td className="py-3 pr-4">
+                        <div className="font-semibold text-slate-900">{row.organisationName}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">{row.organisationId}</div>
+                        {row.path === 'forced' && <span className="text-[10px] font-semibold text-amber-700">Forced delete</span>}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-700">{row.registrationEmail ?? '—'}</td>
+                      <td className="py-3 pr-4 text-slate-700">{formatDateTime(row.initiatedAt)}</td>
+                      <td className="py-3 pr-4 text-slate-700">
+                        {mode === 'completed' ? formatDateTime(row.completedAt) : <StatusBadge status={row.stage} />}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-700">{actorLine(by)}</td>
+                      <td className="py-3 pr-4 text-slate-700">
+                        <div className="font-mono">{net.ip}</div>
+                        <div className="text-slate-500">{net.location}</div>
+                      </td>
+                      <td className="py-3 pr-4 text-slate-700">{deviceLine(net)}</td>
+                      <td className="py-3 pr-4 text-slate-700 capitalize">{row.otpVerification.replace('_', ' ')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Stacked Cards View */}
+          <div className="md:hidden space-y-3">
+            {items.map((row) => {
+              const by = row.completedBy ?? row.initiatedBy;
+              const net = row.completedNetwork ?? row.initiatedNetwork;
+              return (
+                <div
+                  key={row.id}
+                  onClick={() => openDetail(row)}
+                  className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 shadow-xs transition-all space-y-3 cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100 mt-0.5">
+                        <Archive size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 text-sm tracking-tight truncate">
+                          {row.organisationName}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono truncate">{row.organisationId}</div>
+                      </div>
+                    </div>
+                    {mode === 'completed' ? (
+                      <StatusBadge status="completed">Deleted</StatusBadge>
+                    ) : (
+                      <StatusBadge status={row.stage} />
+                    )}
+                  </div>
+
+                  {row.path === 'forced' && (
+                    <div className="inline-block text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      Forced Deletion
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                    <div className="bg-slate-50 rounded-lg p-2.5">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Email</div>
+                      <div className="font-medium text-slate-800 truncate mt-0.5" title={row.registrationEmail || ''}>
+                        {row.registrationEmail || '—'}
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-2.5">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">
+                        {mode === 'completed' ? 'Completed At' : 'Initiated At'}
+                      </div>
+                      <div className="font-medium text-slate-800 truncate mt-0.5">
+                        {mode === 'completed' ? formatDateTime(row.completedAt) : formatDateTime(row.initiatedAt)}
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-2.5">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Actor</div>
+                      <div className="font-medium text-slate-800 truncate mt-0.5" title={actorLine(by)}>
+                        {actorLine(by)}
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-2.5">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">IP · Location</div>
+                      <div className="font-medium text-slate-800 font-mono truncate mt-0.5">
+                        {net.ip}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                    <span className="capitalize text-[11px]">OTP: <strong className="text-slate-700">{row.otpVerification.replace('_', ' ')}</strong></span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="min-h-[44px] px-3 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetail(row);
+                      }}
+                    >
+                      Audit Details
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
           <p className="text-[11px] text-slate-500 mt-3">{total} record{total === 1 ? '' : 's'}</p>
-        </div>
+        </>
       )}
 
       <Modal

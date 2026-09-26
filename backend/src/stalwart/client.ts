@@ -1263,6 +1263,59 @@ export class StalwartClient {
       );
     }
   }
+
+  /**
+   * Retrieves the current server.http.allowedEndpoints configuration from Stalwart.
+   */
+  async getAllowedEndpoints(): Promise<any> {
+    const responses = await this.dispatch([
+      ['x:Http/get', { accountId: this.accountId, ids: null }, 'c_get_http'],
+    ]);
+
+    const result = responses[0]?.[1];
+    return result?.list?.[0]?.allowedEndpoints || null;
+  }
+
+  /**
+   * Configures server.http.allowedEndpoints to restrict /admin and /account access.
+   * Enforces verified Rust source variable `path` (never `url_path`).
+   */
+  async configureAllowedEndpoints(customMatch?: any[]): Promise<void> {
+    const match = customMatch || [
+      {
+        if: "listener == 'private-http' || contains(['jmap', 'robots.txt', '.well-known', 'api', 'auth', 'healthz', 'autodiscover', 'mail'], split(path, '/')[1])",
+        then: "200",
+      },
+    ];
+
+    const responses = await this.dispatch([
+      [
+        'x:Http/set',
+        {
+          accountId: this.accountId,
+          update: {
+            singleton: {
+              allowedEndpoints: {
+                match,
+                else: '404',
+              },
+            },
+          },
+        },
+        'c_set_http',
+      ],
+    ]);
+
+    const setResult = responses[0]?.[1];
+    if (setResult?.notUpdated?.singleton) {
+      const err = setResult.notUpdated.singleton;
+      throw new StalwartError(
+        `Failed to set allowedEndpoints in Stalwart: ${err.description || err.type}`,
+        'CONFIGURE_ALLOWED_ENDPOINTS_FAILED',
+        err
+      );
+    }
+  }
 }
 
 // Export singleton instance

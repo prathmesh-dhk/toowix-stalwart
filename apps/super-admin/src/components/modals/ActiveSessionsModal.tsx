@@ -209,7 +209,7 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
             sessions.map((session) => (
               <div
                 key={session.sessionId}
-                className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-4 ${
+                className={`p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                   session.isCurrent
                     ? 'bg-emerald-50/40 border-emerald-200 shadow-sm'
                     : 'bg-white border-slate-200 hover:border-slate-300'
@@ -240,7 +240,7 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
                       )}
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                    <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-500 mt-1 flex-wrap">
                       <span className="inline-flex items-center gap-1">
                         <Globe className="w-3.5 h-3.5 text-slate-400" />
                         <span className="font-mono">{session.ipAddress}</span>
@@ -248,7 +248,7 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
 
                       {session.location && (
                         <>
-                          <span>•</span>
+                          <span className="hidden sm:inline">•</span>
                           <span className="inline-flex items-center gap-1 text-slate-600 font-medium">
                             <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                             <span>{session.location}</span>
@@ -256,7 +256,7 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
                         </>
                       )}
 
-                      <span>•</span>
+                      <span className="hidden sm:inline">•</span>
 
                       <span className="inline-flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -266,7 +266,7 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
                   </div>
                 </div>
 
-                <div className="flex-shrink-0">
+                <div className="flex items-center justify-end w-full sm:w-auto flex-shrink-0 pt-1 sm:pt-0">
                   {session.isCurrent ? (
                     <span className="text-xs text-emerald-600 font-medium px-2 py-1">
                       Current
@@ -277,7 +277,7 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
                       size="sm"
                       loading={revokingId === session.sessionId}
                       onClick={() => handleRevokeSingle(session.sessionId)}
-                      className="text-slate-600 hover:text-red-600 hover:bg-red-50 border-slate-200 hover:border-red-200 text-xs"
+                      className="w-full sm:w-auto min-h-[38px] text-slate-600 hover:text-red-600 hover:bg-red-50 border-slate-200 hover:border-red-200 text-xs"
                       title="Log out this device"
                     >
                       <LogOut className="w-3.5 h-3.5 mr-1" />
@@ -291,11 +291,11 @@ export const ActiveSessionsModal: React.FC<ActiveSessionsModalProps> = ({ isOpen
         </div>
 
         {/* Footer info note */}
-        <div className="pt-2 border-t border-slate-100 text-xs text-slate-400 flex items-center justify-between">
+        <div className="pt-2 border-t border-slate-100 text-xs text-slate-400 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
           <span>
             Sessions automatically expire after 8 hours (or 30 days if "Remember me" was selected).
           </span>
-          <Button variant="secondary" size="sm" onClick={onClose}>
+          <Button variant="secondary" size="md" className="w-full sm:w-auto min-h-[44px]" onClick={onClose}>
             Done
           </Button>
         </div>

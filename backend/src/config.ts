@@ -53,6 +53,9 @@ export function isBillingEnabled(): boolean {
   if (process.env.ENABLE_BILLING === 'true') {
     return true;
   }
+  if (Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY.trim() !== '')) {
+    return true;
+  }
   // Default to enabled only in vitest test environment if not explicitly set
   return process.env.VITEST === 'true';
 }

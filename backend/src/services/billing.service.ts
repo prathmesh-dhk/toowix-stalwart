@@ -35,8 +35,11 @@ export class BillingError extends Error {
  * configured there, refuse instead of activating mailboxes/trials without a payment.
  */
 export function assertSandboxOrBilling(): void {
+  if (process.env.ALLOW_SANDBOX_BILLING === 'true' || process.env.ALLOW_SANDBOX_BILLING === '1') {
+    return;
+  }
   if (!isBillingEnabled() && config.nodeEnv === 'production') {
-    throw new BillingError('Billing is not configured on this server', 'BILLING_NOT_CONFIGURED', 503);
+    throw new BillingError('Billing is not configured on this server. Set STRIPE_SECRET_KEY or ALLOW_SANDBOX_BILLING=true in backend/.env', 'BILLING_NOT_CONFIGURED', 503);
   }
 }
 

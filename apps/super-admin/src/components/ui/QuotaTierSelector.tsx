@@ -93,7 +93,7 @@ export const QuotaTierSelector: React.FC<QuotaTierSelectorProps> = ({
               key={tier.id}
               disabled={isOptionDisabled}
               onClick={() => handleSelectPreset(tier)}
-              className={`relative flex items-center justify-center p-3 rounded-lg text-xs cursor-pointer transition select-none ${
+              className={`relative flex items-center justify-center p-3 min-h-[44px] rounded-lg text-xs cursor-pointer transition select-none ${
                 isSelected
                   ? 'border-2 border-[#0f172a] bg-slate-50 font-semibold text-[#0f172a]'
                   : isOptionDisabled
@@ -116,7 +116,7 @@ export const QuotaTierSelector: React.FC<QuotaTierSelectorProps> = ({
           type="button"
           disabled={disabled}
           onClick={handleSelectCustom}
-          className={`relative flex items-center justify-center p-3 rounded-lg text-xs cursor-pointer transition select-none ${
+          className={`relative flex items-center justify-center p-3 min-h-[44px] rounded-lg text-xs cursor-pointer transition select-none ${
             isCustom
               ? 'border-2 border-[#0f172a] bg-slate-50 font-semibold text-[#0f172a]'
               : 'border border-[#eaedf1] bg-white hover:border-gray-300 font-medium text-[#334155]'
@@ -134,7 +134,7 @@ export const QuotaTierSelector: React.FC<QuotaTierSelectorProps> = ({
             type="number"
             min={minAllowed}
             max={maxAllowed}
-            className="form-input text-sm h-10 w-full tabular-nums"
+            className="form-input text-base sm:text-sm h-11 sm:h-10 w-full tabular-nums"
             placeholder={`Enter quota (min ${minAllowed})`}
             value={customInputVal}
             onChange={handleCustomChange}

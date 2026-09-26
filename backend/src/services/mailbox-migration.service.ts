@@ -47,6 +47,14 @@ export async function startMailboxMigration(
     throw { status: 400, code: 'SAME_MAILBOX', message: 'Choose a different mailbox to migrate mail into' };
   }
 
+  if (deleteSourceAfter && actorRole === 'TENANT_MODERATOR') {
+    throw {
+      status: 403,
+      code: 'FORBIDDEN',
+      message: 'Moderators are not permitted to delete mailboxes. Only Tenant Administrators may delete mailboxes.',
+    };
+  }
+
   const [source, destination] = await Promise.all([
     MailboxService.getMailboxById(sourceMailboxId, tenantId),
     MailboxService.getMailboxById(destinationMailboxId, tenantId),

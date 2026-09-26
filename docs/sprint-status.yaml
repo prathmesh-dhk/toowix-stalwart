@@ -1,0 +1,122 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-26-2026 13:59
+last_updated: 09-26-2026 14:13
+project: Toowix Mail Platform
+project_key: NOKEY
+tracking_system: file-system
+story_location: docs/stories
+development_status:
+  epic-1: done
+  1-1-configure-allowedendpoints-in-bootstrap-sh: done
+  1-2-automate-allowedendpoints-access-verification: done
+  epic-1-retrospective: optional
+
+  epic-2: done
+  2-1-implement-repairentitydrift-in-reconciliation-service: done
+  2-2-add-auto-repair-api-route-in-system-routes-ts: done
+  2-3-build-auto-repair-ui-in-systemoperationsview: done
+  epic-2-retrospective: optional
+
+  epic-3: done
+  3-1-replace-hardcoded-webmail-urls-with-environment-configuratio: done
+  3-2-add-direct-mailbox-launch-shortcuts-in-mailboxmanagementview: done
+  epic-3-retrospective: optional
+
+  epic-4: done
+  4-1-implement-smtp-relay-diagnostic-service-route: done
+  4-2-add-smtp-relay-diagnostic-card-in-super-admin: done
+  epic-4-retrospective: optional
+
+  epic-5: done
+  5-1-configure-responsive-breakpoints-and-viewport-rules: done
+  5-2-create-shared-usemediaquery-and-useismobile-hooks: done
+  5-3-convert-super-admin-sidebar-to-off-canvas-drawer-shell: done
+  5-4-convert-tenant-admin-sidebar-to-off-canvas-drawer-shell: done
+  5-5-convert-tenant-home-sidebar-to-off-canvas-drawer-shell: done
+  5-6-implement-responsive-topbar-and-hamburger-super-admin: done
+  5-7-implement-responsive-topbar-and-actions-tenant-admin: done
+  5-8-eliminate-fixed-desktop-zoom-on-mobile-viewports: done
+  epic-5-retrospective: optional
+
+  epic-6: done
+  6-1-responsive-super-admin-login-view: done
+  6-2-responsive-tenant-admin-login-view: done
+  6-3-responsive-tenant-registration-wizard: done
+  6-4-responsive-tenant-activation-wizard: done
+  6-5-responsive-forgot-password-and-recovery-flows: done
+  epic-6-retrospective: optional
+
+  epic-7: done
+  7-1-tenants-management-mobile-card-transformation: done
+  7-2-audit-log-responsive-table-view: done
+  7-3-active-devices-mobile-card-views: done
+  7-4-coupons-and-plans-mobile-card-adaptation: done
+  7-5-deleted-organisations-mobile-cards-view: done
+  7-6-tenant-detail-sub-tables-and-tabs-mobile-adaptation: done
+  7-7-blocked-and-allowed-ips-responsive-cards: done
+  7-8-moderators-and-api-keys-responsive-cards: done
+  7-9-billing-invoices-table-mobile-adaptation: done
+  epic-7-retrospective: optional
+
+  epic-8: done
+  8-1-core-modal-mobile-constraints-in-index-css: done
+  8-2-super-admin-management-modals-mobile-responsiveness: done
+  8-3-tenant-admin-management-modals-mobile-responsiveness: done
+  8-4-domain-setup-wizard-multi-step-mobile-overhaul: done
+  8-5-2fa-setup-modal-responsiveness-and-form-factor: done
+  epic-8-retrospective: optional
+
+  epic-9: done
+  9-1-super-admin-dashboard-overview-responsive-grid: done
+  9-2-tenant-home-overview-cards-responsive-grid: done
+  9-3-analytics-view-responsive-metric-cards-and-charts: done
+  9-4-storage-usage-panels-mobile-adaptation: done
+  epic-9-retrospective: optional
+
+  epic-10: done
+  10-1-security-settings-view-mobile-responsive-overhaul: done
+  10-2-system-operations-diagnostic-panels-mobile-view: done
+  10-3-dns-status-panel-and-credentials-form-mobile: done
+  epic-10-retrospective: optional
+
+  epic-11: done
+  11-1-cart-page-mobile-responsive-overhaul: done
+  11-2-payment-method-selector-mobile-cards: done
+  11-3-domain-switcher-touch-friendly-adaptation: done
+  epic-11-retrospective: optional
+
+  epic-12: done
+  12-1-44x44px-touch-target-standard-and-input-zoom: done
+  12-2-focus-management-and-inert-body-scroll: done
+  12-3-safe-area-insets-and-viewport-height-normalization: done
+  epic-12-retrospective: optional
+

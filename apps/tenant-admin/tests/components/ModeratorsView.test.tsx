@@ -45,9 +45,10 @@ describe('ModeratorsView Component', () => {
   it('lists moderators with their scoped domain names', async () => {
     render(<ModeratorsView domains={mockDomains} />);
 
-    expect(await screen.findByText('mod@acme.test')).toBeInTheDocument();
-    expect(screen.getByText('acme.test')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    const emails = await screen.findAllByText('mod@acme.test');
+    expect(emails[0]).toBeInTheDocument();
+    expect(screen.getAllByText('acme.test')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Active')[0]).toBeInTheDocument();
   });
 
   it('creates a new moderator by picking an existing mailbox, not typing an arbitrary email', async () => {
@@ -56,7 +57,7 @@ describe('ModeratorsView Component', () => {
     });
 
     render(<ModeratorsView domains={mockDomains} />);
-    await screen.findByText('mod@acme.test');
+    await screen.findAllByText('mod@acme.test');
 
     await userEvent.click(screen.getAllByRole('button', { name: /add moderator/i })[0]);
     await userEvent.type(screen.getByPlaceholderText(/search an existing mailbox/i), 'new@other.test');
@@ -77,7 +78,7 @@ describe('ModeratorsView Component', () => {
 
   it('excludes mailboxes already used by another moderator from the picker', async () => {
     render(<ModeratorsView domains={mockDomains} />);
-    await screen.findByText('mod@acme.test');
+    await screen.findAllByText('mod@acme.test');
 
     await userEvent.click(screen.getAllByRole('button', { name: /add moderator/i })[0]);
     await userEvent.type(screen.getByPlaceholderText(/search an existing mailbox/i), 'mod@acme.test');
@@ -90,9 +91,9 @@ describe('ModeratorsView Component', () => {
     vi.mocked(api.updateModerator).mockResolvedValue({ moderator: { ...mockModerator, scopedDomainIds: ['dom-1', 'dom-2'] } });
 
     render(<ModeratorsView domains={mockDomains} />);
-    await screen.findByText('mod@acme.test');
+    await screen.findAllByText('mod@acme.test');
 
-    await userEvent.click(screen.getByRole('button', { name: /edit scope/i }));
+    await userEvent.click(screen.getAllByRole('button', { name: /edit scope/i })[0]);
     await userEvent.click(screen.getByLabelText('other.test'));
     await userEvent.click(screen.getByRole('button', { name: /save scope/i }));
 
@@ -105,9 +106,9 @@ describe('ModeratorsView Component', () => {
     vi.mocked(api.updateModerator).mockResolvedValue({ moderator: { ...mockModerator, status: 'disabled' } });
 
     render(<ModeratorsView domains={mockDomains} />);
-    await screen.findByText('mod@acme.test');
+    await screen.findAllByText('mod@acme.test');
 
-    await userEvent.click(screen.getByRole('button', { name: /disable/i }));
+    await userEvent.click(screen.getAllByRole('button', { name: /disable/i })[0]);
 
     await waitFor(() => {
       expect(api.updateModerator).toHaveBeenCalledWith('mod-1', { status: 'disabled' });
@@ -118,9 +119,9 @@ describe('ModeratorsView Component', () => {
     vi.mocked(api.deleteModerator).mockResolvedValue({ message: 'ok' });
 
     render(<ModeratorsView domains={mockDomains} />);
-    await screen.findByText('mod@acme.test');
+    await screen.findAllByText('mod@acme.test');
 
-    await userEvent.click(screen.getByRole('button', { name: /remove/i }));
+    await userEvent.click(screen.getAllByRole('button', { name: /remove/i })[0]);
     const removeButtons = screen.getAllByRole('button', { name: /^remove$/i });
     await userEvent.click(removeButtons[removeButtons.length - 1]);
 

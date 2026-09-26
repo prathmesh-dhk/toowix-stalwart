@@ -148,16 +148,17 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
 
               <div>
                 <label className="field-label mb-1">One-Time Activation URL</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     readOnly
                     value={activationResult.link}
-                    className="form-input flex-1 text-xs bg-slate-50"
+                    className="form-input flex-1 text-base sm:text-xs bg-slate-50 min-w-0"
                   />
                   <Button
                     size="sm"
                     variant="secondary"
+                    className="w-full sm:w-auto min-h-[40px] sm:min-h-0"
                     onClick={handleCopyLink}
                   >
                     {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
@@ -166,10 +167,11 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
                 <Button
                   size="sm"
                   variant="secondary"
+                  className="w-full sm:w-auto min-h-[40px] sm:min-h-0"
                   onClick={handleResendEmail}
                   disabled={resending}
                 >
@@ -181,7 +183,7 @@ export const TenantActivationModal: React.FC<TenantActivationModalProps> = ({
                   href={activationResult.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1"
+                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center justify-center sm:justify-start gap-1 py-1"
                 >
                   <span>Open wizard</span>
                   <ExternalLink size={12} />

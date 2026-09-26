@@ -996,6 +996,81 @@ Manage billing from the Cart or Billing page in Toowix Tenant Admin.
       return { success: false, error: err.message };
     }
   }
+
+  /**
+   * Verifies SMTP relay connectivity and handshake latency.
+   */
+  async verifyRelay(): Promise<{
+    connected: boolean;
+    latencyMs: number;
+    host: string;
+    port: number;
+    secure: boolean;
+    authenticated: boolean;
+    error?: string;
+  }> {
+    const startTime = Date.now();
+    const transporter = this.getTransporter();
+    try {
+      await transporter.verify();
+      const latencyMs = Date.now() - startTime;
+      return {
+        connected: true,
+        latencyMs,
+        host: config.smtp.host,
+        port: config.smtp.port,
+        secure: config.smtp.secure,
+        authenticated: Boolean(config.smtp.user && config.smtp.password),
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - startTime;
+      return {
+        connected: false,
+        latencyMs,
+        host: config.smtp.host,
+        port: config.smtp.port,
+        secure: config.smtp.secure,
+        authenticated: Boolean(config.smtp.user && config.smtp.password),
+        error: err.message || String(err),
+      };
+    }
+  }
+
+  /**
+   * Sends an automated test diagnostic ping email to verify complete outbound delivery via relay.
+   */
+  async sendTestPing(to: string): Promise<{ success: boolean; messageId?: string; latencyMs: number; error?: string }> {
+    const startTime = Date.now();
+    const transporter = this.getTransporter();
+    try {
+      const info = await transporter.sendMail({
+        from: config.smtp.from,
+        to,
+        subject: `[Toowix Relay Diagnostic] SMTP Ping Verification - ${new Date().toISOString()}`,
+        text: `This is an automated SMTP relay diagnostic test message from Toowix Mail Platform.\nTimestamp: ${new Date().toISOString()}\nHost: ${config.smtp.host}:${config.smtp.port}`,
+        html: `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #4f46e5; margin-top: 0;">Toowix Mail Platform — SMTP Relay Diagnostic</h2>
+          <p>Your outbound mail relay transport is operational and connected.</p>
+          <ul style="color: #475569; font-size: 13px;">
+            <li><strong>Relay Host:</strong> ${config.smtp.host}:${config.smtp.port}</li>
+            <li><strong>TLS Mode:</strong> ${config.smtp.secure ? 'Implicit TLS' : 'STARTTLS / Plain'}</li>
+            <li><strong>Timestamp:</strong> ${new Date().toISOString()}</li>
+          </ul>
+        </div>`,
+      });
+      return {
+        success: true,
+        messageId: info.messageId,
+        latencyMs: Date.now() - startTime,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        latencyMs: Date.now() - startTime,
+        error: err.message || String(err),
+      };
+    }
+  }
 }
 
 export const emailService = new EmailService();

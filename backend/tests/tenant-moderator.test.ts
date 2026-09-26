@@ -295,7 +295,7 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
       expect(addresses).toEqual(['mod@acme.test', 'sales@acme.test']);
     });
 
-    it('suspend/reactivate/reset-password/delete succeed on an in-scope mailbox', async () => {
+    it('suspend/reactivate/reset-password succeed on an in-scope mailbox, but delete is forbidden for moderators', async () => {
       const created = await createModerator([domainAId]);
       const token = moderatorToken(created.body.moderator.id);
 
@@ -317,12 +317,19 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
         .send({ newPassword: 'NewPassword123!' });
       expect(resetPw.status).toBe(200);
 
+      // Moderators cannot delete mailboxes (403 Forbidden)
       const del = await request(app).delete(`/api/mailboxes/${mailboxId}`).set('Authorization', `Bearer ${token}`);
-      expect(del.status).toBe(200);
+      expect(del.status).toBe(403);
+      expect(del.body.error).toBe('FORBIDDEN');
+      expect(await MailboxModel.findById(mailboxId)).not.toBeNull();
+
+      // Tenant Admin can delete it
+      const adminDel = await request(app).delete(`/api/mailboxes/${mailboxId}`).set('Authorization', `Bearer ${tenantAdminToken}`);
+      expect(adminDel.status).toBe(200);
       expect(await MailboxModel.findById(mailboxId)).toBeNull();
     });
 
-    it('suspend/reactivate/reset-password/delete all 404 on an out-of-scope mailbox (not 403 — avoids confirming it exists)', async () => {
+    it('suspend/reactivate/reset-password all 404 on an out-of-scope mailbox (not 403 — avoids confirming it exists), while delete is unconditionally 403', async () => {
       const created = await createModerator([domainAId]);
       const token = moderatorToken(created.body.moderator.id);
 
@@ -347,10 +354,36 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
       const getOne = await request(app).get(`/api/mailboxes/${mailboxId}`).set('Authorization', `Bearer ${token}`);
       expect(getOne.status).toBe(404);
 
+      // Delete returns 403 because moderators cannot delete mailboxes
       const del = await request(app).delete(`/api/mailboxes/${mailboxId}`).set('Authorization', `Bearer ${token}`);
-      expect(del.status).toBe(404);
+      expect(del.status).toBe(403);
+      expect(del.body.error).toBe('FORBIDDEN');
       // Confirm it's untouched.
       expect(await MailboxModel.findById(mailboxId)).not.toBeNull();
+    });
+
+    it('migrate-and-delete is forbidden for moderators', async () => {
+      const created = await createModerator([domainAId]);
+      const token = moderatorToken(created.body.moderator.id);
+
+      const createRes = await request(app)
+        .post('/api/tenants/me/mailboxes')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ localPart: 'sales', password: 'Password123!', domainId: domainAId });
+      const mailboxId = createRes.body.id;
+
+      const destRes = await request(app)
+        .post('/api/tenants/me/mailboxes')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ localPart: 'archive', password: 'Password123!', domainId: domainAId });
+
+      const res = await request(app)
+        .post(`/api/mailboxes/${mailboxId}/migrate-and-delete`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ destinationMailboxId: destRes.body.id });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('FORBIDDEN');
     });
 
     it("revoking a domain from a Moderator's scope blocks them immediately, without a new login", async () => {
@@ -374,6 +407,88 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({ localPart: 'support', password: 'Password123!', domainId: domainAId });
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe("Security Firewall / IP Management within scope", () => {
+    it("allows Moderator to view, add, and unblock IPs for an in-scope domain", async () => {
+      const created = await createModerator([domainAId]);
+      const token = moderatorToken(created.body.moderator.id);
+
+      // 1. List blocked IPs for scoped domain
+      const listRes = await request(app)
+        .get(`/api/tenants/me/security/blocked-ips?domainId=${domainAId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(listRes.status).toBe(200);
+      expect(Array.isArray(listRes.body.list)).toBe(true);
+
+      // 2. Block an IP on the scoped domain
+      const blockRes = await request(app)
+        .post('/api/tenants/me/security/blocked-ips')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ address: '198.51.100.99', reason: 'Abuse detected by mod', domainId: domainAId });
+      expect(blockRes.status).toBe(201);
+      expect(blockRes.body.item.address).toBe('198.51.100.99');
+
+      // 3. Unblock the IP on the scoped domain
+      const unblockRes = await request(app)
+        .post('/api/tenants/me/security/blocked-ips/unblock')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ address: '198.51.100.99', domainId: domainAId });
+      expect(unblockRes.status).toBe(200);
+      expect(unblockRes.body.success).toBe(true);
+    });
+
+    it("allows Moderator to manage allowed IPs for an in-scope domain", async () => {
+      const created = await createModerator([domainAId]);
+      const token = moderatorToken(created.body.moderator.id);
+
+      // Add allowed IP
+      const addRes = await request(app)
+        .post('/api/tenants/me/security/allowed-ips')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ address: '203.0.113.10', reason: 'Office VPN', domainId: domainAId });
+      expect(addRes.status).toBe(201);
+      const allowedId = addRes.body.item.id;
+
+      // List allowed IPs
+      const listRes = await request(app)
+        .get(`/api/tenants/me/security/allowed-ips?domainId=${domainAId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(listRes.status).toBe(200);
+      expect(listRes.body.list.some((a: any) => a.id === allowedId)).toBe(true);
+
+      // Remove allowed IP
+      const delRes = await request(app)
+        .delete(`/api/tenants/me/security/allowed-ips/${allowedId}?domainId=${domainAId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(delRes.status).toBe(200);
+    });
+
+    it("refuses Moderator security requests when domainId is missing or outside scope", async () => {
+      const created = await createModerator([domainAId]);
+      const token = moderatorToken(created.body.moderator.id);
+
+      // Missing domainId
+      const noDomainRes = await request(app)
+        .get('/api/tenants/me/security/blocked-ips')
+        .set('Authorization', `Bearer ${token}`);
+      expect(noDomainRes.status).toBe(403);
+      expect(noDomainRes.body.message).toMatch(/assigned domain/i);
+
+      // Out-of-scope domainId (domainBId)
+      const outOfScopeRes = await request(app)
+        .get(`/api/tenants/me/security/blocked-ips?domainId=${domainBId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(outOfScopeRes.status).toBe(403);
+      expect(outOfScopeRes.body.message).toMatch(/assigned domain/i);
+
+      // Out-of-scope block attempt
+      const blockRes = await request(app)
+        .post('/api/tenants/me/security/blocked-ips')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ address: '198.51.100.99', domainId: domainBId });
+      expect(blockRes.status).toBe(403);
     });
   });
 
@@ -403,3 +518,4 @@ describe('Tenant Moderator accounts — scoped mailbox-only sub-users', () => {
     });
   });
 });
+

@@ -224,17 +224,17 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased flex flex-col justify-between selection:bg-indigo-100 selection:text-indigo-900">
       {/* Minimalist Top Navbar */}
       <header className="w-full border-b border-slate-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
           <a
             href="/"
             onClick={(e) => {
               e.preventDefault();
               onBackToLogin();
             }}
-            className="flex items-center gap-2.5 group cursor-pointer"
+            className="flex items-center gap-2 sm:gap-2.5 group cursor-pointer"
           >
-            <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain transition-transform group-hover:scale-105" />
-            <span className="text-xl font-bold tracking-tight text-slate-900">toowix</span>
+            <img src={toowixLogo} alt="Toowix" className="w-7 h-7 sm:w-8 sm:h-8 object-contain transition-transform group-hover:scale-105" />
+            <span className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">toowix</span>
           </a>
 
           <div className="flex items-center gap-2 text-xs sm:text-sm">
@@ -250,7 +250,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
       </header>
 
       {/* Main Centered Container */}
-      <main className="page-content-scaled flex-1 flex flex-col items-center justify-center px-4 py-8 sm:py-12 w-full">
+      <main className="page-content-scaled flex-1 flex flex-col items-center justify-center px-4 py-6 sm:py-12 w-full">
         <div className="w-full max-w-[440px]">
           {/* Subtle Stepper Indicator (for stages 2 & 3) */}
           {(stage === 2 || stage === 3) && (
@@ -284,7 +284,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
           )}
 
           {/* Card Container */}
-          <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
+          <div className="bg-white rounded-2xl p-4 sm:p-6 sm:p-8 shadow-sm border border-slate-200/80">
             {/* Error Banner */}
             {error && (
               <div className="mb-5 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2.5">
@@ -454,7 +454,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
                     <label className="block text-xs font-semibold text-slate-700 mb-2 text-center">
                       Enter 6-digit authenticator code
                     </label>
-                    <div className="flex justify-center gap-2" onPaste={handleDigitPaste}>
+                    <div className="flex justify-center gap-1.5 sm:gap-2" onPaste={handleDigitPaste}>
                       {digits.map((d, i) => (
                         <input
                           key={i}
@@ -465,7 +465,7 @@ export const ActivateTenantView: React.FC<ActivateTenantViewProps> = ({
                           value={d}
                           onChange={(e) => handleDigitChange(i, e.target.value)}
                           onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          className="w-10 h-12 text-center text-lg font-bold rounded-xl border border-slate-200 bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 outline-none transition"
+                          className="w-9 sm:w-10 h-11 sm:h-12 text-center text-lg font-bold rounded-xl border border-slate-200 bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 outline-none transition"
                         />
                       ))}
                     </div>

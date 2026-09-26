@@ -264,6 +264,14 @@ mailboxRouter.delete('/:id', async (req: Request, res: Response): Promise<void> 
   const role = req.adminUser?.role || req.user?.role;
   const tenantId = role === 'TENANT_ADMIN' || role === 'TENANT_MODERATOR' ? (req.adminUser?.tenantId || req.user?.tenantId || undefined) : undefined;
 
+  if (role === 'TENANT_MODERATOR') {
+    res.status(403).json({
+      error: 'FORBIDDEN',
+      message: 'Moderators are not permitted to delete mailboxes. Only Tenant Administrators may delete mailboxes.',
+    });
+    return;
+  }
+
   if (!(await assertMailboxInModeratorScope(req, res, req.params.id, tenantId))) return;
 
   try {
@@ -323,6 +331,14 @@ mailboxRouter.post('/:id/migrate-and-delete', async (req: Request, res: Response
   const tenantId = req.adminUser?.tenantId;
   if (!tenantId || (role !== 'TENANT_ADMIN' && role !== 'TENANT_MODERATOR')) {
     res.status(400).json({ error: 'INVALID_TENANT_ID', message: 'Tenant ID is missing or malformed' });
+    return;
+  }
+
+  if (role === 'TENANT_MODERATOR') {
+    res.status(403).json({
+      error: 'FORBIDDEN',
+      message: 'Moderators are not permitted to delete mailboxes. Only Tenant Administrators may perform migration with deletion.',
+    });
     return;
   }
 

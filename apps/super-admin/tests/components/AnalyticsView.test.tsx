@@ -89,7 +89,7 @@ describe('AnalyticsView Component', () => {
 
     expect(screen.getByText('Tenant Usage & Quotas')).toBeInTheDocument();
     expect(screen.getAllByText('Apple').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Acme Global Inc.')).toBeInTheDocument();
+    expect(screen.getAllByText('Acme Global Inc.')[0]).toBeInTheDocument();
 
     // Search for "Apple"
     const searchInput = screen.getByPlaceholderText('Search tenants or domains...');
@@ -113,6 +113,6 @@ describe('AnalyticsView Component', () => {
     render(<AnalyticsView data={mockAnalytics} loading={false} onRefresh={vi.fn()} />);
 
     expect(screen.getByText('Top Mailboxes by Storage')).toBeInTheDocument();
-    expect(screen.getByText('demo@xyz.com')).toBeInTheDocument();
+    expect(screen.getAllByText('demo@xyz.com')[0]).toBeInTheDocument();
   });
 });

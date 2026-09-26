@@ -43,13 +43,13 @@ describe('PlansManagementView Component', () => {
   it('renders plan rows with seat count, badge, default and active status', () => {
     render(<PlansManagementView {...defaultProps} />);
 
-    expect(screen.getByText('Team')).toBeInTheDocument();
-    expect(screen.getByText('Standard')).toBeInTheDocument();
-    expect(screen.getByText('Default')).toBeInTheDocument();
-    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getAllByText('Team')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Standard')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Default')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('10')[0]).toBeInTheDocument();
 
-    expect(screen.getByText('Archived Tier')).toBeInTheDocument();
-    expect(screen.getByText('Inactive')).toBeInTheDocument();
+    expect(screen.getAllByText('Archived Tier')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Inactive')[0]).toBeInTheDocument();
   });
 
   it('calls onCreatePlan when "New Plan" is clicked', () => {
@@ -68,10 +68,10 @@ describe('PlansManagementView Component', () => {
   it('calls onToggleActive to deactivate an active plan and activate an inactive one', () => {
     render(<PlansManagementView {...defaultProps} />);
 
-    fireEvent.click(screen.getByTitle('Deactivate (hide from pickers)'));
+    fireEvent.click(screen.getAllByTitle('Deactivate (hide from pickers)')[0]);
     expect(defaultProps.onToggleActive).toHaveBeenCalledWith(mockPlans[0]);
 
-    fireEvent.click(screen.getByTitle('Activate (show in pickers)'));
+    fireEvent.click(screen.getAllByTitle('Activate (show in pickers)')[0]);
     expect(defaultProps.onToggleActive).toHaveBeenCalledWith(mockPlans[1]);
   });
 

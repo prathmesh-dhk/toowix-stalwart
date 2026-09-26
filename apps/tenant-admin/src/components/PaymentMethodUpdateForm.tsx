@@ -45,7 +45,7 @@ const InnerForm: React.FC<{ onDone: () => void }> = ({ onDone }) => {
         <button
           type="submit"
           disabled={!stripe || submitting}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
         >
           {submitting ? (
             <>

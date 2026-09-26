@@ -200,9 +200,56 @@ tenantMeRouter.get(['/me/domains', '/domains'], async (req: Request, res: Respon
   }
 });
 
+// =========================================================================
+// SECURITY FIREWALL / IP MANAGEMENT (Blocked IPs, Allowed IPs, Unblock)
+// Accessible by Tenant Admin (tenant-wide or domain-scoped) or Tenant Moderator
+// (strictly restricted to their assigned scopedDomainIds).
+// =========================================================================
+export const tenantSecurityRouter = Router();
+
+const requireTenantAdminOrScopedSecurityModerator = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.adminUser || !req.adminUser.tenantId) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Authentication required' });
+  }
+  if (req.adminUser.role === 'TENANT_ADMIN') {
+    return next();
+  }
+  if (req.adminUser.role === 'TENANT_MODERATOR') {
+    const domainId = (req.query.domainId as string) || (req.body?.domainId as string);
+    if (!domainId || !isDomainInScope(req.adminUser, domainId)) {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: 'Moderators can only manage security rules for their assigned domain(s).',
+      });
+    }
+    return next();
+  }
+  return res.status(403).json({ error: 'FORBIDDEN', message: 'Insufficient privileges' });
+};
+
+tenantSecurityRouter.use(requireTenantAdminOrScopedSecurityModerator);
+
+tenantSecurityRouter.use(async (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  try {
+    const tenant = await TenantModel.findById(req.adminUser!.tenantId).select('status').lean();
+    if (tenant?.status === 'pending_deletion') {
+      res.status(423).json({
+        error: 'ORGANISATION_PENDING_DELETION',
+        message: 'This organisation is suspended while it is being deleted. Cancel the deletion to make changes.',
+      });
+      return;
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+tenantMeRouter.use('/me/security', tenantSecurityRouter);
+
 // Everything below this point is Tenant-Admin-only: domain setup/CRUD, DNS credentials,
-// security-ip management, and the organisation-deletion flow. A Moderator's access ends at the
-// two read-only routes above.
+// and the organisation-deletion flow. A Moderator's tenant-wide access ends above.
 tenantMeRouter.use(requireTenantAdmin);
 
 // The organisation-deletion flow itself (reason, name, OTP, restore).
@@ -956,13 +1003,14 @@ tenantMeRouter.get(['/me/storage', '/storage'], async (req: Request, res: Respon
 
 // =========================================================================
 // SECURITY FIREWALL / IP MANAGEMENT (Blocked IPs, Allowed IPs, Unblock)
+// Routes mounted on tenantSecurityRouter (/me/security)
 // =========================================================================
 
 /**
  * Diagnostic lookup: Checks if an IP is currently blocked or whitelisted.
  * GET /api/tenants/me/security/check-ip?ip=...
  */
-tenantMeRouter.get('/me/security/check-ip', async (req: Request, res: Response): Promise<void> => {
+tenantSecurityRouter.get('/check-ip', async (req: Request, res: Response): Promise<void> => {
   const { ip, domainId } = req.query;
 
   if (!ip || typeof ip !== 'string') {
@@ -1011,7 +1059,7 @@ tenantMeRouter.get('/me/security/check-ip', async (req: Request, res: Response):
  * Lists all currently blocked IP addresses.
  * GET /api/tenants/me/security/blocked-ips
  */
-tenantMeRouter.get('/me/security/blocked-ips', async (req: Request, res: Response): Promise<void> => {
+tenantSecurityRouter.get('/blocked-ips', async (req: Request, res: Response): Promise<void> => {
   const { domainId } = req.query;
   try {
     if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
@@ -1037,7 +1085,7 @@ tenantMeRouter.get('/me/security/blocked-ips', async (req: Request, res: Respons
  * Automated Unblock: Removes a blocked IP and reloads Stalwart firewall rules.
  * POST /api/tenants/me/security/blocked-ips/unblock
  */
-tenantMeRouter.post('/me/security/blocked-ips/unblock', async (req: Request, res: Response): Promise<void> => {
+tenantSecurityRouter.post('/blocked-ips/unblock', async (req: Request, res: Response): Promise<void> => {
   const { id, address, domainId } = req.body || {};
 
   if (!id && !address) {
@@ -1086,7 +1134,7 @@ tenantMeRouter.post('/me/security/blocked-ips/unblock', async (req: Request, res
  * Manually blocks an IP address and reloads Stalwart firewall rules.
  * POST /api/tenants/me/security/blocked-ips
  */
-tenantMeRouter.post('/me/security/blocked-ips', async (req: Request, res: Response): Promise<void> => {
+tenantSecurityRouter.post('/blocked-ips', async (req: Request, res: Response): Promise<void> => {
   const { address, reason, domainId } = req.body || {};
 
   if (!address || !isValidIpOrCidr(address)) {
@@ -1149,7 +1197,7 @@ tenantMeRouter.post('/me/security/blocked-ips', async (req: Request, res: Respon
  * Lists all whitelisted / allowed IP addresses.
  * GET /api/tenants/me/security/allowed-ips
  */
-tenantMeRouter.get('/me/security/allowed-ips', async (req: Request, res: Response): Promise<void> => {
+tenantSecurityRouter.get('/allowed-ips', async (req: Request, res: Response): Promise<void> => {
   const { domainId } = req.query;
   try {
     if (domainId && typeof domainId === 'string' && mongoose.Types.ObjectId.isValid(domainId)) {
@@ -1175,7 +1223,7 @@ tenantMeRouter.get('/me/security/allowed-ips', async (req: Request, res: Respons
  * Whitelists an IP address or CIDR range.
  * POST /api/tenants/me/security/allowed-ips
  */
-tenantMeRouter.post('/me/security/allowed-ips', async (req: Request, res: Response): Promise<void> => {
+tenantSecurityRouter.post('/allowed-ips', async (req: Request, res: Response): Promise<void> => {
   const { address, reason, domainId } = req.body || {};
 
   if (!address || !isValidIpOrCidr(address)) {
@@ -1242,7 +1290,7 @@ tenantMeRouter.post('/me/security/allowed-ips', async (req: Request, res: Respon
  * Removes an IP from the whitelist.
  * DELETE /api/tenants/me/security/allowed-ips/:id
  */
-tenantMeRouter.delete('/me/security/allowed-ips/:id', async (req: Request, res: Response): Promise<void> => {
+tenantSecurityRouter.delete('/allowed-ips/:id', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const { domainId } = req.query;
 

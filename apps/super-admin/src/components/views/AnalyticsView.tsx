@@ -125,13 +125,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, loading, onR
       {/* ── Page Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-slate-900">Analytics</h1>
+          <h1 className="text-xl sm:text-lg font-semibold tracking-tight text-slate-900">Analytics</h1>
           <p className="text-xs text-slate-500 mt-1">
             Cluster disk storage, mailbox allocations, and per-tenant quota utilization.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {data?.stalwartReachable === false && (
             <span className="text-xs font-medium text-amber-600">
               Stalwart offline
@@ -148,6 +148,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, loading, onR
             onClick={onRefresh}
             disabled={loading}
             id="btn-refresh-analytics"
+            className="min-h-[44px] sm:min-h-0"
             icon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
           >
             Refresh
@@ -229,13 +230,55 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, loading, onR
               placeholder="Search tenants or domains..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:bg-white transition-colors"
+              className="w-full pl-9 pr-3 py-2 sm:py-1.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:bg-white transition-colors min-h-[44px] sm:min-h-0"
             />
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        {/* Mobile Cards for Tenant Usage (< md) */}
+        <div className="block md:hidden divide-y divide-slate-100">
+          {filteredAndSortedTenants.length === 0 ? (
+            <div className="text-center py-8 text-slate-400 text-xs">
+              {searchTerm ? 'No tenants matching search criteria.' : 'No tenant analytics available.'}
+            </div>
+          ) : (
+            filteredAndSortedTenants.map((t) => (
+              <div key={t.tenantId} className="p-4 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-900 text-sm truncate">{t.tenantName}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{t.domainName}</div>
+                  </div>
+                  <StatusBadge status={t.status} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase font-semibold text-slate-400">Mailbox Quota</span>
+                    <span className="tabular-nums font-medium text-slate-700">
+                      {t.mailboxCount} / {t.mailboxLimit} ({t.utilizationPct}%)
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase font-semibold text-slate-400">Storage Used</span>
+                    <span className="tabular-nums font-semibold text-slate-900">
+                      {formatBytes(t.storageBytes)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5 px-0.5">
+                  <span>Sent: <strong className="text-slate-700">{formatNumber(t.emailsSent)}</strong></span>
+                  <span>Inbox: <strong className="text-slate-700">{formatNumber(t.emailsInbox)}</strong></span>
+                  <span>Stored: <strong className="text-slate-900 font-semibold">{formatNumber(t.totalEmails)}</strong></span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table (>= md) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs text-left font-sans">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -314,7 +357,29 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, loading, onR
             </span>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile Cards for Top Consumers (< md) */}
+          <div className="block md:hidden divide-y divide-slate-100">
+            {topConsumers.slice(0, 10).map((c, i) => (
+              <div key={c.address} className="p-3.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-900 truncate">{c.address}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{c.tenantName}</div>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xs font-bold text-slate-900 tabular-nums">{formatBytes(c.storageBytes)}</div>
+                  <div className="text-[10px] text-slate-400">{formatNumber(c.emailsSent)} sent</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table (>= md) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-xs text-left font-sans">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>

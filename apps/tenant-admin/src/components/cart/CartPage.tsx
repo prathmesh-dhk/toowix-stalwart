@@ -166,6 +166,24 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
   const trialStarted = !!cart?.trial.started;
   const extraDays = promo?.extraTrialDays || 0;
 
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const returnTo = params.get('returnTo') || (window.history.state as any)?.returnTo;
+    if (returnTo && returnTo !== '/cart') {
+      window.history.pushState({}, '', returnTo);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    } else if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.history.pushState({}, '', '/overview');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans antialiased selection:bg-indigo-100 selection:text-indigo-900">
       <header className="fixed top-0 inset-x-0 z-40 bg-white border-b border-slate-200 h-16">
@@ -173,7 +191,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={onBack}
+              onClick={handleBack}
               className="flex items-center gap-3 select-none cursor-pointer group"
               title="Back to dashboard"
             >
@@ -191,11 +209,12 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={onBack}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to dashboard</span>
+              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Back to dashboard</span>
+              <span className="sm:hidden">Back</span>
             </button>
             <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
               <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-semibold">
@@ -237,7 +256,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
         )}
         {loadError && <div className="mb-4 p-3 rounded-xl border bg-rose-50 border-rose-200 text-xs text-rose-800">{loadError}</div>}
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] lg:grid-cols-[1fr_360px] gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
           {/* Domains + users */}
           <section className="flex flex-col gap-4">
             {!cart ? (
@@ -249,14 +268,14 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
             ) : (
               domains.map((d) => (
                 <article key={d.domainId} className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-                  <div className="p-4 flex items-center gap-3.5">
-                    <div
-                      className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold shrink-0"
-                      aria-hidden
-                    >
-                      {d.domainName.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
+                  <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div
+                        className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold shrink-0"
+                        aria-hidden
+                      >
+                        {d.domainName.charAt(0).toUpperCase()}
+                      </div>
                       <div className="min-w-0">
                         <h2 className="text-sm font-semibold text-slate-900 truncate">{d.domainName}</h2>
                         <p className="text-xs text-slate-500 mt-0.5">
@@ -266,10 +285,10 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                           {d.activeUsers + d.pendingUsers} of {d.maxUsers} users
                         </p>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-sm font-bold text-slate-900 tabular-nums">{formatPaise(d.monthlyPaise)}</span>
-                        <span className="block text-[11px] text-slate-400">per month</span>
-                      </div>
+                    </div>
+                    <div className="text-left sm:text-right shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                      <span className="text-sm font-bold text-slate-900 tabular-nums">{formatPaise(d.monthlyPaise)}</span>
+                      <span className="block text-[11px] text-slate-400">per month</span>
                     </div>
                   </div>
                   <ul className="border-t border-slate-100 divide-y divide-slate-100 bg-slate-50/40">
@@ -277,12 +296,12 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                       <li className="px-4 py-2.5 text-xs text-slate-400 italic">No users added yet.</li>
                     ) : (
                       d.users.map((u) => (
-                        <li key={u.id} className="px-4 py-2 flex items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors">
+                        <li key={u.id} className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-3 text-xs hover:bg-slate-50 transition-colors">
                           <span className="flex items-center gap-2 min-w-0">
                             <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span className="truncate text-slate-700 font-medium">{u.address}</span>
                           </span>
-                          <span className="flex items-center gap-2.5 shrink-0">
+                          <span className="flex items-center gap-2.5 shrink-0 pl-5 sm:pl-0">
                             <span className="tabular-nums text-xs text-slate-500">{formatPaise(d.ratePaise)}/mo</span>
                             {(() => {
                               if (!u.pendingActivation) {
@@ -392,23 +411,23 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                     <Tag className="w-3.5 h-3.5 text-indigo-600" />
                     <strong>{promo.code}</strong> · +{extraDays} trial days
                   </span>
-                  <button type="button" onClick={() => setPromo(null)} className="underline text-[11px] text-emerald-700 hover:text-emerald-900 cursor-pointer">
+                  <button type="button" onClick={() => setPromo(null)} className="min-h-[36px] inline-flex items-center underline text-xs text-emerald-700 hover:text-emerald-900 cursor-pointer">
                     Remove
                   </button>
                 </div>
               ) : promoOpen ? (
                 <form onSubmit={applyPromo} className="flex flex-col gap-1.5">
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-2">
                     <input
                       value={promoCode}
                       onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
                       placeholder="Promo code"
                       aria-label="Promo code"
-                      className="flex-1 h-8 px-2.5 border border-slate-200 rounded-lg text-xs font-mono uppercase bg-white focus:outline-none focus:border-indigo-600"
+                      className="flex-1 min-h-[44px] px-3 border border-slate-200 rounded-lg text-base sm:text-xs font-mono uppercase bg-white focus:outline-none focus:border-indigo-600"
                     />
                     <button
                       type="submit"
-                      className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                      className="min-h-[44px] px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors cursor-pointer shrink-0"
                     >
                       Apply
                     </button>
@@ -419,7 +438,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                 <button
                   type="button"
                   onClick={() => setPromoOpen(true)}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline self-center cursor-pointer"
+                  className="min-h-[44px] inline-flex items-center justify-center text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline self-center cursor-pointer"
                 >
                   Have a promo code?
                 </button>
@@ -429,7 +448,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
               <button
                 type="button"
                 onClick={onBack}
-                className="w-full h-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center justify-center"
+                className="w-full min-h-[48px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer flex items-center justify-center"
               >
                 Back to dashboard
               </button>
@@ -438,7 +457,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                 type="button"
                 onClick={checkout}
                 disabled={working || totalUsers === 0}
-                className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold shadow-xs hover:shadow transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                className="w-full min-h-[48px] rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
                 {working && <Loader2 className="w-4 h-4 animate-spin" />}
                 <span>Ready for Checkout</span>
@@ -459,20 +478,20 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
       </main>
 
       {showSandbox && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4" role="dialog" aria-label="Card confirmation">
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-3 sm:p-4" role="dialog" aria-label="Card confirmation">
+          <div className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-slate-200 max-h-[calc(100dvh-24px)] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">Confirm your card (sandbox)</h2>
               <button
                 type="button"
                 onClick={() => setShowSandbox(false)}
                 aria-label="Close"
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5">
+            <div className="p-4 sm:p-5 overflow-y-auto">
               <PaymentMethodSelector onSuccess={sandboxPaid} showSkip={false} submitLabel="Confirm card & start trial" />
             </div>
           </div>

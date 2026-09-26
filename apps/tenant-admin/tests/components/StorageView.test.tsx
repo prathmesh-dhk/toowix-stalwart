@@ -72,10 +72,10 @@ describe('StorageView Component', () => {
     expect(screen.getByTestId('mailbox-count-val')).toHaveTextContent('2');
 
     // Mailboxes in table
-    expect(screen.getByText('alice@acmecorp.com')).toBeInTheDocument();
-    expect(screen.getByText('bob@acmecorp.com')).toBeInTheDocument();
-    expect(screen.getByText('100.0 MB')).toBeInTheDocument();
-    expect(screen.getByText('28.0 MB')).toBeInTheDocument();
+    expect(screen.getAllByText('alice@acmecorp.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('bob@acmecorp.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('100.0 MB')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('28.0 MB')[0]).toBeInTheDocument();
   });
 
   it('filters mailboxes when typing in the search input', async () => {
@@ -83,13 +83,14 @@ describe('StorageView Component', () => {
 
     render(<StorageView activeDomain={mockDomain} />);
 
-    expect(await screen.findByText('alice@acmecorp.com')).toBeInTheDocument();
-    expect(screen.getByText('bob@acmecorp.com')).toBeInTheDocument();
+    const aliceMails = await screen.findAllByText('alice@acmecorp.com');
+    expect(aliceMails[0]).toBeInTheDocument();
+    expect(screen.getAllByText('bob@acmecorp.com')[0]).toBeInTheDocument();
 
     const searchInput = screen.getByPlaceholderText(/Search mailboxes by address or prefix/i);
     fireEvent.change(searchInput, { target: { value: 'alice' } });
 
-    expect(screen.getByText('alice@acmecorp.com')).toBeInTheDocument();
+    expect(screen.getAllByText('alice@acmecorp.com')[0]).toBeInTheDocument();
     expect(screen.queryByText('bob@acmecorp.com')).not.toBeInTheDocument();
   });
 

@@ -289,7 +289,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
               setAppliedCoupon(null);
               setCouponCode('');
             }}
-            className="text-[11px] text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+            className="min-h-[36px] inline-flex items-center text-[11px] text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
           >
             Remove
           </button>
@@ -300,7 +300,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
             <button
               type="button"
               onClick={() => setShowCouponInput(true)}
-              className="self-start text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5 cursor-pointer"
+              className="self-start min-h-[44px] inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-700 gap-1.5 cursor-pointer"
             >
               <Tag className="w-3.5 h-3.5" />
               <span>Have a promo code?</span>
@@ -314,13 +314,13 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                   value={couponCode}
                   onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                   placeholder="e.g. STARTUP60"
-                  className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono uppercase focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                  className="flex-1 min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base sm:text-xs font-mono uppercase focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                 />
                 <button
                   type="button"
                   onClick={handleApplyCoupon}
                   disabled={couponLoading || !couponCode.trim()}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg cursor-pointer disabled:opacity-50"
+                  className="min-h-[44px] px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   {couponLoading ? 'Applying...' : 'Apply'}
                 </button>
@@ -330,7 +330,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     setShowCouponInput(false);
                     setCouponError(null);
                   }}
-                  className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="min-h-[44px] px-2 inline-flex items-center text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -358,7 +358,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
             <button
               type="button"
               onClick={() => setIsAddingNew(true)}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+              className="min-h-[44px] inline-flex items-center text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add new card</span>
@@ -372,14 +372,14 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                 <div
                   key={card.id}
                   onClick={() => setSelectedCardId(card.id)}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                  className={`p-4 min-h-[56px] rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                     isSelected
                       ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-600/10'
                       : 'border-slate-200 hover:border-slate-300 bg-white'
                   }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-7 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-[10px] uppercase tracking-wider shadow-xs">
+                    <div className="w-10 h-7 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-[10px] uppercase tracking-wider shadow-xs shrink-0">
                       {card.brand}
                     </div>
                     <div className="flex flex-col">
@@ -400,7 +400,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                   </div>
 
                   <div
-                    className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                    className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
                       isSelected
                         ? 'border-indigo-600 bg-indigo-600 text-white'
                         : 'border-slate-300 bg-white'
@@ -419,12 +419,12 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
             monthly charges will apply only to the active mailboxes you create.
           </p>
 
-          <div className="pt-2 flex items-center justify-between gap-3">
+          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <button
               type="button"
               onClick={handleUseSavedCard}
               disabled={submitting || !selectedCardId}
-              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {submitting ? (
                 <>
@@ -444,7 +444,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                 type="button"
                 onClick={onSkip}
                 disabled={submitting}
-                className="px-4 py-2.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer inline-flex items-center justify-center"
               >
                 Skip for now
               </button>
@@ -460,14 +460,14 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
             <button
               type="button"
               onClick={() => setIsAddingNew(false)}
-              className="text-xs text-indigo-600 hover:text-indigo-700 hover:underline self-start cursor-pointer"
+              className="min-h-[44px] inline-flex items-center text-xs text-indigo-600 hover:text-indigo-700 hover:underline self-start cursor-pointer"
             >
               ← Back to saved cards
             </button>
           )}
 
           {/* Realistic Credit Card Preview Mockup */}
-          <div className="relative w-full max-w-sm h-48 rounded-2xl p-6 bg-gradient-to-tr from-slate-900 via-indigo-950 to-slate-800 text-white shadow-xl flex flex-col justify-between overflow-hidden border border-white/10 select-none">
+          <div className="relative w-full max-w-sm h-48 rounded-2xl p-5 sm:p-6 bg-gradient-to-tr from-slate-900 via-indigo-950 to-slate-800 text-white shadow-xl flex flex-col justify-between overflow-hidden border border-white/10 select-none mx-auto sm:mx-0">
             {/* Background Decorative Rings */}
             <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
             <div className="absolute right-10 -bottom-10 w-44 h-44 rounded-full bg-indigo-500/10 filter blur-xl pointer-events-none" />
@@ -527,7 +527,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                   value={cardholderName}
                   onChange={(e) => setCardholderName(e.target.value)}
                   placeholder="e.g. Rahul Sharma"
-                  className="px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
+                  className="px-3.5 py-2.5 min-h-[44px] rounded-xl border border-slate-300 text-base sm:text-xs focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
                 />
               </div>
 
@@ -541,13 +541,13 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     value={cardNumber}
                     onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                     placeholder="4242 4242 4242 4242"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 min-h-[44px] rounded-xl border border-slate-300 text-base sm:text-xs font-mono focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
                   />
                   <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-slate-700">Expires</label>
                   <input
@@ -557,7 +557,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     value={expiry}
                     onChange={(e) => setExpiry(formatExpiry(e.target.value))}
                     placeholder="MM/YY"
-                    className="px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono text-center focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
+                    className="px-2 sm:px-3 py-2.5 min-h-[44px] rounded-xl border border-slate-300 text-base sm:text-xs font-mono text-center focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
                   />
                 </div>
 
@@ -570,7 +570,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     value={cvc}
                     onChange={(e) => setCvc(e.target.value.replace(/\D/g, ''))}
                     placeholder="123"
-                    className="px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono text-center focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
+                    className="px-2 sm:px-3 py-2.5 min-h-[44px] rounded-xl border border-slate-300 text-base sm:text-xs font-mono text-center focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
                   />
                 </div>
 
@@ -583,17 +583,17 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     placeholder="400001"
-                    className="px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
+                    className="px-2 sm:px-3 py-2.5 min-h-[44px] rounded-xl border border-slate-300 text-base sm:text-xs text-center sm:text-left focus:ring-2 focus:ring-indigo-600/15 focus:border-indigo-600 outline-none transition-all"
                   />
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 cursor-pointer mt-1 select-none">
+              <label className="flex items-center gap-2 cursor-pointer py-1.5 min-h-[44px] select-none">
                 <input
                   type="checkbox"
                   checked={isDefault}
                   onChange={(e) => setIsDefault(e.target.checked)}
-                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 <span className="text-xs text-slate-600">Set as default payment method</span>
               </label>
@@ -606,11 +606,11 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                 </span>
               </div>
 
-              <div className="pt-2 flex items-center justify-between gap-3">
+              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? (
                     <>
@@ -630,7 +630,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     type="button"
                     onClick={onSkip}
                     disabled={submitting}
-                    className="px-4 py-2.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+                    className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer inline-flex items-center justify-center"
                   >
                     Skip for now
                   </button>

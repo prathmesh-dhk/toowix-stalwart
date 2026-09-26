@@ -481,6 +481,14 @@ export class MailboxService {
       throw { status: 404, code: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found' };
     }
 
+    if (actorRole === 'TENANT_MODERATOR') {
+      throw {
+        status: 403,
+        code: 'FORBIDDEN',
+        message: 'Moderators are not permitted to delete mailboxes. Only Tenant Administrators may delete mailboxes.',
+      };
+    }
+
     // Tenant check: block if tenant is suspended
     const tenant = await TenantModel.findById(mailbox.tenantId);
     if ((tenant?.status === 'suspended' || tenant?.status === 'pending_deletion')) {

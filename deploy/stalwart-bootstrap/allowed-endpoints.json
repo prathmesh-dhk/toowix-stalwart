@@ -1,0 +1,25 @@
+{
+  "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+  "methodCalls": [
+    [
+      "x:Http/set",
+      {
+        "accountId": "b",
+        "update": {
+          "singleton": {
+            "allowedEndpoints": {
+              "match": [
+                {
+                  "if": " listener == 'private-http' || contains(['jmap', 'robots.txt', '.well-known', 'api', 'auth', 'healthz', 'autodiscover', 'mail'], split(path, '/')[1]) ",
+                  "then": " 200 "
+                }
+              ],
+              "else": " 404 "
+            }
+          }
+        }
+      },
+      "c3"
+    ]
+  ]
+}

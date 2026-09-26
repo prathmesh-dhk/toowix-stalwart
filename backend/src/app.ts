@@ -8,7 +8,6 @@ import https from 'https';
 
 import { authRouter } from './api/auth.routes';
 import { publicRouter } from './api/public.routes';
-import { superAdminRouter } from './api/super-admin.routes';
 import { platformTenantRouter } from './api/platform-tenant.routes';
 import { deletedOrganisationsRouter } from './api/organisation-deletion.routes';
 import { systemRouter } from './api/system.routes';
@@ -62,7 +61,6 @@ app.use(metricsService.middleware());
 // Active Routes
 app.use('/api/auth', authRouter);
 app.use('/api/public', publicRouter);
-app.use('/api/super-admin', superAdminRouter);
 app.use('/api/platform/tenants', platformTenantRouter);
 app.use('/api/platform/deleted-organisations', deletedOrganisationsRouter);
 // Mounted BEFORE tenantMeRouter: '/api/tenants' is a path prefix of these, and tenantMeRouter's

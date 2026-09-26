@@ -799,17 +799,42 @@ describe('TenantAdminDashboard Component', () => {
       tenantId: 'tenant-123',
     };
 
-    it('only shows the Mailboxes nav tab, hides everything Tenant-Admin-only', async () => {
+    it('shows the Mailboxes and Security nav tabs for Moderator, hides Tenant-Admin-only tabs', async () => {
       renderDashboard({ user: mockModerator });
 
       await waitFor(() => expect(screen.getByRole('button', { name: /mailboxes/i })).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /^security$/i })).toBeInTheDocument();
 
       expect(screen.queryByRole('button', { name: /^dashboard$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /storage/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /billing/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /domains & dns/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^security$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /^team$/i })).not.toBeInTheDocument();
+    });
+
+    it('clicking Security in Moderator sidebar switches navigation to Security Center with Account Security and Domain Firewall subtabs', async () => {
+      renderDashboard({ user: mockModerator });
+
+      const securityNavBtn = await screen.findByRole('button', { name: /^security$/i });
+      fireEvent.click(securityNavBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1, name: /security center/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /account security & 2fa/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /domain firewall/i })).toBeInTheDocument();
+      });
+    });
+
+    it('clicking Set up 2FA in banner switches Moderator to Security Center Account Security tab', async () => {
+      renderDashboard({ user: mockModerator });
+
+      const setup2faBtn = await screen.findByRole('button', { name: /set up 2fa/i });
+      fireEvent.click(setup2faBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1, name: /security center/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /account security & 2fa/i })).toBeInTheDocument();
+      });
     });
 
     it('lands on the Mailboxes tab by default instead of Dashboard', async () => {
@@ -832,6 +857,38 @@ describe('TenantAdminDashboard Component', () => {
       // acmecorp.com is dom-1, the only domain in the mocked (already server-scoped) list.
       await waitFor(() => expect(screen.getByText('acmecorp.com')).toBeInTheDocument());
       expect(screen.getByText('alice@acmecorp.com')).toBeInTheDocument();
+    });
+
+    it('does not render the Delete Mailbox option in mailbox row actions for Moderator', async () => {
+      renderDashboard({ user: mockModerator });
+
+      await waitFor(() => expect(screen.getByText('alice@acmecorp.com')).toBeInTheDocument());
+
+      const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
+      expect(actionButtons.length).toBeGreaterThan(0);
+
+      fireEvent.click(actionButtons[0]);
+
+      // Actions available to moderator: Reset Password, Migrate Mail, Suspend Mailbox
+      expect(await screen.findByRole('button', { name: /reset password/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /migrate mail/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /suspend mailbox/i })).toBeInTheDocument();
+
+      // Delete Mailbox MUST NOT exist for moderator
+      expect(screen.queryByRole('button', { name: /delete mailbox/i })).not.toBeInTheDocument();
+    });
+
+    it('renders the initial tab specified by activeNav prop and notifies onNavChange on click', async () => {
+      const onNavChange = vi.fn();
+      renderDashboard({ activeNav: 'security', onNavChange });
+
+      // Direct mount on Security tab renders Security Center heading
+      expect(await screen.findByRole('heading', { level: 1, name: /security center/i })).toBeInTheDocument();
+
+      // Clicking mailboxes tab triggers onNavChange callback for routing
+      const mailboxesNavBtn = screen.getByRole('button', { name: /mailboxes/i });
+      fireEvent.click(mailboxesNavBtn);
+      expect(onNavChange).toHaveBeenCalledWith('mailboxes');
     });
   });
 });

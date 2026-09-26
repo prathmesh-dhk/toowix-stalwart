@@ -651,28 +651,80 @@ export const BillingView: React.FC<BillingViewProps> = ({
         {invoices.length === 0 ? (
           <p className="text-xs text-slate-400">No invoices yet.</p>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            {invoices.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <div className="flex items-center gap-3">
-                  <span className="text-slate-500 tabular-nums">{formatDate(inv.createdAt)}</span>
-                  <span className="font-semibold text-slate-800 tabular-nums">{formatAmount(inv.amountPaid, inv.currency)}</span>
-                  <span className="text-[10px] uppercase text-slate-400">{inv.status}</span>
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-400 font-semibold text-[11px] uppercase tracking-wider">
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Amount</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Invoice</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {invoices.map((inv) => (
+                    <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-3 text-slate-600 font-medium tabular-nums">{formatDate(inv.createdAt)}</td>
+                      <td className="py-3 px-3 font-semibold text-slate-900 tabular-nums">{formatAmount(inv.amountPaid, inv.currency)}</td>
+                      <td className="py-3 px-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        {inv.hostedInvoiceUrl ? (
+                          <a
+                            href={inv.hostedInvoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-semibold text-xs"
+                          >
+                            <span>View</span>
+                            <ExternalLink size={12} />
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Stacked Cards View */}
+            <div className="md:hidden space-y-2.5">
+              {invoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-semibold text-slate-900 tabular-nums text-sm">
+                      {formatAmount(inv.amountPaid, inv.currency)}
+                    </span>
+                    <span className="text-slate-500 tabular-nums text-[11px]">{formatDate(inv.createdAt)}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mt-0.5">
+                      Status: {inv.status}
+                    </span>
+                  </div>
+                  {inv.hostedInvoiceUrl && (
+                    <a
+                      href={inv.hostedInvoiceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[44px] px-3.5 py-2 bg-white border border-slate-200 rounded-lg inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-semibold text-xs shadow-xs"
+                    >
+                      <span>Invoice</span>
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
                 </div>
-                {inv.hostedInvoiceUrl && (
-                  <a
-                    href={inv.hostedInvoiceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-[11px] font-medium"
-                  >
-                    View
-                    <ExternalLink size={11} />
-                  </a>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
@@ -707,9 +759,9 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   setShowCouponModal(false);
                   setCouponFeedback(null);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -738,7 +790,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                   placeholder="e.g. STARTUP60"
-                  className="px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs uppercase focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  className="px-3 py-2.5 min-h-[44px] border border-slate-300 rounded-xl font-mono text-base sm:text-xs uppercase focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                   autoFocus
                 />
               </div>
@@ -750,14 +802,14 @@ export const BillingView: React.FC<BillingViewProps> = ({
                     setShowCouponModal(false);
                     setCouponFeedback(null);
                   }}
-                  className="px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-medium transition-colors cursor-pointer"
+                  className="min-h-[44px] px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-medium transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={couponLoading || !couponInput.trim()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                  className="min-h-[44px] px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {couponLoading ? 'Redeeming...' : 'Redeem Code'}
                 </button>

@@ -149,7 +149,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
               ) : (
                 <div className="divide-y divide-slate-100 text-xs">
                   {admins.map((adm) => (
-                    <div key={adm._id || adm.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
+                    <div key={adm._id || adm.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50">
                       <div>
                         <div className="font-semibold text-slate-900">{adm.email}</div>
                         <div className="text-[10px] text-slate-400">
@@ -162,6 +162,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                         <Button
                           size="sm"
                           variant="secondary"
+                          className="w-full sm:w-auto min-h-[40px] sm:min-h-0"
                           onClick={() => {
                             setResettingAdminId(resettingAdminId === (adm._id || adm.id) ? null : (adm._id || adm.id));
                             setResetPasswordInput('');
@@ -182,17 +183,18 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
           {resettingAdminId && (
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
               <label className="field-label mb-1">Set New Password for Selected Admin</label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="password"
                   placeholder="Min. 8 characters"
                   value={resetPasswordInput}
                   onChange={(e) => setResetPasswordInput(e.target.value)}
-                  className="form-input flex-1 h-8 text-xs"
+                  className="form-input flex-1 h-9 text-base sm:text-xs"
                 />
                 <Button
                   size="sm"
                   variant="primary"
+                  className="min-h-[40px] sm:min-h-0"
                   onClick={() => handleResetPassword(resettingAdminId)}
                   loading={formLoading}
                 >
@@ -201,6 +203,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                 <Button
                   size="sm"
                   variant="secondary"
+                  className="min-h-[40px] sm:min-h-0"
                   onClick={() => {
                     setResettingAdminId(null);
                     setResetPasswordInput('');
@@ -219,7 +222,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
               <span>Add Tenant Administrator</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="field-label" htmlFor="newAdminEmail">Admin Email</label>
                 <input
@@ -229,7 +232,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                   placeholder={`admin@${tenant.domain?.domainName || 'domain.com'}`}
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  className="form-input text-xs"
+                  className="form-input text-base sm:text-xs"
                 />
               </div>
 
@@ -243,7 +246,7 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
                   placeholder="Min. 8 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="form-input text-xs"
+                  className="form-input text-base sm:text-xs"
                 />
               </div>
             </div>
@@ -252,7 +255,8 @@ export const ManageAdminsModal: React.FC<ManageAdminsModalProps> = ({
               <Button
                 type="submit"
                 variant="primary"
-                size="sm"
+                size="md"
+                className="w-full sm:w-auto min-h-[44px]"
                 loading={formLoading}
               >
                 Create Administrator

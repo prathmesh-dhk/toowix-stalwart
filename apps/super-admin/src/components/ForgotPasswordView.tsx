@@ -313,7 +313,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
       </div>
 
       {/* Main Header */}
-      <header className="relative z-10 w-full px-8 py-6 lg:px-14 flex items-center justify-between" data-purpose="top-navigation">
+      <header className="relative z-10 w-full px-4 sm:px-6 md:px-8 py-3 sm:py-4 flex items-center justify-between" data-purpose="top-navigation">
         <a
           className="flex items-center gap-2.5 group outline-none cursor-pointer"
           href="/"
@@ -324,23 +324,23 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
           }}
         >
           <img src={toowixLogo} alt="Toowix" className="w-8 h-8 object-contain group-hover:scale-105 transition-transform duration-200" />
-          <span className="text-2xl font-bold tracking-tight text-slate-900 flex items-center">toowix</span>
+          <span className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center">toowix</span>
         </a>
 
       </header>
 
       {/* Main Content */}
-      <main className="page-content-scaled relative z-10 flex-grow flex items-center justify-center px-6 py-8">
-        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+      <main className="page-content-scaled relative z-10 flex-grow flex items-center justify-center px-4 sm:px-6 py-4 sm:py-8">
+        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-8 items-center">
           {/* Left Hero Showcase */}
-          <section aria-label="Brand Identity" className="lg:col-span-6 flex flex-col justify-center items-center lg:items-start pl-0 lg:pl-8">
-            <div className="flex items-center gap-4 sm:gap-6 select-none" data-purpose="brand-logo-lockup">
+          <section aria-label="Brand Identity" className="lg:col-span-6 flex flex-col justify-center items-center lg:items-start pl-0 lg:pl-8 mb-2 lg:mb-0">
+            <div className="flex items-center gap-3 sm:gap-4 lg:gap-6 select-none" data-purpose="brand-logo-lockup">
               <img
                 src={toowixLogo}
                 alt="Toowix"
-                className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-contain"
+                className="w-10 h-10 sm:w-16 sm:h-16 lg:w-20 lg:h-20 object-contain"
               />
-              <span className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-slate-900 flex items-center">
+              <span className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 flex items-center">
                 toowix
               </span>
             </div>
@@ -348,7 +348,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
 
           {/* Right Auth Card */}
           <section aria-label="Password Reset Panel" className="lg:col-span-6 flex justify-center lg:justify-end">
-            <div className="frosted-panel rounded-3xl p-8 sm:p-10 w-full max-w-[460px] bg-white/45 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/5 transition-all duration-300 relative overflow-hidden" data-purpose="recovery-modal-card">
+            <div className="frosted-panel rounded-2xl sm:rounded-3xl p-5 sm:p-8 md:p-10 w-full max-w-[460px] bg-white/45 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/5 transition-all duration-300 relative overflow-hidden" data-purpose="recovery-modal-card">
               {/* Error Alert */}
               {error && (
                 <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center justify-between gap-2">
@@ -384,7 +384,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                       </label>
                       <div className="relative">
                         <input
-                          className="w-full h-11 px-4 pr-10 bg-slate-50/90 border border-slate-200/80 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+                          className="w-full h-11 px-4 pr-10 bg-slate-50/90 border border-slate-200/80 rounded-xl text-base sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
                           id="resetEmail"
                           name="email"
                           placeholder="admin@toowix.com"
@@ -629,12 +629,12 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                             </div>
 
                             {/* 6-digit pin inputs */}
-                            <div className="grid grid-cols-6 gap-2 sm:gap-2.5" onPaste={handleDigitPaste}>
+                            <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5" onPaste={handleDigitPaste}>
                               {digits.map((digit, idx) => (
                                 <input
                                   key={idx}
                                   ref={(el) => (digitRefs.current[idx] = el)}
-                                  className="w-full h-12 text-center text-lg font-bold tabular-nums text-slate-900 bg-slate-50/90 border border-slate-200/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+                                  className="w-full h-11 sm:h-12 text-center text-base sm:text-lg font-bold tabular-nums text-slate-900 bg-slate-50/90 border border-slate-200/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
                                   inputMode="numeric"
                                   maxLength={1}
                                   type="text"
@@ -682,7 +682,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                                     setAnswers({ ...answers, [q]: e.target.value })
                                   }
                                   placeholder="Your answer"
-                                  className="w-full h-10 px-3.5 text-xs bg-slate-50/90 border border-slate-200/80 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                                  className="w-full h-11 px-3.5 text-base sm:text-xs bg-slate-50/90 border border-slate-200/80 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                                 />
                               </div>
                             ))}
@@ -713,7 +713,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                                   setError(null);
                                 }}
                                 maxLength={16}
-                                className="w-full h-11 text-center font-mono font-bold text-base tracking-widest uppercase rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"
+                                className="w-full h-11 text-center font-mono font-bold text-sm sm:text-base tracking-widest uppercase rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 outline-none transition-all"
                               />
                             </div>
                           </div>
@@ -801,7 +801,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder="••••••••••••"
-                          className="w-full h-11 px-4 pr-11 bg-slate-50/90 border border-slate-200/80 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                          className="w-full h-11 px-4 pr-11 bg-slate-50/90 border border-slate-200/80 rounded-xl text-base sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                         />
                         <button
                           type="button"
@@ -847,7 +847,7 @@ export const ForgotPasswordView: React.FC<ForgotPasswordViewProps> = ({
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder="••••••••••••"
-                          className="w-full h-11 px-4 pr-11 bg-slate-50/90 border border-slate-200/80 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                          className="w-full h-11 px-4 pr-11 bg-slate-50/90 border border-slate-200/80 rounded-xl text-base sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                         />
                         <button
                           type="button"

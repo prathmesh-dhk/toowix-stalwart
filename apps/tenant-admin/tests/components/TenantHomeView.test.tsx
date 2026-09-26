@@ -121,11 +121,12 @@ describe('TenantHomeView Component', () => {
     await screen.findByRole('heading', { name: 'Overview' });
     fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
 
-    expect(await screen.findByText('acmecorp.com')).toBeInTheDocument();
-    expect(screen.getByText('secondary.com')).toBeInTheDocument();
-    expect(screen.getByText('Primary')).toBeInTheDocument();
+    const domains = await screen.findAllByText('acmecorp.com');
+    expect(domains[0]).toBeInTheDocument();
+    expect(screen.getAllByText('secondary.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Primary')[0]).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('secondary.com'));
+    fireEvent.click(screen.getAllByText('secondary.com')[0]);
     expect(onNavigateToDomain).toHaveBeenCalledWith('dom-2');
   });
 
@@ -133,12 +134,12 @@ describe('TenantHomeView Component', () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
     await screen.findByRole('heading', { name: 'Overview' });
     fireEvent.click(screen.getByRole('button', { name: /^domains$/i }));
-    await screen.findByText('acmecorp.com');
+    await screen.findAllByText('acmecorp.com');
 
     fireEvent.change(screen.getByPlaceholderText('Search by domain name...'), { target: { value: 'secondary' } });
 
     expect(screen.queryByText('acmecorp.com')).not.toBeInTheDocument();
-    expect(screen.getByText('secondary.com')).toBeInTheDocument();
+    expect(screen.getAllByText('secondary.com')[0]).toBeInTheDocument();
     expect(screen.getByText('Showing 1 of 2')).toBeInTheDocument();
   });
 
@@ -222,16 +223,16 @@ describe('TenantHomeView Component', () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.getByText('acmecorp.com')).toBeInTheDocument();
-    expect(screen.getByText('secondary.com')).toBeInTheDocument();
+    expect(screen.getAllByText('acmecorp.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('secondary.com')[0]).toBeInTheDocument();
     // 'Team' also labels the new Team (Moderators) nav tab, so this must disambiguate rather than assume a single match.
     expect(screen.getAllByText('Team').length).toBeGreaterThanOrEqual(1); // dom-1's plan name
-    expect(screen.getByText('Individual')).toBeInTheDocument(); // dom-2's plan name
-    expect(screen.getByText('2 / 50')).toBeInTheDocument(); // dom-1's mailbox allocation
+    expect(screen.getAllByText('Individual')[0]).toBeInTheDocument(); // dom-2's plan name
+    expect(screen.getAllByText('2 / 50')[0]).toBeInTheDocument(); // dom-1's mailbox allocation
 
     expect(screen.queryByText('Recent Activity')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('acmecorp.com'));
+    fireEvent.click(screen.getAllByText('acmecorp.com')[0]);
     expect(onNavigateToDomain).toHaveBeenCalledWith('dom-1');
   });
 
@@ -255,8 +256,8 @@ describe('TenantHomeView Component', () => {
     await screen.findByRole('heading', { name: 'Overview' });
 
     // Initially only 5 domains are shown
-    expect(screen.getByText('domain-1.com')).toBeInTheDocument();
-    expect(screen.getByText('domain-5.com')).toBeInTheDocument();
+    expect(screen.getAllByText('domain-1.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('domain-5.com')[0]).toBeInTheDocument();
     expect(screen.queryByText('domain-6.com')).not.toBeInTheDocument();
     expect(screen.getByText('Showing 5 of 12')).toBeInTheDocument();
 
@@ -265,8 +266,8 @@ describe('TenantHomeView Component', () => {
     fireEvent.click(showMoreBtn);
 
     // Now 10 domains are shown
-    expect(screen.getByText('domain-6.com')).toBeInTheDocument();
-    expect(screen.getByText('domain-10.com')).toBeInTheDocument();
+    expect(screen.getAllByText('domain-6.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('domain-10.com')[0]).toBeInTheDocument();
     expect(screen.queryByText('domain-11.com')).not.toBeInTheDocument();
     expect(screen.getByText('Showing 10 of 12')).toBeInTheDocument();
 
@@ -274,8 +275,8 @@ describe('TenantHomeView Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /show more/i }));
 
     // All 12 domains shown, button becomes "Show less"
-    expect(screen.getByText('domain-11.com')).toBeInTheDocument();
-    expect(screen.getByText('domain-12.com')).toBeInTheDocument();
+    expect(screen.getAllByText('domain-11.com')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('domain-12.com')[0]).toBeInTheDocument();
     expect(screen.getByText('Showing 12 of 12')).toBeInTheDocument();
 
     const showLessBtn = screen.getByRole('button', { name: /show less/i });
@@ -289,20 +290,20 @@ describe('TenantHomeView Component', () => {
 
   it('shows the combined billing summary across every domain on the Billing tab', async () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
-    await screen.findByText('acmecorp.com');
+    await screen.findAllByText('acmecorp.com');
 
     fireEvent.click(screen.getByRole('button', { name: /^billing$/i }));
 
     expect(await screen.findByText('One combined bill covers every domain on this account.')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText('acmecorp.com')).toBeInTheDocument();
-      expect(screen.getByText('secondary.com')).toBeInTheDocument();
+      expect(screen.getAllByText('acmecorp.com')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('secondary.com')[0]).toBeInTheDocument();
     });
   });
 
   it('mounts Security, Audit Log, and Active Devices tabs without crashing', async () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
-    await screen.findByText('acmecorp.com');
+    await screen.findAllByText('acmecorp.com');
 
     fireEvent.click(screen.getByRole('button', { name: /^security$/i }));
     await waitFor(() => expect(api.getSecuritySettings).toHaveBeenCalled());
@@ -316,7 +317,7 @@ describe('TenantHomeView Component', () => {
 
   it('does not render the 2FA reminder banner when 2FA is already enabled', async () => {
     render(<TenantHomeView user={{ ...mockUser, twoFactorEnabled: true }} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
-    await screen.findByText('acmecorp.com');
+    await screen.findAllByText('acmecorp.com');
 
     expect(screen.queryByRole('region', { name: /Two-Factor Authentication Setup Notice/i })).not.toBeInTheDocument();
   });
@@ -340,7 +341,7 @@ describe('TenantHomeView Component', () => {
 
   it('opens DomainSetupModal when clicking "Add Domain" button on Overview', async () => {
     render(<TenantHomeView user={mockUser} onLogout={onLogout} onNavigateToDomain={onNavigateToDomain} />);
-    await screen.findByText('acmecorp.com');
+    await screen.findAllByText('acmecorp.com');
 
     const addDomainBtn = screen.getByTestId ? screen.getAllByRole('button', { name: /^add domain$/i })[0] : null;
     expect(addDomainBtn).toBeInTheDocument();
@@ -370,5 +371,25 @@ describe('TenantHomeView Component', () => {
 
     await waitFor(() => expect(api.listModerators).toHaveBeenCalled());
     expect(await screen.findByText(/moderators \(0\)/i)).toBeInTheDocument();
+  });
+
+  it('renders the initial tab from activeTab prop and notifies onTabChange when sidebar items are clicked', async () => {
+    const onTabChange = vi.fn();
+    render(
+      <TenantHomeView
+        user={mockUser}
+        onLogout={onLogout}
+        onNavigateToDomain={onNavigateToDomain}
+        activeTab="security"
+        onTabChange={onTabChange}
+      />
+    );
+
+    // Initial mount at activeTab="security" renders Account Security
+    expect(await screen.findByRole('heading', { level: 1, name: /account security/i })).toBeInTheDocument();
+
+    // Clicking Billing sidebar item calls onTabChange('billing')
+    fireEvent.click(screen.getByRole('button', { name: /^billing$/i }));
+    expect(onTabChange).toHaveBeenCalledWith('billing');
   });
 });

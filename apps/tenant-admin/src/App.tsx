@@ -1,4 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import { api, getStoredToken, clearStoredToken } from './api';
 import { UserContext } from './types';
 import { TenantAdminLoginView } from './components/TenantAdminLoginView';
@@ -10,61 +19,53 @@ import { ForgotPasswordView } from './components/ForgotPasswordView';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CartPage } from './components/cart/CartPage';
 
-export const App: React.FC = () => {
+const DomainRouteWrapper: React.FC<{
+  user: UserContext;
+  onLogout: () => void;
+  onNavigateHome: () => void;
+  onSelectDomain: (dId: string) => void;
+  onNavChange: (dId: string, nav: string) => void;
+}> = ({ user, onLogout, onNavigateHome, onSelectDomain, onNavChange }) => {
+  const { domainId, nav } = useParams<{ domainId: string; nav?: string }>();
+  const isModerator = user.role === 'TENANT_MODERATOR';
+
+  // Map sub-route names to valid activeNav values
+  let activeNav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team' =
+    isModerator ? 'mailboxes' : 'dashboard';
+
+  if (nav === 'mailboxes') activeNav = 'mailboxes';
+  else if (nav === 'security') activeNav = 'security';
+  else if (nav === 'dns') activeNav = 'domains';
+  else if (nav === 'storage' && !isModerator) activeNav = 'storage';
+  else if (nav === 'billing' && !isModerator) activeNav = 'billing';
+  else if (nav === 'dashboard' && !isModerator) activeNav = 'dashboard';
+
+  const handleNavChange = (newNav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team') => {
+    const subpath = newNav === 'domains' ? 'dns' : newNav;
+    onNavChange(domainId || '', subpath);
+  };
+
+  return (
+    <ErrorBoundary fallbackTitle="Unable to load domain view" onReset={onNavigateHome}>
+      <TenantAdminDashboard
+        domainId={domainId || ''}
+        user={user}
+        onLogout={onLogout}
+        onNavigateHome={onNavigateHome}
+        onSelectDomain={onSelectDomain}
+        activeNav={activeNav}
+        onNavChange={handleNavChange}
+      />
+    </ErrorBoundary>
+  );
+};
+
+export const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState<string | undefined>();
-  const [currentPath, setCurrentPath] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.pathname;
-    }
-    return '/';
-  });
-
-  useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  const navigateToRegister = () => {
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', '/register');
-    }
-    setCurrentPath('/register');
-  };
-
-  const navigateToForgotPassword = (email?: string) => {
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', '/forgot-password');
-    }
-    setForgotPasswordEmail(email);
-    setCurrentPath('/forgot-password');
-  };
-
-  const navigateToLogin = () => {
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', '/');
-    }
-    setCurrentPath('/');
-  };
-
-  const navigateToDomain = (domainId: string) => {
-    const path = `/domains/${domainId}`;
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', path);
-    }
-    setCurrentPath(path);
-  };
-
-  const navigateHome = () => {
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', '/');
-    }
-    setCurrentPath('/');
-  };
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const initAuth = async () => {
@@ -108,6 +109,19 @@ export const App: React.FC = () => {
       }
       clearStoredToken();
       setCurrentUser(null);
+      navigate('/login');
+    }
+  };
+
+  const handleCartBack = () => {
+    const params = new URLSearchParams(location.search);
+    const returnTo = params.get('returnTo') || (location.state as any)?.returnTo;
+    if (returnTo && returnTo !== '/cart') {
+      navigate(returnTo);
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/overview');
     }
   };
 
@@ -126,103 +140,282 @@ export const App: React.FC = () => {
     );
   }
 
+  // Unauthenticated routes
   if (!currentUser) {
-    if (currentPath === '/activate') {
-      return (
-        <ActivateTenantView
-          onSuccess={(user) => {
-            setCurrentUser(user);
-            if (typeof window !== 'undefined') {
-              window.history.pushState({}, '', '/');
-              setCurrentPath('/');
-            }
-          }}
-          onBackToLogin={navigateToLogin}
-        />
-      );
-    }
-
-    if (currentPath === '/register') {
-      return (
-        <RegisterView
-          onBackToLogin={navigateToLogin}
-          onSuccess={(user) => {
-            setCurrentUser(user);
-            navigateHome();
-          }}
-        />
-      );
-    }
-
-    if (currentPath === '/forgot-password') {
-      return (
-        <ForgotPasswordView
-          onBackToLogin={navigateToLogin}
-          portalName="Admin"
-          themeColor="#10b981"
-          initialEmail={forgotPasswordEmail}
-        />
-      );
-    }
-
     return (
-      <TenantAdminLoginView
-        onSuccess={(user) => setCurrentUser(user)}
-        onGoToRegister={navigateToRegister}
-        onForgotPassword={navigateToForgotPassword}
-      />
+      <Routes>
+        <Route
+          path="/activate"
+          element={
+            <ActivateTenantView
+              onSuccess={(user) => {
+                setCurrentUser(user);
+                navigate('/overview');
+              }}
+              onBackToLogin={() => navigate('/login')}
+            />
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <RegisterView
+              onBackToLogin={() => navigate('/login')}
+              onSuccess={(user) => {
+                setCurrentUser(user);
+                navigate('/overview');
+              }}
+            />
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={
+            <ForgotPasswordView
+              onBackToLogin={() => navigate('/login')}
+              portalName="Admin"
+              themeColor="#10b981"
+              initialEmail={forgotPasswordEmail}
+            />
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <TenantAdminLoginView
+              onSuccess={(user) => {
+                setCurrentUser(user);
+                if (user.role === 'TENANT_MODERATOR') {
+                  navigate('/domains');
+                } else {
+                  navigate('/overview');
+                }
+              }}
+              onGoToRegister={() => navigate('/register')}
+              onForgotPassword={(email) => {
+                setForgotPasswordEmail(email);
+                navigate('/forgot-password');
+              }}
+            />
+          }
+        />
+      </Routes>
     );
   }
 
-  if (currentPath === '/cart' && currentUser.role !== 'TENANT_MODERATOR') {
-    return (
-      <ErrorBoundary fallbackTitle="Unable to load your cart" onReset={navigateHome}>
-        <CartPage onBack={navigateHome} user={currentUser} onLogout={handleLogout} />
-      </ErrorBoundary>
-    );
-  }
-
-  const domainRouteMatch = currentPath.match(/^\/domains\/([^/]+)/);
-  if (domainRouteMatch) {
-    return (
-      <ErrorBoundary fallbackTitle="Unable to load domain view" onReset={navigateHome}>
-        <TenantAdminDashboard
-          domainId={domainRouteMatch[1]}
-          user={currentUser}
-          onLogout={handleLogout}
-          onNavigateHome={navigateHome}
-          onSelectDomain={navigateToDomain}
-        />
-      </ErrorBoundary>
-    );
-  }
-
-  // A Moderator has no tenant-wide home (Overview/API Keys/Billing/Audit Log/Active Devices are
-  // all Tenant-Admin-only) — they land straight in the per-domain dashboard instead, with its
-  // DomainSwitcher (already scoped server-side to their assigned domains) as the only way to
-  // move between domains. Passing an empty domainId lets the dashboard resolve to the first
-  // domain from its own (correctly scoped) fetched list, same as an invalid domainId would.
-  if (currentUser.role === 'TENANT_MODERATOR') {
-    return (
-      <ErrorBoundary fallbackTitle="Unable to load domain view" onReset={navigateHome}>
-        <TenantAdminDashboard
-          domainId=""
-          user={currentUser}
-          onLogout={handleLogout}
-          onNavigateHome={navigateHome}
-          onSelectDomain={navigateToDomain}
-        />
-      </ErrorBoundary>
-    );
-  }
+  // Authenticated routes
+  const isModerator = currentUser.role === 'TENANT_MODERATOR';
 
   return (
-    <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={navigateHome}>
-      <TenantHomeView
-        user={currentUser}
-        onLogout={handleLogout}
-        onNavigateToDomain={navigateToDomain}
+    <Routes>
+      {/* Cart Page */}
+      <Route
+        path="/cart"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load your cart" onReset={() => navigate('/overview')}>
+              <CartPage onBack={handleCartBack} user={currentUser} onLogout={handleLogout} />
+            </ErrorBoundary>
+          )
+        }
       />
-    </ErrorBoundary>
+
+      {/* Domain Routes */}
+      <Route
+        path="/domains/:domainId/:nav?"
+        element={
+          <DomainRouteWrapper
+            user={currentUser}
+            onLogout={handleLogout}
+            onNavigateHome={() => navigate(isModerator ? '/domains' : '/overview')}
+            onSelectDomain={(dId) => navigate(`/domains/${dId}/${isModerator ? 'mailboxes' : 'dashboard'}`)}
+            onNavChange={(dId, nav) => navigate(`/domains/${dId}/${nav}`)}
+          />
+        }
+      />
+
+      {/* Organization Routes (Tenant Admin only) */}
+      <Route
+        path="/overview"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="overview"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/domains"
+        element={
+          isModerator ? (
+            // For a moderator, /domains with no domainId resolves through TenantAdminDashboard domainId=""
+            <ErrorBoundary fallbackTitle="Unable to load domain view" onReset={() => navigate('/domains')}>
+              <TenantAdminDashboard
+                domainId=""
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateHome={() => navigate('/domains')}
+                onSelectDomain={(dId) => navigate(`/domains/${dId}/mailboxes`)}
+                activeNav="mailboxes"
+                onNavChange={(_nav) => {}}
+              />
+            </ErrorBoundary>
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="domains"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/billing"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="billing"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/security"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="security"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/team"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="team"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/apikeys"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="apikeys"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/audit"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="audit"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+      <Route
+        path="/devices"
+        element={
+          isModerator ? (
+            <Navigate to="/domains" replace />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load workspace" onReset={() => navigate('/overview')}>
+              <TenantHomeView
+                user={currentUser}
+                onLogout={handleLogout}
+                onNavigateToDomain={(dId) => navigate(`/domains/${dId}/dashboard`)}
+                activeTab="devices"
+                onTabChange={(tab) => navigate(`/${tab}`)}
+              />
+            </ErrorBoundary>
+          )
+        }
+      />
+
+      {/* Root redirect */}
+      <Route
+        path="/"
+        element={
+          <Navigate to={isModerator ? '/domains' : '/overview'} replace />
+        }
+      />
+
+      {/* Fallback */}
+      <Route
+        path="*"
+        element={
+          <Navigate to={isModerator ? '/domains' : '/overview'} replace />
+        }
+      />
+    </Routes>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 };

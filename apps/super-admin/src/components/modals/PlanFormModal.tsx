@@ -122,11 +122,11 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
 
             <div>
               <label className="field-label mb-1.5 block">Billing Mode</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setBillingMode('fixed')}
-                  className={`p-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer ${
+                  className={`p-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer min-h-[44px] ${
                     billingMode === 'fixed'
                       ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -140,7 +140,7 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
                 <button
                   type="button"
                   onClick={() => setBillingMode('metered')}
-                  className={`p-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer ${
+                  className={`p-2.5 rounded-lg border text-xs font-semibold text-left transition-colors cursor-pointer min-h-[44px] ${
                     billingMode === 'metered'
                       ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -154,7 +154,7 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="field-label" htmlFor="planSeatCount">
                   {billingMode === 'metered' ? 'Seat Cap' : 'Seat Count'}
@@ -163,7 +163,7 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
                   id="planSeatCount"
                   type="number"
                   min={1}
-                  className="form-input"
+                  className="form-input text-base sm:text-xs"
                   value={seatCount}
                   onChange={(e) => setSeatCount(parseInt(e.target.value, 10) || 1)}
                   required
@@ -181,7 +181,7 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({ isOpen, plan, onCl
                 <input
                   id="planDisplayOrder"
                   type="number"
-                  className="form-input"
+                  className="form-input text-base sm:text-xs"
                   value={displayOrder}
                   onChange={(e) => setDisplayOrder(parseInt(e.target.value, 10) || 0)}
                 />

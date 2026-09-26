@@ -112,7 +112,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
           )}
 
           {/* Quick Metrics Grid */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Status */}
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div className="text-[11px] text-slate-500 mb-1">Tenant Status</div>
@@ -160,9 +160,9 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                 {(tenant.domains || (tenant.domain ? [tenant.domain] : [])).map((dom: TenantDomainSummary) => {
                   const badge = dnsStatusBadgeProps(dom.dnsStatus);
                   return (
-                    <div key={dom.id || dom.domainName} className="p-3 flex items-center justify-between text-xs hover:bg-slate-50">
-                      <div className="flex items-center gap-2">
-                        <Globe size={14} className="text-indigo-600" />
+                    <div key={dom.id || dom.domainName} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs hover:bg-slate-50">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Globe size={14} className="text-indigo-600 shrink-0" />
                         <span className="font-semibold text-slate-900">{dom.domainName}</span>
                         {dom.isPrimary && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
@@ -197,7 +197,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
             ) : (
               <div className="divide-y divide-slate-100">
                 {admins.map((adm) => (
-                  <div key={adm._id || adm.id} className="p-3 flex items-center justify-between text-xs hover:bg-slate-50">
+                  <div key={adm._id || adm.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs hover:bg-slate-50">
                     <div>
                       <div className="font-medium text-slate-900">{adm.email}</div>
                       <div className="text-[10px] text-slate-400">Role: {adm.role || 'TENANT_ADMIN'}</div>
@@ -206,6 +206,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                       <Button
                         size="sm"
                         variant="secondary"
+                        className="w-full sm:w-auto min-h-[40px] sm:min-h-0"
                         onClick={() => setResettingAdminId(resettingAdminId === (adm._id || adm.id) ? null : (adm._id || adm.id))}
                       >
                         <KeyRound size={12} />
@@ -222,17 +223,18 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
           {resettingAdminId && (
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
               <label className="field-label mb-1">New Password for Administrator</label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="password"
                   placeholder="Min. 8 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="form-input flex-1 h-8 text-xs"
+                  className="form-input flex-1 h-9 text-base sm:text-xs"
                 />
                 <Button
                   size="sm"
                   variant="primary"
+                  className="min-h-[40px] sm:min-h-0"
                   onClick={() => handleResetPassword(resettingAdminId)}
                 >
                   Save
@@ -240,6 +242,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                 <Button
                   size="sm"
                   variant="secondary"
+                  className="min-h-[40px] sm:min-h-0"
                   onClick={() => {
                     setResettingAdminId(null);
                     setNewPassword('');

@@ -131,7 +131,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
           type="button"
           onClick={onRetryVerification}
           disabled={retrying}
-          className="self-start px-3.5 py-1.5 rounded-full text-xs font-semibold border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 inline-flex items-center gap-1.5"
+          className="w-full sm:w-auto min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <RefreshCw size={13} className={retrying ? 'animate-spin' : ''} />
           {retrying ? 'Retrying…' : 'Retry / Verify'}
@@ -141,33 +141,33 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
       {/* Raw DNS Zone File */}
       {status?.dnsZoneFile && (
         <div className="mt-2">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2">
             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
               <FileText size={13} className={isDark ? 'text-slate-400' : 'text-slate-500'} />
               DNS Zone File
             </span>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => copy('zone', status.dnsZoneFile as string)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                className={`flex-1 sm:flex-none min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
                   isDark ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                {copiedKey === 'zone' ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                {copiedKey === 'zone' ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
                 {copiedKey === 'zone' ? 'Copied' : 'Copy Zone File'}
               </button>
               <button
                 type="button"
                 onClick={handleExportZoneFile}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                className={`flex-1 sm:flex-none min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
                   isDark ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 {copiedKey === 'zoneexport' ? (
-                  <Check size={12} className="text-emerald-400" />
+                  <Check size={13} className="text-emerald-400" />
                 ) : (
-                  <Download size={12} />
+                  <Download size={13} />
                 )}
                 {copiedKey === 'zoneexport' ? 'Exported' : 'Export .txt'}
               </button>
@@ -188,7 +188,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
       {/* Live DNS record check summary */}
       {onCheckRecords && (
         <div
-          className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+          className={`p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
             liveCheck
               ? liveCheck.allFound
                 ? 'bg-emerald-50/80 border-emerald-200'
@@ -221,9 +221,9 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
             type="button"
             onClick={onCheckRecords}
             disabled={checking}
-            className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
           >
-            <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={checking ? 'animate-spin' : ''} />
             <span>{checking ? 'Checking…' : liveCheck ? 'Re-scan' : 'Check Records'}</span>
           </button>
         </div>

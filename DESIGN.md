@@ -124,9 +124,27 @@ spacing:
   space-xl: 32px
   space-2xl: 48px
   sidebar-width: 240px
+  sidebar-width-collapsed: 0px
   topnav-height: 64px
+  topnav-height-mobile: 56px
   max-content-width: 1280px
+  mobile-gutter: 16px
+  tablet-gutter: 24px
+  desktop-gutter: 32px
+components:
+  breakpoints:
+    sm: 640px
+    md: 768px
+    lg: 1024px
+    xl: 1280px
+  sidebar:
+    mobile-behavior: off-canvas-drawer
+    drawer-width: 280px
+    transition: 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
 ---
+
+<!-- Responsive design extension: docs/ux-designs/ux-toowix-responsive-2026-09-26/DESIGN.md -->
+<!-- Behavioral experience spec: docs/ux-designs/ux-toowix-responsive-2026-09-26/EXPERIENCE.md -->
 
 # Toowix Enterprise Design System
 

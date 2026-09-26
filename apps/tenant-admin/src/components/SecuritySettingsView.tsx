@@ -520,12 +520,12 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               </div>
             </div>
 
-            <div className="shrink-0 sm:self-center pl-15 sm:pl-0">
+            <div className="shrink-0 w-full sm:w-auto sm:self-center">
               <button
                 type="button"
                 onClick={handleOpenTotpModal}
                 disabled={actionLoading}
-                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg transition-colors cursor-pointer shadow-xs whitespace-nowrap"
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg transition-colors cursor-pointer shadow-xs whitespace-nowrap flex items-center justify-center"
               >
                 {current2FaMethod === 'totp' ? 'Reconfigure App' : 'Set up Authenticator'}
               </button>
@@ -553,7 +553,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                   Verification codes are delivered directly to your administrative mailbox:
                 </p>
                 <div className="mt-1.5">
-                  <span className="inline-block px-3 py-1 bg-slate-50 border border-slate-200 rounded-md font-mono text-xs text-slate-800 font-semibold">
+                  <span className="inline-block px-3 py-1 bg-slate-50 border border-slate-200 rounded-md font-mono text-xs text-slate-800 font-semibold break-all">
                     {accountEmail}
                   </span>
                 </div>
@@ -561,7 +561,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
             </div>
 
             {/* Toggle Switch */}
-            <div className="shrink-0 sm:self-center pl-15 sm:pl-0 flex items-center gap-3">
+            <div className="shrink-0 w-full sm:w-auto sm:self-center flex items-center gap-3">
               <button
                 type="button"
                 role="switch"
@@ -575,7 +575,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                   }
                 }}
                 disabled={actionLoading}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors cursor-pointer text-xs font-medium text-slate-700 shadow-2xs"
+                className="w-full sm:w-auto min-h-[44px] flex items-center justify-between sm:justify-start gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors cursor-pointer text-xs font-medium text-slate-700 shadow-2xs"
               >
                 <span>{isEmailOtpActive ? 'Email 2FA Active' : 'Switch to Email 2FA'}</span>
                 <span
@@ -617,9 +617,9 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               </div>
             </div>
 
-            <div className="shrink-0 sm:self-center pl-15 sm:pl-0">
+            <div className="shrink-0 w-full sm:w-auto sm:self-center">
               {current2FaMethod === 'disabled' ? (
-                <span className="px-4 py-2 text-xs text-slate-400 font-medium inline-block bg-slate-50 rounded-lg border border-slate-200 whitespace-nowrap">
+                <span className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs text-slate-400 font-medium inline-flex items-center justify-center bg-slate-50 rounded-lg border border-slate-200 whitespace-nowrap">
                   Standard protection
                 </span>
               ) : (
@@ -627,7 +627,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                   type="button"
                   onClick={() => setConfirmDisable2Fa(true)}
                   disabled={actionLoading}
-                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 bg-white border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
+                  className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-medium text-slate-700 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 bg-white border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs flex items-center justify-center"
                 >
                   Disable 2FA
                 </button>
@@ -655,12 +655,12 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                 </div>
               </div>
 
-              <div className="shrink-0 sm:self-center pl-15 sm:pl-0">
+              <div className="shrink-0 w-full sm:w-auto sm:self-center">
                 <button
                   type="button"
                   onClick={handleRegenerateBackupCodes}
                   disabled={actionLoading}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 bg-white border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
+                  className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 bg-white border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs flex items-center justify-center"
                 >
                   Regenerate codes
                 </button>
@@ -713,11 +713,11 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 pl-15 sm:pl-0">
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto sm:self-center">
               <button
                 type="button"
                 onClick={handleOpenRecoveryModal}
-                className="px-3.5 py-2 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                className="flex-1 sm:flex-initial min-h-[44px] px-3.5 py-2 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs whitespace-nowrap flex items-center justify-center"
               >
                 Change email
               </button>
@@ -726,7 +726,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                 onClick={() => setConfirmRemoveRecovery(true)}
                 aria-label="Remove recovery email"
                 title="Remove recovery email"
-                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                className="min-w-[44px] min-h-[44px] p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer shadow-2xs flex items-center justify-center"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -747,11 +747,11 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               </div>
             </div>
 
-            <div className="shrink-0 sm:self-center pl-13 sm:pl-0">
+            <div className="shrink-0 w-full sm:w-auto sm:self-center">
               <button
                 type="button"
                 onClick={handleOpenRecoveryModal}
-                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Recovery Email</span>
@@ -798,7 +798,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               <button
                 type="button"
                 onClick={handleCloseTotpModal}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -833,13 +833,13 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                     <div className="w-full flex flex-col gap-1.5 text-center">
                       <span className="text-xs text-slate-500">Or enter secret key manually:</span>
                       <div className="flex items-center justify-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                        <code className="font-mono text-xs text-slate-800 tracking-wider font-semibold select-all">
+                        <code className="font-mono text-xs text-slate-800 tracking-wider font-semibold select-all break-all">
                           {totpSetupData.secret}
                         </code>
                         <button
                           type="button"
                           onClick={() => copySecretToClipboard(totpSetupData.secret)}
-                          className="text-xs text-indigo-600 hover:text-indigo-800 p-1 cursor-pointer flex items-center gap-1 font-medium"
+                          className="min-h-[40px] px-2 text-xs text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1 font-medium"
                           title="Copy Secret"
                         >
                           {copiedSecret ? (
@@ -859,11 +859,11 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                   </>
                 )}
 
-                <div className="flex items-center justify-end gap-3 w-full pt-2 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 w-full pt-2 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={handleCloseTotpModal}
-                    className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                    className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
                   >
                     Cancel
                   </button>
@@ -874,7 +874,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                       setTotpStep(2);
                     }}
                     disabled={totpLoading || !totpSetupData}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                    className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                   >
                     <span>Next: Enter Code</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -897,7 +897,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                     placeholder="000000"
                     value={totpCodeInput}
                     onChange={(e) => setTotpCodeInput(e.target.value.replace(/\D/g, ''))}
-                    className="w-48 px-4 py-2.5 font-mono text-center tracking-[0.35em] text-xl font-bold border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-2xs"
+                    className="w-full sm:w-48 px-4 py-2.5 font-mono text-center tracking-[0.35em] text-xl font-bold border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-2xs min-h-[48px]"
                     autoFocus
                   />
                   <span className="text-[11px] text-slate-400 text-center">
@@ -905,30 +905,30 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between w-full pt-2 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between w-full pt-2 border-t border-slate-100 gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
                       setTotpError(null);
                       setTotpStep(1);
                     }}
-                    className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                    className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back</span>
                   </button>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2">
                     <button
                       type="button"
                       onClick={handleCloseTotpModal}
-                      className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                      className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={totpLoading || totpCodeInput.trim().length !== 6}
-                      className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                      className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                     >
                       {totpLoading ? (
                         <>
@@ -988,7 +988,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               <button
                 type="button"
                 onClick={handleCloseRecoveryModal}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -1015,7 +1015,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                     placeholder="e.g. backup@gmail.com"
                     value={recoveryEmailInput}
                     onChange={(e) => setRecoveryEmailInput(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    className="w-full px-3.5 py-2.5 text-base sm:text-xs border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all min-h-[44px] sm:min-h-0"
                     required
                     autoFocus
                   />
@@ -1024,18 +1024,18 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                   </span>
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={handleCloseRecoveryModal}
-                    className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                    className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={recoveryLoading || !recoveryEmailInput.trim()}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                    className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                   >
                     {recoveryLoading ? (
                       <>
@@ -1067,43 +1067,43 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                     placeholder="123456"
                     value={recoveryOtpInput}
                     onChange={(e) => setRecoveryOtpInput(e.target.value.replace(/\D/g, ''))}
-                    className="w-48 px-4 py-2.5 font-mono text-center tracking-[0.35em] text-xl font-bold border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-2xs"
+                    className="w-full sm:w-48 px-4 py-2.5 font-mono text-center tracking-[0.35em] text-xl font-bold border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-2xs min-h-[48px]"
                     autoFocus
                   />
                   <button
                     type="button"
                     onClick={() => handleSendRecoveryOtp()}
                     disabled={recoveryLoading}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline cursor-pointer"
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline cursor-pointer min-h-[44px] flex items-center"
                   >
                     Didn't receive code? Resend
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between w-full pt-2 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between w-full pt-2 border-t border-slate-100 gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
                       setRecoveryError(null);
                       setRecoveryStep(1);
                     }}
-                    className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                    className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back</span>
                   </button>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2.5">
                     <button
                       type="button"
                       onClick={handleCloseRecoveryModal}
-                      className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                      className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={recoveryLoading || recoveryOtpInput.trim().length !== 6}
-                      className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                      className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                     >
                       {recoveryLoading ? (
                         <>
@@ -1146,11 +1146,11 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setConfirmDisable2Fa(false)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
               >
                 Cancel
               </button>
@@ -1158,7 +1158,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                 type="button"
                 onClick={handleDisable2Fa}
                 disabled={actionLoading}
-                className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
               >
                 {actionLoading ? 'Disabling...' : 'Yes, Disable 2FA'}
               </button>
@@ -1191,11 +1191,11 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setConfirmRemoveRecovery(false)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
               >
                 Cancel
               </button>
@@ -1203,7 +1203,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
                 type="button"
                 onClick={handleRemoveRecoveryEmail}
                 disabled={actionLoading}
-                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors cursor-pointer"
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
               >
                 {actionLoading ? 'Removing...' : 'Yes, Remove'}
               </button>
@@ -1239,7 +1239,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               <button
                 type="button"
                 onClick={() => setBackupCodesModal({ isOpen: false, codes: [] })}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors cursor-pointer"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -1256,19 +1256,19 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
             </div>
 
             {/* Single clean block of codes with no lines and no numbers */}
-            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 font-mono text-sm font-semibold tracking-widest text-slate-900 text-center select-all space-y-1.5">
+            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm font-semibold tracking-wider sm:tracking-widest text-slate-900 text-center select-all grid grid-cols-1 sm:grid-cols-2 gap-2">
               {backupCodesModal.codes.map((code, idx) => (
-                <div key={idx}>
+                <div key={idx} className="bg-white border border-slate-200/80 rounded-lg py-2 px-3 shadow-2xs">
                   {code}
                 </div>
               ))}
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1 border-t border-slate-100">
               <button
                 type="button"
                 onClick={handleCopyAllBackupCodes}
-                className="w-full sm:flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors cursor-pointer shadow-2xs"
+                className="w-full sm:flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors cursor-pointer shadow-2xs"
               >
                 {copiedBackupCodes ? (
                   <>
@@ -1285,7 +1285,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               <button
                 type="button"
                 onClick={handlePrintBackupCodes}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors cursor-pointer shadow-2xs"
+                className="w-full sm:w-auto min-h-[44px] flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors cursor-pointer shadow-2xs"
               >
                 <Printer className="w-4 h-4 text-slate-500" />
                 <span>Print</span>
@@ -1293,7 +1293,7 @@ export const SecuritySettingsView: React.FC<SecuritySettingsViewProps> = ({ user
               <button
                 type="button"
                 onClick={() => setBackupCodesModal({ isOpen: false, codes: [] })}
-                className="w-full sm:flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors cursor-pointer shadow-xs text-center"
+                className="w-full sm:flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors cursor-pointer shadow-xs flex items-center justify-center text-center"
               >
                 Done
               </button>

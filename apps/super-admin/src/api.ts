@@ -244,6 +244,10 @@ export const api = {
     }),
   deleteTenant: (id: string) =>
     request<{ message: string }>(`/api/platform/tenants/${id}`, { method: 'DELETE' }),
+  deleteDomain: (tenantId: string, domainId: string) =>
+    request<{ success: boolean; domainName: string }>(`/api/platform/tenants/${tenantId}/domains/${domainId}`, { method: 'DELETE' }),
+  checkDomainDns: (tenantId: string, domainId: string) =>
+    request<{ domain: string; allConfigured: boolean; records: any[] }>(`/api/platform/tenants/${tenantId}/domains/${domainId}/dns-check`),
 
   // Organisation deletion flow
   getOrganisationDeletion: (tenantId: string) =>
@@ -306,6 +310,10 @@ export const api = {
     }),
   deleteMailbox: (mailboxId: string) =>
     request<{ message: string }>(`/api/mailboxes/${mailboxId}`, { method: 'DELETE' }),
+  suspendMailbox: (mailboxId: string) =>
+    request<{ message: string }>(`/api/mailboxes/${mailboxId}/suspend`, { method: 'POST' }),
+  reactivateMailbox: (mailboxId: string) =>
+    request<{ message: string }>(`/api/mailboxes/${mailboxId}/reactivate`, { method: 'POST' }),
 
   // Audit Logs & System Status
   getAuditLogs: (params?: { limit?: number; offset?: number; tenantId?: string; action?: string }) => {
@@ -339,6 +347,43 @@ export const api = {
   repairQuotaDrift: () =>
     request<{ success: boolean; message: string; repaired: any[] }>('/api/system/reconciliation/sync-quota', {
       method: 'POST',
+    }),
+
+  autoRepairEntityDrift: () =>
+    request<{
+      success: boolean;
+      message: string;
+      repairedCount: number;
+      restoredDomains: string[];
+      restoredMailboxes: string[];
+      failedDomains: { domain: string; error: string }[];
+      failedMailboxes: { mailbox: string; error: string }[];
+      quotaRepairedCount: number;
+      synchronized: boolean;
+    }>('/api/system/reconciliation/auto-repair', {
+      method: 'POST',
+    }),
+
+  getSmtpRelayStatus: () =>
+    request<{
+      connected: boolean;
+      latencyMs: number;
+      host: string;
+      port: number;
+      secure: boolean;
+      authenticated: boolean;
+      error?: string;
+    }>('/api/system/smtp/relay-status'),
+
+  sendSmtpTestPing: (to: string) =>
+    request<{
+      success: boolean;
+      messageId?: string;
+      latencyMs: number;
+      error?: string;
+    }>('/api/system/smtp/test-ping', {
+      method: 'POST',
+      body: JSON.stringify({ to }),
     }),
 
   createBackup: () =>

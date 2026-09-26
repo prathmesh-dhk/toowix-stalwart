@@ -397,7 +397,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
       </div>
 
       {/* Main Header (Identical to Sign In) */}
-      <header className="relative z-10 w-full px-8 py-6 lg:px-14 flex items-center justify-between" data-purpose="top-navigation">
+      <header className="relative z-10 w-full px-4 py-4 sm:px-8 sm:py-6 lg:px-14 flex items-center justify-between" data-purpose="top-navigation">
         <button
           type="button"
           onClick={onBackToLogin}
@@ -409,22 +409,22 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
             alt="Toowix"
             className="w-8 h-8 object-contain group-hover:scale-105 transition-transform duration-200"
           />
-          <span className="text-2xl font-bold tracking-tight text-slate-900 flex items-center">toowix</span>
+          <span className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center">toowix</span>
         </button>
       </header>
 
       {/* Main Content (Identical 2-column split layout) */}
-      <main className="page-content-scaled relative z-10 flex-grow flex items-center justify-center px-6 py-8">
-        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+      <main className="page-content-scaled relative z-10 flex-grow flex items-center justify-center px-4 py-6 sm:px-6 sm:py-8">
+        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-8 items-center">
           {/* Left Hero Showcase */}
           <section aria-label="Brand Identity" className="lg:col-span-6 flex flex-col justify-center items-center lg:items-start pl-0 lg:pl-8">
-            <div className="flex items-center gap-4 sm:gap-6 select-none" data-purpose="brand-logo-lockup">
+            <div className="flex items-center gap-3 sm:gap-4 lg:gap-6 select-none" data-purpose="brand-logo-lockup">
               <img
                 src={toowixLogo}
                 alt="Toowix"
-                className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-contain"
+                className="w-12 h-12 sm:w-16 sm:h-16 lg:w-24 lg:h-24 object-contain"
               />
-              <span className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-slate-900 flex items-center">
+              <span className="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-slate-900 flex items-center">
                 toowix
               </span>
             </div>
@@ -433,7 +433,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
           {/* Right Auth Card */}
           <section aria-label="Registration Panel" className="lg:col-span-6 flex justify-center lg:justify-end">
             <div
-              className="frosted-panel rounded-3xl p-8 sm:p-10 w-full max-w-[460px] bg-white/45 backdrop-blur-xl border border-white/70 shadow-xl shadow-slate-900/5 transition-all duration-300"
+              className="frosted-panel rounded-2xl sm:rounded-3xl p-5 sm:p-8 lg:p-10 w-full max-w-[460px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-xl shadow-slate-900/5 transition-all duration-300"
               data-purpose="register-modal-card"
             >
               {/* Error Alert */}
@@ -615,7 +615,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-6 gap-2 sm:gap-2.5" onPaste={handleOtpPaste}>
+                      <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5" onPaste={handleOtpPaste}>
                         {otpDigits.map((digit, idx) => (
                           <input
                             key={idx}

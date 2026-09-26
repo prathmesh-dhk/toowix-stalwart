@@ -9,6 +9,7 @@ import { checkDatabaseHealth } from '../db/connection';
 import { reconciliationService } from '../services/reconciliation.service';
 import { backupService } from '../services/backup.service';
 import { alertService } from '../services/alert.service';
+import { emailService } from '../services/email.service';
 import { stalwartClient } from '../stalwart/client';
 import { config } from '../config';
 import http from 'http';
@@ -268,6 +269,49 @@ systemRouter.post('/reconciliation/sync-quota', async (_req: Request, res: Respo
   } catch (err: any) {
     console.error('[System Quota Sync Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to repair quota drift' });
+  }
+});
+
+// 4b. 1-Click Stalwart Entity Drift Auto-Repair
+systemRouter.post('/reconciliation/auto-repair', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await reconciliationService.repairEntityDrift();
+    res.status(200).json({
+      success: true,
+      message: `Entity drift auto-repair complete. Repaired ${result.repairedCount} item(s).`,
+      ...result,
+    });
+  } catch (err: any) {
+    console.error('[System Auto-Repair Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to auto-repair entity drift' });
+  }
+});
+
+// 4c. Outbound SMTP Relay Connectivity Verification
+systemRouter.get('/smtp/relay-status', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const status = await emailService.verifyRelay();
+    res.status(200).json(status);
+  } catch (err: any) {
+    console.error('[SMTP Relay Status Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to verify SMTP relay' });
+  }
+});
+
+// 4d. Outbound SMTP Relay Test Ping
+systemRouter.post('/smtp/test-ping', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { to } = req.body;
+    if (!to || typeof to !== 'string' || !to.includes('@')) {
+      res.status(400).json({ error: 'INVALID_INPUT', message: 'Valid recipient email address is required' });
+      return;
+    }
+
+    const result = await emailService.sendTestPing(to.trim());
+    res.status(result.success ? 200 : 502).json(result);
+  } catch (err: any) {
+    console.error('[SMTP Test Ping Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to dispatch test ping email' });
   }
 });
 

@@ -105,6 +105,13 @@
   zoom: 1.12;
 }
 
+@media (max-width: 1023px) {
+  .page-content-scaled,
+  .modal-card {
+    zoom: 1 !important;
+  }
+}
+
 html, body, #root {
   font-family: var(--font-sans);
 }
@@ -611,6 +618,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
 }
 .modal-close-btn:hover {
   background-color: var(--slate-100);
@@ -819,6 +828,136 @@ body {
     animation: none;
     transform: none;
     opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN SYSTEM & MOBILE ADAPTATION
+   ========================================================================== */
+
+/* Viewport Height & Safe Area Inset Normalization */
+html, body, #root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.min-h-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.h-screen {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.pb-safe {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.pt-safe {
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+/* Universal touch targets on touch devices or screens under 768px */
+@media (pointer: coarse), (max-width: 767px) {
+  button, 
+  .btn, 
+  [role="button"] {
+    min-height: 44px;
+  }
+  
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="search"],
+  select,
+  textarea {
+    font-size: 16px !important; /* Prevents iOS Safari auto-zoom on input focus */
+  }
+}
+
+/* Tablet & Mobile Layout Invariants (< 1024px) */
+@media (max-width: 1023px) {
+  .sidebar-collapsed {
+    transform: translateX(-100%);
+  }
+}
+
+/* Mobile Layout Invariants (< 768px) */
+@media (max-width: 767px) {
+  main {
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+
+  .card-base {
+    padding: 16px;
+    border-radius: var(--radius-lg);
+  }
+
+  .stat-num {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .modal-backdrop-mock {
+    padding: 8px !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .modal-card {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px auto !important;
+    padding: 16px !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
+    max-height: calc(100dvh - 24px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .modal-body {
+    overflow-y: auto !important;
+    flex: 1 1 auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    padding-right: 4px;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .modal-footer button,
+  .modal-footer .btn {
+    width: 100% !important;
+    min-height: 44px !important;
+    justify-content: center !important;
+  }
+
+  .auth-card {
+    padding: 20px !important;
+    margin: 12px auto !important;
+    max-width: 100% !important;
+    border-radius: var(--radius-lg) !important;
+  }
+
+  .empty-state-card {
+    padding: 24px 16px !important;
+  }
+
+  .data-table-container {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-radius: var(--radius-md);
+  }
+
+  .data-table {
+    min-width: 580px;
   }
 }
 
