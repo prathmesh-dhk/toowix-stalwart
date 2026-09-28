@@ -73,6 +73,7 @@ describe('billing hardening (phase 0)', () => {
   afterEach(() => {
     (config as any).nodeEnv = 'test';
     delete process.env.SKIP_BILLING;
+    delete process.env.ALLOW_SANDBOX_BILLING;
   });
 
   describe('webhook idempotency', () => {
@@ -187,13 +188,16 @@ describe('billing hardening (phase 0)', () => {
   describe('production fails closed', () => {
     it('refuses to activate or start checkout when Stripe is not configured in production', async () => {
       process.env.SKIP_BILLING = 'true';
+      delete process.env.ALLOW_SANDBOX_BILLING;
       (config as any).nodeEnv = 'production';
-      const domain = await DomainModel.create({ tenantId, domainName: 'prod.com', planId, status: 'active', isPrimary: true });
+      const prodTenant = await TenantModel.create({ name: 'Prod Acme', contactEmail: 'prod@acme.test', status: 'active', mailboxLimit: 50, mailboxCount: 0 });
+      const prodTenantId = prodTenant._id.toString();
+      const domain = await DomainModel.create({ tenantId: prodTenantId, domainName: 'prod.com', planId, status: 'active', isPrimary: true });
 
-      await expect(attachDomainWithSavedPayment(domain._id.toString(), tenantId, actor)).rejects.toMatchObject({ code: 'BILLING_NOT_CONFIGURED', statusCode: 503 });
-      await expect(completeCartCheckout(tenantId, 'cs_1', actor)).rejects.toMatchObject({ code: 'BILLING_NOT_CONFIGURED', statusCode: 503 });
-      await expect(startCartCheckout(tenantId, actor)).rejects.toMatchObject({ code: 'BILLING_NOT_CONFIGURED', statusCode: 503 });
-      expect((await TenantModel.findById(tenantId))?.trialStartedAt).toBeNull();
+      await expect(attachDomainWithSavedPayment(domain._id.toString(), prodTenantId, actor)).rejects.toMatchObject({ code: 'BILLING_NOT_CONFIGURED', statusCode: 503 });
+      await expect(completeCartCheckout(prodTenantId, 'cs_1', actor)).rejects.toMatchObject({ code: 'BILLING_NOT_CONFIGURED', statusCode: 503 });
+      await expect(startCartCheckout(prodTenantId, actor)).rejects.toMatchObject({ code: 'BILLING_NOT_CONFIGURED', statusCode: 503 });
+      expect((await TenantModel.findById(prodTenantId))?.trialStartedAt).toBeNull();
     });
 
     it('outside production the sandbox path still works without Stripe', async () => {

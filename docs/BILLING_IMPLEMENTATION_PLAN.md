@@ -229,9 +229,9 @@ sequenceDiagram
 1. **Update `PlanModel`:**
    - Replace flat pricing fields with `pricePerUserMonthlyPaise` and `maxUsers`.
    - Update seed tiers in `seed.ts`:
-     - **Starter:** Max 10 users, ₹199/active user/month (`19900` paise).
-     - **Business:** Max 50 users, ₹399/active user/month (`39900` paise).
-     - **Enterprise:** Max 500 users, ₹599/active user/month (`59900` paise).
+     - **Starter:** Max 10 users, ₹49/active user/month (`4900` paise), 5 GB, Email only.
+     - **Pro:** Max 50 users, ₹99/active user/month (`9900` paise), 20 GB, Email + Apps.
+     - **Enterprise:** Max 500 users, ₹149/active user/month (`14900` paise), 30 GB, Email + Apps.
 2. **Update `TenantModel`:**
    - Add `stripeSubscriptionId?: string | null` for the consolidated master subscription.
    - Add helper virtual / boolean `hasPaymentMethod`.
