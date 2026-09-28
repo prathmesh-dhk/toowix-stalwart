@@ -252,6 +252,40 @@ export class StalwartClient {
       if (err.type === 'primaryKeyViolation') {
         throw new StalwartDomainExistsError(normalized, err);
       }
+
+      // If failed specifically due to ACME provider mismatch, clear cache and retry without certificateManagement
+      if (
+        acmeProviderId &&
+        (err.description?.toLowerCase().includes('acme') || err.type?.toLowerCase().includes('acme'))
+      ) {
+        this.clearCachedAcmeProviderId();
+        const retryResponses = await this.dispatch([
+          [
+            'x:Domain/set',
+            {
+              accountId: this.accountId,
+              create: {
+                [tempId]: {
+                  name: normalized,
+                  description: description || null,
+                  isEnabled: true,
+                  dkimManagement: {
+                    '@type': 'Automatic',
+                    algorithms: { Dkim1Ed25519Sha256: true, Dkim1RsaSha256: true },
+                  },
+                },
+              },
+            },
+            'c_create_dom_retry',
+          ],
+        ]);
+        const retryResult = retryResponses[0]?.[1];
+        const retryCreatedId = retryResult?.created?.[tempId]?.id;
+        if (retryCreatedId) {
+          return { id: retryCreatedId, name: normalized };
+        }
+      }
+
       throw new StalwartError(`Failed to create domain on Stalwart: ${err.description || err.type}`, 'DOMAIN_CREATE_FAILED', err);
     }
 

@@ -407,7 +407,10 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
         stalwartDomainId = match?.id || null;
       } else if (
         err instanceof StalwartError &&
-        (err.code === 'DOMAIN_CREATE_FAILED' || err.message?.includes('Invalid domain name'))
+        (err.message?.toLowerCase().includes('invalid domain name') ||
+          err.message?.toLowerCase().includes('public suffix') ||
+          err.message?.toLowerCase().includes('invalid syntax') ||
+          (err.code === 'DOMAIN_CREATE_FAILED' && err.raw?.type === 'invalidValue' && err.raw?.description?.includes('domain')))
       ) {
         res.status(400).json({
           error: 'INVALID_DOMAIN',
