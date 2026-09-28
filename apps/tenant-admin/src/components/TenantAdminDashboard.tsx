@@ -51,7 +51,6 @@ import {
   KeyRound,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   Menu,
 } from 'lucide-react';
 
@@ -1740,22 +1739,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                     className="w-48 bg-white rounded-xl shadow-xl border border-slate-200/90 py-1.5 animate-in fade-in zoom-in-95 focus:outline-none"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <a
-                      href={`${(import.meta as any).env?.VITE_WEBMAIL_URL || 'http://localhost:8888'}?username=${encodeURIComponent(mb.address)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        setOpenMenuMailboxId(null);
-                        setMenuAnchor(null);
-                      }}
-                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer no-underline"
-                      title={`Open Webmail for ${mb.address}`}
-                    >
-                      <Mail className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                      <span>Open in Webmail</span>
-                      <ExternalLink className="w-3 h-3 text-slate-400 ml-auto" />
-                    </a>
-
                     <button
                       type="button"
                       onClick={() => {
