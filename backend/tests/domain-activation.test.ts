@@ -363,7 +363,21 @@ describe('domain-activation.service', () => {
       vi.spyOn(stalwartClient, 'getDomain').mockResolvedValue({ id: 'stalwart-dom-1', name: 'acme.com', isEnabled: true, dnsZoneFile: 'zone...' });
     });
 
-    it('rejects retry from not_started', async () => {
+    it('recovers a domain stuck at not_started with no Stalwart domain ever created (the actual bug: domain creation swallowed a Stalwart failure)', async () => {
+      const result = await retryVerify(domainId, actor);
+      expect(result.stalwartDomainId).toBe('stalwart-dom-1');
+      expect(result.dnsStatus).not.toBe('not_started');
+    });
+
+    it('rejects retry when Stalwart itself refuses to (re)provision the domain', async () => {
+      vi.spyOn(stalwartClient, 'createDomain').mockRejectedValue(new Error('stalwart unreachable'));
+      await expect(retryVerify(domainId, actor)).rejects.toThrow(DomainActivationError);
+      const stillBroken = await DomainModel.findById(domainId);
+      expect(stillBroken!.stalwartDomainId).toBeFalsy();
+    });
+
+    it('rejects retry from an already-active domain', async () => {
+      await DomainModel.findByIdAndUpdate(domainId, { dnsStatus: 'active', stalwartDomainId: 'stalwart-dom-1' });
       await expect(retryVerify(domainId, actor)).rejects.toThrow(DomainActivationError);
     });
 

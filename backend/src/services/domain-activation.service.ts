@@ -644,12 +644,73 @@ export async function retryVerify(domainId: string, actor: ActivationActor): Pro
   if (!domain) {
     throw new DomainActivationError('Domain not found', 'NOT_FOUND', 404);
   }
-  if (domain.dnsStatus !== 'activating' && domain.dnsStatus !== 'conflict') {
+  // 'not_started'/'activation_failed' are included alongside the original 'activating'/'conflict':
+  // a domain whose Stalwart provisioning itself failed (see below) is left in one of these two
+  // states with no other way back — this was previously a dead end (ponytail: root-caused, not
+  // patched around — see backend/src/api/tenant.routes.ts's domain-creation route for the failure
+  // this recovers from).
+  if (!['activating', 'conflict', 'activation_failed', 'not_started'].includes(domain.dnsStatus)) {
     throw new DomainActivationError(
       `Cannot retry from dnsStatus '${domain.dnsStatus}'`,
       'INVALID_STATE_FOR_RETRY',
       409
     );
+  }
+
+  // Stalwart provisioning may never have succeeded at all (e.g. domain creation swallowed a
+  // Stalwart error and left stalwartDomainId null) — recover that first, since nothing past this
+  // point (DKIM, DNS records, provider sync) means anything without a real Stalwart domain.
+  if (!domain.stalwartDomainId) {
+    const tenant = await TenantModel.findById(domain.tenantId);
+    let stalwartDomainId: string | null = null;
+    try {
+      const created = await stalwartClient.createDomain(domain.domainName, `Tenant: ${tenant?.name || domain.tenantId}`);
+      stalwartDomainId = created.id;
+    } catch (err: any) {
+      if (err instanceof StalwartDomainExistsError) {
+        const list = await stalwartClient.listDomains();
+        const match = list.find((d) => d.name.toLowerCase() === domain.domainName);
+        stalwartDomainId = match?.id || null;
+      } else {
+        throw new DomainActivationError(
+          `Stalwart domain provisioning failed: ${err.message || 'unknown error'}`,
+          'STALWART_PROVISION_FAILED',
+          502
+        );
+      }
+    }
+    if (!stalwartDomainId) {
+      throw new DomainActivationError('Failed to resolve a Stalwart domain ID on retry', 'STALWART_DOMAIN_UNRESOLVED', 502);
+    }
+
+    domain.stalwartDomainId = stalwartDomainId;
+    await stalwartClient.updateDomainStatus(stalwartDomainId, true);
+    try {
+      await stalwartClient.ensureAutomaticDkim(stalwartDomainId);
+    } catch {
+      // Non-fatal: Stalwart may already have DKIM configured
+    }
+    const dkimKeys = await stalwartClient.getActiveDkimKeysWithRetry(stalwartDomainId);
+    const stalwartDomain = await stalwartClient.getDomain(stalwartDomainId);
+    const records = buildFullDnsRecords(domain.domainName, dkimKeys, stalwartDomain?.dnsZoneFile || null);
+    domain.dnsRecords = records;
+    const rsaKey = dkimKeys.find((k) => k.algorithm === 'Dkim1RsaSha256') || dkimKeys[0];
+    domain.dkimSelector = rsaKey?.selector || null;
+    domain.dkimPublicKey = rsaKey?.publicKey || null;
+    domain.dnsZoneFile = buildZoneFileText(domain.domainName, records);
+    domain.dnsStatus = 'activating';
+    await saveIfExists(domain);
+
+    await logAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actorEmail: actor.email,
+      tenantId: String(domain.tenantId),
+      action: 'DOMAIN_STALWART_PROVISION_RECOVERED',
+      resource: 'DOMAIN',
+      resourceId: domain._id.toString(),
+      metadata: { domainName: domain.domainName, stalwartDomainId },
+    });
   }
 
   const records = domain.dnsRecords || [];
