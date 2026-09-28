@@ -127,6 +127,15 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   const [dnsCheckResult, setDnsCheckResult] = useState<{ domain: string; allConfigured: boolean; records: any[] } | null>(null);
   const [deletingDomainId, setDeletingDomainId] = useState<string | null>(null);
 
+  // Import modal
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSearch, setImportSearch] = useState('');
+  const [importResults, setImportResults] = useState<Array<{domainName: string; stalwartDomainId: string}>>([]);
+  const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set());
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<number>(0);
+
   // Mailbox actions
   const [resettingMailboxId, setResettingMailboxId] = useState<string | null>(null);
   const [newMailboxPassword, setNewMailboxPassword] = useState('');
@@ -171,6 +180,25 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   useEffect(() => {
     fetchTenantDetails();
   }, [fetchTenantDetails]);
+
+  useEffect(() => {
+    if (!importSearch.trim()) {
+      setImportResults([]);
+      return;
+    }
+    setImportLoading(true);
+    setImportError(null);
+    api.getUnmanagedDomains(importSearch)
+      .then((res) => {
+        setImportResults(res.data.domains || []);
+        setImportLoading(false);
+      })
+      .catch((err) => {
+        console.error('[Import Domains] Failed to search:', err);
+        setImportError(err.response?.data?.message || 'Failed to search domains');
+        setImportLoading(false);
+      });
+  }, [importSearch]);
 
   const handleCopyId = () => {
     if (!details?.tenant?.id) return;
@@ -1060,6 +1088,14 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 placeholder="Search domains..."
                 className="form-input pl-8 h-8 text-xs w-full"
               />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setImportOpen(true)}
+                className="ml-4 mt-sm relative -top-1"
+              >
+                Import Domains
+              </Button>
             </div>
           </div>
 

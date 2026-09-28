@@ -92,7 +92,7 @@ platformTenantRouter.get('/', async (_req: Request, res: Response) => {
 // already know the exact domain name. Adoption itself needs no new logic: creating a Domain
 // record for one of these and then activating the tenant already recognizes an existing Stalwart
 // domain via the StalwartDomainExistsError → listDomains() fallback in activateDomain()/retryVerify().
-platformTenantRouter.get('/unmanaged-domains', async (_req: Request, res: Response) => {
+platformTenantRouter.get('/unmanaged-domains', async (req: Request, res: Response) => {
   try {
     const [stalwartDomains, trackedDomains] = await Promise.all([
       stalwartClient.listDomains(),
@@ -100,11 +100,24 @@ platformTenantRouter.get('/unmanaged-domains', async (_req: Request, res: Respon
     ]);
     const tracked = new Set(trackedDomains.map((d) => d.domainName.toLowerCase()));
 
-    const unmanaged = stalwartDomains
+    let unmanaged = stalwartDomains
       .filter((d) => !tracked.has(d.name.toLowerCase()))
       .map((d) => ({ stalwartDomainId: d.id, domainName: d.name, isEnabled: d.isEnabled }));
 
-    return res.status(200).json({ domains: unmanaged });
+    // Optional search by domain name substring (case-insensitive)
+    const q = req.query.q;
+    if (typeof q === 'string' && q.trim() !== '') {
+      const query = q.trim().toLowerCase();
+      unmanaged = unmanaged.filter((d) => d.domainName.toLowerCase().includes(query));
+    }
+
+    // Return only domain name and stalwartDomainId per spec (no extra metadata)
+    const result = unmanaged.map((d) => ({
+      domainName: d.domainName,
+      stalwartDomainId: d.stalwartDomainId,
+    }));
+
+    return res.status(200).json({ domains: result });
   } catch (err: any) {
     console.error('[Unmanaged Domains Error]:', err);
     return res.status(502).json({ error: 'STALWART_UNAVAILABLE', message: err.message || 'Failed to list Stalwart domains' });
