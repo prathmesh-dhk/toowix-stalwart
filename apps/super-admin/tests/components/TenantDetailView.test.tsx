@@ -146,11 +146,12 @@ describe('TenantDetailView Component in Super Admin', () => {
 
     // KPI cards
     expect(screen.getAllByText('Configured Domains')[0]).toBeInTheDocument();
-    expect(screen.getByText('Mailbox Allocation')).toBeInTheDocument();
+    expect(screen.getAllByText('Mailbox Allocation')[0]).toBeInTheDocument();
     expect(screen.getAllByText('Administrators')[0]).toBeInTheDocument();
     expect(screen.getByText('Storage Consumed')).toBeInTheDocument();
 
-    // Domains table in first tab
+    // Domains table lives under its own tab (default landing tab is now Overview)
+    fireEvent.click(screen.getByRole('button', { name: /^domains/i }));
     expect(screen.getAllByText('waynecorp.com')[0]).toBeInTheDocument();
     expect(screen.getAllByText('wayne-tech.test')[0]).toBeInTheDocument();
     expect(screen.getAllByText('Primary')[0]).toBeInTheDocument();
@@ -183,20 +184,20 @@ describe('TenantDetailView Component in Super Admin', () => {
     expect(screen.getAllByText('alfred@waynecorp.com')[0]).toBeInTheDocument();
 
     // 2. Admins tab
-    const adminsTab = screen.getByRole('button', { name: /^administrators/i });
+    const adminsTab = screen.getByRole('button', { name: /^admins/i });
     fireEvent.click(adminsTab);
     expect(screen.getByText('Tenant Administrators')).toBeInTheDocument();
     expect(screen.getAllByText('2FA Protected')[0]).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /reset password/i })[0]).toBeInTheDocument();
 
     // 3. Audit tab
-    const auditTab = screen.getByRole('button', { name: /^audit trail/i });
+    const auditTab = screen.getByRole('button', { name: /^audit log/i });
     fireEvent.click(auditTab);
     expect(screen.getByText('Tenant Audit History')).toBeInTheDocument();
     expect(screen.getAllByText('MAILBOX_CREATE')[0]).toBeInTheDocument();
 
     // 4. Governance tab
-    const govTab = screen.getByRole('button', { name: /governance & danger zone/i });
+    const govTab = screen.getByRole('button', { name: /^governance/i });
     fireEvent.click(govTab);
     expect(screen.getByText('Mailbox Quota Limit')).toBeInTheDocument();
     expect(screen.getByText('Organization Access & Lifecycle')).toBeInTheDocument();
@@ -212,7 +213,7 @@ describe('TenantDetailView Component in Super Admin', () => {
       expect(screen.getByRole('heading', { name: 'Wayne Enterprises' })).toBeInTheDocument();
     });
 
-    const adminsTab = screen.getByRole('button', { name: /^administrators/i });
+    const adminsTab = screen.getByRole('button', { name: /^admins/i });
     fireEvent.click(adminsTab);
 
     // Click reset password
@@ -241,7 +242,7 @@ describe('TenantDetailView Component in Super Admin', () => {
       expect(screen.getByRole('heading', { name: 'Wayne Enterprises' })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /^administrators/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^admins/i }));
 
     await waitFor(() => expect(screen.getAllByText('alfred@waynecorp.com')[0]).toBeInTheDocument());
 

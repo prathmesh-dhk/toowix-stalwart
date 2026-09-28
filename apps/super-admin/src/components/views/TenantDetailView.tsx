@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Building2,
   Globe,
   ArrowLeft,
   Mail,
@@ -872,8 +871,8 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                     </div>
                     <div>
                       {(() => {
-                        const { badgeStatus, label } = dnsStatusBadgeProps(domains[0].dnsStatus);
-                        return <StatusBadge status={badgeStatus}>{label}</StatusBadge>;
+                        const badge = dnsStatusBadgeProps(domains[0].dnsStatus);
+                        return <StatusBadge status={badge.status} label={badge.label} />;
                       })()}
                     </div>
                   </div>
@@ -1032,7 +1031,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 </div>
                 <div className="flex items-center justify-between">
                   <dt className="text-slate-500">Stripe Customer</dt>
-                  <dd className="font-mono text-slate-600">{billing?.stripeCustomerId || '—'}</dd>
+                  <dd className="font-mono text-slate-600">{tenant.stripeCustomerId || '—'}</dd>
                 </div>
               </dl>
             </div>

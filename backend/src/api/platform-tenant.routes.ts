@@ -17,6 +17,7 @@ import { suspendTenantInfrastructure, restoreTenantInfrastructure } from '../ser
 import { forceDeleteOrganisation, OrganisationDeletionError } from '../services/organisation-deletion.service';
 import { deleteDomainDirectly, DomainDeletionError } from '../services/domain-deletion.service';
 import { activateDomain, DomainActivationError } from '../services/domain-activation.service';
+import { stalwartClient } from '../stalwart/client';
 import { captureRequestContext } from '../services/request-context.service';
 import { MailboxService } from '../services/mailbox.service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
@@ -82,6 +83,31 @@ platformTenantRouter.get('/', async (_req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[List Tenants Error]:', err);
     return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to list tenants' });
+  }
+});
+
+// 1a. Unmanaged Stalwart Domains — domains that exist in Stalwart but have no Domain record here
+// at all (created directly against Stalwart, or left behind by a deleted tenant). Lets a Super
+// Admin discover them and pick one to attach to a new or existing tenant, instead of having to
+// already know the exact domain name. Adoption itself needs no new logic: creating a Domain
+// record for one of these and then activating the tenant already recognizes an existing Stalwart
+// domain via the StalwartDomainExistsError → listDomains() fallback in activateDomain()/retryVerify().
+platformTenantRouter.get('/unmanaged-domains', async (_req: Request, res: Response) => {
+  try {
+    const [stalwartDomains, trackedDomains] = await Promise.all([
+      stalwartClient.listDomains(),
+      DomainModel.find({}, { domainName: 1 }),
+    ]);
+    const tracked = new Set(trackedDomains.map((d) => d.domainName.toLowerCase()));
+
+    const unmanaged = stalwartDomains
+      .filter((d) => !tracked.has(d.name.toLowerCase()))
+      .map((d) => ({ stalwartDomainId: d.id, domainName: d.name, isEnabled: d.isEnabled }));
+
+    return res.status(200).json({ domains: unmanaged });
+  } catch (err: any) {
+    console.error('[Unmanaged Domains Error]:', err);
+    return res.status(502).json({ error: 'STALWART_UNAVAILABLE', message: err.message || 'Failed to list Stalwart domains' });
   }
 });
 

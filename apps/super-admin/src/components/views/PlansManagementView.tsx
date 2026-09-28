@@ -14,7 +14,6 @@ import {
   Sparkles,
   CheckCircle2,
   Layers,
-  ArrowRight,
 } from 'lucide-react';
 import { Plan } from '../../types';
 import { Button } from '../ui/Button';

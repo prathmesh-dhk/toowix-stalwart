@@ -195,6 +195,10 @@ export const api = {
 
   // Platform Admin - Tenants
   listTenants: () => request<{ tenants: TenantSummary[] }>('/api/platform/tenants'),
+  listUnmanagedStalwartDomains: () =>
+    request<{ domains: Array<{ stalwartDomainId: string; domainName: string; isEnabled: boolean }> }>(
+      '/api/platform/tenants/unmanaged-domains'
+    ),
   getTenantDetails: (id: string) => request<TenantFullDetails>(`/api/platform/tenants/${id}`),
   createTenant: (body: { name: string; domain: string; mailboxLimit?: number }) =>
     request<TenantSummary>('/api/platform/tenants', {
