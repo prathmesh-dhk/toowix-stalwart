@@ -2289,6 +2289,118 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
               </div>
             </div>
           </section>
+
+          {/* Import Domains SlideOver Drawer */}
+          <SlideOver
+            isOpen={importOpen}
+            onClose={() => setImportOpen(false)}
+            title="Import Domains from Stalwart"
+            subtitle="Select domains to import into this tenant"
+          >
+            {importLoading ? (
+              <div className="p-6 text-center">
+                <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
+                <p className="mt-2 text-xs text-slate-500">Searching domains...</p>
+              </div>
+            ) : importResults.length === 0 && importSearch ? (
+              <div className="p-6 text-center text-xs text-slate-400">
+                No domains found matching "{importSearch}".
+              </div>
+            ) : importResults.length === 0 && !importSearch ? (
+              <div className="p-6 text-center text-xs text-slate-400">
+                Type to search for unclaimed domains in your Stalwart server.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Search className="w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={importSearch}
+                      onChange={(e) => setImportSearch(e.target.value)}
+                      placeholder="Search domains..."
+                      className="form-input pl-8 h-8 text-xs w-full"
+                    />
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const selectedArray = Array.from(selectedDomains);
+                      if (selectedArray.length === 0) {
+                        onShowAlert?.('error', 'Please select at least one domain to import.');
+                        return;
+                      }
+                      setImportLoading(true);
+                      setImportError(null);
+                      api.importDomains(tenantId, selectedArray)
+                        .then((res) => {
+                          setImportSuccess(res.data.success.length);
+                          setImportOpen(false);
+                          setImportSearch('');
+                          setSelectedDomains(new Set());
+                          setImportResults([]);
+                          onShowAlert?.('success', `Successfully imported ${res.data.success.length} domain(s).`);
+                          fetchTenantDetails();
+                          onTenantUpdated?.();
+                        })
+                        .catch((err) => {
+                          console.error('[Import Domains] Failed:', err);
+                          setImportError(err.response?.data?.message || 'Failed to import domains');
+                        })
+                        .finally(() => setImportLoading(false));
+                    }}
+                    disabled={selectedDomains.size === 0 || importLoading}
+                    className="w-full"
+                  >
+                    {importLoading ? 'Importing...' : 'Import Selected'}
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {importResults.map((domain) => (
+                    <div
+                      key={domain.stalwartDomainId}
+                      className="p-3 border border-slate-200 rounded-lg flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedDomains.has(domain.stalwartDomainId)}
+                          onChange={() => {
+                            setSelectedDomains((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(domain.stalwartDomainId)) {
+                                next.delete(domain.stalwartDomainId);
+                              } else {
+                                next.add(domain.stalwartDomainId);
+                              }
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 text-indigo-600"
+                        />
+                        <div>
+                          <div className="font-medium text-slate-900">{domain.domainName}</div>
+                          <div className="text-xs text-slate-500">Stalwart ID: {domain.stalwartDomainId}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {importError && (
+                  <Alert type="error" message={importError} />
+                )}
+
+                {importSuccess > 0 && (
+                  <div className="pt-4 text-center text-xs text-success-600">
+                    Successfully imported {importSuccess} domain(s)! Closing...
+                  </div>
+                )}
+              </div>
+            )}
+          </SlideOver>
         </div>
       )}
 
