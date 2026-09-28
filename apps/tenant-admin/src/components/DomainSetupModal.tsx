@@ -519,11 +519,11 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         {/* Unified Single-Focus Layout across all wizard pages */}
         <div
           key={step}
-          className={`flex-1 flex flex-row items-start w-full px-4 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] sm:pr-8 overflow-x-hidden ${
+          className={`flex-1 flex flex-row ${step === 'status' ? 'items-center' : 'items-start'} w-full px-4 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] sm:pr-8 overflow-x-hidden ${
             direction === 'backward' ? 'animate-slide-in-left' : 'animate-slide-in-right'
           }`}
         >
-          <main className={`w-full ${step === 'plan' ? 'max-w-xl xl:max-w-2xl' : 'max-w-xl'} shrink-0 ${STEP_TOP_PADDING[step]} ${step !== 'plan' ? 'pb-12' : ''} flex flex-col text-left`}>
+          <main className={`w-full ${step === 'plan' ? 'max-w-xl xl:max-w-2xl' : 'max-w-xl'} shrink-0 ${step === 'status' ? '' : STEP_TOP_PADDING[step]} ${step !== 'plan' ? 'pb-12' : ''} flex flex-col text-left`}>
             {/* Mobile Step Badge */}
             <div className="sm:hidden mb-4 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold self-start">
               <span>Step {step === 'domain' ? '1' : step === 'method' || step === 'godaddy' || step === 'hostinger' || step === 'cloudflare' ? '2' : step === 'zonefile' ? '3' : step === 'status' ? (method === 'manual' ? '4' : '3') : (method === 'manual' ? '5' : '4')} of {method === 'manual' ? '5' : '4'}</span>
@@ -1093,7 +1093,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
           </main>
 
           {/* Right Graphic: Positioned in right space on desktop, unique per step */}
-          <div className={`hidden lg:flex flex-1 items-start justify-center ${step === 'plan' ? 'pt-16 sm:pt-18 xl:pt-[13vh] pb-6' : `${STEP_TOP_PADDING[step]} sticky top-0`} pl-6 xl:pl-10 select-none pointer-events-none`}>
+          <div className={`hidden lg:flex flex-1 ${step === 'status' ? 'items-center' : 'items-start'} justify-center ${step === 'plan' ? 'pt-16 sm:pt-18 xl:pt-[13vh] pb-6' : step === 'status' ? '' : `${STEP_TOP_PADDING[step]} sticky top-0`} pl-6 xl:pl-10 select-none pointer-events-none`}>
             <WizardStepGraphic
               step={step}
               domainName={createdDomain?.domainName || domainName}
