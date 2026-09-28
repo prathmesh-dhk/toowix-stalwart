@@ -1093,6 +1093,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 variant="secondary"
                 onClick={() => setImportOpen(true)}
                 className="ml-4 mt-sm relative -top-1"
+                type="button"
               >
                 Import Domains
               </Button>
