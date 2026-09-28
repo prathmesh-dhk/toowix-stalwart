@@ -908,6 +908,98 @@ platformTenantRouter.post('/:id/admins/:adminId/reset-password', async (req: Req
 // 9. Organisation deletion flow (request / name / OTPs / cancel / complete) for any tenant
 platformTenantRouter.use('/:id/deletion', platformDeletionRouter);
 
+// 9. Import pre-existing Stalwart domains and mailboxes for a tenant
+platformTenantRouter.post('/:id/domains/import', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant ID' });
+  }
+
+  const tenant = await TenantModel.findById(req.params.id);
+  if (!tenant) {
+    return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
+  }
+
+  const { domainIds } = req.body as { domainIds?: string[] };
+  if (!domainIds || !Array.isArray(domainIds) || domainIds.length === 0) {
+    return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'domainIds array is required' });
+  }
+
+  const results: {
+    success: Array<{ domainName: string; stalwartDomainId: string; mailboxesImported: number }>;
+    errors: Array<{ domainName: string; message: string }>;
+  } = { success: [], errors: [] };
+
+  for (const stalwartDomainId of domainIds) {
+    try {
+      // Fetch domain info from Stalwart
+      const domain = await stalwartClient.getDomain(stalwartDomainId);
+      if (!domain) {
+        results.errors.push({ domainName: stalwartDomainId, message: 'Domain not found on Stalwart' });
+        continue;
+      }
+
+      // Check if already claimed by any tenant
+      const existing = await DomainModel.findOne({ domainName: domain.name });
+      if (existing) {
+        results.errors.push({ domainName: domain.name, message: 'Domain already claimed by a tenant' });
+        continue;
+      }
+
+      // Create local Domain record
+      const domainDoc = await DomainModel.create({
+        tenantId: tenant._id,
+        domainName: domain.name,
+        stalwartDomainId: domain.id,
+        status: domain.isEnabled ? 'active' : 'suspended',
+        dnsStatus: 'not_started',
+        isPrimary: false,
+      });
+
+      // Import mailboxes for this domain
+      const accounts = await stalwartClient.listAccounts();
+      const domainAccounts = accounts.filter(acc => acc.domainId === domain.id);
+      let importedMailboxes = 0;
+
+      for (const acc of domainAccounts) {
+        // Check if mailbox already claimed
+        const existingMailbox = await MailboxModel.findOne({ address: acc.emailAddress });
+        if (existingMailbox) {
+          continue; // skip, already claimed
+        }
+
+        // Create mailbox record (no password known)
+        const mailboxDoc = await MailboxModel.create({
+          tenantId: tenant._id,
+          domainId: domainDoc._id,
+          localPart: acc.name,
+          address: acc.emailAddress,
+          stalwartAccountId: acc.id,
+          status: 'active', // assume active; could check acc.status if available
+          billingHold: false,
+        });
+        importedMailboxes++;
+      }
+
+      results.success.push({
+        domainName: domain.name,
+        stalwartDomainId: domain.id,
+        mailboxesImported: importedMailboxes,
+      });
+    } catch (err: any) {
+      results.errors.push({
+        domainName: stalwartDomainId,
+        message: err.message || 'Unknown error',
+      });
+    }
+  }
+
+  if (results.errors.length > 0 && results.success.length === 0) {
+    return res.status(400).json({ error: 'IMPORT_FAILED', details: results });
+  }
+
+  return res.status(200).json(results);
+});
+
 // 10. Immediate ("forced") delete. Skips the security timeline, so it is Super-Admin-only, but it still
 // writes the permanent Deleted Organisations record (actor, IP, device...) and blocks the registration email.
 platformTenantRouter.delete('/:id', async (req: Request, res: Response) => {
