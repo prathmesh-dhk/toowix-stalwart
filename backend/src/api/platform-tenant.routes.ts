@@ -16,6 +16,7 @@ import { config } from '../config';
 import { suspendTenantInfrastructure, restoreTenantInfrastructure } from '../services/tenant-lifecycle.service';
 import { forceDeleteOrganisation, OrganisationDeletionError } from '../services/organisation-deletion.service';
 import { deleteDomainDirectly, DomainDeletionError } from '../services/domain-deletion.service';
+import { activateDomain, DomainActivationError } from '../services/domain-activation.service';
 import { captureRequestContext } from '../services/request-context.service';
 import { MailboxService } from '../services/mailbox.service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
@@ -302,6 +303,26 @@ platformTenantRouter.post('/:id/activate', async (req: Request, res: Response) =
   domain.status = 'active';
   await domain.save();
 
+  // Actually provision the domain in Stalwart (create it, enable DKIM, enable it) — this used to
+  // be a promise the code never kept: it only flipped Mongo's `status` field and never touched
+  // Stalwart, so a Super-Admin-created domain would sit "active" in the platform with no mail
+  // routing at all. `activateDomain` already knows how to run in "manual mode" (no DNS provider
+  // connected), which is exactly this path. Non-fatal like the email send below: a Stalwart hiccup
+  // here shouldn't block the tenant record from being marked active, but it IS reported back.
+  let stalwartProvisionError: string | null = null;
+  try {
+    await activateDomain(domain._id.toString(), {
+      id: req.adminUser!.id,
+      role: req.adminUser!.role,
+      email: req.adminUser!.email,
+    });
+  } catch (err: any) {
+    if (!(err instanceof DomainActivationError && err.code === 'ALREADY_ACTIVE')) {
+      stalwartProvisionError = err.message || 'Failed to provision domain in Stalwart';
+      console.error('[Activate Tenant] Stalwart provisioning failed:', err);
+    }
+  }
+
   const contactEmail = tenant.contactEmail || `admin@${domain.domainName}`;
 
   // Generate 48-hour single-use activation token
@@ -344,19 +365,25 @@ platformTenantRouter.post('/:id/activate', async (req: Request, res: Response) =
       activationLink,
       emailSent: emailResult.success,
       emailError: emailResult.error,
+      stalwartProvisionError,
     },
     timestamp: new Date(),
   });
 
+  const messageParts = [`Tenant "${tenant.name}" activated!`];
+  messageParts.push(emailResult.success ? `Activation email sent to ${contactEmail}.` : `(Note: Email delivery failed: ${emailResult.error})`);
+  if (stalwartProvisionError) {
+    messageParts.push(`WARNING: domain was not provisioned in Stalwart (${stalwartProvisionError}) — mail will not work until this is retried.`);
+  }
+
   return res.status(200).json({
     success: true,
-    message: emailResult.success
-      ? `Tenant "${tenant.name}" activated! Activation email sent to ${contactEmail}.`
-      : `Tenant "${tenant.name}" activated! (Note: Email delivery failed: ${emailResult.error})`,
+    message: messageParts.join(' '),
     activationLink,
     contactEmail,
     emailSent: emailResult.success,
     emailError: emailResult.error,
+    stalwartProvisionError,
     tenant: {
       id: tenant._id.toString(),
       name: tenant.name,
