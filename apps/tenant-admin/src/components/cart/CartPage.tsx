@@ -33,6 +33,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
   const [promoCode, setPromoCode] = useState('');
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promo, setPromo] = useState<CouponValidationResult | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -158,6 +159,18 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
       setNotice({ tone: 'error', text: err?.message || 'Could not activate your mailboxes.' });
     } finally {
       setWorking(false);
+    }
+  };
+
+  const removeMailbox = async (mailboxId: string) => {
+    setRemovingId(mailboxId);
+    try {
+      await api.deleteMailbox(mailboxId);
+      setCart(await api.getCart());
+    } catch (err: any) {
+      setNotice({ tone: 'error', text: err?.message || 'Could not remove that mailbox.' });
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -302,31 +315,28 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                             <span className="truncate text-slate-700 font-medium">{u.address}</span>
                           </span>
                           <span className="flex items-center gap-2.5 shrink-0 pl-5 sm:pl-0">
-                            <span className="tabular-nums text-xs text-slate-500">{formatPaise(d.ratePaise)}/mo</span>
-                            {(() => {
-                              if (!u.pendingActivation) {
+                            {u.pendingActivation &&
+                              (() => {
+                                const pending = cart?.pendingMailboxes.find((p) => p.id === u.id);
+                                const daysLeft = pending?.expiresAt
+                                  ? Math.max(0, Math.ceil((new Date(pending.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+                                  : null;
                                 return (
-                                  <span
-                                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                      u.status === 'active'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
-                                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                                    }`}
-                                  >
-                                    {u.status}
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-50 text-amber-700 border-amber-200/80">
+                                    waiting for activation {daysLeft !== null ? `· expires in ${daysLeft}d` : ''}
                                   </span>
                                 );
-                              }
-                              const pending = cart?.pendingMailboxes.find((p) => p.id === u.id);
-                              const daysLeft = pending?.expiresAt
-                                ? Math.max(0, Math.ceil((new Date(pending.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
-                                : null;
-                              return (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-50 text-amber-700 border-amber-200/80">
-                                  waiting for activation {daysLeft !== null ? `· expires in ${daysLeft}d` : ''}
-                                </span>
-                              );
-                            })()}
+                              })()}
+                            <button
+                              type="button"
+                              onClick={() => removeMailbox(u.id)}
+                              disabled={removingId === u.id}
+                              title={`Remove ${u.address}`}
+                              aria-label={`Remove ${u.address}`}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40 cursor-pointer"
+                            >
+                              {removingId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                            </button>
                           </span>
                         </li>
                       ))
@@ -334,25 +344,6 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                   </ul>
                 </article>
               ))
-            )}
-
-            {cart && cart.recentChanges.length > 0 && (
-              <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2.5">Recent billing activity</h2>
-                <ul className="divide-y divide-slate-100">
-                  {cart.recentChanges.map((c) => (
-                    <li key={c.id} className="py-1.5 flex justify-between text-xs gap-3">
-                      <span className="truncate text-slate-600">{c.label}</span>
-                      {c.monthlyDeltaPaise !== 0 && (
-                        <span className={`tabular-nums shrink-0 font-medium ${c.monthlyDeltaPaise > 0 ? 'text-slate-800' : 'text-emerald-700'}`}>
-                          {c.monthlyDeltaPaise > 0 ? '+' : '−'}
-                          {formatPaise(Math.abs(c.monthlyDeltaPaise))}/mo
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </section>
             )}
           </section>
 
