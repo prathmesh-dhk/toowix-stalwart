@@ -6,6 +6,7 @@ import { RegisterView } from '../../src/components/RegisterView';
 vi.mock('../../src/api', () => ({
   api: {
     checkUsernameAvailability: vi.fn(),
+    checkPasswordStrength: vi.fn(),
     publicSendRecoveryEmailOtp: vi.fn(),
     publicVerifyRecoveryEmailOtp: vi.fn(),
     publicRegister: vi.fn(),
@@ -28,6 +29,7 @@ describe('RegisterView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.checkUsernameAvailability).mockResolvedValue({ available: true, address: 'prathmesh@dhkmail.com' });
+    vi.mocked(api.checkPasswordStrength).mockResolvedValue({ ok: true });
   });
 
   /** Steps 1-2: org + username, then password. Leaves the wizard on the recovery-email step. */
@@ -152,6 +154,23 @@ describe('RegisterView Component', () => {
       // Two clicks give two different passwords.
       fireEvent.click(screen.getByRole('button', { name: /generate strong password/i }));
       expect((screen.getByLabelText(/^password$/i) as HTMLInputElement).value).not.toBe(first);
+    });
+
+    it('rejects a weak/common password right here, before the recovery-email step', async () => {
+      vi.mocked(api.checkPasswordStrength).mockResolvedValueOnce({
+        ok: false,
+        message: 'That password was rejected as too weak or too common. Please choose a stronger one.',
+      });
+
+      await gotoPasswordStep();
+      await userEvent.type(screen.getByLabelText(/^password$/i), 'Admin123!');
+      await userEvent.type(screen.getByLabelText(/^confirm password$/i), 'Admin123!');
+      fireEvent.click(nextBtn());
+
+      await waitFor(() => expect(screen.getByText(/rejected as too weak or too common/i)).toBeInTheDocument());
+      expect(screen.getByText('Set your password')).toBeInTheDocument();
+      expect(screen.queryByText('Add a recovery email')).not.toBeInTheDocument();
+      expect(api.checkPasswordStrength).toHaveBeenCalledWith('prathmesh', 'Admin123!');
     });
 
     it('sends the user back here, with the message, if the mail server still rejects the password', async () => {

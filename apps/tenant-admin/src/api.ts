@@ -525,6 +525,13 @@ export const api = {
       `/api/public/username-availability?username=${encodeURIComponent(username)}`
     ),
 
+  /** Validates a password against the mail server's own weak/common-password policy before the wizard proceeds. */
+  checkPasswordStrength: (username: string, password: string) =>
+    request<{ ok: boolean; message?: string }>('/api/public/register/check-password', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
   publicRegister: (body: {
     username: string;
     password: string;

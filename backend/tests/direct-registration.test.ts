@@ -120,6 +120,39 @@ describe('Direct Self-Service Registration (username on the platform domain)', (
     });
   });
 
+  describe('password check', () => {
+    const checkPassword = (username: string, password: string) =>
+      request(app).post('/api/public/register/check-password').send({ username, password });
+
+    it('accepts a password the mail server allows, then cleans up the throwaway account', async () => {
+      const res = await checkPassword('prathmesh', 'Password123!');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ ok: true });
+      expect(stalwartClient.createAccount).toHaveBeenCalled();
+      expect(stalwartClient.deleteAccount).toHaveBeenCalledWith('stalwart-acc-1');
+    });
+
+    it('surfaces a mail-server password rejection without leaving an account behind', async () => {
+      vi.spyOn(stalwartClient, 'createAccount').mockRejectedValueOnce(new Error('password is too weak'));
+
+      const res = await checkPassword('prathmesh', 'Admin123!');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ ok: false });
+      expect(res.body.message).toMatch(/too weak/i);
+      expect(stalwartClient.deleteAccount).not.toHaveBeenCalled();
+    });
+
+    it('skips the Stalwart round trip for a username already taken', async () => {
+      await request(app).post('/api/public/register').send(body('prathmesh'));
+      vi.mocked(stalwartClient.createAccount).mockClear();
+
+      const res = await checkPassword('prathmesh', 'Password123!');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ ok: true });
+      expect(stalwartClient.createAccount).not.toHaveBeenCalled();
+    });
+  });
+
   describe('registration', () => {
     it('creates the tenant, the admin and a real mailbox, then allows immediate login', async () => {
       const res = await request(app).post('/api/public/register').send(body('prathmesh'));

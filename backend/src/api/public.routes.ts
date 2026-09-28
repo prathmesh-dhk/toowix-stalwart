@@ -321,6 +321,43 @@ publicRouter.get('/username-availability', async (req: Request, res: Response) =
   return res.status(200).json({ available: true, address });
 });
 
+// 2c-ii. Password check for the signup wizard's password step. The mail server is the only thing
+// that actually knows its own weak/common-password policy, and it only tells us by rejecting a real
+// account creation — so this creates the real account against Stalwart to get its verdict, then
+// deletes it immediately, rather than let the wizard find out three steps later (see directRegisterSchema
+// below). Rate-limited the same as registration itself since it's just as expensive per call.
+publicRouter.post('/register/check-password', registrationRateLimiter(), async (req: Request, res: Response) => {
+  const checked = validateUsername(String(req.body?.username || ''));
+  if ('error' in checked) {
+    return res.status(400).json({ error: 'INVALID_USERNAME', message: checked.error });
+  }
+  const password = String(req.body?.password || '');
+  if (password.length < 8) {
+    return res.status(200).json({ ok: false, message: 'Password must be at least 8 characters' });
+  }
+
+  const address = platformAddress(checked.username);
+  if (await AdminUserModel.exists({ email: address })) {
+    // Username-availability already covers this case for the wizard; nothing to check here.
+    return res.status(200).json({ ok: true });
+  }
+
+  try {
+    await MailboxService.createPlatformIdentityMailbox(checked.username, password);
+  } catch (err: any) {
+    if (err?.code === 'PASSWORD_TOO_WEAK') {
+      return res.status(200).json({ ok: false, message: err.message });
+    }
+    if (err?.status && err?.code) {
+      return res.status(err.status).json({ error: err.code, message: err.message });
+    }
+    throw err;
+  }
+
+  await MailboxService.deletePlatformIdentityMailbox(address);
+  return res.status(200).json({ ok: true });
+});
+
 const directRegisterSchema = z.object({
   username: z.string().min(1, 'Username is required'),
   // The same rules the signup form shows live. The password also becomes the mailbox credential,

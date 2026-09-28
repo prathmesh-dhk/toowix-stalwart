@@ -84,6 +84,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
 
   // Step 3: Recovery email — the only address we can reach them on if they lose their mailbox
   const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [checkingPassword, setCheckingPassword] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
 
   // Step 4: OTP
@@ -208,8 +209,10 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
     setCurrentStep(2);
   };
 
-  // STEP 2: Password
-  const handleStep2Submit = (e: React.FormEvent) => {
+  // STEP 2: Password — the mail server is the real authority on its own weak/common-password
+  // policy, and the only way to ask it is a real account check, so this asks now instead of
+  // letting the wizard find out three steps later at final submit.
+  const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -221,7 +224,20 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
       setError('Passwords do not match. Please verify both fields.');
       return;
     }
-    setCurrentStep(3);
+
+    setCheckingPassword(true);
+    try {
+      const result = await api.checkPasswordStrength(username.trim().toLowerCase(), password);
+      if (!result.ok) {
+        setError(result.message || 'That password was rejected as too weak or too common. Please choose a stronger one.');
+        return;
+      }
+      setCurrentStep(3);
+    } catch (err: any) {
+      setError(err.message || 'Could not verify your password right now. Please try again.');
+    } finally {
+      setCheckingPassword(false);
+    }
   };
 
   // STEP 3: Recovery email -> send the code
@@ -771,9 +787,9 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onBackToLogin, onSuc
                       <button
                         className="btn btn-primary btn-lg w-full"
                         type="submit"
-                        disabled={unmetRules.length > 0 || password !== confirmPassword}
+                        disabled={unmetRules.length > 0 || password !== confirmPassword || checkingPassword}
                       >
-                        <span>Next</span>
+                        <span>{checkingPassword ? 'Checking password…' : 'Next'}</span>
                       </button>
                     </div>
 
