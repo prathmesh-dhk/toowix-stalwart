@@ -362,7 +362,29 @@ export interface TenantFullDetails {
     mailboxCount: number;
     createdAt: string;
     updatedAt: string;
+    operatorNotes?: string;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
   };
+  billing?: {
+    hasSubscription: boolean;
+    status: string | null;
+    currentPeriodEnd: string | null;
+    trialEnd: string | null;
+    trialStartedAt: string | null;
+    cancelAtPeriodEnd: boolean;
+    totalMonthlyPaise: number;
+    domains: Array<{
+      domainId: string;
+      domainName: string;
+      planName: string | null;
+      seatCount: number | null;
+      activeUserCount: number;
+      maxUsers: number;
+      pricePerUserMonthlyPaise: number;
+      monthlySubtotalPaise: number;
+    }>;
+  } | null;
   domains: Array<{
     id: string;
     domainName: string;

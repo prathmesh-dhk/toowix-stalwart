@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   CreditCard,
   RefreshCw,
@@ -11,20 +11,24 @@ import {
   Globe,
   Plus,
   Trash2,
-  Sparkles,
   Tag,
   Check,
   X,
   ShieldCheck,
   Clock,
   Users,
+  Search,
+  ArrowRight,
+  HardDrive,
 } from 'lucide-react';
 import { api } from '../api';
 import { CartData, DomainItem, InvoiceItem, PaymentMethodItem, Plan, TenantBillingSummary } from '../types';
 import { PaymentMethodModal } from './PaymentMethodModal';
 import { formatPaise } from './cart/format';
+import { StatusBadge } from './ui/StatusBadge';
 
 export interface BillingViewProps {
+  activeDomain?: DomainItem | null;
   domains?: DomainItem[];
   cart?: CartData | null;
   onOpenCart?: () => void;
@@ -57,11 +61,12 @@ function getCardBrandBadge(brand?: string) {
 }
 
 /**
- * Enterprise-grade company-wide billing dashboard.
- * Unified model: one master Stripe subscription, one card with RBI e-mandate,
- * one 60-day trial across all domains, and automatic usage billing per active mailbox.
+ * Enterprise-grade company-wide and domain-scoped billing dashboard.
+ * - When activeDomain is passed: focused specifically on that domain's tier, usage, and quota.
+ * - When activeDomain is omitted: shows the organization-wide master billing ledger.
  */
 export const BillingView: React.FC<BillingViewProps> = ({
+  activeDomain,
   domains: propDomains,
   cart: propCart,
   onOpenCart,
@@ -76,6 +81,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showCardModal, setShowCardModal] = useState(false);
+  const [domainSearchQuery, setDomainSearchQuery] = useState('');
 
   // Promo code modal state
   const [showCouponModal, setShowCouponModal] = useState(false);
@@ -187,27 +193,6 @@ export const BillingView: React.FC<BillingViewProps> = ({
     }
   };
 
-  const changePlan = async (domainId: string, planId: string) => {
-    const domain = cart?.domains.find((d) => d.domainId === domainId);
-    const current = plans.find((p) => p.id === domain?.planId);
-    const target = plans.find((p) => p.id === planId);
-    if (!target) return;
-    setActionLoading(`plan-${domainId}`);
-    setError(null);
-    try {
-      if (!current || target.seatCount > current.seatCount) {
-        await api.upgradeDomainPlan(domainId, planId);
-      } else {
-        await api.downgradeDomainPlan(domainId, planId);
-      }
-      await load();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to change plan.');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const cancelAll = async () => {
     if (!window.confirm('Cancel your Toowix subscription at the end of the current billing period? This applies to all domains.')) {
       return;
@@ -272,36 +257,358 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const isCanceling = Boolean(summary?.cancelAtPeriodEnd);
 
   // Domains list: prefer cart domains; fallback to summary domains or propDomains
-  const domainsList =
-    cart?.domains && cart.domains.length > 0
-      ? cart.domains
-      : summary?.domains && summary.domains.length > 0
-      ? summary.domains.map((d) => ({
-          domainId: d.domainId,
-          domainName: d.domainName,
-          planId: (d as any).planId || '',
-          planName: d.planName || 'Standard',
-          maxUsers: d.seatCount ?? 0,
-          activeUsers: d.seatCount ?? 0,
-          pendingUsers: 0,
-          ratePaise: 0,
-          monthlyPaise: 0,
-        }))
-      : (propDomains || []).map((d) => ({
-          domainId: d.id,
-          domainName: d.domainName,
-          planId: d.planId || '',
-          planName: d.planName || 'Standard',
-          maxUsers: d.mailboxLimit ?? 0,
-          activeUsers: d.mailboxCount ?? 0,
-          pendingUsers: 0,
-          ratePaise: 0,
-          monthlyPaise: 0,
-        }));
-  const totalActiveUsers = domainsList.reduce((sum, d) => sum + (d.activeUsers || 0), 0);
-  const totalMailboxLimit = domainsList.reduce((sum, d) => sum + (d.maxUsers || 0), 0);
-  const usagePercentage = totalMailboxLimit > 0 ? Math.min(100, Math.round((totalActiveUsers / totalMailboxLimit) * 100)) : 0;
+  const domainsList = useMemo(() => {
+    if (cart?.domains && cart.domains.length > 0) return cart.domains;
+    if (summary?.domains && summary.domains.length > 0) {
+      return summary.domains.map((d) => ({
+        domainId: d.domainId,
+        domainName: d.domainName,
+        planId: (d as any).planId || '',
+        planName: d.planName || 'Standard',
+        maxUsers: d.seatCount ?? 0,
+        activeUsers: d.seatCount ?? 0,
+        pendingUsers: 0,
+        ratePaise: 0,
+        monthlyPaise: 0,
+      }));
+    }
+    return (propDomains || []).map((d) => ({
+      domainId: d.id,
+      domainName: d.domainName,
+      planId: d.planId || '',
+      planName: d.planName || 'Standard',
+      maxUsers: d.mailboxLimit ?? 0,
+      activeUsers: d.mailboxCount ?? 0,
+      pendingUsers: 0,
+      ratePaise: 0,
+      monthlyPaise: 0,
+    }));
+  }, [cart?.domains, summary?.domains, propDomains]);
 
+  const filteredDomains = useMemo(() => {
+    if (!domainSearchQuery.trim()) return domainsList;
+    const q = domainSearchQuery.toLowerCase().trim();
+    return domainsList.filter(
+      (d) => d.domainName.toLowerCase().includes(q) || (d.planName && d.planName.toLowerCase().includes(q))
+    );
+  }, [domainsList, domainSearchQuery]);
+
+  const totalActiveUsers = useMemo(() => domainsList.reduce((sum, d) => sum + (d.activeUsers || 0), 0), [domainsList]);
+  const totalMailboxLimit = useMemo(() => domainsList.reduce((sum, d) => sum + (d.maxUsers || 0), 0), [domainsList]);
+
+  // Specific domain item when viewing inside a domain
+  const targetDomainData = useMemo(() => {
+    if (!activeDomain) return null;
+    return (
+      domainsList.find(
+        (d) =>
+          d.domainId === activeDomain.id ||
+          d.domainName.toLowerCase() === activeDomain.domainName.toLowerCase()
+      ) || {
+        domainId: activeDomain.id,
+        domainName: activeDomain.domainName,
+        planId: activeDomain.planId || '',
+        planName: activeDomain.planName || 'Standard',
+        maxUsers: activeDomain.mailboxLimit ?? 10,
+        activeUsers: activeDomain.mailboxCount ?? 0,
+        pendingUsers: 0,
+        ratePaise: 0,
+        monthlyPaise: 0,
+      }
+    );
+  }, [activeDomain, domainsList]);
+
+  const targetDomainPlan = useMemo(() => {
+    if (!targetDomainData?.planId) return null;
+    return plans.find((p) => p.id === targetDomainData.planId) || null;
+  }, [targetDomainData, plans]);
+
+  // Primary payment method label
+  const primaryPaymentMethodText = useMemo(() => {
+    if (paymentMethods.length > 0) {
+      const def = paymentMethods.find((p) => p.isDefault) || paymentMethods[0];
+      return `${def.brand?.toLowerCase() || 'card'} •••• ${def.last4}`;
+    }
+    if (cart?.paymentMethod) {
+      return `${cart.paymentMethod.brand?.toLowerCase() || 'card'} •••• ${cart.paymentMethod.last4}`;
+    }
+    return null;
+  }, [paymentMethods, cart?.paymentMethod]);
+
+  // ===========================================================================
+  // SCOPED VIEW: WHEN VIEWING BILLING INSIDE A SPECIFIC DOMAIN
+  // ===========================================================================
+  if (activeDomain && targetDomainData) {
+    const used = targetDomainData.activeUsers + (targetDomainData.pendingUsers || 0);
+    const max = targetDomainData.maxUsers || 1;
+    const pct = Math.min(100, Math.round((used / max) * 100));
+
+    return (
+      <div className="flex flex-col gap-6 font-sans">
+        {/* Domain-Scoped Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold text-slate-900 tracking-tight">Billing</h1>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {activeDomain.domainName}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Subscription tier, mailbox quota, and monthly charges for this domain.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0">
+            <a
+              href="/billing"
+              onClick={(e) => {
+                e.preventDefault();
+                window.history.pushState({}, '', '/billing');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 transition-colors shadow-2xs cursor-pointer min-h-[38px]"
+            >
+              <span>Organization Billing</span>
+              <ArrowRight size={13} className="text-slate-400" />
+            </a>
+
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer disabled:opacity-50 min-h-[38px] min-w-[38px] flex items-center justify-center"
+              aria-label="Refresh"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin text-indigo-600' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* Critical Alert Banners */}
+        {error && (
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5 shadow-2xs">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="flex-1 font-medium">{error}</div>
+          </div>
+        )}
+
+        {paymentIssue && (
+          <div className="flex items-start justify-between gap-3 text-amber-900 bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs shadow-2xs">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <strong>Payment issue on organization account.</strong> Update card details to avoid service interruptions for {activeDomain.domainName}.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={changeCard}
+              className="shrink-0 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+            >
+              Update Card
+            </button>
+          </div>
+        )}
+
+        {/* 4-Card Domain Metric Ribbon */}
+        <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Tile 1: Plan Tier */}
+            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Tier</span>
+              <div className="text-base font-bold text-slate-900 mt-1 flex items-center gap-1.5">
+                <span>{targetDomainPlan?.name || targetDomainData.planName || 'Standard'}</span>
+                {targetDomainPlan?.badge && (
+                  <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    {targetDomainPlan.badge}
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                Capped at {targetDomainData.maxUsers} seats
+              </div>
+            </div>
+
+            {/* Tile 2: Mailbox Capacity */}
+            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Mailbox Usage</span>
+              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
+                <span>{used} / {targetDomainData.maxUsers} seats</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {Math.max(0, targetDomainData.maxUsers - used)} seats available
+              </div>
+            </div>
+
+            {/* Tile 3: Billing Rate */}
+            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Seat Billing Rate</span>
+              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
+                {formatPaise(targetDomainData.ratePaise)}
+                <span className="text-xs font-normal text-slate-500 ml-1">/ active user</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">Pay only for active mailboxes</div>
+            </div>
+
+            {/* Tile 4: Monthly Cost */}
+            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Monthly Cost</span>
+              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
+                {formatPaise(targetDomainData.monthlyPaise)}
+                <span className="text-xs font-normal text-slate-500 ml-1">/ mo</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">Consolidated on master bill</div>
+            </div>
+          </div>
+        </section>
+
+        {/* Quota & Resource Allocation Card */}
+        <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Seat Utilization &amp; Quota Limits</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Resource and mailbox provisioning limits for {activeDomain.domainName} under the {targetDomainPlan?.name || targetDomainData.planName || 'Standard'} plan.
+              </p>
+            </div>
+            <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg tabular-nums">
+              {pct}% Utilized
+            </span>
+          </div>
+
+          {/* Capacity Progress Bar */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs text-slate-700 font-medium">
+              <span>
+                Active mailboxes: <strong>{used}</strong> of <strong>{targetDomainData.maxUsers}</strong>
+              </span>
+              <span className="text-slate-400">
+                {Math.max(0, targetDomainData.maxUsers - used)} seats remaining
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  pct >= 90 ? 'bg-amber-500' : 'bg-indigo-600'
+                }`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Allocation Details Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-2">
+            <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs">
+              <div className="flex items-center gap-2 text-slate-900 font-semibold mb-1">
+                <Users size={14} className="text-indigo-600" />
+                <span>Active Mailbox Seats</span>
+              </div>
+              <p className="text-slate-500 leading-relaxed">
+                Currently <strong>{used}</strong> provisioned mailbox accounts are billed at {formatPaise(targetDomainData.ratePaise)} per active user.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs">
+              <div className="flex items-center gap-2 text-slate-900 font-semibold mb-1">
+                <HardDrive size={14} className="text-indigo-600" />
+                <span>Storage Allocation</span>
+              </div>
+              <p className="text-slate-500 leading-relaxed">
+                <strong>{targetDomainPlan?.storageQuotaGb || 10} GB</strong> dedicated mailbox storage quota per mailbox account.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs">
+              <div className="flex items-center gap-2 text-slate-900 font-semibold mb-1">
+                <ShieldCheck size={14} className="text-emerald-600" />
+                <span>Security &amp; Protocols</span>
+              </div>
+              <p className="text-slate-500 leading-relaxed">
+                Automated DKIM, SPF, and DMARC verification included with advanced anti-spam protection.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Master Account Billing Coverage & Card Section */}
+        <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <CreditCard size={15} className="text-indigo-600" />
+              <h2 className="text-sm font-bold text-slate-900">Organization Master Subscription</h2>
+            </div>
+            <button
+              type="button"
+              onClick={changeCard}
+              disabled={actionLoading === 'card'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
+            >
+              <CreditCard size={13} />
+              <span>Change payment method</span>
+            </button>
+          </div>
+
+          <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900">Master Account Autopay</span>
+                {primaryPaymentMethodText ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    {primaryPaymentMethodText}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-slate-400">No card on file</span>
+                )}
+              </div>
+              <p className="text-slate-500 max-w-lg leading-relaxed">
+                {activeDomain.domainName} is covered under your company master subscription. Charges ({formatPaise(targetDomainData.monthlyPaise)}/mo) are automatically consolidated on your organization bill.
+              </p>
+            </div>
+
+            <a
+              href="/billing"
+              onClick={(e) => {
+                e.preventDefault();
+                window.history.pushState({}, '', '/billing');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 shrink-0"
+            >
+              <span>View All Domains &amp; Invoices</span>
+              <ArrowRight size={13} />
+            </a>
+          </div>
+
+          <div className="text-[10px] text-slate-400 flex items-center gap-1.5 pt-1">
+            <ShieldCheck size={13} className="text-slate-400 shrink-0" />
+            <span>Recurring billing adheres to RBI e-mandate guidelines with bank-grade 256-bit encryption.</span>
+          </div>
+        </section>
+
+        {/* Payment Method Modal */}
+        <PaymentMethodModal
+          isOpen={showCardModal}
+          onClose={() => setShowCardModal(false)}
+          title="Payment Method"
+          onSuccess={() => {
+            setShowCardModal(false);
+            load();
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ===========================================================================
+  // ORGANIZATION-WIDE VIEW: WHEN VIEWING COMPANY BILLING AT /billing
+  // ===========================================================================
   return (
     <div className="flex flex-col gap-6 font-sans">
       {/* Top Header */}
@@ -312,9 +619,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>Billing</span>
-              </h1>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">Billing</h1>
               <p className="text-xs text-slate-500">
                 One combined bill covers every domain on this account.
               </p>
@@ -326,7 +631,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           <button
             type="button"
             onClick={() => setShowCouponModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 transition-colors shadow-2xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 transition-colors shadow-2xs cursor-pointer min-h-[38px]"
           >
             <Tag className="w-3.5 h-3.5 text-indigo-600" />
             <span>Redeem Promo</span>
@@ -335,7 +640,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
             type="button"
             onClick={load}
             disabled={loading}
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer disabled:opacity-50 min-h-[38px] min-w-[38px] flex items-center justify-center"
             aria-label="Refresh"
             title="Refresh"
           >
@@ -346,14 +651,14 @@ export const BillingView: React.FC<BillingViewProps> = ({
 
       {/* Critical Alert Banners */}
       {error && (
-        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5">
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5 shadow-2xs">
           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1 font-medium">{error}</div>
         </div>
       )}
 
       {paymentIssue && (
-        <div className="flex items-start justify-between gap-3 text-amber-900 bg-amber-50 border border-amber-200 p-3.5 rounded-xl text-xs">
+        <div className="flex items-start justify-between gap-3 text-amber-900 bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs shadow-2xs">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
@@ -363,7 +668,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           <button
             type="button"
             onClick={changeCard}
-            className="shrink-0 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer"
+            className="shrink-0 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
           >
             Update Card
           </button>
@@ -371,7 +676,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
       )}
 
       {suspended && (
-        <div className="flex items-center justify-between gap-3 text-rose-800 bg-rose-50 border border-rose-200 p-3.5 rounded-xl text-xs">
+        <div className="flex items-center justify-between gap-3 text-rose-800 bg-rose-50 border border-rose-200 p-4 rounded-xl text-xs shadow-2xs">
           <div className="flex items-center gap-2.5">
             <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>Mail service is suspended due to non-payment. Update your card to restore it.</span>
@@ -379,7 +684,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           <button
             type="button"
             onClick={changeCard}
-            className="shrink-0 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer"
+            className="shrink-0 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
           >
             Resolve Payment
           </button>
@@ -387,7 +692,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
       )}
 
       {isCanceling && (
-        <div className="flex items-center justify-between gap-3 text-slate-800 bg-slate-100 border border-slate-200 p-3.5 rounded-xl text-xs">
+        <div className="flex items-center justify-between gap-3 text-slate-800 bg-slate-100 border border-slate-200 p-4 rounded-xl text-xs shadow-2xs">
           <div className="flex items-center gap-2.5">
             <Clock className="w-4 h-4 text-slate-500 shrink-0" />
             <span>Cancels at the end of the current period ({formatDate(summary?.currentPeriodEnd)}).</span>
@@ -396,174 +701,284 @@ export const BillingView: React.FC<BillingViewProps> = ({
             type="button"
             onClick={resumeSubscription}
             disabled={actionLoading === 'resume'}
-            className="shrink-0 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+            className="shrink-0 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
           >
             {actionLoading === 'resume' ? 'Resuming…' : 'Resume subscription'}
           </button>
         </div>
       )}
 
-      {/* 4-Card Hero Metric Grid */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-        <div>
-          <span className="text-slate-400 block mb-0.5">Status</span>
-          <span className="font-semibold text-slate-800">
-            {!trial?.started ? 'Not started' : trial.isTrialing ? '60-day trial' : paymentIssue ? 'Payment issue' : suspended ? 'Suspended' : 'Active'}
-          </span>
+      {/* Clean 4-Metric Billing Overview Ribbon */}
+      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Tile 1: Status */}
+          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Status</span>
+            <div className="text-base font-bold text-slate-900 mt-1 flex items-center gap-1.5">
+              {!trial?.started ? (
+                <StatusBadge status="inactive">Not started</StatusBadge>
+              ) : trial.isTrialing ? (
+                <span className="font-semibold text-slate-900">60-day trial</span>
+              ) : paymentIssue ? (
+                <StatusBadge status="warning">Payment issue</StatusBadge>
+              ) : suspended ? (
+                <StatusBadge status="failed">Suspended</StatusBadge>
+              ) : (
+                <StatusBadge status="active">Active</StatusBadge>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1 tabular-nums">
+              {trial?.isTrialing
+                ? `Trial ends ${formatDate(trial.endsAt)}`
+                : summary?.currentPeriodEnd
+                ? `Renews ${formatDate(summary.currentPeriodEnd)}`
+                : 'Continuous subscription'}
+            </div>
+          </div>
+
+          {/* Tile 2: Estimated Bill */}
+          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Estimated Monthly Bill</span>
+            <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
+              {formatPaise(cart?.estimatedMonthlyPaise ?? 0)}
+              <span className="text-xs font-normal text-slate-500 ml-1">/ mo</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1">Based on active mailboxes</div>
+          </div>
+
+          {/* Tile 3: Mailbox Seats */}
+          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Mailbox Capacity</span>
+            <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums flex items-baseline gap-1">
+              <span>{totalActiveUsers}</span>
+              <span className="text-xs font-normal text-slate-400">/ {totalMailboxLimit} seats</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Across {domainsList.length} domain{domainsList.length === 1 ? '' : 's'}
+            </div>
+          </div>
+
+          {/* Tile 4: Payment Method */}
+          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
+            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Payment Method</span>
+            <div className="text-sm font-bold text-slate-900 mt-1 truncate">
+              {primaryPaymentMethodText ? (
+                <span className="font-semibold text-slate-900">{primaryPaymentMethodText}</span>
+              ) : (
+                <span className="text-slate-400 font-normal">—</span>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              {primaryPaymentMethodText ? 'Autopay on file' : 'No card attached'}
+            </div>
+          </div>
         </div>
-        <div>
-          <span className="text-slate-400 block mb-0.5">{trial?.isTrialing ? 'Trial ends' : 'Next billing date'}</span>
-          <span className="font-semibold text-slate-800 tabular-nums">
-            {trial?.isTrialing ? formatDate(trial.endsAt) : formatDate(summary?.currentPeriodEnd)}
-          </span>
-        </div>
-        <div>
-          <span className="text-slate-400 block mb-0.5">Estimated monthly bill</span>
-          <span className="font-semibold text-slate-800 tabular-nums">{formatPaise(cart?.estimatedMonthlyPaise ?? 0)}</span>
-        </div>
-        <div>
-          <span className="text-slate-400 block mb-0.5">Payment method</span>
-          <span className="font-semibold text-slate-800">
-            {cart?.paymentMethod ? `${cart.paymentMethod.brand} •••• ${cart.paymentMethod.last4}` : '—'}
-          </span>
-        </div>
-        <div className="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 mt-1">
-          {cart?.requiresActivation && (
-            <button
-              type="button"
-              onClick={handleOpenCart}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer inline-flex items-center gap-1.5"
-            >
-              <ShoppingCart size={13} />
-              <span>
-                Activate {cart.pendingMailboxes.length} waiting mailbox{cart.pendingMailboxes.length === 1 ? '' : 'es'}
+
+        {/* Overview Action Bar */}
+        {(cart?.requiresActivation || (trial?.started && !summary?.cancelAtPeriodEnd) || isCanceling) && (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100 mt-4 text-xs">
+            <div className="flex items-center gap-2">
+              {cart?.requiresActivation && (
+                <button
+                  type="button"
+                  onClick={handleOpenCart}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5 shadow-2xs transition-colors"
+                >
+                  <ShoppingCart size={13} />
+                  <span>
+                    Activate {cart.pendingMailboxes.length} waiting mailbox{cart.pendingMailboxes.length === 1 ? '' : 'es'}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {trial?.started && !summary?.cancelAtPeriodEnd && (
+                <button
+                  type="button"
+                  onClick={cancelAll}
+                  disabled={actionLoading === 'cancel'}
+                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {actionLoading === 'cancel' ? 'Canceling…' : 'Cancel subscription'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Domains & Mailboxes Ledger Table */}
+      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900">Domains &amp; plans</h2>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
+                {domainsList.length}
               </span>
-            </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pay only for active mailboxes · Plan caps maximum seats
+            </p>
+          </div>
+
+          {domainsList.length > 4 && (
+            <div className="relative w-full sm:w-64">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Filter domains or plans..."
+                value={domainSearchQuery}
+                onChange={(e) => setDomainSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600 bg-white shadow-2xs"
+              />
+            </div>
           )}
-          {trial?.started && (
+        </div>
+
+        {domainsList.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 text-xs">
+            <Globe size={28} className="mx-auto mb-2 text-slate-300" />
+            <p>No domains connected yet.</p>
+          </div>
+        ) : filteredDomains.length === 0 ? (
+          <div className="p-6 text-center text-slate-400 text-xs">
+            No domains match "{domainSearchQuery}".
+          </div>
+        ) : (
+          <div className="data-table-container border border-slate-200 rounded-lg overflow-hidden">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Domain</th>
+                  <th>Plan Tier</th>
+                  <th>Mailboxes &amp; Capacity</th>
+                  <th>Billing Rate</th>
+                  <th style={{ textAlign: 'right' }}>Monthly Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDomains.map((d) => {
+                  const used = d.activeUsers + (d.pendingUsers || 0);
+                  const max = d.maxUsers || 1;
+                  const pct = Math.min(100, Math.round((used / max) * 100));
+
+                  return (
+                    <tr key={d.domainId} className="hover:bg-slate-50/80 transition-colors">
+                      {/* Domain Name */}
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <Globe size={14} className="text-slate-400 shrink-0" />
+                          <span className="font-semibold text-slate-900 text-xs">{d.domainName}</span>
+                        </div>
+                      </td>
+
+                      {/* Plan Tier Badge (Clean read-only tag, no dropdown) */}
+                      <td>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {d.planName || 'Standard'}
+                        </span>
+                      </td>
+
+                      {/* Mailboxes & Capacity Bar */}
+                      <td>
+                        <div className="flex flex-col gap-1 max-w-xs">
+                          <div className="flex items-center justify-between text-xs text-slate-700 tabular-nums">
+                            <span className="font-medium text-slate-700">
+                              {used} / {d.maxUsers} users
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">{pct}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                pct >= 90 ? 'bg-amber-500' : 'bg-indigo-600'
+                              }`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Billing Rate */}
+                      <td>
+                        <span className="text-xs text-slate-600 tabular-nums">
+                          {formatPaise(d.ratePaise)} <span className="text-slate-400">/ active user</span>
+                        </span>
+                      </td>
+
+                      {/* Monthly Subtotal */}
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="tabular-nums font-bold text-slate-900 text-xs">
+                          {formatPaise(d.monthlyPaise)}
+                          <span className="text-slate-400 font-normal ml-0.5">/mo</span>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
+          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+          <span>Plan limits cap how many users a domain can have — you're only billed for users who are actually active.</span>
+        </div>
+      </section>
+
+      {/* Payment Methods Section (Single Source of Truth) */}
+      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <CreditCard size={15} className="text-indigo-600" />
+            <h2 className="text-sm font-bold text-slate-900">Payment Methods on File</h2>
+          </div>
+
+          {(trial?.started || paymentMethods.length > 0 || cart?.hasPaymentMethod) && (
             <button
               type="button"
               onClick={changeCard}
               disabled={actionLoading === 'card'}
-              className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 rounded-lg text-[11px] font-semibold text-slate-700 cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
             >
-              Change payment method
+              <Plus size={13} />
+              <span>Change payment method</span>
             </button>
           )}
-          {trial?.started && !summary?.cancelAtPeriodEnd && (
-            <button
-              type="button"
-              onClick={cancelAll}
-              disabled={actionLoading === 'cancel'}
-              className="px-3.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer disabled:opacity-50"
-            >
-              {actionLoading === 'cancel' ? 'Canceling…' : 'Cancel subscription'}
-            </button>
-          )}
-          {summary?.cancelAtPeriodEnd && (
-            <span className="text-[11px] text-slate-500">Cancels at the end of the current period ({formatDate(summary.currentPeriodEnd)}).</span>
-          )}
-        </div>
-      </div>
-
-      {/* Domains & Assigned Plans Section */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500">Domains &amp; plans</span>
-          <span className="text-[11px] font-medium text-slate-400 hidden sm:inline">
-            Pay only for active mailboxes · Plan caps maximum seats
-          </span>
-        </div>
-
-        {domainsList.length === 0 ? (
-          <p className="text-xs text-slate-400">No domains yet.</p>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {domainsList.map((d) => (
-              <div
-                key={d.domainId}
-                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-              >
-                <div className="min-w-0">
-                  <span className="font-semibold text-slate-800 block truncate">{d.domainName}</span>
-                  <span className="text-slate-500">
-                    {d.planName || 'No plan'} · {d.activeUsers + (d.pendingUsers || 0)} / {d.maxUsers} users · {formatPaise(d.ratePaise)} per active user
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="tabular-nums font-semibold text-slate-800">{formatPaise(d.monthlyPaise)}/mo</span>
-                  <select
-                    aria-label={`Change plan for ${d.domainName}`}
-                    value={d.planId || ''}
-                    disabled={actionLoading === `plan-${d.domainId}`}
-                    onChange={(e) => e.target.value && e.target.value !== d.planId && changePlan(d.domainId, e.target.value)}
-                    className="px-2.5 py-1 border border-slate-200 rounded-lg text-[11px] text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:border-indigo-600 cursor-pointer disabled:opacity-50"
-                  >
-                    {!d.planId && <option value="">Select plan</option>}
-                    {plans
-                      .filter((p) => p.isActive)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} (up to {p.seatCount})
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <p className="text-[11px] text-slate-400 flex items-start gap-1.5 pt-1">
-          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-          <span>Plan limits cap how many users a domain can have — you're only billed for users who are actually active.</span>
-        </p>
-      </div>
-
-      {/* Payment Methods Section */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CreditCard size={15} className="text-indigo-600" />
-            <h2 className="text-xs font-semibold text-slate-700">Payment Methods on File</h2>
-          </div>
-          <button
-            type="button"
-            onClick={changeCard}
-            className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer"
-          >
-            <Plus size={13} />
-            <span>Add / Change Card</span>
-          </button>
         </div>
 
         {paymentMethods.length === 0 && !cart?.paymentMethod ? (
-          <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl text-center">
-            <p className="text-xs text-slate-500 mb-1">No payment methods saved.</p>
-            <p className="text-[11px] text-slate-400 max-w-sm mx-auto mb-3">
-              Add a payment method to ensure seamless renewal after your 60-day domain trial ends.
+          <div className="p-6 bg-slate-50 border border-slate-100 rounded-xl text-center">
+            <CreditCard size={32} className="mx-auto mb-2 text-slate-300" />
+            <p className="text-xs font-semibold text-slate-700 mb-1">No payment methods saved.</p>
+            <p className="text-[11px] text-slate-400 max-w-sm mx-auto mb-4">
+              Add a payment card to ensure uninterrupted mail delivery when your 60-day trial transitions to regular billing.
             </p>
             <button
               type="button"
               onClick={changeCard}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              disabled={actionLoading === 'card'}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
             >
-              Add Card
+              Add Payment Method
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             {paymentMethods.length > 0 ? (
               paymentMethods.map((pm) => (
                 <div
                   key={pm.id}
-                  className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/60 border border-slate-200 rounded-xl transition-colors text-xs"
+                  className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/60 border border-slate-200 rounded-xl transition-colors text-xs"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-7 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0">
+                    <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
                       {getCardBrandBadge(pm.brand)}
                     </div>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-900 tracking-wider">
                           •••• •••• •••• {pm.last4}
@@ -586,7 +1001,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                         type="button"
                         onClick={() => handleSetDefaultPaymentMethod(pm.id)}
                         disabled={actionLoading === `pm-def-${pm.id}`}
-                        className="px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                        className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors cursor-pointer border border-transparent hover:border-slate-200 disabled:opacity-50"
                       >
                         {actionLoading === `pm-def-${pm.id}` ? 'Saving...' : 'Make Default'}
                       </button>
@@ -598,7 +1013,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                       title="Remove Card"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -606,12 +1021,12 @@ export const BillingView: React.FC<BillingViewProps> = ({
             ) : (
               // Fallback preview from cart
               cart?.paymentMethod && (
-                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-7 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0">
+                    <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
                       {getCardBrandBadge(cart.paymentMethod.brand)}
                     </div>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-900 tracking-wider">
                           •••• •••• •••• {cart.paymentMethod.last4}
@@ -628,7 +1043,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                     onClick={changeCard}
                     className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer"
                   >
-                    Change card
+                    Update card
                   </button>
                 </div>
               )
@@ -636,44 +1051,49 @@ export const BillingView: React.FC<BillingViewProps> = ({
           </div>
         )}
 
-        <p className="text-[10px] text-slate-400 flex items-center gap-1.5 pt-1">
-          <ShieldCheck size={12} className="text-slate-400 shrink-0" />
+        <div className="text-[10px] text-slate-400 flex items-center gap-1.5 pt-1">
+          <ShieldCheck size={13} className="text-slate-400 shrink-0" />
           <span>Transactions protected with bank-grade 256-bit encryption. Recurring billing adheres to RBI e-mandate guidelines.</span>
-        </p>
-      </div>
-
-      {/* Invoices History */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Receipt size={14} className="text-slate-400" />
-          <span className="text-xs font-semibold text-slate-500">Billing history</span>
         </div>
+      </section>
+
+      {/* Invoices History Section */}
+      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
+        <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+          <Receipt size={15} className="text-slate-400" />
+          <h2 className="text-sm font-bold text-slate-900">Billing history</h2>
+        </div>
+
         {invoices.length === 0 ? (
-          <p className="text-xs text-slate-400">No invoices yet.</p>
+          <div className="py-6 text-center text-slate-400 text-xs">
+            <Receipt size={28} className="mx-auto mb-2 text-slate-300" />
+            <p>No invoices yet.</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Statements will automatically appear here once your billing cycle commences.
+            </p>
+          </div>
         ) : (
           <>
             {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left text-xs">
+            <div className="hidden md:block data-table-container border border-slate-200 rounded-lg overflow-hidden">
+              <table className="data-table">
                 <thead>
-                  <tr className="border-b border-slate-200 text-slate-400 font-semibold text-[11px] uppercase tracking-wider">
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Amount</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3 text-right">Invoice</th>
+                  <tr>
+                    <th>Date</th>
+                    <th>Amount Paid</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'right' }}>Invoice</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {invoices.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-3 text-slate-600 font-medium tabular-nums">{formatDate(inv.createdAt)}</td>
-                      <td className="py-3 px-3 font-semibold text-slate-900 tabular-nums">{formatAmount(inv.amountPaid, inv.currency)}</td>
-                      <td className="py-3 px-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                          {inv.status}
-                        </span>
+                    <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="text-slate-600 font-medium tabular-nums">{formatDate(inv.createdAt)}</td>
+                      <td className="font-bold text-slate-900 tabular-nums">{formatAmount(inv.amountPaid, inv.currency)}</td>
+                      <td>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{inv.status}</span>
                       </td>
-                      <td className="py-3 px-3 text-right">
+                      <td style={{ textAlign: 'right' }}>
                         {inv.hostedInvoiceUrl ? (
                           <a
                             href={inv.hostedInvoiceUrl}
@@ -715,7 +1135,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                       href={inv.hostedInvoiceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="min-h-[44px] px-3.5 py-2 bg-white border border-slate-200 rounded-lg inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-semibold text-xs shadow-xs"
+                      className="min-h-[44px] px-3.5 py-2 bg-white border border-slate-200 rounded-lg inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-semibold text-xs shadow-2xs"
                     >
                       <span>Invoice</span>
                       <ExternalLink size={13} />
@@ -726,13 +1146,13 @@ export const BillingView: React.FC<BillingViewProps> = ({
             </div>
           </>
         )}
-      </div>
+      </section>
 
       {/* Payment Method Modal */}
       <PaymentMethodModal
         isOpen={showCardModal}
         onClose={() => setShowCardModal(false)}
-        title="Change payment method"
+        title="Payment Method"
         onSuccess={() => {
           setShowCardModal(false);
           load();

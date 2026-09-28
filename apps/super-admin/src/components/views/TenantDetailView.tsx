@@ -27,14 +27,21 @@ import {
   Activity,
   Key,
   AlertCircle,
+  LayoutDashboard,
+  CreditCard,
+  StickyNote,
+  RotateCw,
+  Code2,
 } from 'lucide-react';
 import { TenantFullDetails, TenantSummary } from '../../types';
 import { api } from '../../api';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
 import { StatusBadge } from '../ui/StatusBadge';
+import { SlideOver } from '../ui/SlideOver';
 import { OrganisationDeletionPanel } from '../OrganisationDeletionPanel';
 import { dnsStatusBadgeProps } from '../../utils/dnsStatus';
+import { formatRelativeTime, formatFullTimestamp } from '../../utils/formatTime';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
@@ -44,7 +51,11 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-export type TenantDetailSubTab = 'domains' | 'mailboxes' | 'admins' | 'audit' | 'governance';
+export type TenantDetailSubTab = 'overview' | 'domains' | 'mailboxes' | 'admins' | 'billing' | 'audit' | 'governance';
+
+function formatPaise(paise: number): string {
+  return `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
 
 export interface TenantDetailViewProps {
   tenantId: string;
@@ -68,7 +79,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   const [details, setDetails] = useState<TenantFullDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<TenantDetailSubTab>(controlledActiveSubTab || 'domains');
+  const [activeSubTab, setActiveSubTab] = useState<TenantDetailSubTab>(controlledActiveSubTab || 'overview');
 
   useEffect(() => {
     if (controlledActiveSubTab && controlledActiveSubTab !== activeSubTab) {
@@ -122,6 +133,18 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   const [newMailboxPassword, setNewMailboxPassword] = useState('');
   const [mailboxActionLoading, setMailboxActionLoading] = useState(false);
 
+  // Overview: operator notes
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesSavedMsg, setNotesSavedMsg] = useState<string | null>(null);
+  const notesLocalStorageKey = `toowix_operator_notes_draft_${tenantId}`;
+
+  // Billing & Plans
+  const [syncingStripe, setSyncingStripe] = useState(false);
+
+  // Audit trail JSON inspector
+  const [inspectedLog, setInspectedLog] = useState<TenantFullDetails['auditLogs'][number] | null>(null);
+
   const fetchTenantDetails = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -129,6 +152,15 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
       const data = await api.getTenantDetails(tenantId);
       setDetails(data);
       setNewQuotaValue(data.tenant.mailboxLimit);
+      // A locally-drafted note (saved when the server write previously failed) always wins over
+      // whatever the server has, so an offline edit is never silently clobbered on reload.
+      let draft: string | null = null;
+      try {
+        draft = localStorage.getItem(notesLocalStorageKey);
+      } catch {
+        // localStorage unavailable (private mode, etc) — fall back to server value only
+      }
+      setNotesDraft(draft ?? data.tenant.operatorNotes ?? '');
     } catch (err: any) {
       console.error('[TenantDetailView] Failed to load tenant details:', err);
       setError(err.message || 'Failed to retrieve tenant details');
@@ -201,6 +233,46 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
       setError(err.message || 'Failed to update quota limit');
     } finally {
       setQuotaSaving(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!details) return;
+    setNotesSaving(true);
+    setNotesSavedMsg(null);
+    try {
+      await api.updateTenantNotes(details.tenant.id, notesDraft);
+      try {
+        localStorage.removeItem(notesLocalStorageKey);
+      } catch {
+        // ignore — not fatal, the draft key just lingers
+      }
+      setNotesSavedMsg('Notes saved.');
+      setTimeout(() => setNotesSavedMsg(null), 2500);
+    } catch (err: any) {
+      // Keep the draft locally so a flaky save never loses what the operator typed.
+      try {
+        localStorage.setItem(notesLocalStorageKey, notesDraft);
+      } catch {
+        // best-effort only
+      }
+      setNotesSavedMsg(err.message || 'Failed to save — kept a local draft, will retry on next save.');
+    } finally {
+      setNotesSaving(false);
+    }
+  };
+
+  const handleSyncStripe = async () => {
+    if (!details) return;
+    setSyncingStripe(true);
+    try {
+      const result = await api.syncTenantStripe(details.tenant.id);
+      onShowAlert?.('success', result.message || `Synced with Stripe (status: ${result.stripeStatus || 'n/a'}).`);
+      await fetchTenantDetails();
+    } catch (err: any) {
+      onShowAlert?.('error', err.message || 'Failed to sync with Stripe');
+    } finally {
+      setSyncingStripe(false);
     }
   };
 
@@ -417,7 +489,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
   if (!details) return null;
 
-  const { tenant, domains = [], admins = [], mailboxes = [], auditLogs = [], stats = { totalDomains: 0, activeDomains: 0, totalMailboxes: 0, activeMailboxes: 0, suspendedMailboxes: 0, totalStorageBytes: 0, mailboxLimit: 0, usagePercent: 0 } } = details;
+  const { tenant, domains = [], admins = [], mailboxes = [], auditLogs = [], billing = null, stats = { totalDomains: 0, activeDomains: 0, totalMailboxes: 0, activeMailboxes: 0, suspendedMailboxes: 0, totalStorageBytes: 0, mailboxLimit: 0, usagePercent: 0 } } = details;
   const usagePercent = stats?.usagePercent || 0;
   const isSuspended = tenant.status === 'suspended';
   const isPending = tenant.status === 'approved_pending_setup';
@@ -451,6 +523,16 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
             title="Refresh tenant data"
           >
             Refresh
+          </Button>
+
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => handleSubTabChange('governance')}
+            icon={<Sliders className="w-3.5 h-3.5" />}
+            title="Adjust Mailbox Quota"
+          >
+            Adjust Quota
           </Button>
 
           {isPending && onActivateTenant && tenantSummaryAdapter && (
@@ -498,8 +580,8 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
       <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
           <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 shadow-xs">
-              <Building2 className="w-7 h-7" />
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-base shrink-0 shadow-xs">
+              {(tenant.name || 'TN').slice(0, 2).toUpperCase()}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-3">
@@ -507,6 +589,17 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 {isActive && <StatusBadge status="success">Active</StatusBadge>}
                 {isPending && <StatusBadge status="warning">Pending Setup</StatusBadge>}
                 {isSuspended && <StatusBadge status="danger">Suspended</StatusBadge>}
+                {domains[0] && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                    <Globe className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{domains[0].domainName}</span>
+                    {domains.length > 1 && (
+                      <span className="text-[10px] bg-slate-200 text-slate-600 rounded-full px-1.5 py-0.2 font-semibold">
+                        +{domains.length - 1}
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-500">
@@ -516,40 +609,29 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={handleCopyId}
-                    className="p-1 text-slate-400 hover:text-slate-600 rounded transition-colors"
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded transition-colors cursor-pointer"
                     title="Copy full tenant ID"
                   >
                     {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-slate-500">
+                <div className="flex items-center gap-1.5 text-slate-500" title={formatFullTimestamp(tenant.createdAt)}>
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Created {new Date(tenant.createdAt).toLocaleDateString()}</span>
+                  <span>Created {formatRelativeTime(tenant.createdAt)}</span>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-slate-500">
+                <div className="flex items-center gap-1.5 text-slate-500" title={formatFullTimestamp(tenant.updatedAt)}>
                   <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Updated {new Date(tenant.updatedAt).toLocaleDateString()}</span>
+                  <span>Updated {formatRelativeTime(tenant.updatedAt)}</span>
                 </div>
               </div>
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleSubTabChange('governance')}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-1.5"
-            >
-              <Sliders className="w-3.5 h-3.5 text-slate-500" />
-              <span>Adjust Quota</span>
-            </button>
-          </div>
         </div>
 
         {/* High-level KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
           {/* Domains Card */}
           <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-1">
@@ -623,22 +705,57 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
               )}
             </div>
           </div>
+
+          {/* Subscription Plan & Stripe Status */}
+          <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-500 mb-1">
+              <span className="text-xs font-medium">Subscription</span>
+              <CreditCard className="w-4 h-4 text-indigo-500" />
+            </div>
+            <div className="text-sm font-bold text-slate-900 tracking-tight mt-1 truncate">
+              {billing?.hasSubscription
+                ? billing.domains[0]?.planName || `${billing.domains.length} domain plan(s)`
+                : 'No active plan'}
+            </div>
+            <div className="text-[11px] mt-2">
+              {billing?.status ? (
+                <StatusBadge status={billing.status === 'active' ? 'success' : billing.status === 'trialing' ? 'warning' : 'danger'}>
+                  {billing.status}
+                </StatusBadge>
+              ) : (
+                <span className="text-slate-400">Not on Stripe yet</span>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Sub-Tab Navigation Bar */}
-      <div className="flex border-b border-slate-200 bg-white px-4 rounded-t-xl overflow-x-auto">
+      <div className="flex border-b border-slate-200 bg-white px-2 sm:px-4 rounded-t-xl overflow-x-auto no-scrollbar">
+        <button
+          type="button"
+          onClick={() => handleSubTabChange('overview')}
+          className={`py-3 px-3 sm:px-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
+            activeSubTab === 'overview'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          <span>Overview</span>
+        </button>
+
         <button
           type="button"
           onClick={() => handleSubTabChange('domains')}
-          className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+          className={`py-3 px-3 sm:px-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
             activeSubTab === 'domains'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           <Globe className="w-4 h-4" />
-          <span>Configured Domains</span>
+          <span>Domains</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
             {domains.length}
           </span>
@@ -647,7 +764,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
         <button
           type="button"
           onClick={() => handleSubTabChange('mailboxes')}
-          className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+          className={`py-3 px-3 sm:px-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
             activeSubTab === 'mailboxes'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -663,14 +780,14 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
         <button
           type="button"
           onClick={() => handleSubTabChange('admins')}
-          className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+          className={`py-3 px-3 sm:px-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
             activeSubTab === 'admins'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Administrators</span>
+          <span>Admins</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
             {admins.length}
           </span>
@@ -678,15 +795,28 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
         <button
           type="button"
+          onClick={() => handleSubTabChange('billing')}
+          className={`py-3 px-3 sm:px-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
+            activeSubTab === 'billing'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          <span>Billing</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => handleSubTabChange('audit')}
-          className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+          className={`py-3 px-3 sm:px-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
             activeSubTab === 'audit'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Audit Trail</span>
+          <span>Audit Log</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
             {auditLogs.length}
           </span>
@@ -695,16 +825,220 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
         <button
           type="button"
           onClick={() => handleSubTabChange('governance')}
-          className={`py-3.5 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+          className={`py-3 px-3 sm:px-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
             activeSubTab === 'governance'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           <ShieldAlert className="w-4 h-4" />
-          <span>Governance & Danger Zone</span>
+          <span>Governance</span>
         </button>
       </div>
+
+      {/* ========================================================================= */}
+      {/* SUB-TAB 0: OVERVIEW & NOTES                                               */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-1">
+          {/* Main Column: 2 of 3 columns (66%) */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* 1. Primary Domain & DNS Health Card */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-sm font-semibold text-slate-900">Primary Domain & DNS Health</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSubTabChange('domains')}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+                >
+                  Manage Domains ({domains.length}) →
+                </button>
+              </div>
+
+              {domains.length > 0 ? (
+                <div className="mt-4 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-semibold text-slate-900 text-sm">{domains[0].domainName}</span>
+                      {domains[0].isPrimary && (
+                        <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                          Primary
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      {(() => {
+                        const { badgeStatus, label } = dnsStatusBadgeProps(domains[0].dnsStatus);
+                        return <StatusBadge status={badgeStatus}>{label}</StatusBadge>;
+                      })()}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-lg border border-slate-100 bg-white">
+                      <span className="text-[11px] text-slate-400 uppercase font-semibold">MX Records</span>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-xs font-medium text-slate-700">Active Mail Exchange</span>
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg border border-slate-100 bg-white">
+                      <span className="text-[11px] text-slate-400 uppercase font-semibold">SPF & DMARC</span>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-xs font-medium text-slate-700">Policy Protected</span>
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg border border-slate-100 bg-white">
+                      <span className="text-[11px] text-slate-400 uppercase font-semibold">DKIM Signatures</span>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-xs font-medium text-slate-700">Ed25519 & RSA</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 text-center text-slate-400 text-xs">
+                  No domains configured yet for this tenant.
+                </div>
+              )}
+            </div>
+
+            {/* 2. Mailbox Allocation Card */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-sm font-semibold text-slate-900">Mailbox Allocation</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSubTabChange('mailboxes')}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+                >
+                  View All Mailboxes ({mailboxes.length}) →
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600 font-medium">Provisioned Seats:</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">
+                    {mailboxes.length} of {tenant.mailboxLimit} seats ({usagePercent}%)
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      usagePercent > 90 ? 'bg-rose-500' : usagePercent > 75 ? 'bg-amber-500' : 'bg-indigo-600'
+                    }`}
+                    style={{ width: `${Math.min(usagePercent, 100)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                  <span>{Math.max(0, tenant.mailboxLimit - mailboxes.length)} seats remaining</span>
+                  <span>Storage used: {formatBytes(stats.totalStorageBytes)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Recent Activity Stream */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-sm font-semibold text-slate-900">Recent Audit Activity</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSubTabChange('audit')}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+                >
+                  Full Audit Log ({auditLogs.length}) →
+                </button>
+              </div>
+
+              {auditLogs.length > 0 ? (
+                <div className="divide-y divide-slate-100 mt-2">
+                  {auditLogs.slice(0, 4).map((log) => (
+                    <div key={log.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                        <span className="font-mono text-slate-800 font-medium truncate">{log.action}</span>
+                        <span className="text-slate-400 truncate">by {log.actorEmail || 'system'}</span>
+                      </div>
+                      <span className="text-slate-400 text-[11px] shrink-0" title={formatFullTimestamp(log.timestamp)}>
+                        {formatRelativeTime(log.timestamp)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-slate-400 text-xs">
+                  No recent audit events recorded.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: 1 of 3 columns (33%) */}
+          <div className="space-y-6">
+            {/* 1. Operator Notes Card */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-indigo-600" />
+                <span>Operator Notes</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Internal notes visible only to Super Admins.
+              </p>
+              <textarea
+                value={notesDraft}
+                onChange={(e) => setNotesDraft(e.target.value)}
+                rows={5}
+                placeholder="Add operational context, customer history, or escalation notes..."
+                className="w-full mt-3 p-3 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600 bg-slate-50/50"
+              />
+              <div className="flex items-center justify-between mt-3">
+                <Button size="sm" variant="secondary" onClick={handleSaveNotes} disabled={notesSaving}>
+                  {notesSaving ? 'Saving…' : 'Save Notes'}
+                </Button>
+                {notesSavedMsg && <span className="text-xs text-slate-500">{notesSavedMsg}</span>}
+              </div>
+            </div>
+
+            {/* 2. Technical Specifications Card */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+              <h3 className="text-sm font-semibold text-slate-900 mb-3">Tenant Attributes</h3>
+              <dl className="space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Plan</dt>
+                  <dd className="font-medium text-slate-800">
+                    {billing?.hasSubscription ? billing.domains[0]?.planName || 'Active Plan' : 'Free / Standard'}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Administrators</dt>
+                  <dd className="font-medium text-slate-800">{admins.length}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Active Mailboxes</dt>
+                  <dd className="font-medium text-slate-800">{stats.activeMailboxes}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-slate-500">Stripe Customer</dt>
+                  <dd className="font-mono text-slate-600">{billing?.stripeCustomerId || '—'}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* SUB-TAB 1: CONFIGURED DOMAINS                                             */}
@@ -1505,6 +1839,84 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
       {/* ========================================================================= */}
       {/* SUB-TAB 4: AUDIT TRAIL                                                    */}
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
+      {/* SUB-TAB: BILLING & PLANS                                                  */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'billing' && (
+        <section className="bg-white border border-slate-200 rounded-b-xl p-6 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Subscription & Plans</h3>
+              <p className="text-xs text-slate-500">Read-only view of this tenant's Stripe subscription and per-domain plans.</p>
+            </div>
+            <Button variant="secondary" onClick={handleSyncStripe} disabled={syncingStripe || !tenant.stripeSubscriptionId}>
+              <RotateCw className={`w-3.5 h-3.5 ${syncingStripe ? 'animate-spin' : ''}`} />
+              <span className="ml-1.5">{syncingStripe ? 'Syncing…' : 'Sync with Stripe'}</span>
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80">
+              <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Stripe Customer</div>
+              <div className="text-xs font-mono text-slate-700 mt-1 truncate">{tenant.stripeCustomerId || '—'}</div>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80">
+              <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Stripe Subscription</div>
+              <div className="text-xs font-mono text-slate-700 mt-1 truncate">{tenant.stripeSubscriptionId || '—'}</div>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80">
+              <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Status</div>
+              <div className="mt-1">
+                {billing?.status ? (
+                  <StatusBadge status={billing.status === 'active' ? 'success' : billing.status === 'trialing' ? 'warning' : 'danger'}>
+                    {billing.status}
+                  </StatusBadge>
+                ) : (
+                  <span className="text-xs text-slate-400">No subscription</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {billing && billing.domains.length > 0 ? (
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Domain</th>
+                    <th>Plan</th>
+                    <th>Active Users</th>
+                    <th>Rate / User</th>
+                    <th>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {billing.domains.map((d) => (
+                    <tr key={d.domainId}>
+                      <td className="text-xs font-medium text-slate-900">{d.domainName}</td>
+                      <td className="text-xs text-slate-700">{d.planName || '—'}</td>
+                      <td className="text-xs text-slate-700">{d.activeUserCount} / {d.maxUsers}</td>
+                      <td className="text-xs text-slate-700">{formatPaise(d.pricePerUserMonthlyPaise)}</td>
+                      <td className="text-xs font-semibold text-slate-900">{formatPaise(d.monthlySubtotalPaise)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={4} className="text-right text-xs font-semibold text-slate-600">Total monthly</td>
+                    <td className="text-xs font-bold text-slate-900">{formatPaise(billing.totalMonthlyPaise)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+              No billing data for this tenant yet.
+            </div>
+          )}
+        </section>
+      )}
+
       {activeSubTab === 'audit' && (
         <section className="bg-white border border-slate-200 rounded-b-xl p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1545,6 +1957,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                       <th>Resource</th>
                       <th>IP Address</th>
                       <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Details</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1578,6 +1991,16 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                           ) : (
                             <StatusBadge status="danger">Failed</StatusBadge>
                           )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => setInspectedLog(log)}
+                            icon={<Code2 className="w-3 h-3 text-slate-500" />}
+                          >
+                            Inspect
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -1622,14 +2045,71 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="text-[11px] text-slate-400 font-mono">
-                      {new Date(log.timestamp).toLocaleString()}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {new Date(log.timestamp).toLocaleString()}
+                      </span>
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        onClick={() => setInspectedLog(log)}
+                        icon={<Code2 className="w-3 h-3 text-slate-500" />}
+                      >
+                        Inspect
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             </>
           )}
+
+          {/* Audit Event SlideOver Drawer */}
+          <SlideOver
+            isOpen={!!inspectedLog}
+            onClose={() => setInspectedLog(null)}
+            title="Audit Event Details"
+            subtitle={inspectedLog ? `${inspectedLog.action} • ${new Date(inspectedLog.timestamp).toLocaleString()}` : undefined}
+          >
+            {inspectedLog && (
+              <div className="p-5 space-y-4 text-xs">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Status:</span>
+                    <StatusBadge status={inspectedLog.status === 'success' ? 'success' : 'danger'}>
+                      {inspectedLog.status}
+                    </StatusBadge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Action:</span>
+                    <span className="font-mono font-semibold text-slate-800">{inspectedLog.action}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Actor:</span>
+                    <span className="text-slate-800">{inspectedLog.actorEmail} ({inspectedLog.actorRole})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Resource:</span>
+                    <span className="text-slate-800">{inspectedLog.resource} {inspectedLog.resourceId ? `(${inspectedLog.resourceId})` : ''}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">IP Address:</span>
+                    <span className="font-mono text-slate-600">{inspectedLog.actorIp || '—'}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1.5 text-[11px] uppercase font-semibold text-slate-400 mb-1.5">
+                    <Code2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Event Payload & Metadata</span>
+                  </div>
+                  <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg font-mono text-[11px] overflow-x-auto max-h-96">
+                    {JSON.stringify(inspectedLog.metadata || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </SlideOver>
         </section>
       )}
 

@@ -26,8 +26,12 @@ export class StalwartClient {
 
   constructor() {
     this.baseUrl = config.stalwart.url.replace(/\/+$/, '');
-    const userPass = `${config.stalwart.user}:${config.stalwart.password}`;
-    this.authHeader = `Basic ${Buffer.from(userPass).toString('base64')}`;
+    if (config.stalwart.apiKey && config.stalwart.apiKey.trim() !== '') {
+      this.authHeader = `Bearer ${config.stalwart.apiKey.trim()}`;
+    } else {
+      const userPass = `${config.stalwart.user}:${config.stalwart.password}`;
+      this.authHeader = `Basic ${Buffer.from(userPass).toString('base64')}`;
+    }
     this.accountId = config.stalwart.accountId || 'b';
   }
 

@@ -11,6 +11,7 @@ import { backupService } from '../services/backup.service';
 import { alertService } from '../services/alert.service';
 import { emailService } from '../services/email.service';
 import { stalwartClient } from '../stalwart/client';
+import { checkDnsRecordsLive } from '../services/domain-activation.service';
 import { config } from '../config';
 import http from 'http';
 import https from 'https';
@@ -647,5 +648,122 @@ systemRouter.get('/analytics', async (_req: Request, res: Response): Promise<voi
   } catch (err: any) {
     console.error('[System Analytics Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to generate analytics' });
+  }
+});
+
+// 13. Mail Spool & Delivery Queue Flush
+// ponytail: Stalwart's client here has no queue-introspection endpoint (see stalwart/client.ts —
+// domain/account/DKIM/IP methods only, nothing queue-shaped), so depth/flush are mocked and
+// labeled as such rather than faked as a real operation. Upgrade path: once Stalwart exposes a
+// queue API (or we read it via its admin HTTP API directly), swap this for a real call.
+systemRouter.post('/queues/flush', async (_req: Request, res: Response): Promise<void> => {
+  res.status(200).json({
+    success: true,
+    mocked: true,
+    message: 'Queue flush is not wired to a real Stalwart queue API yet — this is a placeholder no-op.',
+    queues: { active: 0, deferred: 0, frozen: 0 },
+  });
+});
+
+// 14. DNS Drift Monitor — real: re-checks every active domain's live DNS against its generated
+// records (same check used at domain activation) and reports mismatches.
+systemRouter.get('/dns-drift', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const domains = await DomainModel.find({ dnsStatus: 'active', dnsRecords: { $exists: true, $ne: [] } });
+
+    const results = await Promise.all(
+      domains.map(async (d) => {
+        try {
+          const live = await checkDnsRecordsLive(d.domainName, d.dnsRecords || []);
+          return {
+            domainId: d._id.toString(),
+            domainName: d.domainName,
+            drifted: !live.allFound,
+            checkedAt: live.checkedAt,
+            results: live.results,
+          };
+        } catch (err: any) {
+          return { domainId: d._id.toString(), domainName: d.domainName, drifted: null, error: err.message || 'DNS check failed' };
+        }
+      })
+    );
+
+    res.status(200).json({
+      scannedAt: new Date().toISOString(),
+      total: results.length,
+      driftedCount: results.filter((r) => r.drifted).length,
+      domains: results,
+    });
+  } catch (err: any) {
+    console.error('[DNS Drift Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to scan DNS drift' });
+  }
+});
+
+// 15. Restore DNS Matrix — re-runs the same live check and syncs each domain's stored dnsStatus
+// to reality. Does NOT push records to a registrar (no DNS-provider write path exists for this
+// flow yet) — it repairs OUR records of the truth, not the truth itself. Labeled accordingly.
+systemRouter.post('/dns-restore', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const domains = await DomainModel.find({ dnsRecords: { $exists: true, $ne: [] } });
+    let resynced = 0;
+
+    for (const d of domains) {
+      try {
+        const live = await checkDnsRecordsLive(d.domainName, d.dnsRecords || []);
+        const newStatus = live.allFound ? 'active' : 'pending';
+        if (d.dnsStatus !== newStatus) {
+          d.dnsStatus = newStatus as any;
+          await d.save();
+          resynced++;
+        }
+      } catch {
+        // leave this domain's stored status untouched if the live check itself fails
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Re-synced stored DNS status against live records for ${domains.length} domain(s); ${resynced} updated. This does not push records to any DNS provider.`,
+      resynced,
+      scanned: domains.length,
+    });
+  } catch (err: any) {
+    console.error('[DNS Restore Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to restore DNS matrix' });
+  }
+});
+
+// 16. JMAP Diagnostic Ping — real: hits Stalwart for the given mailbox's account record and
+// times the round trip, the closest real signal to "is JMAP/the account reachable" available
+// through the existing client (no dedicated JMAP session/ping method exists yet).
+systemRouter.post('/jmap-test', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { mailboxId } = req.body;
+    if (!mailboxId || typeof mailboxId !== 'string') {
+      res.status(400).json({ error: 'INVALID_INPUT', message: 'mailboxId is required' });
+      return;
+    }
+
+    const mailbox = await MailboxModel.findById(mailboxId);
+    if (!mailbox || !mailbox.stalwartAccountId) {
+      res.status(404).json({ error: 'MAILBOX_NOT_FOUND', message: 'Mailbox not found or not provisioned in Stalwart' });
+      return;
+    }
+
+    const startedAt = Date.now();
+    const account = await stalwartClient.getAccount(mailbox.stalwartAccountId);
+    const latencyMs = Date.now() - startedAt;
+
+    res.status(200).json({
+      success: !!account,
+      latencyMs,
+      mailbox: mailbox.address,
+      reachable: !!account,
+      message: account ? `Account reachable in ${latencyMs}ms.` : 'Account lookup returned no result.',
+    });
+  } catch (err: any) {
+    console.error('[JMAP Test Error]:', err);
+    res.status(502).json({ error: 'JMAP_TEST_FAILED', message: err.message || 'JMAP diagnostic ping failed' });
   }
 });

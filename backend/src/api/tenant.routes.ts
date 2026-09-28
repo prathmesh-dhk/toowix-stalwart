@@ -26,7 +26,8 @@ import { GoDaddyAuthError, GoDaddyDomainNotManagedError } from '../godaddy/error
 import { HostingerAuthError, HostingerDomainNotManagedError } from '../hostinger/errors';
 import { CloudflareAuthError, CloudflareDomainNotManagedError } from '../cloudflare/errors';
 import { stalwartClient } from '../stalwart/client';
-import { StalwartDomainExistsError } from '../stalwart/errors';
+import { StalwartDomainExistsError, StalwartError } from '../stalwart/errors';
+import { isValidMailDomain } from '../utils/domain-validator';
 import { buildRequiredDnsRecords, buildFullDnsRecords, buildZoneFileText } from '../services/dns-records.service';
 import { StalwartDkimKey } from '../stalwart/types';
 import { IGeneratedDnsRecord } from '../db/models/Domain';
@@ -308,8 +309,11 @@ tenantMeRouter.get('/me/domains/detect-dns-provider', async (req: Request, res: 
 // later (after plan selection and DNS provider setup).
 tenantMeRouter.get('/me/domains/check-availability', async (req: Request, res: Response): Promise<void> => {
   const domain = String(req.query.domain || '').trim().toLowerCase();
-  if (!domain || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(domain)) {
-    res.status(400).json({ error: 'INVALID_DOMAIN', message: 'A valid domain name is required.' });
+  if (!domain || !isValidMailDomain(domain)) {
+    res.status(400).json({
+      error: 'INVALID_DOMAIN',
+      message: 'A valid domain name with a registered public TLD is required (e.g. yourcompany.com).',
+    });
     return;
   }
 
@@ -334,7 +338,9 @@ const addDomainSchema = z.object({
   domainName: z
     .string()
     .min(3, 'Domain name is required')
-    .regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i, 'Invalid domain format'),
+    .refine((val) => isValidMailDomain(val), {
+      message: 'Invalid domain name. Mail server requires a valid registered domain (e.g. yourcompany.com).',
+    }),
   // Optional: the domain-setup wizard now asks for a plan only after DNS is configured, via
   // POST /api/tenants/me/billing/domains/:domainId/select-plan. A domain without one yet is
   // blocked from mailbox creation by mailbox.service.ts's NO_PLAN_SELECTED gate.
@@ -399,6 +405,15 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
         const list = await stalwartClient.listDomains();
         const match = list.find((d) => d.name.toLowerCase() === normalizedDomain);
         stalwartDomainId = match?.id || null;
+      } else if (
+        err instanceof StalwartError &&
+        (err.code === 'DOMAIN_CREATE_FAILED' || err.message?.includes('Invalid domain name'))
+      ) {
+        res.status(400).json({
+          error: 'INVALID_DOMAIN',
+          message: 'The domain name is not valid according to mail server rules (requires a valid public TLD).',
+        });
+        return;
       } else {
         console.warn(`[Tenant Domain Creation] Stalwart createDomain non-fatal failure: ${err.message}`);
       }

@@ -1172,7 +1172,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     const activeCount = sub.activeUserCount ?? 0;
     const rate = plan?.monthlyPriceInPaise ?? plan?.pricePerUserMonthlyPaise ?? sub.pricePerUserMonthlyPaise ?? 0;
     return {
-      domainId: domain?._id?.toString() || sub.domainId.toString(),
+      domainId: domain?._id?.toString() || (sub.domainId ? sub.domainId.toString() : ''),
       domainName: domain?.domainName || '',
       planName: plan?.name || null,
       seatCount: plan?.seatCount ?? null,

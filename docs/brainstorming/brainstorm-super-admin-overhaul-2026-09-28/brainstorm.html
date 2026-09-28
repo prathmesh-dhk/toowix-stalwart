@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Toowix Super Admin Overhaul — Brainstorm Keepsake</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(18, 24, 38, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --cyan: #06b6d4;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 50% 0%, #171e31 0%, #090d16 100%);
+      background-attachment: fixed;
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      padding: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Header & Hero */
+    header {
+      padding: 3rem 2rem 2rem;
+      max-width: 1280px;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--card-border);
+      position: relative;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: var(--accent-glow);
+      border: 1px solid var(--accent);
+      color: #c7d2fe;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-size: 2.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.75rem;
+    }
+    .subtitle {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 820px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      backdrop-filter: blur(12px);
+    }
+    .stat-val {
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: #fff;
+      font-family: var(--font-mono);
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 2px;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 2.5rem 2rem 5rem;
+    }
+
+    /* Interactive Command Bar */
+    .cmd-bar-container {
+      margin-bottom: 3rem;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+    }
+    .cmd-input {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 1rem;
+      width: 100%;
+      outline: none;
+    }
+    .cmd-input::placeholder { color: #64748b; }
+    .cmd-shortcut {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: #cbd5e1;
+      white-space: nowrap;
+    }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding-bottom: 0.5rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .tab-btn.active {
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    /* Section Headers */
+    .section-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-desc {
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+      max-width: 800px;
+    }
+
+    /* Cards Grid */
+    .ideas-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 3rem;
+    }
+    .idea-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .idea-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(99, 102, 241, 0.4);
+      box-shadow: 0 10px 25px -10px rgba(0,0,0,0.6);
+    }
+    .idea-num {
+      position: absolute;
+      top: 1rem;
+      right: 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #475569;
+      font-weight: 700;
+    }
+    .idea-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
+    }
+    .tag-first-principles { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+    .tag-reverse { background: rgba(244, 63, 94, 0.15); color: #fda4af; }
+    .tag-cross { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+    .tag-scamper { background: rgba(245, 158, 11, 0.15); color: #fde68a; }
+    .tag-personas { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+    .tag-crazy8s { background: rgba(236, 72, 153, 0.15); color: #fbcfe8; }
+    .tag-whatif { background: rgba(14, 165, 233, 0.15); color: #7dd3fc; }
+    .tag-chaos { background: rgba(234, 88, 12, 0.15); color: #fdba74; }
+    .tag-lotus { background: rgba(20, 184, 166, 0.15); color: #99f6e4; }
+    .tag-dream { background: rgba(249, 115, 22, 0.15); color: #fed7aa; }
+
+    .idea-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.5rem;
+      line-height: 1.4;
+    }
+    .idea-body {
+      font-size: 0.9rem;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    /* Pillars Showcase */
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    .pillar-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.7) 100%);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.75rem;
+      position: relative;
+    }
+    .pillar-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      border-radius: 14px 14px 0 0;
+    }
+    .p-1::before { background: var(--cyan); }
+    .p-2::before { background: var(--emerald); }
+    .p-3::before { background: var(--accent); }
+    .p-4::before { background: var(--amber); }
+
+    .pillar-icon {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .pillar-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.5rem;
+    }
+    .pillar-desc {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+    .pillar-list {
+      list-style: none;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+    .pillar-list li {
+      padding: 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pillar-list li::before {
+      content: '✓';
+      color: var(--emerald);
+      font-weight: 700;
+    }
+
+    /* Simulator / Mock UI Component */
+    .mock-cockpit {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 3.5rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .mock-header {
+      background: #1e293b;
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #334155;
+    }
+    .mock-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .mock-title { font-size: 0.8rem; font-family: var(--font-mono); color: #94a3b8; }
+    .mock-body {
+      padding: 1.5rem;
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 1.5rem;
+      min-height: 380px;
+    }
+    @media (max-width: 768px) {
+      .mock-body { grid-template-columns: 1fr; }
+    }
+    .mock-sidebar {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 10px;
+      padding: 0.75rem;
+      border: 1px solid #1e293b;
+    }
+    .mock-nav-item {
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+    .mock-nav-item.active {
+      background: rgba(99, 102, 241, 0.2);
+      color: #c7d2fe;
+      font-weight: 600;
+    }
+    .mock-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .mock-kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 0.75rem;
+    }
+    .mock-kpi-box {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.75rem;
+    }
+    .mock-kpi-title { font-size: 0.7rem; color: #64748b; text-transform: uppercase; }
+    .mock-kpi-num { font-size: 1.25rem; font-weight: 700; color: #fff; font-family: var(--font-mono); }
+    .mock-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+    }
+    .mock-table th {
+      text-align: left;
+      padding: 8px 12px;
+      background: rgba(30, 41, 59, 0.5);
+      color: #94a3b8;
+      border-bottom: 1px solid #334155;
+    }
+    .mock-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      color: #64748b;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="badge">Toowix Mail Platform • BMad Brainstorming</div>
+    <h1>Super Admin Overhaul: The Operator Cockpit</h1>
+    <p class="subtitle">
+      A 100-idea divergent exploration into transforming the Toowix Super Admin portal from a passive configuration console into a proactive, high-density, mission-critical MailOps command center.
+    </p>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-val" id="stat-count">100</div>
+        <div class="stat-label">Total Ideas Generated</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">10</div>
+        <div class="stat-label">Creative Lenses & Techniques</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color: var(--emerald);">4</div>
+        <div class="stat-label">Core Strategic Pillars</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color: var(--cyan);">0ms</div>
+        <div class="stat-label">Target Triage Latency (⌘K)</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- Interactive Search / Filter -->
+    <div class="cmd-bar-container">
+      <span style="color: #6366f1; font-weight: 700;">⌘K</span>
+      <input type="text" id="searchInput" class="cmd-input" placeholder="Type to filter ideas across all 10 lenses (e.g. Stalwart, DNS, Impersonate, Quota, Dark Mode)..." oninput="filterIdeas()">
+      <span class="cmd-shortcut">ESC to clear</span>
+    </div>
+
+    <!-- Strategic Pillars -->
+    <div class="section-title">
+      <span>🏛️</span> The 4 Strategic Architectural Pillars
+    </div>
+    <p class="section-desc">
+      Synthesized from the 100 divergent breakthroughs: the four non-negotiable directions that will define the modern Super Admin experience.
+    </p>
+
+    <div class="pillars-grid">
+      <div class="pillar-card p-1">
+        <div class="pillar-icon">⚡</div>
+        <div class="pillar-title">High-Density Operator UI</div>
+        <div class="pillar-desc">Vim/Linear-speed triage with zero fluff, slide-overs, and zero context switching.</div>
+        <ul class="pillar-list">
+          <li>Global ⌘K Command Palette</li>
+          <li>Slide-over drawers instead of modal loops</li>
+          <li>OLED Dark theme for NOC night shifts</li>
+          <li>Instant humanized relative timestamps</li>
+        </ul>
+      </div>
+
+      <div class="pillar-card p-2">
+        <div class="pillar-icon">🛡️</div>
+        <div class="pillar-title">Proactive MailOps Engine</div>
+        <div class="pillar-desc">Active real-time telemetry into Stalwart, GoDaddy DNS, and delivery queues.</div>
+        <ul class="pillar-list">
+          <li>Live DNS drift reconciler with 1-click fix</li>
+          <li>Direct Stalwart JMAP/SMTP test bridge</li>
+          <li>Real-time outbound queue flusher</li>
+          <li>Continuous IP RBL blacklist monitor</li>
+        </ul>
+      </div>
+
+      <div class="pillar-card p-3">
+        <div class="pillar-icon">🎯</div>
+        <div class="pillar-title">Tenant 360 & Governance</div>
+        <div class="pillar-desc">Comprehensive tenant hub with safe impersonation and non-destructive guardrails.</div>
+        <ul class="pillar-list">
+          <li>15-min cryptographic STS impersonation</li>
+          <li>Two-person authorization for tenant purges</li>
+          <li>Safe quarantine hold sandbox</li>
+          <li>Automated 2PC provisioning rollback</li>
+        </ul>
+      </div>
+
+      <div class="pillar-card p-4">
+        <div class="pillar-icon">💎</div>
+        <div class="pillar-title">Monetization & Intelligence</div>
+        <div class="pillar-desc">SaaS billing intelligence, custom overrides, and zero-loss bulk migrations.</div>
+        <ul class="pillar-list">
+          <li>Stripe webhook auto-sync healer</li>
+          <li>85%+ storage quota upsell heatmap</li>
+          <li>Google/M365 bulk CSV migration wizard</li>
+          <li>1-click sanitized diagnostic bundles</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Live Concept Mockup -->
+    <div class="section-title">
+      <span>🖥️</span> Interactive Blueprint: The Operator Cockpit
+    </div>
+    <p class="section-desc">
+      A preview of how the unified 360-degree Tenant Hub and Command Center replaces disjointed views.
+    </p>
+
+    <div class="mock-cockpit">
+      <div class="mock-header">
+        <div class="mock-dots">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+        </div>
+        <div class="mock-title">toowix.operator.internal — [ACME CORP HUB]</div>
+        <div style="font-size: 0.75rem; color: #10b981; font-family: var(--font-mono);">● STALWART CLUSTER: OPTIMAL</div>
+      </div>
+      <div class="mock-body">
+        <div class="mock-sidebar">
+          <div class="mock-nav-item active">⚡ 360 Overview</div>
+          <div class="mock-nav-item">🌐 Domains (4)</div>
+          <div class="mock-nav-item">📬 Mailboxes (142)</div>
+          <div class="mock-nav-item">📊 Deliverability Score</div>
+          <div class="mock-nav-item">💳 Stripe & Plans</div>
+          <div class="mock-nav-item">📜 Audit Trail</div>
+          <div style="margin-top: 1.5rem; padding-top: 0.75rem; border-top: 1px solid #1e293b;">
+            <button style="width: 100%; background: #4f46e5; color: #fff; border: none; padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer;">
+              👤 Impersonate (STS)
+            </button>
+          </div>
+        </div>
+        <div class="mock-content">
+          <div class="mock-kpi-row">
+            <div class="mock-kpi-box">
+              <div class="mock-kpi-title">Health Score</div>
+              <div class="mock-kpi-num" style="color: #10b981;">98 / 100</div>
+            </div>
+            <div class="mock-kpi-box">
+              <div class="mock-kpi-title">DNS Matrix</div>
+              <div class="mock-kpi-num" style="color: #38bdf8;">100% Valid</div>
+            </div>
+            <div class="mock-kpi-box">
+              <div class="mock-kpi-title">Storage Used</div>
+              <div class="mock-kpi-num" style="color: #f59e0b;">412 GB (68%)</div>
+            </div>
+            <div class="mock-kpi-box">
+              <div class="mock-kpi-title">Stalwart Spool</div>
+              <div class="mock-kpi-num">0 Frozen</div>
+            </div>
+          </div>
+
+          <table class="mock-table">
+            <thead>
+              <tr>
+                <th>Domain Name</th>
+                <th>Provider</th>
+                <th>MX & SPF</th>
+                <th>DKIM (2048-bit)</th>
+                <th>DMARC</th>
+                <th>Quick Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight: 600; color: #fff;">acme-corp.com</td>
+                <td><span style="color: #93c5fd;">GoDaddy API</span></td>
+                <td><span style="color: #10b981;">● Verified</span></td>
+                <td><span style="color: #10b981;">● Selector: twx1</span></td>
+                <td><span style="color: #10b981;">p=reject</span></td>
+                <td>
+                  <button style="background: rgba(255,255,255,0.08); border: 1px solid #475569; color: #cbd5e1; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Test JMAP</button>
+                </td>
+              </tr>
+              <tr>
+                <td style="font-weight: 600; color: #fff;">mail.acme-corp.com</td>
+                <td><span style="color: #cbd5e1;">External DNS</span></td>
+                <td><span style="color: #10b981;">● Verified</span></td>
+                <td><span style="color: #10b981;">● Selector: twx1</span></td>
+                <td><span style="color: #f59e0b;">p=none (warn)</span></td>
+                <td>
+                  <button style="background: rgba(255,255,255,0.08); border: 1px solid #475569; color: #cbd5e1; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Re-verify</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Technique Selector Tabs -->
+    <div class="section-title">
+      <span>💡</span> The 100 Ideas Across 10 Creative Lenses
+    </div>
+    <p class="section-desc">
+      Explore ideas categorized by each divergent thinking technique, or filter dynamically using the search bar above.
+    </p>
+
+    <div class="nav-tabs" id="techniqueTabs">
+      <button class="tab-btn active" onclick="setTechniqueFilter('all')">All Ideas (100)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('first-principles')">First Principles (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('reverse')">Reverse & Anti-Disaster (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('cross')">Cross-Pollination (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('scamper')">SCAMPER (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('personas')">Stakeholder Personas (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('crazy8s')">Crazy 8s Superpowers (8)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('whatif')">What-If Scenarios (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('chaos')">Chaos & Edge Cases (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('lotus')">Lotus Blossom (10)</button>
+      <button class="tab-btn" onclick="setTechniqueFilter('dream')">Dream Fusion Climax (10)</button>
+    </div>
+
+    <!-- Ideas Grid -->
+    <div class="ideas-grid" id="ideasGrid">
+      <!-- Populated dynamically via JS from the 100 generated items -->
+    </div>
+
+  </div>
+
+  <footer>
+    <p>Toowix Mail Platform • Super Admin Overhaul Ideation Keepsake</p>
+    <p style="margin-top: 4px;">Generated autonomously via BMad Brainstorming Skill • Status: Complete</p>
+  </footer>
+
+  <script>
+    const ideas = [
+      // 1. First Principles
+      { num: 1, tag: "first-principles", tagLabel: "First Principles", title: "Zero-Latency Tenant Impersonation", body: "Super Admin can 'View as Tenant Admin' or 'View Webmail' via a temporary cryptographically scoped STS token that expires in 15m and logs every operator action to the platform audit log." },
+      { num: 2, tag: "first-principles", tagLabel: "First Principles", title: "Atomic Provisioning Rollback", body: "If Stalwart domain creation, GoDaddy DNS record insertion, or MongoDB tenant document creation fails midway, run automated 2PC rollback with a compensator queue rather than leaving orphan records." },
+      { num: 3, tag: "first-principles", tagLabel: "First Principles", title: "Single-Pane Deliverability Scorecard", body: "Deconstruct tenant health into 4 mathematical bedrock metrics: DNS Integrity (SPF/DKIM/DMARC), Inbound Acceptance Rate, Outbound Bounce/Complaint Ratio, and Quota Headroom." },
+      { num: 4, tag: "first-principles", tagLabel: "First Principles", title: "Dynamic Throttle Engine", body: "Expose Stalwart's rate-limiting rules directly in the Super Admin UI so operators can cap aggressive bulk senders per hour without SSHing into Stalwart config." },
+      { num: 5, tag: "first-principles", tagLabel: "First Principles", title: "True Isolation Visibility", body: "Display tenant physical storage footprint, Stalwart partition usage, and MongoDB index sizes directly inside the tenant overview rather than relying on host OS monitors." },
+      { num: 6, tag: "first-principles", tagLabel: "First Principles", title: "Direct Stalwart JMAP/REST API Bridge", body: "A built-in diagnostic console inside Super Admin allowing operators to test raw JMAP queries against Stalwart for any specific tenant account without external Postman setups." },
+      { num: 7, tag: "first-principles", tagLabel: "First Principles", title: "Stateless Admin Sessions with Hardware 2FA", body: "Enforce WebAuthn/FIDO2 hardware keys or TOTP for all Super Admin mutations with re-auth prompts for destructive actions." },
+      { num: 8, tag: "first-principles", tagLabel: "First Principles", title: "Granular Super Admin RBAC", body: "Split platform administration into 4 distinct roles: Support Tech (read-only + password reset), Billing Manager (plans & coupons), MailOps Engineer (DNS, Stalwart, delivery queues), and Platform Owner (full destructive rights)." },
+      { num: 9, tag: "first-principles", tagLabel: "First Principles", title: "Global Emergency Circuit Breakers", body: "Global one-click 'Freeze Outbound SMTP' or 'Maintenance Mode' button to arrest zero-day spam outbreaks or provider network outages instantly." },
+      { num: 10, tag: "first-principles", tagLabel: "First Principles", title: "Self-Healing DNS Engine", body: "A scheduled background reconciler that detects GoDaddy DNS drift (records changed or deleted outside the platform) and prompts Super Admin with a 1-click 'Restore DNS Matrix' button." },
+
+      // 2. Reverse Brainstorming
+      { num: 11, tag: "reverse", tagLabel: "Anti-Disaster", title: "Two-Person Rule for Tenant Purging", body: "Irreversible tenant deletion or data scrubbing requires sign-off from two independent Super Admins, preventing rogue or compromised account wiping." },
+      { num: 12, tag: "reverse", tagLabel: "Anti-Disaster", title: "Safe Mode Quarantine Sandbox", body: "Instead of outright terminating suspicious tenants, a 1-click 'Quarantine' routes their outbound mail to a Stalwart test sink/hold queue while notifying the tenant admin." },
+      { num: 13, tag: "reverse", tagLabel: "Anti-Disaster", title: "Accidental Coupon Leak Guard", body: "Strict safety caps on coupons (per-tenant redemption limits, max lifetime discounts, expiry dates, and required billing manager approval for >50% discounts)." },
+      { num: 14, tag: "reverse", tagLabel: "Anti-Disaster", title: "Auto-Dunning Grace Period Visualizer", body: "Clearly flag tenants with failed Stripe payments in an 'At-Risk' pipeline with automated grace periods before their Stalwart mailboxes are throttled or locked." },
+      { num: 15, tag: "reverse", tagLabel: "Anti-Disaster", title: "Spam Blast Tripwires", body: "Real-time trigger that fires when any mailbox sends >500 emails in 10 minutes or exceeds 5% bounce rate, automatically pausing the mailbox and dispatching an incident banner." },
+      { num: 16, tag: "reverse", tagLabel: "Anti-Disaster", title: "Password Reset Blast Shield", body: "Admin password resets generate a time-limited one-time link sent out-of-band (or copyable secure token) rather than setting plaintext passwords in the browser." },
+      { num: 17, tag: "reverse", tagLabel: "Anti-Disaster", title: "DNS Overwrite Warning Matrix", body: "When adding custom domains, verify that the domain isn't already assigned to another tenant or possessing active MX records elsewhere before GoDaddy sync." },
+      { num: 18, tag: "reverse", tagLabel: "Anti-Disaster", title: "Dry-Run Action Simulator", body: "For dangerous operations (bulk plan upgrades, system-wide config pushes, mailbox pruning), provide a 'Simulate Run' modal displaying affected tenants and projected diffs." },
+      { num: 19, tag: "reverse", tagLabel: "Anti-Disaster", title: "Platform Certificate Expiry Early Warning", body: "Track SSL/TLS certs for Stalwart IMAP/SMTP/JMAP endpoints and custom tenant webmail hostnames with countdown alerts at 30, 14, and 3 days." },
+      { num: 20, tag: "reverse", tagLabel: "Anti-Disaster", title: "Blast-Radius Filter for Global Announcements", body: "When broadcasting maintenance notices, filter by affected clusters/domains so unaffected tenants are not unnecessarily alarmed." },
+
+      // 3. Cross Pollination
+      { num: 21, tag: "cross", tagLabel: "Cross-Pollination", title: "Cloudflare Radar Style Mail Flow Map", body: "Interactive visual map showing real-time email throughput, delivery latency percentiles (p50, p95, p99), and inbound TLS cipher distribution." },
+      { num: 22, tag: "cross", tagLabel: "Cross-Pollination", title: "Stripe-Style Test Mode / Sandbox", body: "Toggle Super Admin between 'Live' and 'Sandbox' mode to test provisioning flows, webhook handling, and plan adjustments with mock data." },
+      { num: 23, tag: "cross", tagLabel: "Cross-Pollination", title: "Datadog-Style Live Log Stream & Filter", body: "Embedded streaming terminal in System Operations filtering Stalwart logs, GoDaddy API transactions, and backend auth events with regex and severity tagging." },
+      { num: 24, tag: "cross", tagLabel: "Cross-Pollination", title: "AWS CloudTrail-Style Immutable Event Trail", body: "Searchable audit log with diff JSON views for every state mutation (who changed tenant quota from 10GB to 50GB, at what timestamp, from which IP)." },
+      { num: 25, tag: "cross", tagLabel: "Cross-Pollination", title: "Shopify Org Admin Style Multi-Tenant Switcher", body: "Quick top-bar switcher allowing operators to jump directly to any tenant's workspace with a keyboard search (⌘K)." },
+      { num: 26, tag: "cross", tagLabel: "Cross-Pollination", title: "Linear-Style Command Palette (⌘K / Ctrl+K)", body: "Global spotlight search across tenants, domains, mailboxes, coupons, audit events, and admin action commands with zero mouse clicks." },
+      { num: 27, tag: "cross", tagLabel: "Cross-Pollination", title: "GitHub-Style Issue & Task Escalations", body: "Internal operator notes and task checklists attached to tenants (e.g. 'Waiting for customer DNS verification on domain X; follow up with CEO on Monday')." },
+      { num: 28, tag: "cross", tagLabel: "Cross-Pollination", title: "Vercel-Style Integration Health Pills", body: "Pulsing green/amber/red status indicators next to Stalwart, MongoDB, Redis, and GoDaddy integrations with instantaneous tooltip breakdowns." },
+      { num: 29, tag: "cross", tagLabel: "Cross-Pollination", title: "Postman-Style Webhook Tester & Payload Replayer", body: "In-app webhook event debugger showing past delivery attempts to tenant webhook endpoints with a 1-click 'Resend Payload' button." },
+      { num: 30, tag: "cross", tagLabel: "Cross-Pollination", title: "Intercom-Style In-App Operator Banners", body: "Ability for Super Admin to publish in-app dismissible announcement banners directly into the Tenant Admin and Webmail interfaces." },
+
+      // 4. SCAMPER
+      { num: 31, tag: "scamper", tagLabel: "SCAMPER", title: "Substitute: Virtualized Responsive Tables", body: "Replace static paginated tables with high-performance virtualized tables supporting multi-column sorting, sticky headers, and inline column reordering." },
+      { num: 32, tag: "scamper", tagLabel: "SCAMPER", title: "Combine: Unified Operations Command Center", body: "Unify 'System Operations', 'Health', and 'Alerts' into a single unified 'Command Center' with tabbed drill-downs instead of scattered navigation points." },
+      { num: 33, tag: "scamper", tagLabel: "SCAMPER", title: "Adapt: Stalled Onboarding Pipeline", body: "Adapt e-commerce cart abandonment mechanics into a 'Stalled Tenant Onboarding' funnel to identify tenants who signed up but never configured their domain." },
+      { num: 34, tag: "scamper", tagLabel: "SCAMPER", title: "Modify: Dynamic 360-Degree Tenant Hub", body: "Transform the static 'Tenant Detail' page into a dynamic 360-degree Tenant Hub with tabs for Overview, Domains, Mailboxes, Deliverability, Billing, Audit Trail, and Operator Notes." },
+      { num: 35, tag: "scamper", tagLabel: "SCAMPER", title: "Put-to-Other-Use: Deliverability Trust Badges", body: "Turn GoDaddy DNS verification polling into a proactive deliverability health badge that tenants can display on their marketing sites to boost trust." },
+      { num: 36, tag: "scamper", tagLabel: "SCAMPER", title: "Eliminate: Slide-Over Drawers vs. Modals", body: "Remove redundant modal-in-modal flows in favor of sliding side drawers (slide-overs) that preserve operator scroll state and context." },
+      { num: 37, tag: "scamper", tagLabel: "SCAMPER", title: "Reverse: Self-Serve Tenant Onboarding Links", body: "Invert tenant creation from a manual Super Admin chore into an automated self-serve invitation link where the customer completes their own credentials securely." },
+      { num: 38, tag: "scamper", tagLabel: "SCAMPER", title: "Substitute: Humanized Relative Timestamps", body: "Replace raw ISO timestamp strings across all tables with humanized relative times ('12m ago') accompanied by exact UTC tooltips." },
+      { num: 39, tag: "scamper", tagLabel: "SCAMPER", title: "Combine: Unified Monetization Suite", body: "Merge Plan management and Coupon management into a cohesive 'Monetization & Pricing' suite with lifetime revenue projections." },
+      { num: 40, tag: "scamper", tagLabel: "SCAMPER", title: "Eliminate: Eradicate Dead Code & Empty Stubs", body: "Eradicate dead routes and placeholder UI components completely, ensuring every button has an immediate reactive feedback loop." },
+
+      // 5. Stakeholder Personas
+      { num: 41, tag: "personas", tagLabel: "Stakeholder Personas", title: "Support Persona: 30-Second Triage Widget", body: "A single search box where pasting any email address immediately displays tenant name, mailbox status, quota used, last login IP, and quick-reset buttons." },
+      { num: 42, tag: "personas", tagLabel: "Stakeholder Personas", title: "Support Persona: Mail Delivery Traceroute", body: "Search an email message-ID to see whether it was received by Stalwart, filtered by spam rules, queued, delivered, or rejected." },
+      { num: 43, tag: "personas", tagLabel: "Stakeholder Personas", title: "DevOps Persona: Stalwart Mail Queue Inspector", body: "View real-time active, deferred, and frozen queues in Stalwart, with options to flush queues, retry delivery, or purge spam runs." },
+      { num: 44, tag: "personas", tagLabel: "Stakeholder Personas", title: "DevOps Persona: Live Node Resource Telemetry", body: "Real-time CPU, RAM, disk I/O, open socket count, and SMTP concurrency meters for the Stalwart cluster." },
+      { num: 45, tag: "personas", tagLabel: "Stakeholder Personas", title: "Compliance Persona: Legal Hold & E-Discovery Flag", body: "Lock a tenant or mailbox so emails cannot be hard-deleted or purged, supporting regulatory and litigation compliance." },
+      { num: 46, tag: "personas", tagLabel: "Stakeholder Personas", title: "Compliance Persona: GDPR Right-to-be-Forgotten", body: "Automated checklist that purges all PII, logs, backups, and mailbox archives for a requested subject with an audit certificate." },
+      { num: 47, tag: "personas", tagLabel: "Stakeholder Personas", title: "Revenue Persona: MRR / ARR Cohort Analytics", body: "Visualize monthly recurring revenue, churn rate, plan distribution, expansion revenue, and average revenue per tenant (ARPU)." },
+      { num: 48, tag: "personas", tagLabel: "Stakeholder Personas", title: "Revenue Persona: Storage Upsell Heatmap", body: "Identify tenants who are nearing 85%+ of their mailbox or storage quota to trigger targeted plan upgrade notifications." },
+      { num: 49, tag: "personas", tagLabel: "Stakeholder Personas", title: "Security Persona: Privileged Session Recordings", body: "Comprehensive log of every time any Super Admin viewed tenant data, with recorded session video or exact action breadcrumbs." },
+      { num: 50, tag: "personas", tagLabel: "Stakeholder Personas", title: "Customer Success Persona: Algorithmic Health Score", body: "Algorithmic 1-100 score combining login frequency, domain setup completion, mailbox usage, and open support incidents." },
+
+      // 6. Crazy 8s
+      { num: 51, tag: "crazy8s", tagLabel: "Crazy 8s", title: "Bulk Tenant Migration Wizard", body: "Guided workflow to import domains, mailboxes, and aliases in bulk from Google Workspace, Microsoft 365, or cPanel via CSV or IMAP sync engine." },
+      { num: 52, tag: "crazy8s", tagLabel: "Crazy 8s", title: "Automated DKIM Key Rotation", body: "One-click or scheduled 1024/2048-bit DKIM key re-generation that pushes updated public keys to GoDaddy DNS and synchronizes Stalwart selectors seamlessly." },
+      { num: 53, tag: "crazy8s", tagLabel: "Crazy 8s", title: "Emergency Blacklist & RBL Monitor", body: "Continuous background monitoring of platform sending IPs against major RBLs (Spamhaus, Barracuda, SORBS) with instant Slack/webhook alerts." },
+      { num: 54, tag: "crazy8s", tagLabel: "Crazy 8s", title: "Custom Plan & Override Builder", body: "Capability to create custom negotiated enterprise plans (e.g. 500 mailboxes, 2TB storage) or per-tenant limit overrides without affecting standard Stripe catalog." },
+      { num: 55, tag: "crazy8s", tagLabel: "Crazy 8s", title: "Mailbox Storage Compaction Trigger", body: "On-demand maintenance trigger allowing Super Admin to run Stalwart mailbox compaction and deduplication routines to reclaim disk space." },
+      { num: 56, tag: "crazy8s", tagLabel: "Crazy 8s", title: "1-Click Diagnostics Bundle Exporter", body: "Generates a sanitized ZIP bundle containing Stalwart config snapshots, backend environment health, recent error logs, and DB connectivity metrics for fast troubleshooting." },
+      { num: 57, tag: "crazy8s", tagLabel: "Crazy 8s", title: "Scheduled Platform Broadcast Mailer", body: "Platform-wide transactional mailer to send critical system update announcements to all Tenant Admins with tracking of open and delivery rates." },
+      { num: 58, tag: "crazy8s", tagLabel: "Crazy 8s", title: "Domain Alias & Catch-All Loop Inspector", body: "Detailed view of all domain forwarding rules, catch-all routing, and alias mapping per tenant to detect routing loops." },
+
+      // 7. What-If Scenarios
+      { num: 59, tag: "whatif", tagLabel: "What-If Scenarios", title: "Faceted Search for 100,000 Tenants", body: "Implement faceted search with instant debounced backend filtering, server-side caching, cursor pagination, and high-speed aggregation pipelines." },
+      { num: 60, tag: "whatif", tagLabel: "What-If Scenarios", title: "Cold Standby / Ingress Failover Switch", body: "Introduce a 'Cold Standby / Failover Switch' in Super Admin to redirect inbound MX to a secondary Stalwart node or store-and-forward relay." },
+      { num: 61, tag: "whatif", tagLabel: "What-If Scenarios", title: "GoDaddy API Rate Limit Backoff Queue", body: "Built-in exponential backoff queue with visual status indicators showing pending, retrying, and completed DNS writes." },
+      { num: 62, tag: "whatif", tagLabel: "What-If Scenarios", title: "Touch-Optimized Mobile Operator Console", body: "Fully responsive mobile layout with touch-optimized action menus, biometric authentication, and simplified emergency action buttons." },
+      { num: 63, tag: "whatif", tagLabel: "What-If Scenarios", title: "Night-Shift OLED Dark Mode", body: "Sleek, accessible OLED dark theme with high-contrast status badges and customizable density settings." },
+      { num: 64, tag: "whatif", tagLabel: "What-If Scenarios", title: "Admin API Key Rate Limiting & MFA Guard", body: "Rate limit admin API keys and require MFA confirmation codes for script-executed destructive endpoints." },
+      { num: 65, tag: "whatif", tagLabel: "What-If Scenarios", title: "Global Multi-Resolver Propagation Tracker", body: "Visual DNS propagation tracker displaying global status across multiple global DNS resolvers (Google, Cloudflare, OpenDNS, Quad9)." },
+      { num: 66, tag: "whatif", tagLabel: "What-If Scenarios", title: "Custom Webmail White-Label Theme Manager", body: "White-label settings manager allowing Super Admin to configure custom logo, login page background, favicon, and primary hex colors per tenant." },
+      { num: 67, tag: "whatif", tagLabel: "What-If Scenarios", title: "Multi-Region Cluster & Data Residency Assignor", body: "Multi-region cluster selector assigning tenants to specific Stalwart storage nodes based on EU/US data sovereignty." },
+      { num: 68, tag: "whatif", tagLabel: "What-If Scenarios", title: "Linear-Style Keyboard Navigation Shortcuts", body: "Vim-style or Linear-style hotkeys (g+t for tenants, g+s for system, / for search, j/k for list navigation, esc to close modals)." },
+
+      // 8. Chaos Engineering
+      { num: 69, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Zombie Trial Tenant Detector", body: "Automated flagging of abandoned trial tenants with zero mailboxes created after 14 days, offering 1-click batch cleanup to free up domain names." },
+      { num: 70, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Stalwart-MongoDB Orphan Reconciler", body: "Tool to detect and clean up mailboxes in Stalwart that have no corresponding record in MongoDB, or vice-versa." },
+      { num: 71, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "DNS Split-Brain Early Warning Alert", body: "Warns when an external DNS record points to a different IP than the platform's Stalwart ingress gateway." },
+      { num: 72, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Stripe Webhook Desync Auto-Healer", body: "1-click reconciler that queries Stripe customer subscriptions and corrects mismatched subscription statuses in MongoDB." },
+      { num: 73, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Runaway Outbound Spam Spool Purger", body: "Emergency tool to drain and delete specific spam runs from the outbound spool without dropping legitimate customer traffic." },
+      { num: 74, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Global Stale Session Emergency Terminator", body: "Global action allowing Super Admin to invalidate all active JWTs, refresh tokens, and browser sessions across all tenants or for a specific compromised org." },
+      { num: 75, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Database Connection Pool & Slow Query Monitor", body: "Real-time gauge of MongoDB connection pool saturation, slow queries (>100ms), and unindexed query warnings." },
+      { num: 76, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Internal Spam Trap & Honeypot Interceptor", body: "Ability to designate specific addresses as internal honeypots to catch compromised customer mailboxes sending directory harvest attacks." },
+      { num: 77, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Configurable Quota Overage Grace Buffer", body: "Configurable 5% grace buffer on mailbox quotas that sends an alert to the user instead of bouncing incoming business emails abruptly." },
+      { num: 78, tag: "chaos", tagLabel: "Chaos & Edge Cases", title: "Automated Nightly Backup Integrity Verifier", body: "Super Admin dashboard widget displaying verification status of automated MongoDB dumps and Stalwart blob store snapshots." },
+
+      // 9. Lotus Blossom
+      { num: 79, tag: "lotus", tagLabel: "Lotus Blossom", title: "Executive KPI Header & Throughput SLA", body: "Unified Executive KPI Header displaying Total Tenants, Total Active Mailboxes, 24h Message Volume, and Platform Uptime SLA." },
+      { num: 80, tag: "lotus", tagLabel: "Lotus Blossom", title: "Collapsible Real-Time Incident Ticker", body: "Real-time Incident Ticker showing active DNS warnings, queue spikes, or payment failures in a collapsible top bar." },
+      { num: 81, tag: "lotus", tagLabel: "Lotus Blossom", title: "Visual Provisioning Progress Stepper", body: "Visual Provisioning Stepper showing real-time progress (Stalwart Account -> GoDaddy DNS -> TLS Certificate -> Welcome Email)." },
+      { num: 82, tag: "lotus", tagLabel: "Lotus Blossom", title: "Multi-Criteria Faceted Filter Toolbar", body: "Multi-Criteria Filter Bar (filter by Plan, Status: Active/Suspended/Trial, Storage > 80%, Domain Provider)." },
+      { num: 83, tag: "lotus", tagLabel: "Lotus Blossom", title: "Batch Action Toolbar with Undo Buffer", body: "Bulk Action Toolbar (Bulk Suspend, Bulk Plan Upgrade, Bulk Tagging, Bulk Export to CSV)." },
+      { num: 84, tag: "lotus", tagLabel: "Lotus Blossom", title: "Interactive DNS Diagnostic Drawer", body: "Interactive DNS Diagnostic Drawer displaying exact required vs. actual DNS records with 1-click copy for manual DNS configs." },
+      { num: 85, tag: "lotus", tagLabel: "Lotus Blossom", title: "Spam & Anti-Virus Signature Freshness Monitor", body: "Spam & Virus Engine Status showing ClamAV/Rspamd signature database freshness, rule counts, and false-positive quarantine review." },
+      { num: 86, tag: "lotus", tagLabel: "Lotus Blossom", title: "Stripe Integration Health & MRR Curve", body: "Stripe Integration Hub showing live webhook health, API key status, failed invoice retry schedules, and MRR growth curve." },
+      { num: 87, tag: "lotus", tagLabel: "Lotus Blossom", title: "Granular Promo Code Generator & Attribution", body: "Granular Promo Code Generator with usage tracking, referral attribution, and custom trial extension abilities." },
+      { num: 88, tag: "lotus", tagLabel: "Lotus Blossom", title: "Immutable Audit Trail with Geolocation Diff", body: "Comprehensive Audit Log with searchable IP geolocation, user agent analysis, and full before/after JSON diffs." },
+
+      // 10. Dream Fusion Climax
+      { num: 89, tag: "dream", tagLabel: "Dream Fusion", title: "The Autonomous MailOps Copilot", body: "Natural language query box ('Show me tenants whose bounce rate doubled this week', 'Find mailboxes with zero logins in 60 days', 'Upgrade Acme Corp to Pro')." },
+      { num: 90, tag: "dream", tagLabel: "Dream Fusion", title: "Instant Predictive Deliverability AI", body: "Pre-flight sender reputation modeling that predicts domain deliverability before campaigns are sent based on Stalwart historical metrics." },
+      { num: 91, tag: "dream", tagLabel: "Dream Fusion", title: "Zero-Distraction Zen Operator Mode", body: "High-focus operator layout stripping unnecessary chrome, leaving only data tables, shortcut hints, and live metrics." },
+      { num: 92, tag: "dream", tagLabel: "Dream Fusion", title: "Customizable Modular Dashboard Widgets", body: "Drag-and-drop widget layout where operators can pin their most critical charts, queues, and tenant watchlists." },
+      { num: 93, tag: "dream", tagLabel: "Dream Fusion", title: "Integrated Contextual Knowledge Base & Runbooks", body: "Embedded runbooks directly alongside error banners (e.g. clicking 'Stalwart 550 Mailbox Full' opens the exact operational mitigation steps)." },
+      { num: 94, tag: "dream", tagLabel: "Dream Fusion", title: "Universal Omnisearch Index (<10ms Latency)", body: "Top-level unified search indexing tenants, domains, mailboxes, aliases, coupons, audit logs, and documentation in <10ms." },
+      { num: 95, tag: "dream", tagLabel: "Dream Fusion", title: "Cross-Tenant Domain Transfer Wizard", body: "Safe guided flow to transfer a domain and its mailboxes from one tenant org to another without downtime or data loss." },
+      { num: 96, tag: "dream", tagLabel: "Dream Fusion", title: "Tenant Admin Magic Login Link Generator", body: "Ability to generate secure, one-click time-expiring magic login links for tenant admins requesting support." },
+      { num: 97, tag: "dream", tagLabel: "Dream Fusion", title: "Synthetic Ingress Circuit Monitoring", body: "Synthetic pinging of platform MX, IMAP, and SMTP ports from 5 global nodes with latency heatmaps." },
+      { num: 98, tag: "dream", tagLabel: "Dream Fusion", title: "Direct JMAP Query Debugger with Schema Autocomplete", body: "Built-in visual query builder for Stalwart JMAP methods (Mailbox/get, Email/query) to inspect mailbox state without raw terminal tools." },
+      { num: 99, tag: "dream", tagLabel: "Dream Fusion", title: "Automated Dunning Retries with In-App Grace Banners", body: "Synchronized Stripe billing engine that gracefully degrades tenant mailbox creation while maintaining inbound email delivery during payment disputes." },
+      { num: 100, tag: "dream", tagLabel: "Dream Fusion", title: "The Unified Next-Gen Super Admin Cockpit", body: "A lightning-fast, beautifully unified, high-density cockpit combining sleek dark/light aesthetic, instant keyboard triage, foolproof safeguards, and deep Stalwart/GoDaddy/Stripe automation." }
+    ];
+
+    let currentFilter = 'all';
+
+    function renderIdeas(items) {
+      const container = document.getElementById('ideasGrid');
+      container.innerHTML = '';
+      items.forEach(idea => {
+        const card = document.createElement('div');
+        card.className = 'idea-card';
+        card.innerHTML = `
+          <div class="idea-num">#${idea.num.toString().padStart(3, '0')}</div>
+          <span class="idea-tag tag-${idea.tag}">${idea.tagLabel}</span>
+          <div class="idea-title">${idea.title}</div>
+          <div class="idea-body">${idea.body}</div>
+        `;
+        container.appendChild(card);
+      });
+      document.getElementById('stat-count').textContent = items.length;
+    }
+
+    function setTechniqueFilter(tag) {
+      currentFilter = tag;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      filterIdeas();
+    }
+
+    function filterIdeas() {
+      const query = document.getElementById('searchInput').value.toLowerCase().trim();
+      const filtered = ideas.filter(idea => {
+        const matchesTag = (currentFilter === 'all') || (idea.tag === currentFilter);
+        const matchesQuery = !query || 
+          idea.title.toLowerCase().includes(query) || 
+          idea.body.toLowerCase().includes(query) || 
+          idea.tagLabel.toLowerCase().includes(query);
+        return matchesTag && matchesQuery;
+      });
+      renderIdeas(filtered);
+    }
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        document.getElementById('searchInput').focus();
+      }
+      if (e.key === 'Escape') {
+        document.getElementById('searchInput').value = '';
+        filterIdeas();
+      }
+    });
+
+    // Initial render
+    renderIdeas(ideas);
+  </script>
+</body>
+</html>

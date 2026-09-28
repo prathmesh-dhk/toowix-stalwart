@@ -22,7 +22,7 @@ interface DomainSetupModalProps {
 }
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
-export type WizardStep = 'domain' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'status' | 'plan';
+export type WizardStep = 'domain' | 'method' | 'godaddy' | 'hostinger' | 'cloudflare' | 'zonefile' | 'status' | 'plan';
 export type SetupMethod = 'provider' | 'manual' | null;
 
 export const PROVIDER_LABEL: Record<DnsProvider, string> = {
@@ -45,6 +45,7 @@ const STEP_TOP_PADDING: Record<WizardStep, string> = {
   godaddy: 'pt-4 sm:pt-16 md:pt-20 lg:pt-24 xl:pt-[20vh]',
   hostinger: 'pt-4 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
   cloudflare: 'pt-4 sm:pt-18 md:pt-22 lg:pt-28 xl:pt-[22vh]',
+  zonefile: 'pt-4 sm:pt-12 lg:pt-16 xl:pt-[12vh]',
   status: 'pt-4 sm:pt-12 lg:pt-16 xl:pt-[12vh]',
 };
 
@@ -192,8 +193,16 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
       navigateBack('domain');
     } else if (step === 'godaddy' || step === 'hostinger' || step === 'cloudflare') {
       navigateBack('method');
-    } else if (step === 'status') {
+    } else if (step === 'zonefile') {
       if (methodAutoSkipped) {
+        navigateBack('domain');
+      } else {
+        navigateBack('method');
+      }
+    } else if (step === 'status') {
+      if (method === 'manual') {
+        navigateBack('zonefile');
+      } else if (methodAutoSkipped) {
         navigateBack('method');
       } else if (method === 'provider') {
         navigateBack(provider);
@@ -243,15 +252,20 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         const avail = await api.checkDomainAvailability(clean);
         if (!avail.available) {
           setError(
-            avail.ownedByYou
+            (avail as any).message ||
+            (avail.ownedByYou
               ? "You've already added this domain to your organization. Manage it from the Domains tab."
-              : 'This domain is already registered on Toowix by another organization. If you own it, contact support.'
+              : 'This domain is already registered on Toowix by another organization. If you own it, contact support.')
           );
           setCheckingAvailability(false);
           return;
         }
-      } catch {
-        // If check fails, allow continuing
+      } catch (err: any) {
+        if (err?.message) {
+          setError(err.message);
+          setCheckingAvailability(false);
+          return;
+        }
       }
     }
 
@@ -307,7 +321,15 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
     setError(null);
     setMethod('manual');
     setMethodAutoSkipped(false);
-    goToStatus(createdDomain);
+    navigateTo('zonefile');
+    const target = createdDomain || createdRef.current;
+    if (target) {
+      refreshDnsStatus(target.id);
+    }
+  };
+
+  const handleContinueFromZoneFile = () => {
+    goToStatus(createdDomain || createdRef.current);
   };
 
   // ADVANCE TO STATUS STEP
@@ -442,9 +464,14 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   } else if (step === 'cloudflare') {
     headline = 'Connect Cloudflare';
     subhead = `Scoped to DNS management only, for ${createdDomain?.domainName || domainName}.`;
+  } else if (step === 'zonefile') {
+    headline = `DNS Setup — ${createdDomain?.domainName || domainName}`;
+    subhead = 'Copy the DNS zone file below and add the records to your DNS provider.';
   } else if (step === 'status') {
     headline = `DNS Setup — ${createdDomain?.domainName || domainName}`;
-    subhead = 'Track activation and grab your records, whether or not a provider is connected.';
+    subhead = method === 'manual'
+      ? 'Check your DNS records to confirm propagation, or continue to plan selection.'
+      : 'Track activation and grab your records, whether or not a provider is connected.';
   }
 
   return (
@@ -499,9 +526,9 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
           <main className={`w-full ${step === 'plan' ? 'max-w-xl xl:max-w-2xl' : 'max-w-xl'} shrink-0 ${STEP_TOP_PADDING[step]} ${step !== 'plan' ? 'pb-12' : ''} flex flex-col text-left`}>
             {/* Mobile Step Badge */}
             <div className="sm:hidden mb-4 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold self-start">
-              <span>Step {step === 'domain' ? '1' : step === 'method' || step === 'godaddy' || step === 'hostinger' || step === 'cloudflare' ? '2' : step === 'status' ? '3' : '4'} of 4</span>
+              <span>Step {step === 'domain' ? '1' : step === 'method' || step === 'godaddy' || step === 'hostinger' || step === 'cloudflare' ? '2' : step === 'zonefile' ? '3' : step === 'status' ? (method === 'manual' ? '4' : '3') : (method === 'manual' ? '5' : '4')} of {method === 'manual' ? '5' : '4'}</span>
               <span>•</span>
-              <span className="capitalize">{step === 'domain' ? 'Domain Name' : step === 'status' ? 'Verify DNS' : step === 'plan' ? 'Choose Plan' : 'DNS Setup'}</span>
+              <span className="capitalize">{step === 'domain' ? 'Domain Name' : step === 'zonefile' ? 'Zone File' : step === 'status' ? 'Check Records' : step === 'plan' ? 'Choose Plan' : 'DNS Setup'}</span>
             </div>
 
             {error && (
@@ -827,7 +854,44 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
               </div>
             )}
 
-            {/* STEP 4: STATUS */}
+            {/* STEP: ZONE FILE (Step 1 of Manual DNS Setup) */}
+            {step === 'zonefile' && (
+              <div className="flex flex-col gap-6">
+                <div className="mb-2">
+                  <h1 className="text-3xl sm:text-[34px] font-bold text-slate-900 tracking-tight leading-[1.15]">
+                    {headline}
+                  </h1>
+                  <p className="text-slate-500 text-[15px] mt-3 font-normal leading-relaxed">
+                    {subhead}
+                  </p>
+                </div>
+
+                <DnsStatusPanel
+                  domainName={createdDomain?.domainName || domainName}
+                  status={dnsStatus}
+                  loading={statusLoading}
+                  error={statusError}
+                  onRefresh={() => refreshDnsStatus()}
+                  isManualSetup={true}
+                  viewMode="zone_only"
+                  theme="light"
+                />
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleContinueFromZoneFile}
+                    className="w-full sm:w-auto min-h-[48px] px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                    id="btn-continue-to-check"
+                  >
+                    <span>Continue</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 4: STATUS / CHECK RECORDS */}
             {step === 'status' && (
               <div className="flex flex-col gap-6">
                 <div className="mb-2">
@@ -871,6 +935,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   checking={checkingRecords}
                   liveCheck={liveCheck}
                   isManualSetup={method === 'manual'}
+                  viewMode={method === 'manual' ? 'verify_only' : 'full'}
                   theme="light"
                 />
 
@@ -878,7 +943,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                   <button
                     type="button"
                     onClick={() => navigateTo('plan')}
-                    className="w-full sm:w-auto min-h-[48px] px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full sm:w-auto min-h-[48px] px-8 py-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                     id="btn-continue-to-plan"
                   >
                     <span>Continue to Plan Selection</span>

@@ -20,6 +20,10 @@ import { captureRequestContext } from '../services/request-context.service';
 import { MailboxService } from '../services/mailbox.service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
 import { platformDeletionRouter } from './organisation-deletion.routes';
+import { getTenantBillingSummary } from '../services/billing.service';
+import { DomainSubscriptionModel, DomainSubscriptionStatus } from '../db/models/DomainSubscription';
+import { stripeClient } from '../stripe/client';
+import { isValidMailDomain } from '../utils/domain-validator';
 
 export const platformTenantRouter = Router();
 
@@ -104,6 +108,15 @@ platformTenantRouter.get('/:id', async (req: Request, res: Response) => {
     const activeDomains = domains.filter((d) => d.dnsStatus === 'active').length;
     const totalStorageBytes = mailboxes.reduce((acc, m) => acc + (m.storageBytes || 0), 0);
 
+    // Billing summary is read-only here (reuses the same tenant-facing helper);
+    // never let a Stripe/billing hiccup break the whole detail page.
+    let billing: Awaited<ReturnType<typeof getTenantBillingSummary>> | null = null;
+    try {
+      billing = await getTenantBillingSummary(tenant._id.toString());
+    } catch (err) {
+      console.error('[Get Tenant Error] billing summary failed:', err);
+    }
+
     return res.status(200).json({
       tenant: {
         id: tenant._id.toString(),
@@ -113,7 +126,11 @@ platformTenantRouter.get('/:id', async (req: Request, res: Response) => {
         mailboxCount: tenant.mailboxCount,
         createdAt: tenant.createdAt.toISOString(),
         updatedAt: tenant.updatedAt.toISOString(),
+        operatorNotes: tenant.operatorNotes || '',
+        stripeCustomerId: tenant.stripeCustomerId || null,
+        stripeSubscriptionId: tenant.stripeSubscriptionId || null,
       },
+      billing,
       domains: domains.map((d) => ({
         id: d._id.toString(),
         domainName: d.domainName,
@@ -178,8 +195,8 @@ const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0
 
 const createTenantSchema = z.object({
   name: z.string().min(2, 'Tenant name must be at least 2 characters').max(100),
-  domain: z.string().min(3).refine((val) => DOMAIN_REGEX.test(val.trim().toLowerCase()), {
-    message: 'Invalid domain format (e.g., example.com)',
+  domain: z.string().min(3).refine((val) => isValidMailDomain(val), {
+    message: 'Invalid domain format (requires a valid public domain, e.g. example.com)',
   }),
   mailboxLimit: z.number().int().min(1, 'Mailbox limit must be at least 1').optional(),
 });
@@ -595,6 +612,97 @@ platformTenantRouter.patch('/:id/mailbox-limit', async (req: Request, res: Respo
   await tenant.save();
 
   return res.status(200).json({ success: true, tenant });
+});
+
+// 5b. Update Operator Notes (Super Admin only, free-text support/escalation context)
+const notesSchema = z.object({ notes: z.string().max(10000).optional().default('') });
+
+platformTenantRouter.patch('/:id/notes', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant ID' });
+  }
+
+  const parseResult = notesSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'VALIDATION_ERROR', details: parseResult.error.errors });
+  }
+
+  const tenant = await TenantModel.findById(req.params.id);
+  if (!tenant) return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
+
+  tenant.operatorNotes = parseResult.data.notes;
+  await tenant.save();
+
+  await AuditLogModel.create({
+    actorId: req.adminUser!.id,
+    actorRole: req.adminUser!.role,
+    actorEmail: req.adminUser!.email,
+    actorIp: req.ip,
+    tenantId: tenant._id,
+    action: 'TENANT_NOTES_UPDATED',
+    resource: 'TENANT',
+    resourceId: tenant._id.toString(),
+    status: 'SUCCESS',
+    timestamp: new Date(),
+  });
+
+  return res.status(200).json({ success: true, operatorNotes: tenant.operatorNotes });
+});
+
+// 5c. Sync Tenant Subscription With Stripe (pulls current status/items straight from Stripe;
+// real read-through, not a fabricated success — no-op when the tenant has no subscription yet)
+platformTenantRouter.post('/:id/sync-stripe', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant ID' });
+  }
+
+  const tenant = await TenantModel.findById(req.params.id);
+  if (!tenant) return res.status(404).json({ error: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
+
+  if (!tenant.stripeSubscriptionId) {
+    return res.status(200).json({ success: true, synced: false, message: 'No Stripe subscription on this tenant yet.' });
+  }
+
+  try {
+    const sub = await stripeClient.retrieveSubscriptionExpanded(tenant.stripeSubscriptionId);
+    // Stripe's status vocabulary is a superset of ours (unpaid/paused/incomplete_expired have no
+    // local equivalent yet) — map what we recognize, leave the row's status alone otherwise.
+    const statusMap: Partial<Record<string, DomainSubscriptionStatus>> = {
+      trialing: 'trialing',
+      active: 'active',
+      past_due: 'past_due',
+      canceled: 'canceled',
+      incomplete: 'incomplete',
+    };
+    const mappedStatus = statusMap[sub.status];
+
+    for (const item of sub.items.data) {
+      const domainId = item.price?.product && typeof item.price.product === 'object' ? (item.price.product as any).metadata?.domainId : undefined;
+      if (!domainId) continue;
+      const update: Record<string, unknown> = { stripeSubscriptionItemId: item.id };
+      if (mappedStatus) update.status = mappedStatus;
+      await DomainSubscriptionModel.updateOne({ tenantId: tenant._id, domainId }, { $set: update });
+    }
+
+    await AuditLogModel.create({
+      actorId: req.adminUser!.id,
+      actorRole: req.adminUser!.role,
+      actorEmail: req.adminUser!.email,
+      actorIp: req.ip,
+      tenantId: tenant._id,
+      action: 'TENANT_STRIPE_SYNCED',
+      resource: 'TENANT',
+      resourceId: tenant._id.toString(),
+      status: 'SUCCESS',
+      timestamp: new Date(),
+      metadata: { stripeStatus: sub.status },
+    });
+
+    return res.status(200).json({ success: true, synced: true, stripeStatus: sub.status });
+  } catch (err: any) {
+    console.error('[Sync Tenant Stripe Error]:', err);
+    return res.status(502).json({ error: 'STRIPE_SYNC_FAILED', message: err.message || 'Failed to sync with Stripe' });
+  }
 });
 
 // 6. List Tenant Admins

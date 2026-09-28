@@ -11,6 +11,7 @@ import {
 import { AuditItem } from '../../types';
 import { Button } from '../ui/Button';
 import { StatusBadge } from '../ui/StatusBadge';
+import { formatRelativeTime, formatFullTimestamp } from '../../utils/formatTime';
 
 interface AuditLogViewProps {
   logs: AuditItem[];
@@ -218,8 +219,8 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
 
                           {/* Timestamp */}
                           <td>
-                            <div className="text-xs text-slate-800">
-                              {new Date(log.timestamp).toLocaleDateString()}
+                            <div className="text-xs text-slate-800" title={formatFullTimestamp(log.timestamp)}>
+                              {formatRelativeTime(log.timestamp)}
                             </div>
                             <div className="text-[11px] text-slate-400 tabular-nums">
                               {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -317,8 +318,8 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
                           {log.actor_role || 'ANONYMOUS'}
                         </span>
                       </div>
-                      <span className="text-slate-400 text-[11px] tabular-nums">
-                        {new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      <span className="text-slate-400 text-[11px] tabular-nums" title={formatFullTimestamp(log.timestamp)}>
+                        {formatRelativeTime(log.timestamp)}
                       </span>
                     </div>
 

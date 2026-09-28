@@ -320,6 +320,9 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByRole('button', { name: /Manual DNS Setup/i }));
     await screen.findByText('DNS Setup — payable.io');
 
+    // Step 1: Zone file screen -> Continue
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    // Step 2: Check records screen -> Continue to Plan Selection
     await userEvent.click(screen.getByRole('button', { name: /continue to plan selection/i }));
     await screen.findByText('Choose a plan');
     await userEvent.click(screen.getByRole('button', { name: /finish setup/i }));
@@ -348,10 +351,13 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByRole('button', { name: /Manual DNS Setup/i }));
     await screen.findByText('DNS Setup — backplan.io');
 
+    // Step 1: Zone file screen -> Continue
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    // Step 2: Check records screen -> Continue to Plan Selection
     await userEvent.click(screen.getByRole('button', { name: /continue to plan selection/i }));
     expect(await screen.findByText('Choose a plan')).toBeInTheDocument();
 
-    // Back to status, then forward to plan again — selectDomainPlan hasn't been called yet.
+    // Back to status (check records step), then forward to plan again — selectDomainPlan hasn't been called yet.
     await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
     expect(await screen.findByText('DNS Setup — backplan.io')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /continue to plan selection/i }));
@@ -360,6 +366,51 @@ describe('DomainSetupModal Component', () => {
     await userEvent.click(screen.getByRole('button', { name: /finish setup/i }));
     await waitFor(() => expect(onDomainAdded).toHaveBeenCalled());
     expect(api.selectDomainPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it('splits manual DNS setup into 2 distinct steps: zone file first with Continue, then check records with Check Records', async () => {
+    vi.mocked(api.createTenantDomain).mockResolvedValueOnce({
+      success: true,
+      domain: planlessDomain('dom-twostep-1', 'twostep.io'),
+    });
+    vi.mocked(api.getDomainDnsStatus).mockResolvedValue({
+      dnsStatus: 'not_started',
+      dnsRecords: [{ type: 'MX', name: '@', value: 'mail.toowix.com', priority: 10, ttl: 3600, purpose: 'MX' }],
+      dnsConflicts: [],
+      dnsZoneFile: 'twostep.io. IN MX 10 mail.toowix.com.',
+    });
+
+    render(<DomainSetupModal isOpen={true} onClose={vi.fn()} onDomainAdded={vi.fn()} />);
+    await enterDomainAndContinue('twostep.io');
+    await screen.findByText('How do you want to set up DNS?');
+    await userEvent.click(screen.getByRole('button', { name: /Manual DNS Setup/i }));
+
+    // Step 1: Zone File screen
+    expect(await screen.findByText('DNS Setup — twostep.io')).toBeInTheDocument();
+    expect(screen.getByText('DNS Zone File')).toBeInTheDocument();
+    expect(screen.getByText(/twostep\.io\. IN MX 10 mail\.toowix\.com\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^copy zone file$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^export \.txt$/i })).toBeInTheDocument();
+
+    // Step 1 should ONLY have Continue button (no Check Records button or Continue to Plan Selection)
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^check records$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /continue to plan selection/i })).not.toBeInTheDocument();
+
+    // Advance to Step 2
+    await userEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    // Step 2: Check Records screen
+    expect(await screen.findByRole('button', { name: /^check records$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue to plan selection/i })).toBeInTheDocument();
+    // Step 2 should NOT have the raw zone file block
+    expect(screen.queryByText('DNS Zone File')).not.toBeInTheDocument();
+
+    // Back button returns to Step 1 (Zone File screen)
+    await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(await screen.findByText('DNS Zone File')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^check records$/i })).not.toBeInTheDocument();
   });
 
   it('lets "Back" from an auto-skipped setup step reach the method picker as an override', async () => {

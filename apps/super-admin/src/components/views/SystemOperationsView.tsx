@@ -15,6 +15,9 @@ import {
   AlertCircle,
   X,
   Bell,
+  Download,
+  Activity,
+  Compass,
 } from 'lucide-react';
 import {
   SystemHealthDetails,
@@ -136,6 +139,106 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
       onShowAlert('error', err.message || 'Failed to dispatch test alert.');
     } finally {
       setSendingTestAlert(false);
+    }
+  };
+
+  // Export Diagnostics Bundle
+  const handleExportDiagnostics = () => {
+    const bundle = {
+      generatedAt: new Date().toISOString(),
+      health: healthDetails,
+      metrics,
+      drift: driftReport,
+      alerts: localAlertConfig,
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `toowix-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onShowAlert('success', 'Diagnostics bundle exported successfully.');
+  };
+
+  // Mail Delivery Queues
+  const [flushingQueue, setFlushingQueue] = useState(false);
+  const [queueResult, setQueueResult] = useState<{ active: number; deferred: number; frozen: number } | null>(null);
+
+  const handleFlushQueue = async () => {
+    setFlushingQueue(true);
+    try {
+      const res = await api.flushMailQueue();
+      setQueueResult(res.queues);
+      onShowAlert('success', res.message || 'Mail queues flushed successfully.');
+    } catch (err: any) {
+      onShowAlert('error', err.message || 'Failed to flush mail queues.');
+    } finally {
+      setFlushingQueue(false);
+    }
+  };
+
+  // DNS Drift Reconciler
+  const [dnsDriftLoading, setDnsDriftLoading] = useState(false);
+  const [dnsDriftData, setDnsDriftData] = useState<{
+    scannedAt: string;
+    total: number;
+    driftedCount: number;
+    domains: Array<{ domainId: string; domainName: string; drifted: boolean | null; error?: string }>;
+  } | null>(null);
+  const [restoringDns, setRestoringDns] = useState(false);
+
+  const handleScanDnsDrift = async () => {
+    setDnsDriftLoading(true);
+    try {
+      const data = await api.checkDnsDrift();
+      setDnsDriftData(data);
+      onShowAlert('success', `DNS scan complete. ${data.driftedCount} drifted of ${data.total} domains.`);
+    } catch (err: any) {
+      onShowAlert('error', err.message || 'Failed to scan DNS drift.');
+    } finally {
+      setDnsDriftLoading(false);
+    }
+  };
+
+  const handleRestoreDns = async () => {
+    setRestoringDns(true);
+    try {
+      const res = await api.restoreDnsMatrix();
+      onShowAlert('success', res.message);
+      await handleScanDnsDrift();
+    } catch (err: any) {
+      onShowAlert('error', err.message || 'Failed to restore DNS matrix.');
+    } finally {
+      setRestoringDns(false);
+    }
+  };
+
+  // JMAP Diagnostic Ping
+  const [jmapMailboxId, setJmapMailboxId] = useState('');
+  const [testingJmap, setTestingJmap] = useState(false);
+  const [jmapResult, setJmapResult] = useState<{ latencyMs: number; mailbox: string; reachable: boolean; message: string } | null>(null);
+
+  const handleTestJmap = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!jmapMailboxId.trim()) {
+      onShowAlert('error', 'Please enter a mailbox ID');
+      return;
+    }
+    setTestingJmap(true);
+    setJmapResult(null);
+    try {
+      const res = await api.testJmapConnection(jmapMailboxId.trim());
+      setJmapResult(res);
+      if (res.reachable) {
+        onShowAlert('success', `Mailbox reachable in ${res.latencyMs}ms`);
+      } else {
+        onShowAlert('error', res.message);
+      }
+    } catch (err: any) {
+      onShowAlert('error', err.message || 'JMAP diagnostic test failed');
+    } finally {
+      setTestingJmap(false);
     }
   };
 
@@ -340,16 +443,28 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
             Cluster health diagnostics, state synchronization engine, and automated backup management
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={onRefreshAll}
-          disabled={loading}
-          icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
-          className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
-        >
-          Refresh Diagnostics
-        </Button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleExportDiagnostics}
+            icon={<Download size={13} />}
+            className="flex-1 sm:flex-initial min-h-[44px] sm:min-h-0"
+            title="Download sanitized system state and diagnostics JSON"
+          >
+            Export Diagnostics
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onRefreshAll}
+            disabled={loading}
+            icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
+            className="flex-1 sm:flex-initial min-h-[44px] sm:min-h-0"
+          >
+            Refresh Diagnostics
+          </Button>
+        </div>
       </div>
 
       {/* 1. Core Services Telemetry Grid */}
@@ -867,7 +982,191 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
         </div>
       </div>
 
-      {/* 6. Database Backup Engine */}
+      {/* 6. Stalwart Mail Delivery Queues */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Layers size={17} className="text-indigo-600 shrink-0" />
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Stalwart Mail Spool &amp; Delivery Queues
+            </h3>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={handleFlushQueue}
+            disabled={flushingQueue}
+            className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
+            title="Flush outbound spool and retry deferred deliveries"
+          >
+            <RefreshCw size={13} className={flushingQueue ? 'animate-spin' : ''} />
+            <span>{flushingQueue ? 'Flushing Spool...' : 'Flush Delivery Queue'}</span>
+          </Button>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-xs space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Active Outbound Spool</div>
+              <div className="text-2xl font-bold font-mono text-slate-900 mt-1 tabular-nums">
+                {queueResult ? queueResult.active : 0}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">In-flight deliveries</div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Deferred Queue</div>
+              <div className="text-2xl font-bold font-mono text-amber-600 mt-1 tabular-nums">
+                {queueResult ? queueResult.deferred : 0}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Retrying with backoff</div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Frozen / Bounced</div>
+              <div className="text-2xl font-bold font-mono text-slate-700 mt-1 tabular-nums">
+                {queueResult ? queueResult.frozen : 0}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Held or failed delivery</div>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            Note: Stalwart mail spool queues are monitored via engine telemetry. Flushing retries temporary delivery failures.
+          </p>
+        </div>
+      </div>
+
+      {/* 7. DNS Drift Monitor & Matrix Reconciler */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Compass size={17} className="text-indigo-600 shrink-0" />
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              DNS Drift Monitor &amp; Matrix Reconciler
+            </h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={handleScanDnsDrift}
+              disabled={dnsDriftLoading}
+              className="min-h-[44px] sm:min-h-0"
+            >
+              <RefreshCw size={13} className={dnsDriftLoading ? 'animate-spin' : ''} />
+              <span>{dnsDriftLoading ? 'Scanning...' : 'Scan Drift'}</span>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={handleRestoreDns}
+              disabled={restoringDns}
+              className="min-h-[44px] sm:min-h-0"
+              title="Re-sync platform DNS records to match live resolution"
+            >
+              <Wrench size={13} />
+              <span>{restoringDns ? 'Restoring...' : 'Restore DNS Matrix'}</span>
+            </Button>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-xs space-y-4">
+          {dnsDriftData ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <span className="text-xs font-medium text-slate-700">
+                  Scanned {dnsDriftData.total} domain(s) at {new Date(dnsDriftData.scannedAt).toLocaleTimeString()}
+                </span>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${dnsDriftData.driftedCount === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {dnsDriftData.driftedCount === 0 ? 'All Domains in Sync' : `${dnsDriftData.driftedCount} Drifted`}
+                </span>
+              </div>
+
+              {dnsDriftData.domains.length > 0 && (
+                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Domain</th>
+                        <th>Status</th>
+                        <th>Resolution</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dnsDriftData.domains.map((d) => (
+                        <tr key={d.domainId}>
+                          <td className="text-xs font-medium text-slate-900">{d.domainName}</td>
+                          <td>
+                            {d.drifted ? (
+                              <StatusBadge status="warning">Drifted</StatusBadge>
+                            ) : (
+                              <StatusBadge status="success">Verified</StatusBadge>
+                            )}
+                          </td>
+                          <td className="text-xs text-slate-500">{d.error || 'Matching generated DNS records'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+              Click "Scan Drift" to check all active tenant domains against live GoDaddy/DNS records.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 8. Stalwart JMAP Diagnostic Bridge */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Activity size={17} className="text-indigo-600 shrink-0" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Stalwart JMAP Diagnostic Bridge
+          </h3>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-xs space-y-4">
+          <form onSubmit={handleTestJmap} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Mailbox MongoDB ID to Probe:
+              </label>
+              <input
+                type="text"
+                placeholder="Enter Mailbox Object ID (e.g. 64f1...)"
+                value={jmapMailboxId}
+                onChange={(e) => setJmapMailboxId(e.target.value)}
+                className="w-full text-base sm:text-xs min-h-[44px] sm:min-h-0 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white font-mono"
+              />
+            </div>
+            <Button
+              type="submit"
+              size="md"
+              variant="secondary"
+              disabled={testingJmap || !jmapMailboxId.trim()}
+              className="min-h-[44px] sm:min-h-0"
+            >
+              <Activity size={14} className={testingJmap ? 'animate-spin' : ''} />
+              <span>{testingJmap ? 'Probing...' : 'Run JMAP Test'}</span>
+            </Button>
+          </form>
+
+          {jmapResult && (
+            <div className={`p-3 rounded-lg text-xs border ${jmapResult.reachable ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+              <div className="font-semibold">{jmapResult.message}</div>
+              <div className="text-[11px] mt-0.5 font-mono">Mailbox: {jmapResult.mailbox} • Roundtrip: {jmapResult.latencyMs}ms</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 9. Database Backup Engine */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">

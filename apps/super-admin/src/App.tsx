@@ -65,10 +65,10 @@ const TenantDetailRoute: React.FC<TenantDetailRouteProps> = ({
   const { tenantId, subTab } = useParams<{ tenantId: string; subTab?: string }>();
   const navigate = useNavigate();
 
-  const validSubTabs: TenantDetailSubTab[] = ['domains', 'mailboxes', 'admins', 'audit', 'governance'];
+  const validSubTabs: TenantDetailSubTab[] = ['overview', 'domains', 'mailboxes', 'admins', 'billing', 'audit', 'governance'];
   const activeSubTab: TenantDetailSubTab = validSubTabs.includes(subTab as TenantDetailSubTab)
     ? (subTab as TenantDetailSubTab)
-    : 'domains';
+    : 'overview';
 
   return (
     <ErrorBoundary fallbackTitle="Unable to load tenant details" onReset={() => navigate('/tenants')}>

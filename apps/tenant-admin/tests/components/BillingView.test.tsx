@@ -114,12 +114,12 @@ describe('BillingView (company-wide)', () => {
     expect(await screen.findByText(/Payment failed\./)).toBeInTheDocument();
   });
 
-  it('changes a domain plan independently of the others', async () => {
-    vi.mocked(api.upgradeDomainPlan).mockResolvedValue({} as any);
+  it('renders domain plans as clean badges and does not allow inline plan changes', async () => {
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
 
-    await userEvent.selectOptions(await screen.findByLabelText('Change plan for acme.com'), 'plan-business');
-    await waitFor(() => expect(api.upgradeDomainPlan).toHaveBeenCalledWith('dom-1', 'plan-business'));
+    expect(await screen.findByText('Starter')).toBeInTheDocument();
+    expect(screen.getByText('Business')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/change plan for/i)).not.toBeInTheDocument();
   });
 
   it('cancels every domain subscription after confirmation', async () => {
@@ -144,5 +144,32 @@ describe('BillingView (company-wide)', () => {
 
     expect(await screen.findByText('paid')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /view/i })).toHaveAttribute('href', 'https://invoice.stripe.com/test');
+  });
+
+  it('renders domain-scoped billing view when activeDomain is provided', async () => {
+    const activeDomain = {
+      id: 'dom-1',
+      domainName: 'acme.com',
+      status: 'active',
+      mailboxCount: 5,
+      mailboxLimit: 10,
+      planId: 'plan-starter',
+      planName: 'Starter',
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    } as any;
+
+    render(<BillingView activeDomain={activeDomain} cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+
+    // Domain-scoped header & tier
+    expect(await screen.findByText('acme.com')).toBeInTheDocument();
+    expect(screen.getByText('Starter')).toBeInTheDocument();
+    expect(screen.getByText(/5 \/ 10 seats/)).toBeInTheDocument();
+    expect(screen.getByText('Seat Utilization & Quota Limits')).toBeInTheDocument();
+    expect(screen.getByText('Organization Master Subscription')).toBeInTheDocument();
+
+    // Does NOT render the other domain or the 18-domain table
+    expect(screen.queryByText('acme.in')).not.toBeInTheDocument();
+    expect(screen.queryByText('Domains & plans')).not.toBeInTheDocument();
   });
 });

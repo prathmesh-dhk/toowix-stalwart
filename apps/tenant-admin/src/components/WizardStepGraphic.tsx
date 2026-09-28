@@ -497,7 +497,7 @@ export const WizardStepGraphic: React.FC<WizardStepGraphicProps> = ({
       {/* =========================================================================
           STEP 4: STATUS — "Verified Security & Active DNS Records"
           ========================================================================= */}
-      {step === 'status' && (
+      {(step === 'status' || step === 'zonefile') && (
         <div className="relative w-full h-full flex items-center justify-center">
           {/* Circuit Lines with Emerald Accents */}
           <svg

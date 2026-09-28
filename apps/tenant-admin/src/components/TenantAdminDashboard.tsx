@@ -960,6 +960,16 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
         {/* Scrollable nav area — always starts at top so tabs are immediately visible */}
         <div className="flex flex-col gap-1 overflow-y-auto flex-1">
 
+          {/* Domain Switcher — located above Dashboard */}
+          <div className="shrink-0 pb-2.5 mb-1 border-b border-slate-100">
+            <DomainSwitcher
+              domains={domains}
+              activeDomain={activeDomain}
+              onSelectDomain={handleSelectDomain}
+              onOpenAddDomain={isModerator ? undefined : () => setShowDomainModal(true)}
+            />
+          </div>
+
           {/* Main Navigation Group */}
           <div className="flex flex-col gap-0.5">
             {/* Dashboard — Tenant-Admin-only, same reasoning as Storage/Billing/Domains/Security below */}
@@ -1110,16 +1120,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
               </button>
             </div>
           )}
-        </div>
-
-        {/* Domain Switcher — pinned to bottom so nav tabs always stay at the top */}
-        <div className="shrink-0 pt-3 border-t border-slate-200/80">
-          <DomainSwitcher
-            domains={domains}
-            activeDomain={activeDomain}
-            onSelectDomain={handleSelectDomain}
-            onOpenAddDomain={isModerator ? undefined : () => setShowDomainModal(true)}
-          />
         </div>
       </aside>
 
@@ -2060,6 +2060,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           {/* ===================================================================== */}
           {activeNav === 'billing' && (
             <BillingView
+              activeDomain={activeDomain}
               cart={cart}
               onOpenCart={openCart}
               onCartUpdated={(c) => setCart(c)}

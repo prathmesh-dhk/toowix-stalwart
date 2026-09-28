@@ -216,6 +216,42 @@ export const api = {
       body: JSON.stringify({ mailboxLimit }),
     }),
   getMailLimits: () => request<{ attachmentSizeMb: number; messageSizeMb: number; maxMailboxDepth: number; maxMailboxNameLength: number }>('/api/system/mail-limits'),
+  updateTenantNotes: (id: string, notes: string) =>
+    request<{ success: boolean; operatorNotes: string }>(`/api/platform/tenants/${id}/notes`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes }),
+    }),
+  syncTenantStripe: (id: string) =>
+    request<{ success: boolean; synced: boolean; stripeStatus?: string; message?: string }>(
+      `/api/platform/tenants/${id}/sync-stripe`,
+      { method: 'POST' }
+    ),
+
+  // System Operations — Mail queue / DNS drift / JMAP diagnostics
+  // Queue depths & flush are best-effort placeholders (`mocked: true`) — Stalwart's client has no
+  // queue-introspection API yet. DNS drift/restore and the JMAP ping are real, reusing the same
+  // live-DNS check and Stalwart account lookup the rest of the platform already uses.
+  flushMailQueue: () =>
+    request<{ success: boolean; mocked: boolean; message: string; queues: { active: number; deferred: number; frozen: number } }>(
+      '/api/system/queues/flush',
+      { method: 'POST' }
+    ),
+  checkDnsDrift: () =>
+    request<{
+      scannedAt: string;
+      total: number;
+      driftedCount: number;
+      domains: Array<{ domainId: string; domainName: string; drifted: boolean | null; checkedAt?: string; results?: any[]; error?: string }>;
+    }>('/api/system/dns-drift'),
+  restoreDnsMatrix: () =>
+    request<{ success: boolean; message: string; resynced: number; scanned: number }>('/api/system/dns-restore', {
+      method: 'POST',
+    }),
+  testJmapConnection: (mailboxId: string) =>
+    request<{ success: boolean; latencyMs: number; mailbox: string; reachable: boolean; message: string }>(
+      '/api/system/jmap-test',
+      { method: 'POST', body: JSON.stringify({ mailboxId }) }
+    ),
 
   // Plans (seat tiers)
   listPlans: () => request<{ plans: Plan[] }>('/api/plans'),

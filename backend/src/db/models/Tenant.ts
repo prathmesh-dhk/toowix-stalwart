@@ -40,6 +40,8 @@ export interface ITenant extends Document {
   paymentMethods?: ITenantPaymentMethod[];
   trialRemindersSent?: number[];
   cardFingerprint?: string | null;
+  // Free-text operator notes, Super Admin only (support context, escalation history, etc).
+  operatorNotes?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -117,6 +119,10 @@ const TenantSchema = new Schema<ITenant>(
       type: String,
       default: null,
       index: true,
+    },
+    operatorNotes: {
+      type: String,
+      default: null,
     },
     paymentMethods: [
       {

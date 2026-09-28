@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { DomainDnsStatus, DnsLiveCheckResult } from '../types';
 import { AlertTriangle, CheckCircle2, Copy, Check, FileText, Download, RefreshCw, Search } from 'lucide-react';
 
+export type DnsPanelViewMode = 'full' | 'zone_only' | 'verify_only';
+
 interface DnsStatusPanelProps {
   domainName: string;
   status: DomainDnsStatus | null;
@@ -20,6 +22,8 @@ interface DnsStatusPanelProps {
   theme?: 'light' | 'dark';
   /** If true, this panel is in manual DNS setup mode where we prioritize showing missing records and DNS instructions */
   isManualSetup?: boolean;
+  /** Presentation mode: 'full' (all components), 'zone_only' (zone file only), or 'verify_only' (check records only) */
+  viewMode?: DnsPanelViewMode;
 }
 
 export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
@@ -37,6 +41,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
   retrying,
   theme = 'light',
   isManualSetup = false,
+  viewMode = 'full',
 }) => {
   const isDark = theme === 'dark';
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -76,7 +81,11 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
 
       {loading && !status && <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading current status…</p>}
 
-      {!isManualSetup && dnsStatus === 'not_started' && !loading && (
+      {viewMode === 'zone_only' && loading && !status?.dnsZoneFile && (
+        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Generating DNS zone file records…</p>
+      )}
+
+      {viewMode !== 'zone_only' && !isManualSetup && dnsStatus === 'not_started' && !loading && (
         <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           {connectedProviderLabel
             ? `Once activated, your connected ${connectedProviderLabel} account publishes these records automatically.`
@@ -84,7 +93,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
         </p>
       )}
 
-      {dnsStatus === 'conflict' && Array.isArray(status?.dnsConflicts) && status.dnsConflicts.length > 0 && (
+      {viewMode !== 'zone_only' && dnsStatus === 'conflict' && Array.isArray(status?.dnsConflicts) && status.dnsConflicts.length > 0 && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
           <div className="flex items-center gap-1.5 text-rose-700 text-xs font-semibold">
             <AlertTriangle size={13} />
@@ -103,7 +112,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
         </div>
       )}
 
-      {!isManualSetup && dnsStatus === 'activating' && (
+      {viewMode !== 'zone_only' && !isManualSetup && dnsStatus === 'activating' && (
         <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           {connectedProviderLabel
             ? `Published automatically via ${connectedProviderLabel}. Waiting for public DNS propagation — usually minutes, up to 48 hours.`
@@ -111,7 +120,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
         </p>
       )}
 
-      {dnsStatus === 'activation_failed' && (
+      {viewMode !== 'zone_only' && dnsStatus === 'activation_failed' && (
         <p className="text-xs text-rose-700 leading-relaxed">
           DNS propagation did not complete within the allowed window. Double-check the records in the zone file below are published
           at your DNS provider, then retry verification.
@@ -119,14 +128,14 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
       )}
 
       {/* Domain Active Message: hidden in manual setup mode where user wants to inspect missing records */}
-      {!isManualSetup && dnsStatus === 'active' && (
+      {viewMode !== 'zone_only' && !isManualSetup && dnsStatus === 'active' && (
         <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs font-medium">
           <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
           <span>Domain is fully active. Mail service is live.</span>
         </div>
       )}
 
-      {(dnsStatus === 'conflict' || dnsStatus === 'activation_failed') && onRetryVerification && (
+      {viewMode !== 'zone_only' && (dnsStatus === 'conflict' || dnsStatus === 'activation_failed') && onRetryVerification && (
         <button
           type="button"
           onClick={onRetryVerification}
@@ -139,7 +148,7 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
       )}
 
       {/* Raw DNS Zone File */}
-      {status?.dnsZoneFile && (
+      {viewMode !== 'verify_only' && status?.dnsZoneFile && (
         <div className="mt-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2">
             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -186,46 +195,85 @@ export const DnsStatusPanel: React.FC<DnsStatusPanelProps> = ({
       )}
 
       {/* Live DNS record check summary */}
-      {onCheckRecords && (
-        <div
-          className={`p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-            liveCheck
-              ? liveCheck.allFound
-                ? 'bg-emerald-50/80 border-emerald-200'
-                : 'bg-amber-50/80 border-amber-200'
-              : isDark
-                ? 'bg-slate-900 border-slate-800'
-                : 'bg-slate-50 border-slate-200'
-          }`}
-        >
-          <div className="flex items-center gap-2 min-w-0 text-xs">
-            {liveCheck ? (
-              liveCheck.allFound ? (
-                <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-              ) : (
-                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
-              )
-            ) : (
-              <Search size={15} className={isDark ? 'text-slate-400 shrink-0' : 'text-slate-500 shrink-0'} />
-            )}
-            <span className={`font-medium truncate ${liveCheck ? (liveCheck.allFound ? 'text-emerald-800' : 'text-amber-900') : isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-              {liveCheck
+      {viewMode !== 'zone_only' && onCheckRecords && (
+        <div className="flex flex-col gap-2">
+          <div
+            className={`p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              liveCheck
                 ? liveCheck.allFound
-                  ? 'All DNS records detected live'
-                  : `${missingCount} missing DNS record${missingCount === 1 ? '' : 's'} detected`
-                : 'Check DNS records live'}
-            </span>
+                  ? 'bg-emerald-50/80 border-emerald-200'
+                  : 'bg-amber-50/80 border-amber-200'
+                : isDark
+                  ? 'bg-slate-900 border-slate-800'
+                  : 'bg-slate-50 border-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0 text-xs">
+              {liveCheck ? (
+                liveCheck.allFound ? (
+                  <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                )
+              ) : (
+                <Search size={15} className={isDark ? 'text-slate-400 shrink-0' : 'text-slate-500 shrink-0'} />
+              )}
+              <span className={`font-medium truncate ${liveCheck ? (liveCheck.allFound ? 'text-emerald-800' : 'text-amber-900') : isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                {liveCheck
+                  ? liveCheck.allFound
+                    ? 'All DNS records detected live'
+                    : `${missingCount} missing DNS record${missingCount === 1 ? '' : 's'} detected`
+                  : 'Check DNS records live'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={onCheckRecords}
+              disabled={checking}
+              className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <RefreshCw size={13} className={checking ? 'animate-spin' : ''} />
+              <span>{checking ? 'Checking…' : liveCheck ? 'Re-scan' : 'Check Records'}</span>
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onCheckRecords}
-            disabled={checking}
-            className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
-          >
-            <RefreshCw size={13} className={checking ? 'animate-spin' : ''} />
-            <span>{checking ? 'Checking…' : liveCheck ? 'Re-scan' : 'Check Records'}</span>
-          </button>
+          {liveCheck && liveCheck.results && liveCheck.results.length > 0 && (
+            <div className="flex flex-col gap-1.5 mt-1">
+              {liveCheck.results.map((r, i) => (
+                <div
+                  key={i}
+                  className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-3 ${
+                    r.found
+                      ? 'bg-emerald-50/50 border-emerald-100 text-slate-700'
+                      : 'bg-amber-50/50 border-amber-100 text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      {r.type}
+                    </span>
+                    <span className="font-medium text-slate-900 truncate" title={r.name}>
+                      {r.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {r.found ? (
+                      <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+                        <Check size={12} className="stroke-[2.5]" />
+                        Detected
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-amber-700 flex items-center gap-1">
+                        <AlertTriangle size={12} className="stroke-[2.5]" />
+                        Missing
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

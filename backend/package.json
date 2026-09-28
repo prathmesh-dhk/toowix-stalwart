@@ -26,6 +26,7 @@
     "qrcode": "^1.5.4",
     "stripe": "^22.6.2",
     "uuid": "^10.0.0",
+    "tldts": "^6.1.86",
     "zod": "^3.23.8"
   },
   "devDependencies": {

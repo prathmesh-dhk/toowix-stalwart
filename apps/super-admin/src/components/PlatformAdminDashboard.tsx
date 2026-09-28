@@ -34,10 +34,12 @@ import {
   Archive,
   Ticket,
   Menu,
+  Search,
 } from 'lucide-react';
 import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { Alert } from './ui/Alert';
+import { CommandPalette } from './CommandPalette';
 
 // Views
 import { DashboardOverviewView } from './views/DashboardOverviewView';
@@ -90,6 +92,19 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
     controlledSelectedTenantId !== undefined ? controlledSelectedTenantId : null
   );
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Global ⌘K / Ctrl+K to open the command palette from anywhere in the console.
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   useEffect(() => {
     if (controlledActiveTab && controlledActiveTab !== activeTab) {
@@ -573,6 +588,20 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
 
           {/* Right Utility Actions */}
           <div className="flex items-center gap-2 sm:gap-4">
+
+            {/* Command Palette Trigger (⌘K / Ctrl+K) */}
+            <button
+              type="button"
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="hidden sm:inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+              title="Search & jump (⌘K)"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Search</span>
+              <kbd className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-semibold text-slate-400">
+                ⌘K
+              </kbd>
+            </button>
 
             {/* 2FA Security Pill / Setup */}
             {user?.twoFactorEnabled ? (
@@ -1279,6 +1308,20 @@ export const PlatformAdminDashboard: React.FC<PlatformAdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        tenants={tenants}
+        onNavigate={(tab) => {
+          handleTabChange(tab);
+          handleSelectTenant(null);
+        }}
+        onSelectTenant={(tenantId) => {
+          handleTabChange('tenants');
+          handleSelectTenant(tenantId);
+        }}
+      />
     </div>
   );
 };
