@@ -470,6 +470,15 @@ export const api = {
       body: JSON.stringify({ webhookUrl }),
     }),
 
+  importDomains: (tenantId: string, domainIds: string[]) =>
+    request<{
+      success: Array<{ domainName: string; stalwartDomainId: string; mailboxesImported: number }>;
+      errors: Array<{ domainName: string; message: string }>;
+    }>(`/api/platform/tenants/${tenantId}/domains/import`, {
+      method: 'POST',
+      body: JSON.stringify({ domainIds }),
+    }),
+
   // Phase 4: Tenant Activation
   validateActivationToken: (token: string) =>
     request<{
