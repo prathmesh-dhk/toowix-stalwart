@@ -519,7 +519,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
         {/* Unified Single-Focus Layout across all wizard pages */}
         <div
           key={step}
-          className={`flex-1 flex flex-row ${step === 'status' ? 'items-center' : 'items-start'} w-full px-4 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] sm:pr-8 overflow-x-hidden ${
+          className={`${step === 'status' ? 'absolute inset-0 z-10' : 'flex-1'} flex flex-row ${step === 'status' ? 'items-center' : 'items-start'} w-full px-4 sm:pl-12 md:pl-20 lg:pl-28 xl:pl-[13vw] sm:pr-8 overflow-x-hidden ${
             direction === 'backward' ? 'animate-slide-in-left' : 'animate-slide-in-right'
           }`}
         >
