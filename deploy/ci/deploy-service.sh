@@ -21,7 +21,11 @@ docker pull "$image"
 new_id=$(docker image inspect -f '{{.Id}}' "$image")
 [[ "$new_id" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 3
 # Preserve original content by unique ID and separate rolling history.
-docker tag "$old" "toowix-preserved-$svc:$(date -u +%Y%m%d%H%M%S)-$$"
+if docker image inspect "$old" >/dev/null 2>&1; then
+  docker tag "$old" "toowix-preserved-$svc:$(date -u +%Y%m%d%H%M%S)-$$"
+else
+  echo "Warning: running image $old is no longer present locally; skipping preservation tag" >&2
+fi
 printf '%s\n' "$old" > "$path/previous_id"
 printf '%s\n' "$new_id" > "$path/pending_id"
 var=$(image_var "$svc")
@@ -53,7 +57,11 @@ if [[ $svc == backend ]]; then
     exit 0
   fi
   old_worker=$(docker inspect -f '{{.Image}}' toowix-prod-backup-cron)
-  docker tag "$old_worker" "toowix-preserved-backup-cron:$(date -u +%Y%m%d%H%M%S)-$$"
+  if docker image inspect "$old_worker" >/dev/null 2>&1; then
+    docker tag "$old_worker" "toowix-preserved-backup-cron:$(date -u +%Y%m%d%H%M%S)-$$"
+  else
+    echo "Warning: worker image $old_worker not present locally; skipping preservation tag" >&2
+  fi
   export BACKUP_CRON_IMAGE="$image"
   if ! compose up -d --no-deps --no-build backup-cron; then
     printf '%s\n' "$image" > "$STATE/backup-cron.pending"
