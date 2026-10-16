@@ -12,8 +12,8 @@ export const config = {
   stalwart: {
     url: process.env.STALWART_URL || 'http://127.0.0.1:8080',
     apiKey: process.env.STALWART_API_KEY || '',
-    user: process.env.STALWART_USER || 'toowix-service@toowix.test',
-    password: process.env.STALWART_PASSWORD || 'ToowixServiceSecret2026!Secure',
+    user: process.env.STALWART_USER || process.env.STALWART_SERVICE_USER || 'admin',
+    password: process.env.STALWART_PASSWORD || process.env.STALWART_SERVICE_PASSWORD || '',
     accountId: process.env.STALWART_ACCOUNT_ID || 'b',
     acmeProviderId: process.env.STALWART_ACME_PROVIDER_ID || '',
   },

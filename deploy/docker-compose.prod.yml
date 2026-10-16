@@ -45,8 +45,8 @@ services:
       # Dedicated External Stalwart Server
       STALWART_URL: ${STALWART_URL:-https://smtp.dhkmail.com}
       STALWART_API_KEY: ${STALWART_API_KEY:-}
-      STALWART_USER: ${STALWART_SERVICE_USER:-admin}
-      STALWART_PASSWORD: ${STALWART_SERVICE_PASSWORD}
+      STALWART_USER: ${STALWART_SERVICE_USER:-${STALWART_USER:-admin}}
+      STALWART_PASSWORD: ${STALWART_SERVICE_PASSWORD:-${STALWART_PASSWORD:-}}
       STALWART_ACCOUNT_ID: ${STALWART_ACCOUNT_ID:-b}
       STALWART_ACME_PROVIDER_ID: ${STALWART_ACME_PROVIDER_ID:-}
       # Administrator & Portal URLs (for emails & password resets)
