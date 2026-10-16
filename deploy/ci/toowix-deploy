@@ -5,6 +5,7 @@ umask 077
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 unset BASH_ENV ENV CDPATH GIT_CONFIG_GLOBAL
 CI=/root/toowix-mail-platform/deploy/ci
+export DOCKER_CONFIG=/root/toowix-mail-platform/deploy/.docker-deploy
 [[ $(id -u) == 0 ]] || exit 90
 # This entrypoint is installed outside any GitHub checkout and is immutable to runner.
 [[ $(stat -c '%u' "$CI/deploy-service.sh") == 0 ]] || exit 91
@@ -22,5 +23,6 @@ case "$cmd" in
   rollback) (( $# == 1 )) || exit 2; case "$1" in backend|super-admin|tenant-admin) exec "$CI/rollback-service.sh" "$1" ;; *) exit 2;; esac ;;
   login) (( $# == 1 )) || exit 2; [[ "$1" =~ ^[a-zA-Z0-9-]+$ ]] || exit 2
     exec /usr/bin/docker login ghcr.io --username "$1" --password-stdin ;;
+  logout) (( $# == 0 )) || exit 2; exec /usr/bin/docker logout ghcr.io ;;
   *) exit 2 ;;
 esac

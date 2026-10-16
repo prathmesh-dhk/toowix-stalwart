@@ -14,21 +14,18 @@
 ## Files to put in developer repository
 - `.github/workflows/ci-cd.yml`
 - `deploy/docker-compose.prod.yml` (diff carefully against the actual live file; DO NOT blindly overwrite)
-- `deploy/ci/{common.sh,toowix-deploy,validate-config.sh,deploy-service.sh,rollback-service.sh,health-check.sh}`
+- `deploy/ci/{install-server.sh,common.sh,toowix-deploy,validate-config.sh,deploy-service.sh,rollback-service.sh,health-check.sh}`
 
 ## One-time production installation (after merge review)
 1. Verify actual Compose project/container IDs, the actual production Compose/env paths, and whether `toowix-prod-stalwart` is local or remote. The previous reports conflict.
 2. Back up the actual production Compose/env files and image IDs, plus verify a database backup can be restored. Do not paste secrets into chats/logs.
-3. Manually install the reviewed `deploy/ci/*.sh` and `common.sh` under `/root/toowix-mail-platform/deploy/ci` owned by root, mode 700, and the reviewed Compose file under `/root/toowix-mail-platform/deploy/docker-compose.prod.yml` root-owned. Never automatically copy deployment scripts from GitHub's checkout as root.
-4. `install -o root -g root -m 700 /root/toowix-mail-platform/deploy/ci/toowix-deploy /usr/local/sbin/toowix-deploy`
-5. Sudoers should be installed with `visudo -f /etc/sudoers.d/toowix-runner`, entry:
-   `github-runner ALL=(root) NOPASSWD: /usr/local/sbin/toowix-deploy *`
-   Protect sudoers with mode 440. Note sudoers wildcards are broad, but wrapper accepts only fixed actions and validated arguments. Restrict modification of the wrapper and every delegated script to root.
-6. Ensure `github-runner` is NOT in the Docker group (`id github-runner`). If group membership was granted earlier, remove it and restart the runner service. Limit repository write permissions and require an environment reviewer.
-7. Verify as runner: `sudo -u github-runner sudo -n /usr/local/sbin/toowix-deploy validate`.
-8. Keep the production `environment` approval enabled until the first successful rollout. Verify the custom runner label is `toowix-production`.
-9. GHCR login is performed during each deployment job with GitHub's short-lived token through stdin; do not create long-lived production PATs unless strictly required. Docker may cache this short-lived token: consider configured credential cleanup after release.
-10. Commit via feature branch, review, merge with approvals. Merge to `main` **triggers real deployment of affected services**. For the first release, trigger a supervised manual workflow for `super-admin` after code review and approval, with operator monitoring ready.
+3. Review the checked-out deployment scripts and live Compose file. Never run the installer from the GitHub runner workspace; run only the root-owned copy under `/root/toowix-mail-platform`.
+4. Run `bash /root/toowix-mail-platform/deploy/ci/install-server.sh` as root. It verifies ownership, rejects Docker-group access for `github-runner`, installs the wrapper and restricted sudoers rule, protects deployment state, and validates the live stack as the runner user.
+5. If `deploy/.env.production` is absent, the installer securely copies the existing `deploy/.env` to that canonical path and changes both files to mode 600. Review `.env.production` without printing secrets before continuing.
+6. Verify as runner: `sudo -u github-runner sudo -n /usr/local/sbin/toowix-deploy validate`.
+7. Keep the production `environment` approval enabled until the first successful rollout. Verify the custom runner label is `toowix-production`.
+8. GHCR login is performed during each deployment job with GitHub's short-lived token through stdin; do not create long-lived production PATs unless strictly required. The workflow logs out after deployment.
+9. Commit via feature branch, review, merge with approvals. Merge to `main` **triggers real deployment of affected services**. For the first release, trigger a supervised manual workflow for `super-admin` after code review and approval, with operator monitoring ready.
 
 ## First-release gate (must verify, do not assume)
 - Confirm repo's Dockerfiles really build with the documented contexts. Shared root package dependencies must be reflected in each Dockerfile's context.

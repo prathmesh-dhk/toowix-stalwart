@@ -7,6 +7,7 @@ CI_DIR=$DEPLOY_DIR/ci
 COMPOSE=$DEPLOY_DIR/docker-compose.prod.yml
 ENVFILE=$DEPLOY_DIR/.env.production
 STATE=$DEPLOY_DIR/.deploy-state
+export DOCKER_CONFIG=$DEPLOY_DIR/.docker-deploy
 PROJECT=deploy
 [[ -f $COMPOSE && -f $ENVFILE ]] || { echo 'Missing production compose or .env.production' >&2; exit 3; }
 [[ $(stat -c '%u' "$COMPOSE") == 0 ]] || exit 3

@@ -138,11 +138,20 @@ jobs:
           tags: ghcr.io/prathmesh-dhk/toowix-tenant-admin:sha-${{ github.sha }}
           cache-from: type=gha,scope=tenant-admin
           cache-to: type=gha,mode=max,scope=tenant-admin
+  deployment-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - name: Check deployment shell syntax
+        run: bash -n deploy/ci/*.sh deploy/ci/toowix-deploy
+      - name: Test deployment safety contracts
+        run: python3 -m unittest discover -s deploy/ci/tests -p 'test_*.py' -v
   production:
-    needs: [changes, backend, super-admin, tenant-admin]
+    needs: [changes, backend, super-admin, tenant-admin, deployment-contracts]
     if: |
       always() && !cancelled() &&
       needs.changes.result == 'success' &&
+      needs.deployment-contracts.result == 'success' &&
       (needs.backend.result == 'success' || needs.backend.result == 'skipped') &&
       (needs.super-admin.result == 'success' || needs.super-admin.result == 'skipped') &&
       (needs.tenant-admin.result == 'success' || needs.tenant-admin.result == 'skipped') &&
@@ -151,13 +160,14 @@ jobs:
     environment: production
     permissions: {contents: read, packages: read}
     steps:
+      - name: Verify production deployment bootstrap
+        run: sudo -n /usr/local/sbin/toowix-deploy validate
       - name: Login to GHCR without giving runner Docker socket access
+        id: ghcr_login
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
         run: printf '%s' "$GHCR_TOKEN" | sudo -n /usr/local/sbin/toowix-deploy login "$GHCR_USER"
-      - name: Verify production configuration
-        run: sudo -n /usr/local/sbin/toowix-deploy validate
       - name: Deploy changed backend
         if: needs.changes.outputs.backend == 'true'
         run: sudo -n /usr/local/sbin/toowix-deploy deploy backend sha-${{ github.sha }}
@@ -167,3 +177,6 @@ jobs:
       - name: Deploy changed tenant-admin
         if: needs.changes.outputs.tenant_admin == 'true'
         run: sudo -n /usr/local/sbin/toowix-deploy deploy tenant-admin sha-${{ github.sha }}
+      - name: Remove temporary GHCR credentials
+        if: always() && steps.ghcr_login.outcome == 'success'
+        run: sudo -n /usr/local/sbin/toowix-deploy logout
