@@ -67,6 +67,8 @@ const proxy = http.createServer((req, res) => {
     path: req.url,
     method: req.method,
     headers: headers,
+    agent: false,
+    servername: targetHost,
     rejectUnauthorized: false,
   }, (proxyRes) => {
     const resHeaders = { ...proxyRes.headers };
