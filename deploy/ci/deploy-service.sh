@@ -18,6 +18,12 @@ if [[ $(docker inspect -f '{{.Config.Image}}' "$name") == "$image" ]]; then
 fi
 # Pull before touching the running service.
 docker pull "$image"
+# A stale local tag can point at pruned image content; re-pull after dropping it.
+if ! docker image inspect "$image" >/dev/null 2>&1; then
+  echo "Local tag $image is broken (content missing); removing and re-pulling" >&2
+  docker rmi "$image" >/dev/null 2>&1 || true
+  docker pull "$image"
+fi
 new_id=$(docker image inspect -f '{{.Id}}' "$image")
 [[ "$new_id" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 3
 # Preserve original content by unique ID and separate rolling history.
