@@ -109,9 +109,13 @@ def prepare_installer_harness(root):
         "validate-config.sh",
         "toowix-deploy",
     ):
-        (ci / name).write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+        path = ci / name
+        path.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+        path.chmod(0o644)
     (deploy / "docker-compose.prod.yml").write_text("services: {}\n", encoding="utf-8")
     (deploy / ".env").write_text("SECRET=preserved\n", encoding="utf-8")
+    (deploy / "docker-compose.prod.yml").chmod(0o644)
+    (deploy / ".env").chmod(0o600)
     write_executable(
         bin_dir / "id",
         """
@@ -251,7 +255,7 @@ class DeploymentContractTests(unittest.TestCase):
                 "export DOCKER_CONFIG=/root/toowix-mail-platform/deploy/.docker-deploy",
                 f'export DOCKER_CONFIG="{docker_config}"',
             )
-            transformed = transformed.replace("[[ $(id -u) == 0 ]]", f"[[ $(id -u) == {os.getuid()} ]]")
+            transformed = transformed.replace("== 0 ]]", f"== {os.getuid()} ]]")
             transformed = transformed.replace("/usr/bin/docker", str(docker))
             wrapper.write_text(transformed, encoding="utf-8")
             log = root / "wrapper.log"
