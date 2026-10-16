@@ -57,6 +57,7 @@ export class StalwartClient {
             url,
             {
               method: 'POST',
+              agent: false,
               servername: url.hostname,
               rejectUnauthorized: false, // For local dev with self-signed TLS
               headers: {
@@ -677,11 +678,14 @@ export class StalwartClient {
         url,
         {
           method: 'POST',
+          agent: false,
+          servername: url.hostname,
           rejectUnauthorized: false,
           headers: {
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(payload),
             'Authorization': authHeader,
+            'Connection': 'close',
           },
           timeout: 5000,
         },

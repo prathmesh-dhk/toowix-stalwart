@@ -105,7 +105,12 @@ app.get('/healthz', async (_req, res) => {
       const transport = targetUrl.protocol === 'https:' ? https : http;
       const req = transport.request(targetUrl, {
         method: 'GET',
+        agent: false,
+        servername: targetUrl.hostname,
         rejectUnauthorized: false,
+        headers: {
+          'Connection': 'close',
+        },
         timeout: 2000
       }, (resp) => {
         stalwartStatus = (resp.statusCode && resp.statusCode < 500) ? 'reachable' : 'unhealthy';
