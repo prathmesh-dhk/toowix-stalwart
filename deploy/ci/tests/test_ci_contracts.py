@@ -13,6 +13,7 @@ DEPLOY = (ROOT / "deploy/ci/deploy-service.sh").read_text(encoding="utf-8")
 WRAPPER = (ROOT / "deploy/ci/toowix-deploy").read_text(encoding="utf-8")
 COMMON = (ROOT / "deploy/ci/common.sh").read_text(encoding="utf-8")
 INSTALLER = (ROOT / "deploy/ci/install-server.sh").read_text(encoding="utf-8")
+VALIDATE = (ROOT / "deploy/ci/validate-config.sh").read_text(encoding="utf-8")
 
 
 def write_executable(path, content):
@@ -199,6 +200,11 @@ class DeploymentContractTests(unittest.TestCase):
         login = WORKFLOW.index("toowix-deploy login")
         self.assertLess(validate, login)
         self.assertIn('sudo -u "$RUNNER_USER" sudo -n "$WRAPPER" validate', INSTALLER)
+
+    def test_validation_checks_captured_service_list_without_pipefail_race(self):
+        self.assertIn("services=$(compose config --services)", VALIDATE)
+        self.assertIn('grep -Fxq "$svc" <<<"$services"', VALIDATE)
+        self.assertNotIn('compose config --services | grep', VALIDATE)
 
     def test_failed_rollout_restores_previous_image(self):
         if os.name == "nt":
