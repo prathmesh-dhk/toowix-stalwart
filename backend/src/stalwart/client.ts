@@ -47,58 +47,91 @@ export class StalwartClient {
     const url = new URL(`${this.baseUrl}/jmap/`);
     const transport = url.protocol === 'https:' ? https : http;
 
-    try {
-      const responseData = await new Promise<any>((resolve, reject) => {
-        const req = transport.request(
-          url,
-          {
-            method: 'POST',
-            rejectUnauthorized: false, // For local dev with self-signed TLS
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(payload),
-              'Authorization': this.authHeader,
+    const maxRetries = 2;
+    let lastError: any = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const responseData = await new Promise<any>((resolve, reject) => {
+          const req = transport.request(
+            url,
+            {
+              method: 'POST',
+              servername: url.hostname,
+              rejectUnauthorized: false, // For local dev with self-signed TLS
+              headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload),
+                'Authorization': this.authHeader,
+                'Connection': 'close',
+              },
+              timeout: 10000,
             },
-            timeout: 10000,
-          },
-          (res) => {
-            let body = '';
-            res.on('data', (chunk) => (body += chunk));
-            res.on('end', () => {
-              if (res.statusCode && res.statusCode >= 500) {
-                return reject(new StalwartUnavailableError(`Stalwart server error: HTTP ${res.statusCode}`));
-              }
-              if (res.statusCode === 401 || res.statusCode === 403) {
-                return reject(new StalwartError('Invalid Stalwart management credentials', 'AUTH_ERROR'));
-              }
-              try {
-                const parsed = JSON.parse(body);
-                resolve(parsed);
-              } catch (e) {
-                reject(new StalwartError('Invalid JSON response from Stalwart', 'PROTOCOL_ERROR', body));
-              }
-            });
-          }
-        );
+            (res) => {
+              let body = '';
+              res.on('data', (chunk) => (body += chunk));
+              res.on('end', () => {
+                if (res.statusCode && res.statusCode >= 500) {
+                  return reject(new StalwartUnavailableError(`Stalwart server error: HTTP ${res.statusCode}`));
+                }
+                if (res.statusCode === 401 || res.statusCode === 403) {
+                  return reject(new StalwartError('Invalid Stalwart management credentials', 'AUTH_ERROR'));
+                }
+                try {
+                  const parsed = JSON.parse(body);
+                  resolve(parsed);
+                } catch (e) {
+                  reject(new StalwartError('Invalid JSON response from Stalwart', 'PROTOCOL_ERROR', body));
+                }
+              });
+            }
+          );
 
-        req.on('error', (err) => {
-          reject(new StalwartUnavailableError(`Unable to reach Stalwart at ${this.baseUrl}: ${err.message}`));
+          req.on('error', (err) => {
+            reject(new StalwartUnavailableError(`Unable to reach Stalwart at ${this.baseUrl}: ${err.message}`));
+          });
+
+          req.on('timeout', () => {
+            req.destroy();
+            reject(new StalwartUnavailableError('Stalwart request timed out'));
+          });
+
+          req.write(payload);
+          req.end();
         });
 
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new StalwartUnavailableError('Stalwart request timed out'));
-        });
+        return responseData.methodResponses || [];
+      } catch (err: any) {
+        lastError = err;
+        // Do not retry on credential/authorization or protocol errors
+        if (err instanceof StalwartError && !(err instanceof StalwartUnavailableError)) {
+          throw err;
+        }
 
-        req.write(payload);
-        req.end();
-      });
+        const isTransient =
+          err instanceof StalwartUnavailableError ||
+          err.code === 'ECONNRESET' ||
+          err.code === 'ETIMEDOUT' ||
+          err.code === 'ECONNREFUSED' ||
+          (err.message && (
+            err.message.includes('socket disconnected') ||
+            err.message.includes('TLS connection was established') ||
+            err.message.includes('ECONNRESET') ||
+            err.message.includes('timed out')
+          ));
 
-      return responseData.methodResponses || [];
-    } catch (err: any) {
-      if (err instanceof StalwartError) throw err;
-      throw new StalwartUnavailableError(`Network failure communicating with Stalwart: ${err.message}`);
+        if (attempt < maxRetries && isTransient) {
+          const delay = (attempt + 1) * 300;
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+
+        if (err instanceof StalwartError) throw err;
+        throw new StalwartUnavailableError(`Network failure communicating with Stalwart: ${err.message}`);
+      }
     }
+
+    throw lastError || new StalwartUnavailableError(`Network failure communicating with Stalwart: ${this.baseUrl}`);
   }
 
   /**
