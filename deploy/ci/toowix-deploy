@@ -19,7 +19,10 @@ case "$cmd" in
   status) (( $# == 0 )) || exit 2; exec /usr/bin/docker compose -p deploy --project-directory /root/toowix-mail-platform/deploy -f /root/toowix-mail-platform/deploy/docker-compose.prod.yml ps ;;
   health) (( $# == 1 )) || exit 2; case "$1" in backend|super-admin|tenant-admin) exec "$CI/health-check.sh" "$1" ;; *) exit 2;; esac ;;
   deploy) (( $# == 2 )) || exit 2; case "$1" in backend|super-admin|tenant-admin) ;; *) exit 2;; esac
-    [[ "$2" =~ ^sha-[a-f0-9]{40}$ ]] || exit 2; exec "$CI/deploy-service.sh" "$1" "$2" ;;
+    [[ "$2" =~ ^sha-[a-f0-9]{40}$ ]] || exit 2
+    # Refresh deploy scripts from GitHub before running them; never block a deploy on a failed pull.
+    /usr/bin/git -C /root/toowix-mail-platform pull --ff-only origin main >&2 || echo 'Warning: git pull failed; using existing deploy scripts' >&2
+    exec "$CI/deploy-service.sh" "$1" "$2" ;;
   rollback) (( $# == 1 )) || exit 2; case "$1" in backend|super-admin|tenant-admin) exec "$CI/rollback-service.sh" "$1" ;; *) exit 2;; esac ;;
   login) (( $# == 1 )) || exit 2; [[ "$1" =~ ^[a-zA-Z0-9-]+$ ]] || exit 2
     exec /usr/bin/docker login ghcr.io --username "$1" --password-stdin ;;
