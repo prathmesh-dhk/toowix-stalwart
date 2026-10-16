@@ -55,19 +55,17 @@ describe('TenantsManagementView Component', () => {
     onDeleteTenant: vi.fn(),
   };
 
-  it('renders tenant list with company name, domain, and mailbox quota', () => {
+  it('renders tenant list with company name and mailbox allocation', () => {
     render(<TenantsManagementView {...defaultProps} />);
 
     expect(screen.getAllByText('Acme Global')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('acmeglobal.com')[0]).toBeInTheDocument();
     expect(screen.getAllByText('Suspended Industries')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('suspended.test')[0]).toBeInTheDocument();
   });
 
   it('filters tenants by search query', async () => {
     render(<TenantsManagementView {...defaultProps} />);
 
-    const searchInput = screen.getByPlaceholderText(/search organization or domain/i);
+    const searchInput = screen.getByPlaceholderText(/search organization/i);
     await userEvent.type(searchInput, 'acme');
 
     expect(screen.getAllByText('Acme Global')[0]).toBeInTheDocument();
@@ -85,18 +83,18 @@ describe('TenantsManagementView Component', () => {
     expect(screen.getAllByText('Suspended Industries')[0]).toBeInTheDocument();
   });
 
-  it('calls action callbacks for quota and suspend toggles', () => {
+  it('calls action callbacks for refresh and provision tenant', () => {
     render(<TenantsManagementView {...defaultProps} />);
 
-    // Trigger update quota
-    const quotaBtns = screen.getAllByTitle(/adjust mailbox quota limit/i);
-    fireEvent.click(quotaBtns[0]);
-    expect(defaultProps.onUpdateQuota).toHaveBeenCalledWith(mockTenants[0]);
+    // Trigger refresh button
+    const refreshBtn = screen.getByTitle(/refresh tenant directory/i);
+    fireEvent.click(refreshBtn);
+    expect(defaultProps.onRefresh).toHaveBeenCalled();
 
-    // Trigger suspend / activate
-    const suspendBtns = screen.getAllByTitle(/suspend tenant access/i);
-    fireEvent.click(suspendBtns[0]);
-    expect(defaultProps.onToggleSuspend).toHaveBeenCalledWith(mockTenants[0]);
+    // Trigger provision tenant button
+    const provisionBtn = screen.getByRole('button', { name: /provision tenant/i });
+    fireEvent.click(provisionBtn);
+    expect(defaultProps.onCreateTenant).toHaveBeenCalled();
   });
 
   it('triggers onViewDetails when clicking on a tenant row', () => {

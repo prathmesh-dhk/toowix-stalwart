@@ -49,7 +49,7 @@ services:
       PORT: "3000"
       # Public-facing URL the BROWSER uses for JMAP discovery (same-origin with webmail port)
       JMAP_SERVER_URL: "http://localhost:8888"
-      STALWART_INTERNAL_URL: "http://host.docker.internal:8080"
+      STALWART_INTERNAL_URL: "https://smtp.dhkmail.com"
       SESSION_SECRET: "toowix_bulwark_session_secret_32_chars_min_2026!"
       COOKIE_SECURE: "false"
     extra_hosts:

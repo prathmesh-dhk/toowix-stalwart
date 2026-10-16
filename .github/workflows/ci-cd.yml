@@ -1,0 +1,169 @@
+name: Toowix Production CI/CD
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service to build and deploy
+        required: true
+        type: choice
+        options: [backend, super-admin, tenant-admin]
+concurrency:
+  group: toowix-production
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.select.outputs.backend }}
+      super_admin: ${{ steps.select.outputs.super_admin }}
+      tenant_admin: ${{ steps.select.outputs.tenant_admin }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - name: Detect paths
+        id: paths
+        if: github.event_name == 'push'
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'package.json'
+              - 'package-lock.json'
+            super_admin:
+              - 'apps/super-admin/**'
+              - 'package.json'
+              - 'package-lock.json'
+            tenant_admin:
+              - 'apps/tenant-admin/**'
+              - 'package.json'
+              - 'package-lock.json'
+      - name: Select affected services
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          MANUAL_SERVICE: ${{ inputs.service }}
+          B: ${{ steps.paths.outputs.backend }}
+          S: ${{ steps.paths.outputs.super_admin }}
+          T: ${{ steps.paths.outputs.tenant_admin }}
+        run: |
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            echo "backend=$([[ $MANUAL_SERVICE == backend ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+            echo "super_admin=$([[ $MANUAL_SERVICE == super-admin ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+            echo "tenant_admin=$([[ $MANUAL_SERVICE == tenant-admin ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=$B" >> "$GITHUB_OUTPUT"
+            echo "super_admin=$S" >> "$GITHUB_OUTPUT"
+            echo "tenant_admin=$T" >> "$GITHUB_OUTPUT"
+          fi
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    permissions: {contents: read, packages: write}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8
+        with: {node-version: '20', cache: npm}
+      - run: npm ci
+      - run: npm run build --workspace=toowix-mail-backend
+      - run: npx vitest run tests/unit
+        working-directory: backend
+      - uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
+      - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab204004f421ee0
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ghcr.io/prathmesh-dhk/toowix-backend:sha-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+  super-admin:
+    needs: changes
+    if: needs.changes.outputs.super_admin == 'true'
+    runs-on: ubuntu-latest
+    permissions: {contents: read, packages: write}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8
+        with: {node-version: '20', cache: npm}
+      - run: npm ci
+      - run: npx vitest run --project super-admin
+      - run: npm run build:admin
+      - uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
+      - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab204004f421ee0
+        with:
+          context: ./apps/super-admin
+          file: ./apps/super-admin/Dockerfile
+          push: true
+          tags: ghcr.io/prathmesh-dhk/toowix-super-admin:sha-${{ github.sha }}
+          cache-from: type=gha,scope=super-admin
+          cache-to: type=gha,mode=max,scope=super-admin
+  tenant-admin:
+    needs: changes
+    if: needs.changes.outputs.tenant_admin == 'true'
+    runs-on: ubuntu-latest
+    permissions: {contents: read, packages: write}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8
+        with: {node-version: '20', cache: npm}
+      - run: npm ci
+      - run: npx vitest run --project tenant-admin
+      - run: npm run build:tenant
+      - uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
+      - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab204004f421ee0
+        with:
+          context: ./apps/tenant-admin
+          file: ./apps/tenant-admin/Dockerfile
+          push: true
+          tags: ghcr.io/prathmesh-dhk/toowix-tenant-admin:sha-${{ github.sha }}
+          cache-from: type=gha,scope=tenant-admin
+          cache-to: type=gha,mode=max,scope=tenant-admin
+  production:
+    needs: [changes, backend, super-admin, tenant-admin]
+    if: |
+      always() && !cancelled() &&
+      needs.changes.result == 'success' &&
+      (needs.backend.result == 'success' || needs.backend.result == 'skipped') &&
+      (needs.super-admin.result == 'success' || needs.super-admin.result == 'skipped') &&
+      (needs.tenant-admin.result == 'success' || needs.tenant-admin.result == 'skipped') &&
+      (needs.changes.outputs.backend == 'true' || needs.changes.outputs.super_admin == 'true' || needs.changes.outputs.tenant_admin == 'true')
+    runs-on: [self-hosted, linux, x64, toowix-production]
+    environment: production
+    permissions: {contents: read, packages: read}
+    steps:
+      - name: Login to GHCR without giving runner Docker socket access
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "$GHCR_TOKEN" | sudo -n /usr/local/sbin/toowix-deploy login "$GHCR_USER"
+      - name: Verify production configuration
+        run: sudo -n /usr/local/sbin/toowix-deploy validate
+      - name: Deploy changed backend
+        if: needs.changes.outputs.backend == 'true'
+        run: sudo -n /usr/local/sbin/toowix-deploy deploy backend sha-${{ github.sha }}
+      - name: Deploy changed super-admin
+        if: needs.changes.outputs.super_admin == 'true'
+        run: sudo -n /usr/local/sbin/toowix-deploy deploy super-admin sha-${{ github.sha }}
+      - name: Deploy changed tenant-admin
+        if: needs.changes.outputs.tenant_admin == 'true'
+        run: sudo -n /usr/local/sbin/toowix-deploy deploy tenant-admin sha-${{ github.sha }}

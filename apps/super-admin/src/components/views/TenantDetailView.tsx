@@ -182,23 +182,22 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   }, [fetchTenantDetails]);
 
   useEffect(() => {
-    if (!importSearch.trim()) {
-      setImportResults([]);
+    if (!importOpen) {
       return;
     }
     setImportLoading(true);
     setImportError(null);
     api.getUnmanagedDomains(importSearch)
       .then((res) => {
-        setImportResults(res.data.domains || []);
+        setImportResults(res.domains || []);
         setImportLoading(false);
       })
-      .catch((err) => {
+      .catch((err: any) => {
         console.error('[Import Domains] Failed to search:', err);
-        setImportError(err.response?.data?.message || 'Failed to search domains');
+        setImportError(err.message || 'Failed to search domains');
         setImportLoading(false);
       });
-  }, [importSearch]);
+  }, [importSearch, importOpen]);
 
   const handleCopyId = () => {
     if (!details?.tenant?.id) return;
@@ -1079,21 +1078,25 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 Domains bound to Stalwart mail engine and automated GoDaddy DNS records
               </p>
             </div>
-            <div className="w-full sm:w-64 relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={domainSearch}
-                onChange={(e) => setDomainSearch(e.target.value)}
-                placeholder="Search domains..."
-                className="form-input pl-8 h-8 text-xs w-full"
-              />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="w-full sm:w-64 relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={domainSearch}
+                  onChange={(e) => setDomainSearch(e.target.value)}
+                  placeholder="Search domains..."
+                  className="form-input h-8 text-xs w-full"
+                  style={{ paddingLeft: '32px' }}
+                />
+              </div>
               <Button
                 size="sm"
                 variant="secondary"
                 onClick={() => setImportOpen(true)}
-                className="ml-4 mt-sm relative -top-1"
                 type="button"
+                className="shrink-0 font-medium"
+                icon={<Plus className="w-3.5 h-3.5" />}
               >
                 Import Domains
               </Button>
@@ -2291,119 +2294,197 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
             </div>
           </section>
 
-          {/* Import Domains SlideOver Drawer */}
-          <SlideOver
-            isOpen={importOpen}
-            onClose={() => setImportOpen(false)}
-            title="Import Domains from Stalwart"
-            subtitle="Select domains to import into this tenant"
-          >
-            {importLoading ? (
-              <div className="p-6 text-center">
-                <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
-                <p className="mt-2 text-xs text-slate-500">Searching domains...</p>
-              </div>
-            ) : importResults.length === 0 && importSearch ? (
-              <div className="p-6 text-center text-xs text-slate-400">
-                No domains found matching "{importSearch}".
-              </div>
-            ) : importResults.length === 0 && !importSearch ? (
-              <div className="p-6 text-center text-xs text-slate-400">
-                Type to search for unclaimed domains in your Stalwart server.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Search className="w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={importSearch}
-                      onChange={(e) => setImportSearch(e.target.value)}
-                      placeholder="Search domains..."
-                      className="form-input pl-8 h-8 text-xs w-full"
-                    />
-                  </div>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      const selectedArray = Array.from(selectedDomains);
-                      if (selectedArray.length === 0) {
-                        onShowAlert?.('error', 'Please select at least one domain to import.');
-                        return;
-                      }
-                      setImportLoading(true);
-                      setImportError(null);
-                      api.importDomains(tenantId, selectedArray)
-                        .then((res) => {
-                          setImportSuccess(res.data.success.length);
-                          setImportOpen(false);
-                          setImportSearch('');
-                          setSelectedDomains(new Set());
-                          setImportResults([]);
-                          onShowAlert?.('success', `Successfully imported ${res.data.success.length} domain(s).`);
-                          fetchTenantDetails();
-                          onTenantUpdated?.();
-                        })
-                        .catch((err) => {
-                          console.error('[Import Domains] Failed:', err);
-                          setImportError(err.response?.data?.message || 'Failed to import domains');
-                        })
-                        .finally(() => setImportLoading(false));
-                    }}
-                    disabled={selectedDomains.size === 0 || importLoading}
-                    className="w-full"
-                  >
-                    {importLoading ? 'Importing...' : 'Import Selected'}
-                  </Button>
-                </div>
+        </div>
+      )}
 
-                <div className="space-y-2">
-                  {importResults.map((domain) => (
-                    <div
-                      key={domain.stalwartDomainId}
-                      className="p-3 border border-slate-200 rounded-lg flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedDomains.has(domain.stalwartDomainId)}
-                          onChange={() => {
-                            setSelectedDomains((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(domain.stalwartDomainId)) {
-                                next.delete(domain.stalwartDomainId);
-                              } else {
-                                next.add(domain.stalwartDomainId);
-                              }
-                              return next;
-                            });
-                          }}
-                          className="h-4 w-4 text-indigo-600"
-                        />
-                        <div>
-                          <div className="font-medium text-slate-900">{domain.domainName}</div>
-                          <div className="text-xs text-slate-500">Stalwart ID: {domain.stalwartDomainId}</div>
+      {/* Import Domains SlideOver Drawer (Available across all sub-tabs) */}
+      <SlideOver
+        isOpen={importOpen}
+        onClose={() => {
+          setImportOpen(false);
+          setImportError(null);
+        }}
+        title="Import Domains from Stalwart"
+        subtitle="Search and select unclaimed Stalwart domains to import into this tenant"
+        widthClassName="max-w-xl"
+      >
+        <div className="space-y-4">
+          {/* Informational tip */}
+          <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-900 flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              Discovers unmanaged domains and mailboxes configured directly on Stalwart. Existing mailboxes keep their current passwords and credentials untouched.
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={importSearch}
+              onChange={(e) => setImportSearch(e.target.value)}
+              placeholder="Filter by domain name..."
+              className="form-input text-xs w-full"
+              style={{ paddingLeft: '38px' }}
+            />
+          </div>
+
+          {/* Action Button */}
+          <Button
+            variant="primary"
+            onClick={() => {
+              const selectedArray = Array.from(selectedDomains);
+              if (selectedArray.length === 0) {
+                onShowAlert?.('error', 'Please select at least one domain to import.');
+                return;
+              }
+              setImportLoading(true);
+              setImportError(null);
+              api.importDomains(tenantId, selectedArray)
+                .then((res) => {
+                  const count = res.success?.length || 0;
+                  setImportSuccess(count);
+                  onShowAlert?.('success', `Successfully imported ${count} domain(s).`);
+                  setTimeout(() => {
+                    setImportOpen(false);
+                    setImportSearch('');
+                    setSelectedDomains(new Set());
+                    setImportResults([]);
+                    setImportSuccess(0);
+                  }, 1200);
+                  fetchTenantDetails();
+                  onTenantUpdated?.();
+                })
+                .catch((err: any) => {
+                  console.error('[Import Domains] Failed:', err);
+                  setImportError(err.message || 'Failed to import domains');
+                })
+                .finally(() => setImportLoading(false));
+            }}
+            disabled={selectedDomains.size === 0 || importLoading}
+            className="w-full font-semibold"
+            icon={<Plus className="w-4 h-4" />}
+          >
+            {importLoading
+              ? 'Importing...'
+              : selectedDomains.size === 0
+              ? 'Select domains to import'
+              : `Import ${selectedDomains.size} Selected Domain${selectedDomains.size > 1 ? 's' : ''}`}
+          </Button>
+
+          {importError && (
+            <Alert type="error" message={importError} />
+          )}
+
+          {importSuccess > 0 && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-center text-xs text-emerald-700 font-medium">
+              Successfully imported {importSuccess} domain(s)! Refreshing...
+            </div>
+          )}
+
+          {/* Domain list content */}
+          {importLoading && importResults.length === 0 ? (
+            <div className="p-8 text-center">
+              <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin mx-auto" />
+              <p className="mt-2 text-xs text-slate-500">Searching domains on Stalwart...</p>
+            </div>
+          ) : importResults.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              {importSearch
+                ? `No unmanaged domains found matching "${importSearch}".`
+                : 'No unmanaged domains found in Stalwart.'}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-1">
+                <span>Available Stalwart Domains ({importResults.length})</span>
+                {importResults.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedDomains.size === importResults.length) {
+                        setSelectedDomains(new Set());
+                      } else {
+                        setSelectedDomains(new Set(importResults.map(d => d.stalwartDomainId)));
+                      }
+                    }}
+                    className="text-indigo-600 hover:text-indigo-700 font-medium normal-case"
+                  >
+                    {selectedDomains.size === importResults.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                )}
+              </div>
+
+              {importResults.map((domain) => {
+                const isSelected = selectedDomains.has(domain.stalwartDomainId);
+                return (
+                  <div
+                    key={domain.stalwartDomainId}
+                    onClick={() => {
+                      setSelectedDomains((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(domain.stalwartDomainId)) {
+                          next.delete(domain.stalwartDomainId);
+                        } else {
+                          next.add(domain.stalwartDomainId);
+                        }
+                        return next;
+                      });
+                    }}
+                    className={`p-3.5 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-indigo-500 bg-indigo-50/60 shadow-xs ring-1 ring-indigo-500'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '4px',
+                          border: isSelected ? '1px solid var(--indigo-600)' : '1px solid var(--slate-300)',
+                          backgroundColor: isSelected ? 'var(--indigo-600)' : '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />}
+                      </div>
+
+                      <div className="w-8 h-8 rounded-lg bg-indigo-100/70 border border-indigo-200/50 flex items-center justify-center shrink-0 text-indigo-600">
+                        <Globe className="w-4 h-4" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-slate-900 truncate">
+                            {domain.domainName}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
+                            Unclaimed
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          Stalwart ID: {domain.stalwartDomainId}
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
 
-                {importError && (
-                  <Alert type="error" message={importError} />
-                )}
-
-                {importSuccess > 0 && (
-                  <div className="pt-4 text-center text-xs text-success-600">
-                    Successfully imported {importSuccess} domain(s)! Closing...
+                    <span className={`text-xs font-medium shrink-0 ml-3 ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`}>
+                      {isSelected ? 'Selected' : 'Select'}
+                    </span>
                   </div>
-                )}
-              </div>
-            )}
-          </SlideOver>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </SlideOver>
 
     </div>
   );

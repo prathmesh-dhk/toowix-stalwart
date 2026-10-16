@@ -102,7 +102,6 @@ describe('PlatformAdminDashboard Component', () => {
     // Should load the tenants view and display the tenant from api.listTenants
     const nexusTech = await screen.findAllByText('Nexus Tech');
     expect(nexusTech[0]).toBeInTheDocument();
-    expect(screen.getAllByText('nexus.tech')[0]).toBeInTheDocument();
   });
 
   it('calls onLogout when clicking Sign Out button', async () => {

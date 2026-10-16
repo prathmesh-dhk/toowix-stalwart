@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. MongoDB 7.0 - Single Source of Truth for Tenancy, Quotas, and Auth
   mongodb:
@@ -16,44 +14,22 @@ services:
       timeout: 5s
       retries: 5
 
-  # 2. Stalwart Mail Server (Community Edition) - Mail Delivery & Storage Engine Only
-  stalwart:
-    image: stalwartlabs/stalwart:latest
-    container_name: toowix-prod-stalwart
-    restart: always
-    environment:
-      - STALWART_RECOVERY_ADMIN=admin:ToowixServiceSecret2026!Secure
-    # CRITICAL SECURITY INVARIANT:
-    # Stalwart Management API (8080) is NEVER exposed on host or public network.
-    # It is strictly reachable ONLY on toowix-internal by Toowix Backend.
-    ports:
-      # Management Web UI & API — exposed on all interfaces so backend container
-      # can reach it via host.docker.internal. Firewall (ufw/iptables) should
-      # restrict external access to port 8080 if needed.
-      - "${PORT_STALWART_ADMIN:-8080}:8080"
-      # Public Mail Protocol Ports
-      - "25:25"       # SMTP MX inbound
-      - "587:587"     # SMTP Submission
-      - "465:465"     # SMTPS Submission
-      - "993:993"     # IMAPS
-      - "143:143"     # IMAP (STARTTLS)
-      - "4190:4190"   # ManageSieve
-    volumes:
-      - toowix-prod-stalwart-etc:/etc/stalwart
-      - toowix-prod-stalwart-data:/var/lib/stalwart
-    networks:
-      - toowix-internal
-      - toowix-public
-
-  # 3. Toowix Backend - Multi-Tenant Control Plane & API Service
+  # 2. Toowix Backend - Multi-Tenant Control Plane & API Service
   backend:
     build:
       context: ../backend
       dockerfile: Dockerfile
+    image: ${BACKEND_IMAGE:-deploy-backend:latest}
     container_name: toowix-prod-backend
     restart: always
     ports:
       - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     environment:
       PORT: 4000
       NODE_ENV: production
@@ -66,17 +42,21 @@ services:
       AWS_S3_BUCKET: ${AWS_S3_BUCKET}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      STALWART_URL: ${STALWART_URL:-http://stalwart:8080}
+      # Dedicated External Stalwart Server
+      STALWART_URL: ${STALWART_URL:-https://smtp.dhkmail.com}
       STALWART_API_KEY: ${STALWART_API_KEY:-}
-      STALWART_USER: ${STALWART_SERVICE_USER:-toowix-service@toowix.test}
+      STALWART_USER: ${STALWART_SERVICE_USER:-admin}
       STALWART_PASSWORD: ${STALWART_SERVICE_PASSWORD}
       STALWART_ACCOUNT_ID: ${STALWART_ACCOUNT_ID:-b}
       STALWART_ACME_PROVIDER_ID: ${STALWART_ACME_PROVIDER_ID:-}
-      ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@toowix.com}
+      # Administrator & Portal URLs (for emails & password resets)
+      ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@dhkmail.com}
       ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
-      TENANT_ADMIN_URL: ${TENANT_ADMIN_URL:-http://localhost:5174}
-      SMTP_HOST: ${SMTP_HOST:-email.toowix.com}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-https://superadmin.toowix.com}
+      TENANT_ADMIN_URL: ${TENANT_ADMIN_URL:-https://admin.toowix.com}
+      PLATFORM_MAIL_DOMAIN: ${PLATFORM_MAIL_DOMAIN:-dhkmail.com}
+      # Transactional Outbound SMTP Relay
+      SMTP_HOST: ${SMTP_HOST:-smtp.dhkmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER_EMAIL: ${SMTP_USER_EMAIL}
@@ -84,19 +64,18 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
       SMTP_ENABLE: ${SMTP_ENABLE:-true}
+      # Billing (Stripe)
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       SKIP_BILLING: ${SKIP_BILLING:-true}
       ENABLE_BILLING: ${ENABLE_BILLING:-false}
       ALLOW_SANDBOX_BILLING: ${ALLOW_SANDBOX_BILLING:-true}
+      # Infrastructure & DNS
       MAIL_SERVER_IPS: ${MAIL_SERVER_IPS}
-      MAIL_HOSTNAME: ${MAIL_HOSTNAME}
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-smtp.dhkmail.com}
       GODADDY_API_BASE_URL: ${GODADDY_API_BASE_URL}
     volumes:
-      # backup.service.ts defaults to path.resolve(process.cwd(), 'backups'),
-      # and the Dockerfile's WORKDIR is /app — must match, or backups land on
-      # the container's ephemeral layer and are lost on every recreate.
       - toowix-prod-backups:/app/backups
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -106,74 +85,83 @@ services:
     networks:
       - toowix-internal
 
-  # 4a. Toowix Super Admin SPA & Reverse Proxy (Nginx)
+  # 3a. Toowix Super Admin SPA & Reverse Proxy (Nginx)
   super-admin:
     build:
       context: ../apps/super-admin
       dockerfile: Dockerfile
+    image: ${SUPER_ADMIN_IMAGE:-deploy-super-admin:latest}
     container_name: toowix-prod-super-admin
     restart: always
     ports:
       - "${PORT_ADMIN_HTTP:-5173}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       - backend
     networks:
       - toowix-internal
       - toowix-public
 
-  # 4b. Toowix Tenant Admin & Onboarding SPA & Reverse Proxy (Nginx)
+  # 3b. Toowix Tenant Admin & Onboarding SPA & Reverse Proxy (Nginx)
   tenant-admin:
     build:
       context: ../apps/tenant-admin
       dockerfile: Dockerfile
+    image: ${TENANT_ADMIN_IMAGE:-deploy-tenant-admin:latest}
     container_name: toowix-prod-tenant-admin
     restart: always
     ports:
       - "${PORT_HTTP:-5174}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       - backend
     networks:
       - toowix-internal
       - toowix-public
 
-
-  # 5. Bulwark JMAP Webmail (Modern Next.js client for Stalwart)
+  # 4. Bulwark JMAP Webmail (Next.js client for Stalwart on port 8888)
   webmail:
     image: ghcr.io/bulwarkmail/webmail:latest
     container_name: toowix-prod-webmail
     restart: always
-    command: ["node", "server-proxy.js"]
     ports:
       - "${PORT_WEBMAIL:-8888}:3000"
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
-      # Public-facing URL the BROWSER uses for JMAP discovery — must be the
-      # webmail app's own address (same-origin), never Stalwart's internal
-      # Docker hostname. server-proxy.js forwards /jmap/* to Stalwart
-      # server-side; STALWART_URL below stays internal-only for that.
-      JMAP_SERVER_URL: "${WEBMAIL_PUBLIC_URL:-https://webmail.toowix.com}"
-      STALWART_INTERNAL_URL: "${STALWART_URL:-http://stalwart:8080}"
+      JMAP_SERVER_URL: "${WEBMAIL_PUBLIC_URL:-https://smtp.dhkmail.com}"
+      STALWART_INTERNAL_URL: "${STALWART_URL:-https://smtp.dhkmail.com}"
+      SESSION_SECRET: "${SESSION_SECRET:-toowix_bulwark_session_secret_32_chars_min_2026!}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-true}"
     volumes:
-      - ./bulwark/server-proxy.js:/app/server-proxy.js:ro
       - toowix-prod-bulwark-settings:/app/data/settings
       - toowix-prod-bulwark-admin:/app/data/admin
-    depends_on:
-      - stalwart
     networks:
       - toowix-internal
       - toowix-public
 
-  # 6. Automated Backup Worker (Scheduled Daily Cron)
+  # 5. Automated Backup Worker (Scheduled Daily Cron at 02:00)
   backup-cron:
     build:
       context: ../backend
       dockerfile: Dockerfile
+    image: ${BACKUP_CRON_IMAGE:-deploy-backup-cron:latest}
     container_name: toowix-prod-backup-cron
     restart: always
     entrypoint: ["/bin/sh", "-c", "echo '0 2 * * * /app/scripts/backup-s3.sh >> /var/log/backup.log 2>&1' > /etc/crontabs/root && crond -f -l 2"]
     environment:
       MONGODB_URI: mongodb://mongodb:27017/toowix_mail
+      BACKUP_DIR: /var/backups/toowix
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
       S3_BUCKET: ${AWS_S3_BUCKET:-toowix-mail-backups}
       RETENTION_DAYS: 30
@@ -188,18 +176,16 @@ services:
       - toowix-internal
 
 networks:
-  # Strictly internal network: isolates MongoDB and Stalwart Management HTTP (8080)
+  # Strictly internal network: isolates MongoDB and Backend API
   toowix-internal:
     driver: bridge
     internal: false
-  # Public facing network for web SPA and inbound mail protocols
+  # Public facing network for web SPAs and Webmail
   toowix-public:
     driver: bridge
 
 volumes:
   toowix-prod-mongodata:
-  toowix-prod-stalwart-etc:
-  toowix-prod-stalwart-data:
   toowix-prod-bulwark-settings:
   toowix-prod-bulwark-admin:
   toowix-prod-backups:

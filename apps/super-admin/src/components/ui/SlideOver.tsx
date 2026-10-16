@@ -47,8 +47,8 @@ export const SlideOver: React.FC<SlideOverProps> = ({
     >
       <div
         onClick={onClose}
-        className="absolute inset-0"
-        style={{ backgroundColor: 'var(--overlay-color)', animation: 'slideover-backdrop-in 0.2s ease' }}
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+        style={{ animation: 'slideover-backdrop-in 0.2s ease' }}
       />
       <div
         className={`relative w-full ${widthClassName} h-full flex flex-col shadow-2xl`}
@@ -62,12 +62,12 @@ export const SlideOver: React.FC<SlideOverProps> = ({
           className="flex items-start justify-between gap-3 px-5 py-4 shrink-0"
           style={{ borderBottom: '1px solid var(--border-color)' }}
         >
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold truncate" style={{ color: 'var(--slate-900)' }}>
+          <div className="min-w-0 pr-2">
+            <h2 className="text-sm font-bold text-slate-900">
               {title}
             </h2>
             {subtitle && (
-              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--slate-500)' }}>
+              <p className="text-xs mt-0.5 text-slate-500 leading-normal">
                 {subtitle}
               </p>
             )}

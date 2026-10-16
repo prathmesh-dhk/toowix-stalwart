@@ -885,7 +885,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Webmail */}
             <a
-              href="https://webmail.toowix.com"
+              href="https://dhkmail.com"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"

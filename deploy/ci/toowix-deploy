@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Install ROOT-OWNED to /usr/local/sbin/toowix-deploy, chmod 700.
+set -Eeuo pipefail
+umask 077
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+unset BASH_ENV ENV CDPATH GIT_CONFIG_GLOBAL
+CI=/root/toowix-mail-platform/deploy/ci
+[[ $(id -u) == 0 ]] || exit 90
+# This entrypoint is installed outside any GitHub checkout and is immutable to runner.
+[[ $(stat -c '%u' "$CI/deploy-service.sh") == 0 ]] || exit 91
+[[ $(stat -c '%u' "$CI/rollback-service.sh") == 0 ]] || exit 91
+[[ $(stat -c '%u' "$CI/validate-config.sh") == 0 ]] || exit 91
+[[ $(stat -c '%u' "$CI/health-check.sh") == 0 ]] || exit 91
+(( $# >= 1 )) || exit 2
+cmd=$1; shift
+case "$cmd" in
+  validate) (( $# == 0 )) || exit 2; exec "$CI/validate-config.sh" ;;
+  status) (( $# == 0 )) || exit 2; exec /usr/bin/docker compose -p deploy --project-directory /root/toowix-mail-platform/deploy -f /root/toowix-mail-platform/deploy/docker-compose.prod.yml ps ;;
+  health) (( $# == 1 )) || exit 2; case "$1" in backend|super-admin|tenant-admin) exec "$CI/health-check.sh" "$1" ;; *) exit 2;; esac ;;
+  deploy) (( $# == 2 )) || exit 2; case "$1" in backend|super-admin|tenant-admin) ;; *) exit 2;; esac
+    [[ "$2" =~ ^sha-[a-f0-9]{40}$ ]] || exit 2; exec "$CI/deploy-service.sh" "$1" "$2" ;;
+  rollback) (( $# == 1 )) || exit 2; case "$1" in backend|super-admin|tenant-admin) exec "$CI/rollback-service.sh" "$1" ;; *) exit 2;; esac ;;
+  login) (( $# == 1 )) || exit 2; [[ "$1" =~ ^[a-zA-Z0-9-]+$ ]] || exit 2
+    exec /usr/bin/docker login ghcr.io --username "$1" --password-stdin ;;
+  *) exit 2 ;;
+esac

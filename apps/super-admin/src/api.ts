@@ -203,6 +203,14 @@ export const api = {
     request<{ domains: Array<{ stalwartDomainId: string; domainName: string }> }>(
       `/api/platform/tenants/unmanaged-domains?q=${encodeURIComponent(query)}`
     ),
+  importDomains: (tenantId: string, domainIds: string[]) =>
+    request<{
+      success: Array<{ domainName: string; stalwartDomainId: string; mailboxesImported: number }>;
+      errors: Array<{ domainName: string; message: string }>;
+    }>(`/api/platform/tenants/${tenantId}/domains/import`, {
+      method: 'POST',
+      body: JSON.stringify({ domainIds }),
+    }),
   getTenantDetails: (id: string) => request<TenantFullDetails>(`/api/platform/tenants/${id}`),
   createTenant: (body: { name: string; domain: string; mailboxLimit?: number }) =>
     request<TenantSummary>('/api/platform/tenants', {
@@ -419,15 +427,6 @@ export const api = {
       error?: string;
     }>('/api/system/smtp/relay-status'),
 
-  importDomains: (tenantId: string, domainIds: string[]) =>
-    request<{
-      success: Array<{ domainName: string; stalwartDomainId: string; mailboxesImported: number }>;
-      errors: Array<{ domainName: string; message: string }>;
-    }>(`/api/platform/tenants/${tenantId}/domains/import`, {
-      method: 'POST',
-      body: JSON.stringify({ domainIds }),
-    }),
-
   sendSmtpTestPing: (to: string) =>
     request<{
       success: boolean;
@@ -468,15 +467,6 @@ export const api = {
     request<{ success: boolean; message: string }>('/api/system/alerts/test', {
       method: 'POST',
       body: JSON.stringify({ webhookUrl }),
-    }),
-
-  importDomains: (tenantId: string, domainIds: string[]) =>
-    request<{
-      success: Array<{ domainName: string; stalwartDomainId: string; mailboxesImported: number }>;
-      errors: Array<{ domainName: string; message: string }>;
-    }>(`/api/platform/tenants/${tenantId}/domains/import`, {
-      method: 'POST',
-      body: JSON.stringify({ domainIds }),
     }),
 
   // Phase 4: Tenant Activation

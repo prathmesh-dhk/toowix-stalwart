@@ -9,3 +9,5 @@ coverage
 backups
 *.enc
 .claude/
+*.zip
+.deploy-state/

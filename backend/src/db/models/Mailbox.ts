@@ -119,6 +119,11 @@ const MailboxSchema = new Schema<IMailbox>(
       required: true,
       index: true,
     },
+    domainName: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
     localPart: {
       type: String,
       required: true,

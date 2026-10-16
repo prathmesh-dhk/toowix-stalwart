@@ -48,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
           </button>
 
           <a
-            href={(import.meta as any).env?.VITE_WEBMAIL_URL || 'http://localhost:8888'}
+            href={(import.meta as any).env?.VITE_WEBMAIL_URL || 'https://dhkmail.com'}
             target="_blank"
             rel="noopener noreferrer"
             className="btn btn-secondary btn-sm"
@@ -82,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             <Laptop size={18} color="var(--primary)" />
           </button>
           <a
-            href={(import.meta as any).env?.VITE_WEBMAIL_URL || 'http://localhost:8888'}
+            href={(import.meta as any).env?.VITE_WEBMAIL_URL || 'https://dhkmail.com'}
             target="_blank"
             rel="noopener noreferrer"
             className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"

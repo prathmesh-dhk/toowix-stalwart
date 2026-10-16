@@ -104,9 +104,10 @@ const proxy = http.createServer((req, res) => {
           }
 
           const modifiedBody = Buffer.from(JSON.stringify(data));
+          delete resHeaders['transfer-encoding'];
+          delete resHeaders['content-encoding'];
           resHeaders['content-length'] = modifiedBody.length;
           resHeaders['content-type'] = 'application/json; charset=utf-8';
-          delete resHeaders['content-encoding'];
           res.writeHead(proxyRes.statusCode, resHeaders);
           res.end(modifiedBody);
         } catch (e) {

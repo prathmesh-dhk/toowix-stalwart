@@ -942,6 +942,8 @@ platformTenantRouter.post('/:id/domains/import', async (req: Request, res: Respo
     errors: Array<{ domainName: string; message: string }>;
   } = { success: [], errors: [] };
 
+  let totalMailboxesImported = 0;
+
   for (const stalwartDomainId of domainIds) {
     try {
       // Fetch domain info from Stalwart
@@ -951,46 +953,120 @@ platformTenantRouter.post('/:id/domains/import', async (req: Request, res: Respo
         continue;
       }
 
-      // Check if already claimed by any tenant
-      const existing = await DomainModel.findOne({ domainName: domain.name });
+      const normalizedDomainName = domain.name.toLowerCase().trim();
+
+      // Check if already claimed by any tenant (case-insensitive)
+      const existing = await DomainModel.findOne({
+        domainName: { $regex: new RegExp(`^${normalizedDomainName}$`, 'i') },
+      });
       if (existing) {
         results.errors.push({ domainName: domain.name, message: 'Domain already claimed by a tenant' });
         continue;
       }
 
+      // First imported domain becomes primary if tenant currently has 0 domains
+      const existingDomainCount = await DomainModel.countDocuments({ tenantId: tenant._id });
+      const isPrimary = existingDomainCount === 0;
+
+      // Extract DKIM info from Stalwart if generated
+      let dkimSelector: string | null = null;
+      let dkimPublicKey: string | null = null;
+      try {
+        const dkimKeys = await stalwartClient.getActiveDkimKeys(domain.id);
+        if (dkimKeys && dkimKeys.length > 0) {
+          dkimSelector = dkimKeys[0].selector || null;
+          dkimPublicKey = dkimKeys[0].publicKey || null;
+        }
+      } catch (err: any) {
+        // Non-blocking
+      }
+
       // Create local Domain record
       const domainDoc = await DomainModel.create({
         tenantId: tenant._id,
-        domainName: domain.name,
+        domainName: normalizedDomainName,
         stalwartDomainId: domain.id,
         status: domain.isEnabled ? 'active' : 'suspended',
         dnsStatus: 'not_started',
-        isPrimary: false,
+        isPrimary,
+        dnsZoneFile: domain.dnsZoneFile || null,
+        dkimSelector,
+        dkimPublicKey,
       });
 
       // Import mailboxes for this domain
       const accounts = await stalwartClient.listAccounts();
-      const domainAccounts = accounts.filter(acc => acc.domainId === domain.id);
+      const domainAccounts = accounts.filter(
+        (acc) =>
+          acc.domainId === domain.id ||
+          (acc.emailAddress && acc.emailAddress.toLowerCase().endsWith(`@${normalizedDomainName}`))
+      );
       let importedMailboxes = 0;
 
       for (const acc of domainAccounts) {
-        // Check if mailbox already claimed
-        const existingMailbox = await MailboxModel.findOne({ address: acc.emailAddress });
+        const localPart = (acc.name || '').toLowerCase().trim();
+        const fullAddress = (
+          acc.emailAddress || `${localPart}@${normalizedDomainName}`
+        ).toLowerCase().trim();
+
+        if (!localPart || !fullAddress) continue;
+
+        // Check if mailbox already claimed globally or locally within tenant
+        const existingMailbox = await MailboxModel.findOne({
+          $or: [
+            { address: { $regex: new RegExp(`^${fullAddress}$`, 'i') } },
+            { tenantId: tenant._id, localPart },
+          ],
+        });
         if (existingMailbox) {
           continue; // skip, already claimed
         }
 
-        // Create mailbox record (no password known)
-        const mailboxDoc = await MailboxModel.create({
+        // Create mailbox record (password preserved on Stalwart server per spec)
+        await MailboxModel.create({
           tenantId: tenant._id,
           domainId: domainDoc._id,
-          localPart: acc.name,
-          address: acc.emailAddress,
+          domainName: normalizedDomainName,
+          localPart,
+          address: fullAddress,
+          displayName: acc.description || acc.name || null,
           stalwartAccountId: acc.id,
-          status: 'active', // assume active; could check acc.status if available
+          status: 'active',
           billingHold: false,
         });
         importedMailboxes++;
+      }
+
+      totalMailboxesImported += importedMailboxes;
+
+      // Ensure domain-level mailbox limit accommodates imported mailboxes
+      if (importedMailboxes > domainDoc.mailboxLimit) {
+        await DomainModel.updateOne(
+          { _id: domainDoc._id },
+          { $set: { mailboxLimit: importedMailboxes } }
+        );
+      }
+
+      // Audit log entry for domain import
+      if (req.adminUser) {
+        await AuditLogModel.create({
+          actorId: req.adminUser.id,
+          actorRole: req.adminUser.role,
+          actorEmail: req.adminUser.email,
+          actorIp: req.ip || req.socket.remoteAddress || 'unknown',
+          tenantId: tenant._id,
+          action: 'DOMAIN_IMPORTED',
+          resource: 'DOMAIN',
+          resourceId: domainDoc._id.toString(),
+          status: 'SUCCESS',
+          metadata: {
+            domainName: normalizedDomainName,
+            stalwartDomainId: domain.id,
+            mailboxesImported: importedMailboxes,
+            isPrimary,
+          },
+          timestamp: new Date(),
+        });
       }
 
       results.success.push({
@@ -1004,6 +1080,23 @@ platformTenantRouter.post('/:id/domains/import', async (req: Request, res: Respo
         message: err.message || 'Unknown error',
       });
     }
+  }
+
+  // Synchronize tenant mailbox count and ensure quota limit accommodates all imported mailboxes
+  if (totalMailboxesImported > 0) {
+    const freshTenant = await TenantModel.findById(tenant._id);
+    const currentCount = freshTenant?.mailboxCount || 0;
+    const currentLimit = freshTenant?.mailboxLimit || 10;
+    const newCount = currentCount + totalMailboxesImported;
+    const newLimit = Math.max(currentLimit, newCount);
+
+    await TenantModel.updateOne(
+      { _id: tenant._id },
+      {
+        $inc: { mailboxCount: totalMailboxesImported },
+        $set: { mailboxLimit: newLimit },
+      }
+    );
   }
 
   if (results.errors.length > 0 && results.success.length === 0) {
