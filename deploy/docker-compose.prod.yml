@@ -140,7 +140,7 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
-      JMAP_SERVER_URL: "${WEBMAIL_PUBLIC_URL:-https://dhkmail.com}"
+      JMAP_SERVER_URL: "${WEBMAIL_PUBLIC_URL:-https://webmail.dhkmail.com}"
       STALWART_INTERNAL_URL: "${STALWART_URL:-https://smtp.dhkmail.com}"
       SESSION_SECRET: "${SESSION_SECRET:-toowix_bulwark_session_secret_32_chars_min_2026!}"
       COOKIE_SECURE: "${COOKIE_SECURE:-true}"
