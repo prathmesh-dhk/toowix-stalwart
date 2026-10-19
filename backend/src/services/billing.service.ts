@@ -552,6 +552,12 @@ export async function ensureDomainSubscription(
   const trialEnd = sibling?.trialEnd ?? tenant.trialEndsAt ?? null;
   const currentPeriodEnd = sibling?.currentPeriodEnd ?? trialEnd;
   const status: DomainSubscriptionStatus = sibling?.status ?? (trialEnd && trialEnd.getTime() > Date.now() ? 'trialing' : 'active');
+  // Cancelling suspended its mail; billing it again brings the mail back (before counting users).
+  const reviving = existing?.status === 'canceled' && domain.status === 'suspended';
+  if (reviving) {
+    await reactivateDomainForPayment(domain._id.toString(), String(domain.tenantId));
+    domain.status = 'active';
+  }
   const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
 
   let stripeSubscriptionId = tenant.stripeSubscriptionId || `sub_trial_${tenant._id}`;
@@ -559,14 +565,23 @@ export async function ensureDomainSubscription(
 
   if (isBillingEnabled() && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
     stripeSubscriptionId = tenant.stripeSubscriptionId!;
-    const item = await stripeClient.addDomainSubscriptionItem(stripeSubscriptionId, {
-      name: `${plan.name} — ${domain.domainName}`,
-      unitAmountPaise: plan.monthlyPriceInPaise ?? plan.pricePerUserMonthlyPaise ?? 0,
-      quantity: activeCount,
-      domainId: domain._id.toString(),
-      planId: plan._id.toString(),
-    });
-    stripeSubscriptionItemId = item.id;
+    try {
+      const item = await stripeClient.addDomainSubscriptionItem(stripeSubscriptionId, {
+        name: `${plan.name} — ${domain.domainName}`,
+        unitAmountPaise: plan.monthlyPriceInPaise ?? plan.pricePerUserMonthlyPaise ?? 0,
+        quantity: activeCount,
+        domainId: domain._id.toString(),
+        planId: plan._id.toString(),
+      });
+      stripeSubscriptionItemId = item.id;
+    } catch (err) {
+      // Not billed after all, so its mail goes back off.
+      if (reviving) {
+        await suspendDomainForNonPayment(domain._id.toString(), String(domain.tenantId));
+        domain.status = 'suspended';
+      }
+      throw err;
+    }
   }
 
   const sub = await DomainSubscriptionModel.findOneAndUpdate(
@@ -1269,8 +1284,9 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
  * scoped to a single domain. Kept as a separate function rather than a
  * refactor of that already-tested route — see billing plan doc.
  */
-export async function suspendDomainForNonPayment(domainId: string): Promise<void> {
-  const domain = await DomainModel.findByIdAndUpdate(domainId, { status: 'suspended' }, { returnDocument: 'after' });
+export async function suspendDomainForNonPayment(domainId: string, tenantId: string): Promise<void> {
+  // Scoped to the tenant: rows on the shared platform domain carry other tenants' ids.
+  const domain = await DomainModel.findOneAndUpdate({ _id: domainId, tenantId }, { status: 'suspended' }, { returnDocument: 'after' });
   if (!domain) return;
 
   if (domain.stalwartDomainId) {
@@ -1302,8 +1318,8 @@ export async function suspendDomainForNonPayment(domainId: string): Promise<void
   });
 }
 
-export async function reactivateDomainForPayment(domainId: string): Promise<void> {
-  const domain = await DomainModel.findByIdAndUpdate(domainId, { status: 'active' }, { returnDocument: 'after' });
+export async function reactivateDomainForPayment(domainId: string, tenantId: string): Promise<void> {
+  const domain = await DomainModel.findOneAndUpdate({ _id: domainId, tenantId }, { status: 'active' }, { returnDocument: 'after' });
   if (!domain) return;
 
   if (domain.stalwartDomainId) {
@@ -1314,8 +1330,10 @@ export async function reactivateDomainForPayment(domainId: string): Promise<void
     }
   }
 
-  const mailboxes = await MailboxModel.find({ domainId: domain._id });
-  await MailboxModel.updateMany({ domainId: domain._id }, { status: 'active' });
+  // Held mailboxes aren't billed yet; activation releases them, not payment.
+  const billed = { domainId: domain._id, billingHold: { $ne: true } };
+  const mailboxes = await MailboxModel.find(billed);
+  await MailboxModel.updateMany(billed, { status: 'active' });
   for (const mailbox of mailboxes) {
     if (mailbox.stalwartAccountId) {
       try {
@@ -1557,7 +1575,7 @@ export async function cancelSubscription(domainId: string, tenantId: string, act
     sub.cancelAtPeriodEnd = false;
     await sub.save();
     // Off the bill from now on, so its mail stops now too.
-    await suspendDomainForNonPayment(domain._id.toString());
+    await suspendDomainForNonPayment(domain._id.toString(), tenantId);
   }
 
   await logAudit({
@@ -1917,7 +1935,7 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         if (wasInGrace) {
           const domain = await DomainModel.findById(sub.domainId);
           if (domain?.status === 'suspended') {
-            await reactivateDomainForPayment(sub.domainId.toString());
+            await reactivateDomainForPayment(sub.domainId.toString(), sub.tenantId.toString());
           }
         }
       }
@@ -1934,13 +1952,8 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         { _id: { $in: siblings.map((s) => s._id) } },
         { status: 'canceled', retentionEndsAt }
       );
-      // The cancellation took effect: mail stops on every domain it covered (data is kept). Only
-      // domains the tenant owns: a row on the shared platform domain must not suspend everyone's.
-      for (const sub of siblings) {
-        if (await DomainModel.exists({ _id: sub.domainId, tenantId: sub.tenantId })) {
-          await suspendDomainForNonPayment(sub.domainId.toString());
-        }
-      }
+      // The cancellation took effect: mail stops on every domain it covered (data is kept).
+      for (const sub of siblings) await suspendDomainForNonPayment(sub.domainId.toString(), sub.tenantId.toString());
       break;
     }
 

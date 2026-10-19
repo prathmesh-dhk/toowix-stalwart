@@ -56,6 +56,25 @@ describe('billing-grace-sweep.job', () => {
     expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('suspended');
   });
 
+  it('never suspends a domain another tenant owns (the shared platform domain)', async () => {
+    const owner = await TenantModel.create({ name: 'Platform', status: 'active', mailboxLimit: 1, mailboxCount: 0 });
+    const platform = await DomainModel.create({ tenantId: owner._id, domainName: 'platform.test', status: 'active' });
+    const sub = await DomainSubscriptionModel.create({
+      domainId: platform._id,
+      tenantId,
+      planId,
+      stripeSubscriptionId: 'sub_p',
+      stripeSubscriptionItemId: 'si_p',
+      status: 'grace',
+      gracePeriodEndsAt: new Date(Date.now() - 60 * 1000),
+    });
+
+    await runGraceSweepOnce();
+
+    expect((await DomainModel.findById(platform._id))?.status).toBe('active');
+    expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('suspended');
+  });
+
   it('leaves a domain alone whose grace period has not yet expired', async () => {
     const domain = await DomainModel.create({ tenantId, domainName: 'still-in-grace.com', status: 'active' });
     await DomainSubscriptionModel.create({

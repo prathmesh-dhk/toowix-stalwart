@@ -579,16 +579,33 @@ describe('billing.service', () => {
         status: 'active',
       });
 
-      await suspendDomainForNonPayment(domain._id.toString());
+      await suspendDomainForNonPayment(domain._id.toString(), tenantId);
 
       expect((await DomainModel.findById(domain._id))?.status).toBe('suspended');
       expect((await DomainModel.findById(otherDomain._id))?.status).toBe('active');
       expect((await MailboxModel.findById(mailbox._id))?.status).toBe('suspended');
       expect(stalwartClient.updateDomainStatus).toHaveBeenCalledWith('stalwart-dom-1', false);
 
-      await reactivateDomainForPayment(domain._id.toString());
+      const held = await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'held', address: 'held@suspend-me.com', status: 'suspended', billingHold: true });
+
+      await reactivateDomainForPayment(domain._id.toString(), tenantId);
       expect((await DomainModel.findById(domain._id))?.status).toBe('active');
       expect((await MailboxModel.findById(mailbox._id))?.status).toBe('active');
+      // Held mailboxes aren't billed, so payment doesn't switch them on.
+      expect((await MailboxModel.findById(held._id))?.status).toBe('suspended');
+    });
+
+    it('a payment never reactivates a domain another tenant owns (the shared platform domain)', async () => {
+      const owner = await TenantModel.create({ name: 'Platform', status: 'active', mailboxLimit: 1, mailboxCount: 0 });
+      const platform = await DomainModel.create({ tenantId: owner._id, domainName: 'platform2.test', status: 'suspended' });
+      await DomainSubscriptionModel.create({
+        domainId: platform._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_plat', stripeSubscriptionItemId: 'si_plat', status: 'suspended',
+      });
+
+      await handleWebhookEvent({ id: 'evt_plat_paid', type: 'invoice.payment_succeeded', data: { object: { subscription: 'sub_plat', billing_reason: 'manual' } } } as any);
+
+      expect((await DomainModel.findById(platform._id))?.status).toBe('suspended');
     });
   });
 
