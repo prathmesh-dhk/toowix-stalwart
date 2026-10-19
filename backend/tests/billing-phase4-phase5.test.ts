@@ -13,6 +13,7 @@ import { stalwartClient } from '../src/stalwart/client';
 vi.mock('../src/stripe/client', () => ({
   stripeClient: {
     cancelAtPeriodEnd: vi.fn(),
+    cancelSubscription: vi.fn(),
     retrieveSubscription: vi.fn(),
     retrieveSubscriptionExpanded: vi.fn(),
     syncDomainUserQuantity: vi.fn(),
@@ -210,6 +211,7 @@ describe('Billing Phase 4 & 5: Cancellation, Abuse Defense & Nightly Reconciliat
         },
         items: { data: [] },
       } as any);
+      vi.mocked(stripeClient.cancelSubscription).mockResolvedValue({ id: 'sub_new_session', status: 'canceled' } as any);
 
       await expect(
         adoptActivationSession(tenantId, mockSession, { id: 'admin-1', email: 'admin@acme.test', role: 'TENANT_ADMIN' })
@@ -217,6 +219,11 @@ describe('Billing Phase 4 & 5: Cancellation, Abuse Defense & Nightly Reconciliat
         code: 'TRIAL_ALREADY_USED_FOR_CARD',
         statusCode: 409,
       });
+
+      // Refused before anything is recorded: no trial, and Checkout's subscription can't charge later.
+      const refused = await TenantModel.findById(tenantId);
+      expect(refused?.trialStartedAt ?? null).toBeNull();
+      expect(stripeClient.cancelSubscription).toHaveBeenCalledWith('sub_new_session');
     });
 
     it('runBillingReconciliationOnce fixes quantity drift between Stripe items and active mailboxes', async () => {
@@ -238,23 +245,12 @@ describe('Billing Phase 4 & 5: Cancellation, Abuse Defense & Nightly Reconciliat
         billingHold: false,
       });
 
-      // In Stripe: item quantity is 5 (drift of 3 extra seats)
+      // In Stripe: item quantity is 5 (3 more than the Active Users). An unexpanded retrieve returns the
+      // product as a bare id, so the item is matched to its domain through domain_subscriptions.
       vi.mocked(stripeClient.retrieveSubscription).mockResolvedValue({
         id: 'sub_master_tenant',
         items: {
-          data: [
-            {
-              id: 'si_item_1',
-              quantity: 5,
-              price: {
-                product: {
-                  metadata: {
-                    domainId,
-                  },
-                },
-              },
-            },
-          ],
+          data: [{ id: 'si_item_1', quantity: 5, price: { product: 'prod_plan_team' } }],
         },
       } as any);
 
@@ -268,6 +264,20 @@ describe('Billing Phase 4 & 5: Cancellation, Abuse Defense & Nightly Reconciliat
 
       const updatedSub = await DomainSubscriptionModel.findById(subId);
       expect(updatedSub?.activeUserCount).toBe(2);
+    });
+
+    it('runBillingReconciliationOnce leaves a cancelled subscription alone', async () => {
+      // Every mailbox was suspended when it ended; Stripe refuses changes to a cancelled subscription.
+      vi.mocked(stripeClient.retrieveSubscription).mockResolvedValue({
+        id: 'sub_master_tenant',
+        status: 'canceled',
+        items: { data: [{ id: 'si_item_1', quantity: 5, price: { product: 'prod_plan_team' } }] },
+      } as any);
+
+      const result = await runBillingReconciliationOnce();
+
+      expect(result.driftCorrected).toBe(0);
+      expect(stripeClient.syncDomainUserQuantity).not.toHaveBeenCalled();
     });
   });
 });

@@ -902,31 +902,35 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
       ? new Date(subscription.trial_end * 1000)
       : new Date(trialStartedAt.getTime() + TRIAL_DAYS * 86400 * 1000);
 
+    // Checked before anything is recorded, so a refused card leaves no trial and no released mailboxes.
+    const card = subscription.default_payment_method;
+    const fingerprint = card && typeof card !== 'string' ? (card.card as any)?.fingerprint : undefined;
+    if (fingerprint) {
+      const prior = await TenantModel.findOne({
+        _id: { $ne: claimed._id },
+        cardFingerprint: fingerprint,
+        trialStartedAt: { $ne: null },
+      });
+      if (prior) {
+        // Checkout already created the subscription; left alone it would charge when its trial ends.
+        await stripeClient.cancelSubscription(subscription.id).catch((err: any) =>
+          console.warn(`[BillingService] Cancelling refused trial subscription ${subscription.id} failed:`, err.message)
+        );
+        throw new BillingError(
+          'This card has already been used for a free trial on another organization. Please use a different card.',
+          'TRIAL_ALREADY_USED_FOR_CARD',
+          409
+        );
+      }
+    }
+
     claimed.stripeSubscriptionId = subscription.id;
     claimed.trialStartedAt = trialStartedAt;
     claimed.trialEndsAt = trialEndsAt;
+    if (fingerprint) claimed.cardFingerprint = fingerprint;
     await claimed.save();
 
-    const card = subscription.default_payment_method;
     if (card && typeof card !== 'string' && card.card) {
-      const fingerprint = (card.card as any).fingerprint;
-      if (fingerprint) {
-        const prior = await TenantModel.findOne({
-          _id: { $ne: claimed._id },
-          cardFingerprint: fingerprint,
-          trialStartedAt: { $ne: null },
-        });
-        if (prior) {
-          throw new BillingError(
-            'This card has already been used for a free trial on another organization. Please use a different card.',
-            'TRIAL_ALREADY_USED_FOR_CARD',
-            409
-          );
-        }
-        claimed.cardFingerprint = fingerprint;
-        await claimed.save();
-      }
-
       await saveTenantPaymentMethod(tenantId, {
         paymentMethodId: card.id,
         brand: card.card.brand,
@@ -1136,12 +1140,24 @@ export async function completeCardUpdate(tenantId: string, sessionId: string, ac
   return { success: true };
 }
 
+// shortcut: per-process queue, so races across backend instances wait for the nightly reconcile; move to a shared lock once more than one instance runs.
+const activeUserSyncs = new Map<string, Promise<void>>();
+
 /**
  * Recalculates the active (billable) user count for a domain's subscription
  * and syncs it to Stripe. Called after mailbox create, delete, suspend, or
- * reactivate to keep the pay-as-you-go quantity current.
+ * reactivate to keep the pay-as-you-go quantity current. One domain's syncs run
+ * in order: concurrent Stripe updates could land out of order and leave a stale quantity.
  */
-export async function syncDomainActiveUserCount(domainId: string): Promise<void> {
+export function syncDomainActiveUserCount(domainId: string): Promise<void> {
+  const next = (activeUserSyncs.get(domainId) ?? Promise.resolve()).catch(() => {}).then(() => syncDomainActiveUserCountNow(domainId));
+  activeUserSyncs.set(domainId, next);
+  const forget = () => { if (activeUserSyncs.get(domainId) === next) activeUserSyncs.delete(domainId); };
+  next.then(forget, forget);
+  return next;
+}
+
+async function syncDomainActiveUserCountNow(domainId: string): Promise<void> {
   const sub = await DomainSubscriptionModel.findOne({ domainId });
   if (!sub) return;
 
@@ -1383,6 +1399,16 @@ export async function reportMeteredUsage(domainId: string): Promise<void> {
   }
 }
 
+/** Every domain's item gets its own price: Stripe refuses two items with one price on a subscription. */
+function domainPriceParams(domain: IDomain, plan: IPlan) {
+  return {
+    name: `${plan.name} — ${domain.domainName}`,
+    unitAmountPaise: plan.monthlyPriceInPaise ?? plan.pricePerUserMonthlyPaise ?? 0,
+    domainId: domain._id.toString(),
+    planId: plan._id.toString(),
+  };
+}
+
 export async function requestUpgrade(domainId: string, tenantId: string, newPlanId: string, actor: BillingActor): Promise<void> {
   const domain = await loadDomainForActor(domainId, tenantId);
   const newPlan = await PlanModel.findOne({ _id: newPlanId, isActive: true });
@@ -1424,20 +1450,20 @@ export async function requestUpgrade(domainId: string, tenantId: string, newPlan
   const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
   if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
 
-  const attachment = await resolvePriceForDomainAttachment(tenantId, domain, newPlan);
+  const priceId = await stripeClient.createDomainPrice(domainPriceParams(domain, newPlan));
   const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
   await stripeClient.updateSubscriptionItemPrice(
     sub.stripeSubscriptionId,
     sub.stripeSubscriptionItemId,
-    attachment.priceId,
+    priceId,
     newPlan.billingMode === 'fixed' ? newPlan.seatCount : (activeCount || undefined)
   );
 
   sub.planId = newPlan._id as any;
   sub.pricePerUserMonthlyPaise = newPlan.monthlyPriceInPaise ?? newPlan.pricePerUserMonthlyPaise ?? 0;
   sub.maxUsers = newPlan.seatCount ?? newPlan.maxUsers ?? 10;
-  sub.dedicatedStripePriceId = attachment.dedicatedMeterEventName ? attachment.priceId : null;
-  sub.dedicatedMeterEventName = attachment.dedicatedMeterEventName;
+  sub.dedicatedStripePriceId = null;
+  sub.dedicatedMeterEventName = null;
   await sub.save();
   domain.planId = newPlan._id as any;
   domain.planName = newPlan.name;
@@ -1509,9 +1535,10 @@ export async function requestDowngrade(domainId: string, tenantId: string, newPl
   const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
   if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
 
-  const newPriceId = await stripeClient.getOrCreatePrice(newPlan);
+  const newPriceId = await stripeClient.createDomainPrice(domainPriceParams(domain, newPlan));
   await stripeClient.scheduleDowngrade(
     sub.stripeSubscriptionId,
+    sub.stripeSubscriptionItemId,
     newPriceId,
     newPlan.billingMode === 'fixed' ? newPlan.seatCount : (activeCount || undefined)
   );
@@ -1786,6 +1813,19 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         },
         { status }
       );
+      // A scheduled downgrade starting replaces the domain's item with a new one; follow it by the
+      // product's domainId, or quantity syncs and reconcile keep pointing at the deleted item.
+      const known = new Set(siblings.map((s) => s.stripeSubscriptionItemId));
+      if (subscription.items.data.some((item) => !known.has(item.id))) {
+        const expanded = await stripeClient.retrieveSubscriptionExpanded(subscription.id);
+        for (const item of expanded.items.data) {
+          const product = item.price?.product;
+          const domainId = product && typeof product !== 'string' ? (product as Stripe.Product).metadata?.domainId : undefined;
+          if (!known.has(item.id) && domainId) {
+            await DomainSubscriptionModel.updateOne({ ...live, domainId }, { stripeSubscriptionItemId: item.id });
+          }
+        }
+      }
       // Every item (one per domain) carries its own period end; update each row from its own item.
       for (const item of subscription.items.data) {
         if (!item.current_period_end) continue;

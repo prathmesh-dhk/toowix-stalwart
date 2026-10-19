@@ -10,6 +10,7 @@ vi.mock('../src/stripe/client', () => ({
   stripeClient: {
     getOrCreateCustomer: vi.fn().mockResolvedValue('cus_test'),
     getOrCreatePrice: vi.fn().mockResolvedValue('price_test'),
+    createDomainPrice: vi.fn().mockResolvedValue('price_domain_test'),
     createCheckoutSession: vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/test' }),
     retrieveSubscription: vi.fn(),
     updateSubscriptionItemPrice: vi.fn(),
@@ -822,6 +823,41 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     });
   });
 
+  it('back-to-back mailbox changes leave Stripe on the final active user count', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const { syncDomainActiveUserCount } = await import('../src/services/billing.service');
+    const plan = await PlanModel.create({ name: 'Race Tier', seatCount: 10, displayOrder: 9, monthlyPriceInPaise: 4900, billingMode: 'metered', isActive: true });
+    const domain = await DomainModel.create({ tenantId, domainName: 'race.com', status: 'active', planId: plan._id, planName: 'Race Tier', mailboxLimit: 10 });
+    await DomainSubscriptionModel.create({
+      tenantId, domainId: domain._id, planId: plan._id, stripeSubscriptionId: 'sub_race', stripeSubscriptionItemId: 'si_race',
+      status: 'active', activeUserCount: 0, maxUsers: 10, pricePerUserMonthlyPaise: 4900, cancelAtPeriodEnd: false,
+    });
+    const addMailbox = (localPart: string) =>
+      MailboxModel.create({ tenantId, domainId: domain._id, localPart, address: `${localPart}@race.com`, status: 'active', billingHold: false });
+
+    // Stripe answers the first update slowly; whatever it applies last is what gets billed.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let billed: number | null = null;
+    vi.mocked(stripeClient.syncDomainUserQuantity).mockImplementation(async (_item: string, qty: number) => {
+      maxInFlight = Math.max(maxInFlight, ++inFlight);
+      await new Promise((r) => setTimeout(r, billed === null ? 50 : 0));
+      billed = qty;
+      inFlight--;
+      return {} as any;
+    });
+
+    await addMailbox('first');
+    const first = syncDomainActiveUserCount(domain._id.toString());
+    await addMailbox('second');
+    const second = syncDomainActiveUserCount(domain._id.toString());
+    await Promise.all([first, second]);
+
+    expect(maxInFlight).toBe(1);
+    expect(billed).toBe(2);
+    expect((await DomainSubscriptionModel.findOne({ domainId: domain._id }))?.activeUserCount).toBe(2);
+  });
+
   it('scenario 5: upgrade changes item price in Stripe and summary; downgrade below active users is refused', async () => {
     const { stripeClient } = await import('../src/stripe/client');
     const { handleWebhookEvent } = await import('../src/services/billing.service');
@@ -879,7 +915,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       billingHold: false,
     });
 
-    vi.mocked(stripeClient.getOrCreatePrice).mockImplementation(async (plan: any) => `price_${plan.name.replace(/\s+/g, '_').toLowerCase()}`);
+    vi.mocked(stripeClient.createDomainPrice).mockImplementation(async (p: any) => `price_${p.name.split(' — ')[0].replace(/\s+/g, '_').toLowerCase()}`);
     vi.mocked(stripeClient.updateSubscriptionItemPrice).mockClear();
 
     // 1. Upgrade to Pro
@@ -937,6 +973,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(goodDowngradeRes.status).toBe(200);
     expect(stripeClient.scheduleDowngrade).toHaveBeenCalledWith(
       'sub_planchange',
+      'si_planchange',
       'price_starter_tier',
       2
     );

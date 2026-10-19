@@ -36,11 +36,13 @@ export async function runBillingReconciliationOnce(): Promise<ReconciliationResu
 
       try {
         const sub = await stripeClient.retrieveSubscription(tenant.stripeSubscriptionId);
+        // A cancelled subscription bills nothing more, and Stripe refuses quantity changes on it.
+        if (sub.status === 'canceled') continue;
         for (const item of sub.items.data) {
-          const product = item.price?.product;
-          const meta = product && typeof product !== 'string' ? (product as any).metadata : undefined;
-          const domainId = meta?.domainId;
-          if (!domainId) continue;
+          // Not every item's product carries domain metadata (shared plan prices don't), but every row records its item.
+          const row = await DomainSubscriptionModel.findOne({ stripeSubscriptionItemId: item.id });
+          if (!row) continue;
+          const domainId = row.domainId.toString();
 
           const activeCount = await MailboxModel.countDocuments({
             domainId,

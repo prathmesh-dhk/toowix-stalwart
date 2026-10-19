@@ -230,6 +230,22 @@ export class ToowixStripeClient {
     });
   }
 
+  /** A licensed per-user price for one domain's item (like addDomainSubscriptionItem's), for plan changes. */
+  async createDomainPrice(params: { name: string; unitAmountPaise: number; domainId: string; planId: string }): Promise<string> {
+    const stripe = getStripe();
+    const product = await stripe.products.create({
+      name: params.name,
+      metadata: { domainId: params.domainId, planId: params.planId },
+    });
+    const price = await stripe.prices.create({
+      currency: CURRENCY,
+      unit_amount: params.unitAmountPaise,
+      recurring: { interval: 'month', usage_type: 'licensed' },
+      product: product.id,
+    });
+    return price.id;
+  }
+
   async setSubscriptionDefaultPaymentMethod(subscriptionId: string, paymentMethodId: string): Promise<void> {
     const stripe = getStripe();
     await stripe.subscriptions.update(subscriptionId, { default_payment_method: paymentMethodId });
@@ -283,23 +299,36 @@ export class ToowixStripeClient {
   }
 
   /** Downgrade: schedules the price change to take effect at the current period's end. */
-  async scheduleDowngrade(subscriptionId: string, newPriceId: string, quantity: number | undefined): Promise<void> {
+  async scheduleDowngrade(
+    subscriptionId: string,
+    subscriptionItemId: string,
+    newPriceId: string,
+    quantity: number | undefined
+  ): Promise<void> {
     const stripe = getStripe();
-    const schedule = await stripe.subscriptionSchedules.create({ from_subscription: subscriptionId });
-    const currentPhase = schedule.phases[0];
-    const currentPhaseItems = currentPhase.items.map((item) => ({
-      price: typeof item.price === 'string' ? item.price : item.price.id,
-      quantity: item.quantity,
-    }));
-    const nextPhaseItems = currentPhaseItems.map((item, idx) => {
-      if (idx === 0) {
-        return { price: newPriceId, quantity: quantity ?? item.quantity ?? 1 };
-      }
-      return item;
-    });
+    // Phase items carry no item id; each domain's item has its own price, which finds it.
+    const item = await stripe.subscriptionItems.retrieve(subscriptionItemId);
+    // Stripe allows one schedule per subscription; an earlier downgrade's stays attached until it
+    // releases a period after taking effect, so reuse it and keep any change it still has pending.
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const attached = typeof subscription.schedule === 'string' ? subscription.schedule : subscription.schedule?.id;
+    const schedule = attached
+      ? await stripe.subscriptionSchedules.retrieve(attached)
+      : await stripe.subscriptionSchedules.create({ from_subscription: subscriptionId });
+    const at = Math.max(0, schedule.phases.findIndex((p) => p.start_date === schedule.current_phase?.start_date));
+    const currentPhase = schedule.phases[at];
+    const itemsOf = (phase: Stripe.SubscriptionSchedule.Phase) =>
+      phase.items.map((i) => ({ price: typeof i.price === 'string' ? i.price : i.price.id, quantity: i.quantity }));
+    // Found by position in the current phase: the next phase lists the same items in the same
+    // order, but may already hold this domain's earlier downgrade price.
+    const position = itemsOf(currentPhase).findIndex((phaseItem) => phaseItem.price === item.price.id);
+    if (position < 0) throw new Error(`Subscription item ${subscriptionItemId} is not on the subscription's schedule`);
+    const nextPhaseItems = itemsOf(schedule.phases[at + 1] ?? currentPhase).map((phaseItem, i) =>
+      i === position ? { price: newPriceId, quantity: quantity ?? phaseItem.quantity ?? 1 } : phaseItem
+    );
     await stripe.subscriptionSchedules.update(schedule.id, {
       phases: [
-        { items: currentPhaseItems, start_date: currentPhase.start_date, end_date: currentPhase.end_date },
+        { items: itemsOf(currentPhase), start_date: currentPhase.start_date, end_date: currentPhase.end_date },
         { items: nextPhaseItems },
       ],
     });

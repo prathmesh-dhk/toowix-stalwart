@@ -22,14 +22,25 @@ const subscriptionSchedulesCreate = vi.fn(async (params: any) => ({
   phases: [{ start_date: 1000, end_date: 2000, items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] }],
 }));
 const subscriptionSchedulesUpdate = vi.fn(async (id: string, params: any) => ({ id, ...params }));
+const subscriptionsRetrieve = vi.fn(async (id: string) => ({ id, schedule: null as string | null }));
+const subscriptionSchedulesRetrieve = vi.fn(async (id: string) => ({
+  id,
+  current_phase: { start_date: 1000, end_date: 2000 },
+  phases: [
+    { start_date: 1000, end_date: 2000, items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] },
+    { start_date: 2000, end_date: 3000, items: [{ price: 'price_old_down', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] },
+  ],
+}));
+const subscriptionItemsRetrieve = vi.fn(async (id: string) => ({ id, price: { id: id === 'si_sibling' ? 'price_sibling' : 'price_old' } }));
 
 vi.mock('stripe', () => ({
   default: vi.fn(() => ({
     customers: { create: customersCreate },
     products: { create: productsCreate },
-    subscriptionItems: { create: subscriptionItemsCreate },
+    subscriptionItems: { create: subscriptionItemsCreate, retrieve: subscriptionItemsRetrieve },
     prices: { create: pricesCreate },
-    subscriptionSchedules: { create: subscriptionSchedulesCreate, update: subscriptionSchedulesUpdate },
+    subscriptionSchedules: { create: subscriptionSchedulesCreate, update: subscriptionSchedulesUpdate, retrieve: subscriptionSchedulesRetrieve },
+    subscriptions: { retrieve: subscriptionsRetrieve },
   })),
 }));
 
@@ -117,8 +128,8 @@ describe('stripeClient.getOrCreateCustomer', () => {
     expect(pricesCreate).not.toHaveBeenCalled();
   });
 
-  it('scheduleDowngrade preserves sibling domain items in Phase 2 and applies new price and quantity', async () => {
-    await stripeClient.scheduleDowngrade('sub_shared_123', 'price_starter_123', 2);
+  it('scheduleDowngrade changes only the downgraded domain item in Phase 2, wherever it sits', async () => {
+    await stripeClient.scheduleDowngrade('sub_shared_123', 'si_sibling', 'price_starter_123', 3);
 
     expect(subscriptionSchedulesCreate).toHaveBeenCalledWith({ from_subscription: 'sub_shared_123' });
     expect(subscriptionSchedulesUpdate).toHaveBeenCalledWith(
@@ -135,12 +146,42 @@ describe('stripeClient.getOrCreateCustomer', () => {
           },
           {
             items: [
-              { price: 'price_starter_123', quantity: 2 },
-              { price: 'price_sibling', quantity: 1 },
+              { price: 'price_old', quantity: 2 },
+              { price: 'price_starter_123', quantity: 3 },
             ],
           },
         ],
       }
     );
   });
+
+  it('scheduleDowngrade reuses a schedule already attached and keeps the change it has pending', async () => {
+    subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: 'sched_existing' });
+    subscriptionSchedulesCreate.mockClear();
+
+    await stripeClient.scheduleDowngrade('sub_shared_123', 'si_sibling', 'price_sibling_down', 1);
+
+    expect(subscriptionSchedulesCreate).not.toHaveBeenCalled();
+    expect(subscriptionSchedulesUpdate).toHaveBeenLastCalledWith('sched_existing', {
+      phases: [
+        { items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }], start_date: 1000, end_date: 2000 },
+        { items: [{ price: 'price_old_down', quantity: 2 }, { price: 'price_sibling_down', quantity: 1 }] },
+      ],
+    });
+  });
+
+  it('scheduleDowngrade replaces a downgrade the same domain already has pending', async () => {
+    subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: 'sched_existing' });
+
+    // si_old is on price_old now; its first downgrade (price_old_down) waits in the next phase.
+    await stripeClient.scheduleDowngrade('sub_shared_123', 'si_old', 'price_old_lower', 2);
+
+    expect(subscriptionSchedulesUpdate).toHaveBeenLastCalledWith('sched_existing', {
+      phases: [
+        { items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }], start_date: 1000, end_date: 2000 },
+        { items: [{ price: 'price_old_lower', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] },
+      ],
+    });
+  });
 });
+

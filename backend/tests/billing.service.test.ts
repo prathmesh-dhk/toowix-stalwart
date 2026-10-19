@@ -20,6 +20,8 @@ vi.mock('../src/stripe/client', () => ({
     addSubscriptionItem: vi.fn(),
     removeSubscriptionItem: vi.fn(),
     createDedicatedMeteredPrice: vi.fn(),
+    createDomainPrice: vi.fn(),
+    retrieveSubscriptionExpanded: vi.fn(),
   },
   meterEventNameForPlan: (plan: any) => `mailbox_count_${plan._id.toString()}`,
 }));
@@ -408,6 +410,28 @@ describe('billing.service', () => {
       expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('grace');
     });
 
+    it('follows a domain onto the new item Stripe creates when a scheduled downgrade starts', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'renewed.com', planId: fixedPlanId, status: 'active' });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_phase', stripeSubscriptionItemId: 'si_before_phase', status: 'active',
+      });
+      vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValue({
+        id: 'sub_phase',
+        items: { data: [{ id: 'si_after_phase', price: { product: { id: 'prod_x', metadata: { domainId: domain._id.toString() } } } }] },
+      } as any);
+
+      const periodEnd = Math.floor(new Date('2027-02-18T00:00:00Z').getTime() / 1000);
+      await handleWebhookEvent({
+        id: 'evt_phase', type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_phase', status: 'active', cancel_at_period_end: false, items: { data: [{ id: 'si_after_phase', current_period_end: periodEnd }] } } },
+      } as any);
+
+      const row = await DomainSubscriptionModel.findById(sub._id);
+      expect(row?.stripeSubscriptionItemId).toBe('si_after_phase');
+      expect(row?.currentPeriodEnd?.toISOString()).toBe('2027-02-18T00:00:00.000Z');
+    });
+
     it("paying after suspension restores the mailboxes even when Stripe's active update arrives first", async () => {
       const domain = await DomainModel.create({
         tenantId,
@@ -690,7 +714,7 @@ describe('billing.service', () => {
       });
 
       const biggerPlan = await PlanModel.create({ name: 'Growth', seatCount: 25, displayOrder: 3, isActive: true, monthlyPriceInPaise: 200000 });
-      vi.mocked(stripeClient.getOrCreatePrice).mockResolvedValue('price_bigger');
+      vi.mocked(stripeClient.createDomainPrice).mockResolvedValue('price_bigger');
 
       await requestUpgrade(domain._id.toString(), tenantId, biggerPlan._id.toString(), actor);
 
@@ -698,7 +722,7 @@ describe('billing.service', () => {
       expect((await DomainModel.findById(domain._id))?.mailboxLimit).toBe(25);
     });
 
-    it('requestUpgrade mints a dedicated Price/Meter when a sibling domain already uses the target metered plan', async () => {
+    it('requestUpgrade gives the domain its own licensed price even when a sibling already uses the target plan', async () => {
       const sibling = await DomainModel.create({ tenantId, domainName: 'sibling-on-target.com', planId: meteredPlanId, status: 'active' });
       await DomainSubscriptionModel.create({
         domainId: sibling._id,
@@ -718,24 +742,24 @@ describe('billing.service', () => {
         stripeSubscriptionItemId: 'si_upgrading',
         status: 'active',
       });
+      await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'a', address: 'a@upgrading.com', status: 'active', billingHold: false });
 
-      vi.mocked(stripeClient.createDedicatedMeteredPrice).mockResolvedValue({
-        priceId: 'price_dedicated_2',
-        meterEventName: 'mailbox_count_custom_dedicated_2',
-      });
+      // Stripe refuses a quantity on a metered price, and two items can't share one price.
+      vi.mocked(stripeClient.createDomainPrice).mockResolvedValue('price_upgrading_custom');
 
       await requestUpgrade(domain._id.toString(), tenantId, meteredPlanId, actor);
 
-      expect(stripeClient.createDedicatedMeteredPrice).toHaveBeenCalled();
-      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith(
-        'sub_shared_up',
-        'si_upgrading',
-        'price_dedicated_2',
-        undefined
-      );
+      expect(stripeClient.createDomainPrice).toHaveBeenCalledWith({
+        name: 'Custom — upgrading.com',
+        unitAmountPaise: 15000,
+        domainId: domain._id.toString(),
+        planId: meteredPlanId,
+      });
+      expect(stripeClient.createDedicatedMeteredPrice).not.toHaveBeenCalled();
+      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_shared_up', 'si_upgrading', 'price_upgrading_custom', 1);
       const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
-      expect(sub?.dedicatedStripePriceId).toBe('price_dedicated_2');
-      expect(sub?.dedicatedMeterEventName).toBe('mailbox_count_custom_dedicated_2');
+      expect(sub?.planId?.toString()).toBe(meteredPlanId);
+      expect(sub?.pricePerUserMonthlyPaise).toBe(15000);
     });
 
     it('requestDowngrade schedules the change without touching Domain.mailboxLimit yet', async () => {
@@ -756,11 +780,12 @@ describe('billing.service', () => {
       });
 
       const smallerPlan = await PlanModel.create({ name: 'Individual', seatCount: 1, displayOrder: 0, isActive: true });
-      vi.mocked(stripeClient.getOrCreatePrice).mockResolvedValue('price_smaller');
+      vi.mocked(stripeClient.createDomainPrice).mockResolvedValue('price_smaller');
 
       await requestDowngrade(domain._id.toString(), tenantId, smallerPlan._id.toString(), actor);
 
-      expect(stripeClient.scheduleDowngrade).toHaveBeenCalledWith('sub_down', 'price_smaller', 1);
+      expect(stripeClient.createDomainPrice).toHaveBeenCalledWith(expect.objectContaining({ name: 'Individual — downgrade.com', domainId: domain._id.toString() }));
+      expect(stripeClient.scheduleDowngrade).toHaveBeenCalledWith('sub_down', 'si_down', 'price_smaller', 1);
       expect((await DomainModel.findById(domain._id))?.mailboxLimit).toBe(10); // unchanged until renewal
       expect((await DomainSubscriptionModel.findById(sub._id))?.pendingDowngradePlanId?.toString()).toBe(smallerPlan._id.toString());
     });

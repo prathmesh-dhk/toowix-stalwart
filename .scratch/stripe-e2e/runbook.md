@@ -62,7 +62,7 @@ Last run 2026-10-19. Two fixes came out of it. A double-clicked checkout used to
 
 ### 2. Trial ends (test clock) and the first invoice is paid
 
-A customer can only join a test clock when it is created, so use a **new** Tenant and create its Stripe customer on the clock before its first Checkout. The app reuses `tenants.stripeCustomerId` when it is set. Stripe CLI times are Unix seconds. In PowerShell, `[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()` gives the current time and `[DateTimeOffset]::FromUnixTimeSeconds(<t>)` turns one back into a date.
+A customer can only join a test clock when it is created, so use a **new** Tenant. One card starts one Trial: a card already used for another Tenant's Trial is refused at Checkout's return (`TRIAL_ALREADY_USED_FOR_CARD`), and Stripe's subscription is cancelled. Scenario 1 used 4242, so pay this Checkout with Visa debit `4000 0566 5566 5556` and create its Stripe customer on the clock before its first Checkout. The app reuses `tenants.stripeCustomerId` when it is set. Stripe CLI times are Unix seconds. In PowerShell, `[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()` gives the current time and `[DateTimeOffset]::FromUnixTimeSeconds(<t>)` turns one back into a date.
 
 1. Create the clock and the customer:
    ```
@@ -70,10 +70,10 @@ A customer can only join a test clock when it is created, so use a **new** Tenan
    stripe customers create --email=<contact email> --name="<tenant name>" --test-clock=clock_...
    ```
    In Mongo, run `db.tenants.updateOne({ _id: ObjectId("<tenant id>") }, { $set: { stripeCustomerId: "cus_..." } })`.
-2. Run scenario 1, steps 1 to 4: add a domain, create a mailbox (or two), then pay Checkout with `4242 4242 4242 4242`.
+2. Run scenario 1, steps 1 to 4: add a domain, create a mailbox (or two), then pay Checkout with `4000 0566 5566 5556`.
    Check: the Trial dates equal the subscription's `trial_start` and `trial_end`, which follow the clock's time.
-3. **Default card.** On the Billing page, click **Change card** and pay with `5555 5555 5555 4444`. Then click **Set default** on the 4242 card.
-   Check: the Billing page marks 4242 as default, and `stripe subscriptions retrieve sub_...` shows `default_payment_method` set to the 4242 card's `pm_...`.
+3. **Default card.** On the Billing page, click **Change card** and pay with `5555 5555 5555 4444`. Then click **Set default** on the 5556 card.
+   Check: the Billing page marks 5556 as default, and `stripe subscriptions retrieve sub_...` shows `default_payment_method` set to the 5556 card's `pm_...`.
 4. **Reminder.** Advance the clock to day 46 (`stripe test_helpers test_clocks advance clock_... --frozen-time=<trial_start + 46 days>`). Wait until `stripe test_helpers test_clocks retrieve clock_...` shows `"status": "ready"`. Then run the sweep as of the clock's time:
    ```
    npm run job -- trial 2026-12-04T13:00:00Z
@@ -82,7 +82,7 @@ A customer can only join a test clock when it is created, so use a **new** Tenan
 5. **Trial end.** Advance the clock to one hour past `trial_end`, then wait for `ready` again. The `listen` terminal shows `invoice.payment_succeeded` and `customer.subscription.updated`, both `[200]`.
    Check:
    - `stripe invoices list --customer=cus_...` has a `subscription_cycle` invoice, `paid`, for Active Users × the Plan's per-user price (2 × ₹49 = ₹98 on Starter).
-   - `stripe charges list --customer=cus_... --limit=1` shows the 4242 card from step 3, not the newer 5555 card.
+   - `stripe charges list --customer=cus_... --limit=1` shows the 5556 card from step 3, not the newer 5555 card.
    - `domain_subscriptions` has status `active`, and its `currentPeriodEnd` equals the subscription item's `current_period_end`. `GET /api/tenants/me/billing/summary` returns the same values.
    - The Billing page's invoice list shows the ₹98.00 paid invoice above the ₹0 trial invoice.
 6. Optionally, advance one more month. The renewal is charged to the same card, and `currentPeriodEnd` moves with it.
@@ -100,8 +100,8 @@ Run this on a Tenant with an active subscription (or past trial) on a plan with 
 1. **Active mailboxes.** Start with 1 active mailbox on the domain (`quantity: 1` in Stripe). Add 2 more mailboxes (`POST /api/mailboxes` under the domain).
    Check: each added mailbox increments the Stripe subscription item's quantity (`quantity: 3`). `GET /api/tenants/me/billing/summary` and the Billing page show Active Users: 3, Subtotal: ₹147 (3 × ₹49), not the plan ceiling of 10.
 2. **Upcoming invoice.** Retrieve the upcoming invoice in Stripe (`stripe invoices retrieve upcoming --customer=cus_... --subscription=sub_...`).
-   Check: the line item quantity is 3 and the amount is ₹147.00.
-3. **Suspend a mailbox.** Suspend one of the mailboxes in the Tenant Admin (or `PATCH /api/mailboxes/:id/status` with `{ "status": "suspended" }`).
+   Check: the line item for the next period has quantity 3 and amount ₹147.00. The preview also lists "Unused time" / "Remaining time" proration lines for each quantity change.
+3. **Suspend a mailbox.** Suspend one of the mailboxes in the Tenant Admin (or `POST /api/mailboxes/:id/suspend`; `POST /api/mailboxes/:id/reactivate` undoes it).
    Check: the subscription item in Stripe immediately updates to `quantity: 2`. `GET /api/tenants/me/billing/summary` drops to 2 active users (₹98). The suspended mailbox does not count toward billable quantity.
 4. **Reactivate or add.** Reactivate the suspended mailbox (or create another active mailbox).
    Check: the subscription item updates back to `quantity: 3`. Mailboxes created before checkout (in `billingHold: true` status) do not increment the billed quantity until activated.
@@ -134,7 +134,7 @@ Last run 2026-10-19. Live run executed against Stripe test mode with a test cloc
 
 Run this on a Tenant with an active domain subscription (e.g. on Starter @ ₹49/user, ceiling 10 users).
 
-1. **Upgrade.** In the Tenant Admin (or via `POST /api/tenants/me/billing/domains/:id/select-plan` with a higher tier, e.g. Pro @ ₹99/user):
+1. **Upgrade.** In the Tenant Admin (or via `POST /api/tenants/me/billing/domains/:id/upgrade` with `{ "planId": "<Pro>" }`; `select-plan` answers 409 `PLAN_ALREADY_SELECTED` once a domain is billed). Try it with another domain of the Tenant already on Pro:
    Check:
    - The Stripe subscription item (`items.data[0]`) immediately updates its price to the Pro price, retaining the current active user quantity.
    - `DomainSubscription` updates `pricePerUserMonthlyPaise: 9900` and `maxUsers: 50`.
@@ -144,7 +144,7 @@ Run this on a Tenant with an active domain subscription (e.g. on Starter @ ₹49
 2. **Downgrade below current Active Users is refused.** With e.g. 5 active mailboxes on the domain, attempt to downgrade to a plan whose ceiling is below 5 (or seed/create active mailboxes exceeding the target plan's ceiling, e.g. 12 active users attempting to downgrade to Starter with ceiling 10).
    Check: the request returns 400 Bad Request with error code `ACTIVE_USERS_EXCEED_PLAN_LIMIT` and message `"Cannot downgrade to <Plan>: domain has X active mailboxes, which exceeds the plan limit of Y."`. Stripe is not touched and the plan remains unchanged.
 3. **Valid downgrade.** With active mailboxes within the target plan ceiling (e.g. 2 active mailboxes downgrading from Pro to Starter):
-   Select the lower plan (`POST /api/tenants/me/billing/domains/:id/select-plan`).
+   Select the lower plan (`POST /api/tenants/me/billing/domains/:id/downgrade` with `{ "planId": "<Starter>" }`).
    Check:
    - The downgrade is scheduled via Stripe Subscription Schedule for the end of the current billing period (`current_period_end`).
    - Sibling domain items on multi-domain subscriptions are preserved in phase 2 so other domains are not dropped.
@@ -154,6 +154,9 @@ Run this on a Tenant with an active domain subscription (e.g. on Starter @ ₹49
    - The `listen` terminal shows `invoice.payment_succeeded` and `customer.subscription.updated` `[200]`.
    - The renewal invoice charges the downgraded rate (e.g. 2 × ₹49 = ₹98).
    - The webhook handler applies `pendingDowngradePlanId`: `DomainSubscription` and `Domain` reflect Starter plan and ₹49/user, and `pendingDowngradePlanId` is cleared (`null`).
+   - Stripe replaces the downgraded domain's subscription item when the phase starts. `domain_subscriptions.stripeSubscriptionItemId` follows it to the new `si_...`.
+5. **A second downgrade.** Downgrade another domain of the same Tenant (the first downgrade's schedule is still attached for one period), then renew again.
+   Check: the request returns 200 and the renewal applies it, as in step 4.
 
 Last run 2026-10-19. Live run executed against Stripe test mode with a test clock. Fixed:
 - `stripeClient.scheduleDowngrade` only put the downgraded domain's item into `phases[1].items`, dropping all sibling domain subscription items on multi-domain subscriptions upon phase change. It now carries over all other subscription items.
@@ -169,7 +172,7 @@ Test cards: `4000 0000 0000 0341` (`pm_card_chargeCustomerFail`) attaches fine b
 2. **Renewal fails.** Advance the clock to one hour past the subscription's `current_period_end` and wait for `ready`. The `listen` terminal shows `invoice.payment_failed`, `customer.subscription.updated` (`past_due`) `[200]`, in either order.
    Check:
    - `domain_subscriptions` has status `grace`, `lastPaymentFailedInvoiceId` set, and `gracePeriodEndsAt` exactly 7 days after the failed invoice's `created` (clock time, not today's date).
-   - One `[EMAIL DISPATCH] Billing Grace Started` line, with that deadline.
+   - One `[EMAIL DISPATCH] Billing Grace Started` line per domain on the subscription, each naming its domain, with that deadline.
    - The Billing page shows the amber **Payment failed** banner. Mail still works.
 3. **Nothing is suspended early.** Advance the clock 3 days, then 5 days, running the sweep as of the clock's time each time (`npm run job -- grace <clock time>`).
    Check: `{ suspended: 0 }` both times; the day-3 reminder goes out once. Stripe's own retries send more `invoice.payment_failed` events; `gracePeriodEndsAt` does not move and no further Grace Started email is sent. The sweep's daily retry logs `Your card was declined.`
@@ -213,7 +216,7 @@ Test card: `4242 4242 4242 4242`. Use a Tenant on a test clock (scenario 2) with
 4. **Cancel the last domain, then resume.** Cancel the remaining domain the same way.
    Check: the subscription gets `cancel_at_period_end: true` (it is not deleted, and the item is kept); the domain stays `active` until period end. Clicking **Resume subscription** clears it again.
 5. **Cancellation takes effect.** Cancel the Tenant again, then advance the clock to one hour past `current_period_end` and wait for `ready`. The `listen` terminal shows `customer.subscription.deleted` `[200]`.
-   Check: Stripe status `canceled`; every row `canceled` with `retentionEndsAt` set; every domain and its mailboxes `suspended` in the app and in Stalwart. Data is kept.
+   Check: Stripe status `canceled`; every row still on the subscription `canceled` with `retentionEndsAt` set (a domain cancelled on its own in step 4 was already `canceled`, without one); every domain and its mailboxes `suspended` in the app and in Stalwart. Data is kept.
 
 Last run 2026-10-20, set up like scenario 6 (separate database, Stalwart stubbed, subscription created by API and adopted, service calls in place of the buttons). Fixed:
 - `customer.subscription.updated` set a domain cancelled on its own back to `active` (and the invoice events could put it in grace or reactivate it). Cancelling the last remaining domain then saw a phantom sibling and tried to remove its item, which Stripe rejects ("A subscription must have at least one active plan"). Subscription events now leave `canceled` rows alone.
@@ -252,3 +255,22 @@ Run this on the Tenant from scenario 1 while its Trial is running.
 5. Before a Trial starts, a code is entered in the Cart before Checkout instead: Checkout opens with `60 + N` trial days, and the code is recorded when the session is adopted.
 
 Last run 2026-10-19. Fixed: redeeming during a Trial used to change nothing, either in the app or in Stripe.
+
+## Reconcile and billing views (after all ten scenarios)
+
+1. Run `npm run job -- reconcile`.
+   Check: `driftCorrected: 0` and no `Failed reconciling` line.
+2. Prove it can see drift: set a domain's item quantity in Stripe by hand (`stripe subscription_items update si_... --quantity=5 --proration-behavior=none`), run it again.
+   Check: `driftCorrected: 1`, a `Drift detected` line, and the item is back to the domain's Active User count.
+3. For each Tenant, compare `GET /api/tenants/me/billing/summary`, `GET /api/tenants/me/billing/invoices` and the super-admin `GET /api/platform/tenants/:id` (its `billing`) with `stripe subscriptions retrieve sub_...` and `stripe invoices list --customer=cus_...`.
+   Check: status, cancel-at-period-end, period end, each domain's Active Users × per-user price, and the total all match the subscription's items; the invoice list is Stripe's, same ids, amounts and statuses. A cancelled Tenant shows no subscription and a total of 0.
+
+Last full run 2026-10-20, all ten scenarios in order from a fresh database, with real Checkout (including the 3-D Secure challenge and the hosted invoice) in a browser via Playwright. As in scenarios 6–8, rows were in a separate database (`toowix_e2e09`), Stalwart and outbound email were stubbed, the Tenant Admin's buttons were their API calls, and domains were created through the API without DNS. Fixed:
+- The reconcile job never matched an item to its domain (it read domain metadata off an unexpanded product), so it always reported no drift. It now finds each item's domain through `domain_subscriptions`, and skips cancelled subscriptions, which Stripe refuses to change.
+- A card already used for another Tenant's Trial was refused only after the Trial dates were saved, so the Tenant looked trialing, the return trip released its held mailboxes, and Checkout's subscription would have charged at trial end. It is now refused before anything is saved, and the subscription is cancelled.
+- Two mailbox changes in quick succession sent concurrent quantity updates to Stripe; when they landed out of order Stripe kept the older count (billed 3 with 4 active). Each domain's syncs now run in order.
+- Upgrading to a Plan another domain of the Tenant was already on failed in Stripe ("You cannot set the quantity for metered plans"), and a downgrade to such a Plan would have reused the same price, which Stripe refuses on one subscription. Plan changes now give the domain its own per-user price, like a newly added domain.
+- A scheduled downgrade replaced the first item of the subscription, not necessarily the domain's own.
+- When the downgrade started, Stripe's replacement item was not followed, so later quantity syncs, reconcile and cancel pointed at a deleted item.
+- A second downgrade while the first one's schedule was still attached failed ("already attached to a schedule"); it now reuses that schedule, and a domain downgraded twice before renewal gets the later Plan.
+
