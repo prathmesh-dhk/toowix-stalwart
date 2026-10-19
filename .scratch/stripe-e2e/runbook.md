@@ -124,6 +124,20 @@ Last run 2026-10-19. Live run executed against Stripe test mode with a test cloc
 
 ### 9. Replaying a delivered webhook produces no further change
 
+Run this against the backend HTTP API using either the Stripe CLI (`stripe events resend evt_...`) or signed HTTP POST requests to `/api/webhooks/stripe`.
+
+1. **Missing and invalid signatures.** Send a POST to `/api/webhooks/stripe` without a `Stripe-Signature` header, and then with a signature generated from an attacker secret.
+   Check: both requests return 400 (`MISSING_SIGNATURE` and `STRIPE_WEBHOOK_SIGNATURE_INVALID`). No row is added to `stripe_events` and no app state changes.
+2. **First delivery.** Send a signed webhook event with a new event ID (e.g. `customer.subscription.trial_will_end` or `invoice.payment_failed`).
+   Check: the endpoint responds 200 `{ "received": true }`. The event ID is recorded in `stripe_events`, the domain/subscription state is updated, and the expected email notice is dispatched.
+3. **Replaying the delivered event.** Resend the exact same signed event (same `id`).
+   Check: the endpoint responds 200 `{ "received": true }`. The duplicate insert on `stripe_events.eventId` is caught (E11000), leaving Tenant, DomainSubscription, and Mailbox state unchanged and sending no duplicate email.
+4. **Forced handler failure & retry.** Send an event whose processing throws an error (e.g. transient network or database failure).
+   Check: the endpoint logs the error and responds 500 `{ "error": "WEBHOOK_HANDLER_ERROR" }`, telling Stripe to retry. The event ID is cleaned up from `stripe_events`. When the retry arrives and succeeds, it responds 200 and records the event ID. A subsequent replay of the retried event is skipped cleanly.
+
+Last run 2026-10-19. Live run executed against Stripe test mode and verified with mocked regression suite. Fixed:
+- `StripeEventModel.createIndexes()` was omitted from `connectDatabase`, risking missing unique indexes when `autoIndex` is disabled.
+
 ### 10. A coupon extends the Trial
 
 Run this on the Tenant from scenario 1 while its Trial is running.

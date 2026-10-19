@@ -10,6 +10,7 @@ import {
   SystemSettingsModel,
   AdminSessionModel,
   DomainSubscriptionModel,
+  StripeEventModel,
 } from './models';
 
 /**
@@ -82,6 +83,7 @@ export async function connectDatabase(options: DbConnectionOptions): Promise<typ
         SystemSettingsModel.createIndexes(),
         AdminSessionModel.createIndexes(),
         DomainSubscriptionModel.createIndexes(),
+        StripeEventModel.createIndexes(),
       ]);
     }
 
