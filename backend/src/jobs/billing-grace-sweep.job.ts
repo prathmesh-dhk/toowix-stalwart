@@ -154,6 +154,7 @@ export async function runGraceSweepOnce(now = new Date()): Promise<GraceSweepRes
                   status: 'active',
                   gracePeriodEndsAt: null,
                   lastPaymentFailedInvoiceId: null,
+                  paymentActionUrl: null,
                   lastPaymentRetryAt: null,
                   graceNoticesSent: [],
                 }

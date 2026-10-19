@@ -1105,6 +1105,14 @@ export async function completeCardUpdate(tenantId: string, sessionId: string, ac
     expYear: method.card?.exp_year,
     isDefault: true,
   });
+  // Charge an outstanding invoice now; its invoice.payment_succeeded webhook clears the Grace
+  // Period and restores suspended mailboxes.
+  const unpaid = await DomainSubscriptionModel.findOne({ tenantId, status: { $ne: 'canceled' }, lastPaymentFailedInvoiceId: { $ne: null } });
+  if (unpaid?.lastPaymentFailedInvoiceId) {
+    await stripeClient.payInvoice(unpaid.lastPaymentFailedInvoiceId).catch((err: any) =>
+      console.warn(`[BillingService] Paying outstanding invoice ${unpaid.lastPaymentFailedInvoiceId} failed:`, err.message)
+    );
+  }
   await logAudit({
     actorId: actor.id, actorRole: actor.role, actorEmail: actor.email, tenantId,
     action: 'BILLING_CARD_UPDATED', resource: 'TENANT', resourceId: tenantId,
@@ -1161,6 +1169,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
   trialEnd: Date | null;
   trialStartedAt: Date | null;
   cancelAtPeriodEnd: boolean;
+  paymentActionUrl: string | null;
   totalMonthlyPaise: number;
   domains: Array<{
     domainId: string;
@@ -1206,6 +1215,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
         trialEnd: tenant?.trialEndsAt ?? null,
         trialStartedAt: tenant?.trialStartedAt ?? null,
         cancelAtPeriodEnd: false,
+        paymentActionUrl: null,
         totalMonthlyPaise: domainBreakdown.reduce((sum, d) => sum + d.monthlySubtotalPaise, 0),
         domains: domainBreakdown,
       };
@@ -1217,6 +1227,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
       trialEnd: null,
       trialStartedAt: tenant?.trialStartedAt ?? null,
       cancelAtPeriodEnd: false,
+      paymentActionUrl: null,
       totalMonthlyPaise: 0,
       domains: [],
     };
@@ -1247,6 +1258,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     trialEnd: primary.trialEnd ?? null,
     trialStartedAt: tenant?.trialStartedAt ?? null,
     cancelAtPeriodEnd: primary.cancelAtPeriodEnd,
+    paymentActionUrl: subs.find((s) => s.paymentActionUrl)?.paymentActionUrl ?? null,
     totalMonthlyPaise: domainBreakdown.reduce((sum, d) => sum + d.monthlySubtotalPaise, 0),
     domains: domainBreakdown,
   };
@@ -1744,7 +1756,16 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
       const status = mapStripeStatus(subscription.status);
       await DomainSubscriptionModel.updateMany(
         { stripeSubscriptionId: subscription.id },
-        { status, cancelAtPeriodEnd: subscription.cancel_at_period_end }
+        { cancelAtPeriodEnd: subscription.cancel_at_period_end }
+      );
+      // Grace and suspension are opened and closed by the invoice events (which also suspend and
+      // restore mailboxes); Stripe sends this event in either order around them.
+      await DomainSubscriptionModel.updateMany(
+        {
+          stripeSubscriptionId: subscription.id,
+          ...(status === 'past_due' || status === 'active' ? { status: { $nin: ['grace', 'suspended'] } } : {}),
+        },
+        { status }
       );
       // Every item (one per domain) carries its own period end; update each row from its own item.
       for (const item of subscription.items.data) {
@@ -1787,8 +1808,10 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
       const invoice = event.data.object as Stripe.Invoice;
       const subscriptionId = subscriptionIdOf(invoice);
       const tenant = subscriptionId ? await TenantModel.findOne({ stripeSubscriptionId: subscriptionId }) : null;
+      const hostedUrl = invoice.hosted_invoice_url;
+      // Retries of the same invoice keep its link; the Tenant Admin was already asked.
+      if (hostedUrl && (await DomainSubscriptionModel.exists({ stripeSubscriptionId: subscriptionId, paymentActionUrl: hostedUrl }))) break;
       if (tenant?.contactEmail) {
-        const hostedUrl = (invoice as any).hosted_invoice_url;
         await emailService.sendBillingNoticeEmail({
           to: tenant.contactEmail,
           recipientName: tenant.name,
@@ -1804,6 +1827,9 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
           ],
         });
       }
+      if (subscriptionId && hostedUrl) {
+        await DomainSubscriptionModel.updateMany({ stripeSubscriptionId: subscriptionId }, { paymentActionUrl: hostedUrl });
+      }
       break;
     }
 
@@ -1814,9 +1840,19 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
       const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscriptionId });
       if (siblings.length === 0) return;
 
-      const gracePeriodEndsAt = new Date(Date.now() + GRACE_DAYS * 24 * 60 * 60 * 1000);
+      // From the invoice's own time (it follows a test clock), so Stripe's retries of the same
+      // invoice land on the same deadline instead of pushing it out.
+      const failedAt = invoice.created ? invoice.created * 1000 : Date.now();
+      const gracePeriodEndsAt = new Date(failedAt + GRACE_DAYS * 24 * 60 * 60 * 1000);
+      const opening = siblings.filter((s) => s.status !== 'grace' && s.status !== 'suspended');
+      // One combined bill failed for the whole tenant — every domain on it gets notified. Notify
+      // before writing 'grace': a failed send then leaves nothing written for Stripe's retry to skip.
+      for (const sub of opening) {
+        sub.gracePeriodEndsAt = gracePeriodEndsAt;
+        await notifyGraceStarted(sub);
+      }
       await DomainSubscriptionModel.updateMany(
-        { stripeSubscriptionId: subscriptionId },
+        { _id: { $in: opening.map((s) => s._id) } },
         {
           status: 'grace',
           gracePeriodEndsAt,
@@ -1824,11 +1860,6 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
           $addToSet: { graceNoticesSent: 0 },
         }
       );
-      // One combined bill failed for the whole tenant — every domain on it gets notified.
-      for (const sub of siblings) {
-        sub.gracePeriodEndsAt = gracePeriodEndsAt;
-        await notifyGraceStarted(sub);
-      }
       break;
     }
 
@@ -1850,6 +1881,7 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         if (isRenewal || sub.status !== 'trialing') sub.status = 'active';
         sub.gracePeriodEndsAt = null;
         sub.lastPaymentFailedInvoiceId = null;
+        sub.paymentActionUrl = null;
         sub.lastPaymentRetryAt = null;
         sub.graceNoticesSent = [];
 

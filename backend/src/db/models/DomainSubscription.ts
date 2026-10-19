@@ -34,6 +34,8 @@ export interface IDomainSubscription extends Document {
   gracePeriodEndsAt?: Date | null;
   graceNoticesSent?: number[];
   lastPaymentFailedInvoiceId?: string | null;
+  // Hosted invoice page where the Tenant Admin completes 3-D Secure; cleared on successful payment.
+  paymentActionUrl?: string | null;
   lastPaymentRetryAt?: Date | null;
   readOnlyUntil?: Date | null;
   retentionEndsAt?: Date | null;
@@ -127,6 +129,10 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
       default: [],
     },
     lastPaymentFailedInvoiceId: {
+      type: String,
+      default: null,
+    },
+    paymentActionUrl: {
       type: String,
       default: null,
     },

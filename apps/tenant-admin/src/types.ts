@@ -141,6 +141,8 @@ export interface TenantBillingSummary {
   currentPeriodEnd: string | null;
   trialEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  // Set while the bank needs 3-D Secure on an invoice: Stripe's hosted page where it's completed.
+  paymentActionUrl?: string | null;
   domains: Array<{ domainId: string; domainName: string; planName: string | null; seatCount: number | null }>;
 }
 

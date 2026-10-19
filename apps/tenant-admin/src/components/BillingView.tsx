@@ -657,7 +657,26 @@ export const BillingView: React.FC<BillingViewProps> = ({
         </div>
       )}
 
-      {paymentIssue && (
+      {summary?.paymentActionUrl && !suspended && (
+        <div className="flex items-start justify-between gap-3 text-amber-900 bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs shadow-2xs">
+          <div className="flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong>Your bank needs you to approve this payment.</strong> Complete the 3-D Secure check to pay your invoice. Mail keeps working for now.
+            </div>
+          </div>
+          <a
+            href={summary.paymentActionUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center gap-1 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+          >
+            Authenticate payment <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+
+      {paymentIssue && !summary?.paymentActionUrl && (
         <div className="flex items-start justify-between gap-3 text-amber-900 bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs shadow-2xs">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />

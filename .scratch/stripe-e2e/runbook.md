@@ -163,7 +163,42 @@ Last run 2026-10-19. Live run executed against Stripe test mode with a test cloc
 
 ### 6. Failed payment opens the Grace Period; suspension after 7 days; paying restores
 
+Test cards: `4000 0000 0000 0341` (`pm_card_chargeCustomerFail`) attaches fine but declines every charge; `4242 4242 4242 4242` to pay. Use a Tenant on a test clock (scenario 2) whose Trial has ended and first invoice is paid.
+
+1. **Declining card.** On the Billing page, click **Change card** and pay with `4000 0000 0000 0341`. It becomes the subscription's default (scenario 2, step 3).
+2. **Renewal fails.** Advance the clock to one hour past the subscription's `current_period_end` and wait for `ready`. The `listen` terminal shows `invoice.payment_failed`, `customer.subscription.updated` (`past_due`) `[200]`, in either order.
+   Check:
+   - `domain_subscriptions` has status `grace`, `lastPaymentFailedInvoiceId` set, and `gracePeriodEndsAt` exactly 7 days after the failed invoice's `created` (clock time, not today's date).
+   - One `[EMAIL DISPATCH] Billing Grace Started` line, with that deadline.
+   - The Billing page shows the amber **Payment failed** banner. Mail still works.
+3. **Nothing is suspended early.** Advance the clock 3 days, then 5 days, running the sweep as of the clock's time each time (`npm run job -- grace <clock time>`).
+   Check: `{ suspended: 0 }` both times; the day-3 reminder goes out once. Stripe's own retries send more `invoice.payment_failed` events; `gracePeriodEndsAt` does not move and no further Grace Started email is sent. The sweep's daily retry logs `Your card was declined.`
+4. **Suspension.** Advance the clock to 8 days after the failure and run the sweep as of that time.
+   Check: `{ suspended: 1 }`; the domain, its `domain_subscriptions` row and its mailboxes are `suspended`; the Billing page shows the red **Suspended** banner. Later retries failing do not move it back to `grace`.
+5. **Paying restores.** Click **Resolve Payment** and pay with `4242 4242 4242 4242`. Completing the card update charges the outstanding invoice straight away.
+   Check: `stripe invoices retrieve in_...` is `paid`; the `listen` terminal shows `invoice.payment_succeeded` and `customer.subscription.updated` (`active`) `[200]`, in either order; the domain and mailboxes are `active` again, `gracePeriodEndsAt` and `lastPaymentFailedInvoiceId` are `null`, and the Billing page shows no banner.
+
+Last run 2026-10-19, with the Tenant's rows in a separate database and Stalwart stubbed; the subscription was created by API and adopted, and the card update's charge was made with `stripeClient.payInvoice` after setting the new default card, because no browser was available. Fixed:
+- The Grace Period deadline was 7 days from the wall clock, so under a test clock the sweep suspended mailboxes 3 days in. Every retry by Stripe also restarted the 7 days and resent the Grace Started email. It now runs 7 days from the failed invoice, and opens once.
+- A retry failing after suspension moved the domain back to `grace`.
+- `customer.subscription.updated` overwrote the app's status. Arriving after the failure, `past_due` replaced `grace` and the sweep never suspended; arriving before the payment, `active` replaced `suspended` and the mailboxes were never restored. Stripe's `past_due`/`active` no longer overwrite `grace`/`suspended`; the invoice events own those.
+- Updating the card didn't charge the outstanding invoice, and the sweep only retries domains still in `grace`, so a suspended Tenant stayed suspended after fixing their card.
+
 ### 7. 3-D Secure card triggers action-required; authentication marks the invoice paid
+
+Test card: `4000 0027 6000 3184` (`pm_card_authenticationRequired`) asks for authentication on every charge, including off-session renewals. Use a Tenant on a test clock whose first invoice is paid.
+
+1. **3-D Secure card.** Click **Change card** and pay with `4000 0027 6000 3184` (complete the challenge Checkout shows).
+2. **Renewal needs authentication.** Advance the clock past `current_period_end` and wait for `ready`. The `listen` terminal shows `invoice.payment_failed`, `invoice.payment_action_required` and `customer.subscription.updated` (`past_due`) `[200]`.
+   Check:
+   - `domain_subscriptions` has status `grace` (scenario 6's 7 days apply) and `paymentActionUrl` set to the invoice's `hosted_invoice_url`. `GET /api/tenants/me/billing/summary` returns the same `paymentActionUrl`.
+   - Emails: Billing Grace Started, and "Payment authorization required for your Toowix subscription" with the payment link.
+   - The Billing page shows **Your bank needs you to approve this payment** with an **Authenticate payment** button, instead of the Payment failed banner.
+3. **Authenticate.** Click **Authenticate payment**. On Stripe's invoice page, pay with the card on file and click **Complete** in the test challenge.
+   Check: the invoice is `paid`; `invoice.payment_succeeded` `[200]`; status `active`, `paymentActionUrl` `null`; the banner is gone.
+
+Last run 2026-10-19, with the same setup as scenario 6. Steps 1–2 ran live. Step 3 wasn't: Stripe's test challenge needs Stripe.js in a browser. The webhooks it produces are covered by a test at the `stripeClient` seam. Fixed:
+- The Tenant Admin was only emailed; the app had no prompt. The action-required webhook now stores the hosted invoice link, the summary returns it, and the Billing page shows it.
 
 ### 8. Cancel one domain, cancel the whole Tenant, and resume each
 

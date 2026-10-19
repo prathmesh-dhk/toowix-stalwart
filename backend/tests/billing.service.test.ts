@@ -349,6 +349,125 @@ describe('billing.service', () => {
       expect(stalwartClient.updateDomainStatus).toHaveBeenCalled();
     });
 
+    it("Stripe's payment retries keep the Grace Period deadline 7 days after the failed invoice (test clock time)", async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'retrying.com', planId: fixedPlanId, status: 'active' });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_retry',
+        stripeSubscriptionItemId: 'si_retry',
+        status: 'active',
+      });
+      // A test clock a month ahead of the wall clock.
+      const invoiceCreated = Math.floor(Date.UTC(2030, 0, 1) / 1000);
+      const failed = { id: 'in_retry', subscription: 'sub_retry', created: invoiceCreated };
+
+      await handleWebhookEvent({ id: 'evt_fail_1', type: 'invoice.payment_failed', data: { object: failed } } as any);
+      await handleWebhookEvent({ id: 'evt_fail_2', type: 'invoice.payment_failed', data: { object: failed } } as any);
+
+      const updated = await DomainSubscriptionModel.findById(sub._id);
+      expect(updated?.gracePeriodEndsAt?.toISOString()).toBe('2030-01-08T00:00:00.000Z');
+      expect(emailService.sendBillingGraceStartedEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it('a payment retry failing after the grace sweep suspended the domain keeps it suspended', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'still-unpaid.com', planId: fixedPlanId, status: 'suspended' });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_unpaid',
+        stripeSubscriptionItemId: 'si_unpaid',
+        status: 'suspended',
+      });
+
+      await handleWebhookEvent({ type: 'invoice.payment_failed', data: { object: { id: 'in_unpaid', subscription: 'sub_unpaid' } } } as any);
+
+      expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('suspended');
+      expect(emailService.sendBillingGraceStartedEmail).not.toHaveBeenCalled();
+    });
+
+    it("Stripe's past_due subscription update arriving after the failed invoice keeps the Grace Period open", async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'late-update.com', planId: fixedPlanId, status: 'active' });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_late',
+        stripeSubscriptionItemId: 'si_late',
+        status: 'active',
+      });
+
+      await handleWebhookEvent({ type: 'invoice.payment_failed', data: { object: { id: 'in_late', subscription: 'sub_late' } } } as any);
+      await handleWebhookEvent({
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_late', status: 'past_due', cancel_at_period_end: false, items: { data: [] } } },
+      } as any);
+
+      expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('grace');
+    });
+
+    it("paying after suspension restores the mailboxes even when Stripe's active update arrives first", async () => {
+      const domain = await DomainModel.create({
+        tenantId,
+        domainName: 'paid-late.com',
+        planId: fixedPlanId,
+        stalwartDomainId: 'stalwart-dom-late',
+        status: 'suspended',
+      });
+      const mailbox = await MailboxModel.create({
+        tenantId,
+        domainId: domain._id,
+        domainName: 'paid-late.com',
+        localPart: 'a',
+        address: 'a@paid-late.com',
+        status: 'suspended',
+      });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_paid_late',
+        stripeSubscriptionItemId: 'si_paid_late',
+        status: 'suspended',
+        gracePeriodEndsAt: new Date(),
+      });
+
+      await handleWebhookEvent({
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_paid_late', status: 'active', cancel_at_period_end: false, items: { data: [] } } },
+      } as any);
+      await handleWebhookEvent({
+        type: 'invoice.payment_succeeded',
+        data: { object: { id: 'in_paid_late', subscription: 'sub_paid_late', billing_reason: 'subscription_cycle' } },
+      } as any);
+
+      expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('active');
+      expect((await DomainModel.findById(domain._id))?.status).toBe('active');
+      expect((await MailboxModel.findById(mailbox._id))?.status).toBe('active');
+    });
+
+    it('a retried 3-D Secure charge on the same invoice does not ask the Tenant Admin to authenticate again', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: '3ds-retry.com', planId: fixedPlanId, status: 'active' });
+      await TenantModel.updateOne({ _id: tenantId }, { stripeSubscriptionId: 'sub_3ds_retry' });
+      await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_3ds_retry',
+        stripeSubscriptionItemId: 'si_3ds_retry',
+        status: 'grace',
+      });
+      const notice = vi.spyOn(emailService, 'sendBillingNoticeEmail').mockResolvedValue({ success: true });
+      const invoice = { id: 'in_3ds_retry', subscription: 'sub_3ds_retry', hosted_invoice_url: 'https://invoice.stripe.com/i/in_3ds_retry' };
+
+      await handleWebhookEvent({ id: 'evt_3ds_1', type: 'invoice.payment_action_required', data: { object: invoice } } as any);
+      await handleWebhookEvent({ id: 'evt_3ds_2', type: 'invoice.payment_action_required', data: { object: invoice } } as any);
+
+      expect(notice).toHaveBeenCalledTimes(1);
+    });
+
     it('a ₹0 invoice paid during the trial (coupon extension, checkout) keeps the domain trialing', async () => {
       const domain = await DomainModel.create({ tenantId, domainName: 'trialing.com', planId: fixedPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({

@@ -29,6 +29,7 @@ vi.mock('../src/stripe/client', () => ({
     retrieveCheckoutSession: vi.fn(),
     retrieveSubscriptionExpanded: vi.fn(),
     setSubscriptionDefaultPaymentMethod: vi.fn().mockResolvedValue(undefined),
+    payInvoice: vi.fn().mockResolvedValue({ status: 'paid' }),
   },
   meterEventNameForPlan: (plan: any) => `mailbox_count_${plan._id.toString()}`,
 }));
@@ -376,6 +377,55 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(stripeClient.setDefaultPaymentMethod).toHaveBeenCalledWith('cus_test', 'pm_new');
     expect(stripeClient.setSubscriptionDefaultPaymentMethod).toHaveBeenCalledWith('sub_live', 'pm_new');
     expect((await TenantModel.findById(tenantId))!.paymentMethods?.some((m) => m.last4 === '1111' && m.isDefault)).toBe(true);
+  });
+
+  it('change card while a payment is outstanding: the unpaid invoice is charged to the new card', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    await TenantModel.updateOne({ _id: tenantId }, { trialStartedAt: new Date(), trialEndsAt: new Date(), stripeSubscriptionId: 'sub_live' });
+    await DomainSubscriptionModel.create({
+      domainId,
+      tenantId,
+      planId,
+      stripeSubscriptionId: 'sub_live',
+      stripeSubscriptionItemId: 'si_live',
+      status: 'suspended',
+      lastPaymentFailedInvoiceId: 'in_unpaid',
+    });
+
+    vi.mocked(stripeClient.retrieveCheckoutSession).mockResolvedValueOnce({
+      metadata: { tenantId, purpose: 'card_update' }, status: 'complete',
+      setup_intent: { payment_method: { id: 'pm_new', card: { brand: 'visa', last4: '4242', exp_month: 1, exp_year: 2031 } } },
+    } as any);
+    const done = await request(app).post('/api/tenants/me/cart/card-update/complete').set('Authorization', `Bearer ${tenantAdminToken}`).send({ sessionId: 'cs_card' });
+
+    expect(done.status).toBe(200);
+    expect(stripeClient.payInvoice).toHaveBeenCalledWith('in_unpaid');
+  });
+
+  it('3-D Secure renewal: the summary links the Tenant Admin to authenticate until the invoice is paid', async () => {
+    const { handleWebhookEvent } = await import('../src/services/billing.service');
+    await DomainSubscriptionModel.create({
+      domainId,
+      tenantId,
+      planId,
+      stripeSubscriptionId: 'sub_3ds',
+      stripeSubscriptionItemId: 'si_3ds',
+      status: 'active',
+    });
+    const invoice = { id: 'in_3ds', subscription: 'sub_3ds', hosted_invoice_url: 'https://invoice.stripe.com/i/in_3ds' };
+    const summary = () => request(app).get('/api/tenants/me/billing/summary').set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    await handleWebhookEvent({ id: 'evt_3ds_failed', type: 'invoice.payment_failed', data: { object: invoice } } as any);
+    await handleWebhookEvent({ id: 'evt_3ds_action', type: 'invoice.payment_action_required', data: { object: invoice } } as any);
+    expect((await summary()).body.paymentActionUrl).toBe('https://invoice.stripe.com/i/in_3ds');
+
+    await handleWebhookEvent({
+      id: 'evt_3ds_paid', type: 'invoice.payment_succeeded',
+      data: { object: { ...invoice, billing_reason: 'subscription_cycle' } },
+    } as any);
+    const after = (await summary()).body;
+    expect(after.paymentActionUrl).toBeNull();
+    expect(after.status).toBe('active');
   });
 
   it('set default: the chosen card is the one the subscription charges, and the list shows it as default', async () => {

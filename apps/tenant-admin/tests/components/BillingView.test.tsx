@@ -114,6 +114,28 @@ describe('BillingView (company-wide)', () => {
     expect(await screen.findByText(/Payment failed\./)).toBeInTheDocument();
   });
 
+  it('asks the Tenant Admin to authenticate a 3-D Secure payment instead of showing payment failed', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({
+      ...summary,
+      status: 'grace',
+      paymentActionUrl: 'https://invoice.stripe.com/i/in_3ds',
+    } as any);
+    render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+    expect(await screen.findByRole('link', { name: /Authenticate payment/ })).toHaveAttribute('href', 'https://invoice.stripe.com/i/in_3ds');
+    expect(screen.queryByText(/Payment failed\./)).not.toBeInTheDocument();
+  });
+
+  it('once suspended, shows only the suspension banner even if a 3-D Secure link is pending', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({
+      ...summary,
+      status: 'suspended',
+      paymentActionUrl: 'https://invoice.stripe.com/i/in_3ds',
+    } as any);
+    render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+    expect(await screen.findByText(/suspended due to non-payment/)).toBeInTheDocument();
+    expect(screen.queryByText(/Mail keeps working/)).not.toBeInTheDocument();
+  });
+
   it('renders domain plans as clean badges and does not allow inline plan changes', async () => {
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
 
