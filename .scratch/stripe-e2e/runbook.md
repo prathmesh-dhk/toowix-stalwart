@@ -97,6 +97,23 @@ Last run 2026-10-19. Hosted Checkout was replaced by an API-created subscription
 
 ### 4. A second domain joins the same subscription and the same invoice
 
+Run this on a Tenant that already has a running subscription (from scenario 1 or 2, e.g. domain 1 on Starter with active mailboxes).
+
+1. Add a second domain in the Tenant Admin (or via `POST /api/tenants/me/domains` with a different Plan, e.g. Pro, or select the Plan via `POST /api/tenants/me/billing/domains/:id/select-plan`).
+   Check: the domain row has `planId` set and joins the tenant's existing subscription (`stripeSubscriptionId` matches domain 1). The Stripe subscription (`stripe subscriptions retrieve sub_...`) now contains two items (`items.data.length == 2`), one for each domain with metadata carrying `domainId` and `planId`.
+2. Add mailboxes to the second domain.
+   Check: active mailboxes increment the subscription item's quantity in Stripe (`quantity: 1`).
+3. Check the Billing summary (`GET /api/tenants/me/billing/summary` or view the Billing page).
+   Check: both domains appear with their respective Plan names, active mailbox counts, per-user rates (e.g. ₹49/user on Starter and ₹99/user on Pro), and calculated monthly subtotals.
+4. Preview the upcoming invoice (`stripe invoices retrieve upcoming --customer=cus_... --subscription=sub_...` or advance the test clock past the trial end).
+   Check: Stripe returns a single invoice containing line items for both domains (e.g. 2 × ₹49 = ₹98 for Starter, and 1 × ₹99 = ₹99 for Pro, total ₹197). Advancing past trial end pays this single invoice automatically via the tenant's default card.
+
+Last run 2026-10-19. Live run executed against Stripe test mode with a test clock. Fixed:
+- `stripeClient.addDomainSubscriptionItem` passed `price_data.product_data` directly into `stripe.subscriptionItems.create`, which Stripe rejected (`Received unknown parameter: price_data[product_data]`). It now creates `stripe.products.create` first and supplies the product ID.
+- `ensureDomainSubscription` called `addSubscriptionItem` with a quantity on metered plans, which Stripe rejected (`You cannot set the quantity for metered plans`). It now routes through `addDomainSubscriptionItem`, carrying over the sibling's trial and period dates.
+- `adoptActivationSession` hardcoded `activeUserCount: 0` instead of counting the domain's existing active mailboxes.
+- Creating a domain with `planId` while the tenant already had an active subscription didn't attach the domain subscription item immediately; it now attaches immediately.
+
 ### 5. Upgrade and downgrade a domain's Plan
 
 ### 6. Failed payment opens the Grace Period; suspension after 7 days; paying restores

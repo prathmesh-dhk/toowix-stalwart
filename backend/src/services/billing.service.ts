@@ -543,33 +543,30 @@ export async function ensureDomainSubscription(
   const plan = await PlanModel.findById(domain.planId);
   if (!plan) return null;
 
-  const trialEnd = tenant.trialEndsAt || null;
-  const status: DomainSubscriptionStatus = trialEnd && trialEnd.getTime() > Date.now() ? 'trialing' : 'active';
-  const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active' });
+  const sibling = await DomainSubscriptionModel.findOne({
+    tenantId: tenant._id,
+    domainId: { $ne: domain._id },
+    status: { $nin: ['canceled', 'incomplete'] },
+  });
+
+  const trialEnd = sibling?.trialEnd ?? tenant.trialEndsAt ?? null;
+  const currentPeriodEnd = sibling?.currentPeriodEnd ?? trialEnd;
+  const status: DomainSubscriptionStatus = sibling?.status ?? (trialEnd && trialEnd.getTime() > Date.now() ? 'trialing' : 'active');
+  const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
 
   let stripeSubscriptionId = tenant.stripeSubscriptionId || `sub_trial_${tenant._id}`;
   let stripeSubscriptionItemId = `si_trial_${domain._id}`;
-  let dedicatedPriceId: string | null = null;
-  let dedicatedMeter: string | null = null;
 
   if (isBillingEnabled() && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
     stripeSubscriptionId = tenant.stripeSubscriptionId!;
-    if (plan.billingMode === 'metered') {
-      const attachment = await resolvePriceForDomainAttachment(String(tenant._id), domain, plan);
-      const item = await stripeClient.addSubscriptionItem(stripeSubscriptionId, attachment.priceId, activeCount);
-      stripeSubscriptionItemId = item.id;
-      dedicatedPriceId = attachment.dedicatedMeterEventName ? attachment.priceId : null;
-      dedicatedMeter = attachment.dedicatedMeterEventName;
-    } else {
-      const item = await stripeClient.addDomainSubscriptionItem(stripeSubscriptionId, {
-        name: `${plan.name} — ${domain.domainName}`,
-        unitAmountPaise: plan.monthlyPriceInPaise ?? plan.pricePerUserMonthlyPaise ?? 0,
-        quantity: activeCount,
-        domainId: domain._id.toString(),
-        planId: plan._id.toString(),
-      });
-      stripeSubscriptionItemId = item.id;
-    }
+    const item = await stripeClient.addDomainSubscriptionItem(stripeSubscriptionId, {
+      name: `${plan.name} — ${domain.domainName}`,
+      unitAmountPaise: plan.monthlyPriceInPaise ?? plan.pricePerUserMonthlyPaise ?? 0,
+      quantity: activeCount,
+      domainId: domain._id.toString(),
+      planId: plan._id.toString(),
+    });
+    stripeSubscriptionItemId = item.id;
   }
 
   const sub = await DomainSubscriptionModel.findOneAndUpdate(
@@ -581,14 +578,14 @@ export async function ensureDomainSubscription(
       stripeSubscriptionId,
       stripeSubscriptionItemId,
       status,
-      currentPeriodEnd: trialEnd,
+      currentPeriodEnd,
       trialEnd,
       cancelAtPeriodEnd: false,
       activeUserCount: activeCount,
       maxUsers: plan.seatCount ?? plan.maxUsers ?? 10,
       pricePerUserMonthlyPaise: plan.monthlyPriceInPaise ?? plan.pricePerUserMonthlyPaise ?? 0,
-      dedicatedStripePriceId: dedicatedPriceId,
-      dedicatedMeterEventName: dedicatedMeter,
+      dedicatedStripePriceId: null,
+      dedicatedMeterEventName: null,
     },
     { upsert: true, returnDocument: 'after' }
   );
@@ -945,7 +942,7 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
           currentPeriodEnd: trialEndsAt,
           trialEnd: trialEndsAt,
           cancelAtPeriodEnd: false,
-          activeUserCount: 0,
+          activeUserCount: await MailboxModel.countDocuments({ domainId, status: 'active', billingHold: false }),
           maxUsers: plan?.seatCount ?? plan?.maxUsers ?? 10,
           pricePerUserMonthlyPaise: plan?.monthlyPriceInPaise ?? plan?.pricePerUserMonthlyPaise ?? 0,
         },

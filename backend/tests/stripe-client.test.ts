@@ -14,7 +14,16 @@ const customersCreate = vi.fn(async (_params: unknown, opts?: { idempotencyKey?:
   if (key) created.set(key, customer);
   return customer;
 });
-vi.mock('stripe', () => ({ default: vi.fn(() => ({ customers: { create: customersCreate } })) }));
+const productsCreate = vi.fn(async (params: any) => ({ id: `prod_${++seq}`, ...params }));
+const subscriptionItemsCreate = vi.fn(async (params: any) => ({ id: `si_${++seq}`, ...params }));
+
+vi.mock('stripe', () => ({
+  default: vi.fn(() => ({
+    customers: { create: customersCreate },
+    products: { create: productsCreate },
+    subscriptionItems: { create: subscriptionItemsCreate },
+  })),
+}));
 
 import { stripeClient } from '../src/stripe/client';
 
@@ -43,5 +52,32 @@ describe('stripeClient.getOrCreateCustomer', () => {
 
     expect(idA).toBe(idB);
     expect((await TenantModel.findById(tenant._id))!.stripeCustomerId).toBe(idA);
+  });
+
+  it('addDomainSubscriptionItem creates product first then attaches subscription item with product.id', async () => {
+    const item = await stripeClient.addDomainSubscriptionItem('sub_master_123', {
+      name: 'Pro — second.com',
+      unitAmountPaise: 9900,
+      quantity: 2,
+      domainId: 'dom_second_123',
+      planId: 'plan_pro_123',
+    });
+
+    expect(productsCreate).toHaveBeenCalledWith({
+      name: 'Pro — second.com',
+      metadata: { domainId: 'dom_second_123', planId: 'plan_pro_123' },
+    });
+    expect(subscriptionItemsCreate).toHaveBeenCalledWith({
+      subscription: 'sub_master_123',
+      quantity: 2,
+      proration_behavior: 'create_prorations',
+      price_data: {
+        currency: 'inr',
+        unit_amount: 9900,
+        recurring: { interval: 'month' },
+        product: expect.stringMatching(/^prod_/),
+      },
+    });
+    expect(item.id).toMatch(/^si_/);
   });
 });

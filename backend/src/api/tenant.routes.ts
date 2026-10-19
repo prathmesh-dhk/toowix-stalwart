@@ -12,7 +12,7 @@ import { AuditLogModel } from '../db/models/AuditLog';
 import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { IPlan } from '../db/models/Plan';
 import { isBillingEnabled, config } from '../config';
-import { activateDomainOnPayment } from '../services/billing.service';
+import { activateDomainOnPayment, ensureDomainSubscription } from '../services/billing.service';
 import { connectDnsProviderCredential, checkDnsRecordsLive, retryVerify, DomainActivationError } from '../services/domain-activation.service';
 import {
   listTenantDnsCredentials,
@@ -470,6 +470,10 @@ tenantMeRouter.post(['/me/domains', '/domains'], async (req: Request, res: Respo
     const actorId = req.adminUser?.id || req.user?.id || 'system';
     const actorRole = (req.adminUser?.role || req.user?.role || 'TENANT_ADMIN') as any;
     const actorEmail = req.adminUser?.email || req.user?.email || 'admin@toowix.internal';
+
+    if (plan && tenant.trialStartedAt) {
+      await ensureDomainSubscription(newDomain, { id: actorId, email: actorEmail, role: actorRole });
+    }
 
     // Audit log
 

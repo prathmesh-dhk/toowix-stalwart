@@ -481,4 +481,146 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(delRes.status).toBe(200);
     expect(delRes.body.success).toBe(true);
   });
+
+  it('scenario 4: second domain joins existing subscription via select-plan at its own rate, updating billing summary', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const trialEnd = new Date(Date.now() + 60 * 86400000);
+    await TenantModel.updateOne(
+      { _id: tenantId },
+      {
+        stripeCustomerId: 'cus_test',
+        stripeSubscriptionId: 'sub_shared',
+        trialStartedAt: new Date(),
+        trialEndsAt: trialEnd,
+      }
+    );
+
+    await PlanModel.updateOne({ _id: planId }, { name: 'Starter', monthlyPriceInPaise: 4900 });
+
+    // Primary domain has an existing subscription item (Starter plan @ 4900 paise, 2 active users)
+    await DomainSubscriptionModel.create({
+      domainId,
+      tenantId,
+      planId,
+      stripeSubscriptionId: 'sub_shared',
+      stripeSubscriptionItemId: 'si_dom1',
+      status: 'trialing',
+      trialEnd,
+      currentPeriodEnd: trialEnd,
+      activeUserCount: 2,
+      pricePerUserMonthlyPaise: 4900,
+    });
+
+    const proPlan = await PlanModel.create({
+      name: 'Pro',
+      seatCount: 50,
+      monthlyPriceInPaise: 9900,
+      billingMode: 'metered',
+      isActive: true,
+    });
+
+    // Add a second domain
+    const secondDomain = await DomainModel.create({
+      tenantId,
+      domainName: 'second.com',
+      status: 'active',
+      dnsStatus: 'active',
+      isPrimary: false,
+    });
+
+    vi.mocked(stripeClient.addDomainSubscriptionItem).mockResolvedValueOnce({ id: 'si_dom2' } as any);
+
+    // Second domain selects Pro plan
+    const selectRes = await request(app)
+      .post(`/api/tenants/me/billing/domains/${secondDomain._id}/select-plan`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ planId: proPlan._id.toString() });
+
+    expect(selectRes.status).toBe(200);
+
+    // Verify it called addDomainSubscriptionItem on the SAME subscription at Pro rate
+    expect(stripeClient.addDomainSubscriptionItem).toHaveBeenCalledWith('sub_shared', {
+      name: 'Pro — second.com',
+      unitAmountPaise: 9900,
+      quantity: 0,
+      domainId: secondDomain._id.toString(),
+      planId: proPlan._id.toString(),
+    });
+
+    // DomainSubscription for second domain created and rides the shared trial
+    const sub2 = await DomainSubscriptionModel.findOne({ domainId: secondDomain._id });
+    expect(sub2).toMatchObject({
+      stripeSubscriptionId: 'sub_shared',
+      stripeSubscriptionItemId: 'si_dom2',
+      status: 'trialing',
+      planId: proPlan._id,
+      activeUserCount: 0,
+    });
+
+    // Billing summary shows both domains with their respective rates and active counts
+    const summaryRes = await request(app)
+      .get('/api/tenants/me/billing/summary')
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    expect(summaryRes.status).toBe(200);
+    expect(summaryRes.body.domains).toHaveLength(2);
+    expect(summaryRes.body.domains).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          domainName: 'acme.com',
+          planName: 'Starter',
+          activeUserCount: 2,
+          pricePerUserMonthlyPaise: 4900,
+          monthlySubtotalPaise: 9800,
+        }),
+        expect.objectContaining({
+          domainName: 'second.com',
+          planName: 'Pro',
+          activeUserCount: 0,
+          pricePerUserMonthlyPaise: 9900,
+          monthlySubtotalPaise: 0,
+        }),
+      ])
+    );
+  });
+
+  it('scenario 4: creating a domain with planId joins existing subscription immediately', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const trialEnd = new Date(Date.now() + 60 * 86400000);
+    await TenantModel.updateOne(
+      { _id: tenantId },
+      {
+        stripeCustomerId: 'cus_test',
+        stripeSubscriptionId: 'sub_shared',
+        trialStartedAt: new Date(),
+        trialEndsAt: trialEnd,
+      }
+    );
+
+    const proPlan = await PlanModel.create({
+      name: 'Pro',
+      seatCount: 50,
+      monthlyPriceInPaise: 9900,
+      billingMode: 'metered',
+      isActive: true,
+    });
+
+    vi.mocked(stripeClient.addDomainSubscriptionItem).mockResolvedValueOnce({ id: 'si_dom_direct' } as any);
+
+    const res = await request(app)
+      .post('/api/tenants/me/domains')
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ domainName: 'direct-with-plan.com', planId: proPlan._id.toString() });
+
+    expect(res.status).toBe(201);
+    expect(stripeClient.addDomainSubscriptionItem).toHaveBeenCalledWith('sub_shared', expect.objectContaining({
+      name: 'Pro — direct-with-plan.com',
+      unitAmountPaise: 9900,
+      planId: proPlan._id.toString(),
+    }));
+
+    const directSub = await DomainSubscriptionModel.findOne({ stripeSubscriptionItemId: 'si_dom_direct' });
+    expect(directSub).not.toBeNull();
+    expect(directSub?.stripeSubscriptionId).toBe('sub_shared');
+  });
 });

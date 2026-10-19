@@ -225,6 +225,10 @@ export class ToowixStripeClient {
     params: { name: string; unitAmountPaise: number; quantity: number; domainId: string; planId: string }
   ): Promise<Stripe.SubscriptionItem> {
     const stripe = getStripe();
+    const product = await stripe.products.create({
+      name: params.name,
+      metadata: { domainId: params.domainId, planId: params.planId },
+    });
     return stripe.subscriptionItems.create({
       subscription: subscriptionId,
       quantity: Math.max(0, params.quantity),
@@ -233,8 +237,8 @@ export class ToowixStripeClient {
         currency: CURRENCY,
         unit_amount: params.unitAmountPaise,
         recurring: { interval: 'month' },
-        product_data: { name: params.name, metadata: { domainId: params.domainId, planId: params.planId } },
-      } as any,
+        product: product.id,
+      },
     });
   }
 
