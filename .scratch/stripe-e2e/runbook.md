@@ -197,7 +197,7 @@ Test card: `4000 0027 6000 3184` (`pm_card_authenticationRequired`) asks for aut
 3. **Authenticate.** Click **Authenticate payment**. On Stripe's invoice page, pay with the card on file and click **Complete** in the test challenge.
    Check: the invoice is `paid`; `invoice.payment_succeeded` `[200]`; status `active`, `paymentActionUrl` `null`; the banner is gone.
 
-Last run 2026-10-19, with the same setup as scenario 6. Steps 1–2 ran live. Step 3 wasn't: Stripe's test challenge needs Stripe.js in a browser. The webhooks it produces are covered by a test at the `stripeClient` seam. Fixed:
+Last run 2026-10-19, with the same setup as scenario 6. Steps 1–2 ran live. Browser step verified 2026-10-20: step 3 was run with the Playwright MCP on the hosted invoice link. On **Confirm payment**, Stripe's test challenge opened, and **Complete** paid the invoice; the app returned to `active` with the link cleared. Fixed:
 - The Tenant Admin was only emailed; the app had no prompt. The action-required webhook now stores the hosted invoice link, the summary returns it, and the Billing page shows it.
 
 ### 8. Cancel one domain, cancel the whole Tenant, and resume each
