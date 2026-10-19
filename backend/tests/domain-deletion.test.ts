@@ -158,6 +158,24 @@ describe('Domain Deletion Service & Cascades', () => {
       expect(secondaryDom?.isPrimary).toBe(true);
     });
 
+    it('removes only this domain\'s item when another domain shares the subscription', async () => {
+      const cancelSubSpy = vi.spyOn(stripeClient, 'cancelSubscription').mockResolvedValue({} as any);
+      const removeItemSpy = vi.spyOn(stripeClient, 'removeSubscriptionItem').mockResolvedValue();
+      vi.spyOn(stalwartClient, 'deleteDomain').mockResolvedValue();
+      for (const [id, item] of [[domainId, 'si_deleted'], [domain2Id, 'si_kept']]) {
+        await DomainSubscriptionModel.create({
+          domainId: id, tenantId, planId: new mongoose.Types.ObjectId(),
+          stripeSubscriptionId: 'sub_shared_del', stripeSubscriptionItemId: item, status: 'active',
+        });
+      }
+
+      await deleteDomainDirectly(domainId, tenantId, tenantActor);
+
+      expect(removeItemSpy).toHaveBeenCalledWith('si_deleted');
+      expect(cancelSubSpy).not.toHaveBeenCalled();
+      expect((await DomainSubscriptionModel.findOne({ domainId: domain2Id }))?.status).toBe('active');
+    });
+
     it('rejects deletion for a domain not owned by the tenant', async () => {
       const otherTenant = await TenantModel.create({ name: 'Other Co', status: 'active', mailboxLimit: 5, mailboxCount: 0 });
       await expect(

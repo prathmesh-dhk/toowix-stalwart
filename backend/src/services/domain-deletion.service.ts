@@ -42,7 +42,17 @@ export async function executeDeletionCascade(domainId: mongoose.Types.ObjectId |
   const subscription = await DomainSubscriptionModel.findOne({ domainId });
   if (subscription?.stripeSubscriptionId) {
     try {
-      await stripeClient.cancelSubscription(subscription.stripeSubscriptionId);
+      // The subscription is shared by the tenant's domains; only the last one may end it.
+      const siblings = await DomainSubscriptionModel.countDocuments({
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+        status: { $ne: 'canceled' },
+        domainId: { $ne: subscription.domainId },
+      });
+      if (siblings > 0) {
+        if (subscription.status !== 'canceled') await stripeClient.removeSubscriptionItem(subscription.stripeSubscriptionItemId);
+      } else {
+        await stripeClient.cancelSubscription(subscription.stripeSubscriptionId);
+      }
     } catch (err: any) {
       console.warn(`[Domain Deletion] Stripe cancel skipped/failed for ${subscription.stripeSubscriptionId}:`, err.message);
     }

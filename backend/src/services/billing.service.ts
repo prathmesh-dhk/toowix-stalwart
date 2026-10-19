@@ -1556,6 +1556,8 @@ export async function cancelSubscription(domainId: string, tenantId: string, act
     sub.status = 'canceled';
     sub.cancelAtPeriodEnd = false;
     await sub.save();
+    // Off the bill from now on, so its mail stops now too.
+    await suspendDomainForNonPayment(domain._id.toString());
   }
 
   await logAudit({
@@ -1750,20 +1752,19 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
     // suspend/reactivate to every domain on that shared subscription.
     case 'customer.subscription.updated': {
       const subscription = event.data.object as Stripe.Subscription;
-      const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscription.id });
+      // A domain cancelled on its own has left the subscription; its row must not be revived.
+      const live = { stripeSubscriptionId: subscription.id, status: { $ne: 'canceled' as const } };
+      const siblings = await DomainSubscriptionModel.find(live);
       if (siblings.length === 0) return;
 
       const status = mapStripeStatus(subscription.status);
-      await DomainSubscriptionModel.updateMany(
-        { stripeSubscriptionId: subscription.id },
-        { cancelAtPeriodEnd: subscription.cancel_at_period_end }
-      );
+      await DomainSubscriptionModel.updateMany(live, { cancelAtPeriodEnd: subscription.cancel_at_period_end });
       // Grace and suspension are opened and closed by the invoice events (which also suspend and
       // restore mailboxes); Stripe sends this event in either order around them.
       await DomainSubscriptionModel.updateMany(
         {
           stripeSubscriptionId: subscription.id,
-          ...(status === 'past_due' || status === 'active' ? { status: { $nin: ['grace', 'suspended'] } } : {}),
+          status: { $nin: status === 'past_due' || status === 'active' ? ['canceled', 'grace', 'suspended'] : ['canceled'] },
         },
         { status }
       );
@@ -1837,7 +1838,7 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
       const invoice = event.data.object as Stripe.Invoice;
       const subscriptionId = subscriptionIdOf(invoice);
       if (!subscriptionId) return;
-      const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscriptionId });
+      const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscriptionId, status: { $ne: 'canceled' } });
       if (siblings.length === 0) return;
 
       // From the invoice's own time (it follows a test clock), so Stripe's retries of the same
@@ -1867,7 +1868,7 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
       const invoice = event.data.object as Stripe.Invoice;
       const subscriptionId = subscriptionIdOf(invoice);
       if (!subscriptionId) return;
-      const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscriptionId });
+      const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscriptionId, status: { $ne: 'canceled' } });
       if (siblings.length === 0) return;
 
       // 'suspended' is included so a late payment after the grace-sweep job
@@ -1925,13 +1926,21 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
 
     case 'customer.subscription.deleted': {
       const subscription = event.data.object as Stripe.Subscription;
-      const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscription.id });
+      // Domains cancelled earlier on their own were already suspended then.
+      const siblings = await DomainSubscriptionModel.find({ stripeSubscriptionId: subscription.id, status: { $ne: 'canceled' } });
       if (siblings.length === 0) return;
       const retentionEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       await DomainSubscriptionModel.updateMany(
-        { stripeSubscriptionId: subscription.id },
+        { _id: { $in: siblings.map((s) => s._id) } },
         { status: 'canceled', retentionEndsAt }
       );
+      // The cancellation took effect: mail stops on every domain it covered (data is kept). Only
+      // domains the tenant owns: a row on the shared platform domain must not suspend everyone's.
+      for (const sub of siblings) {
+        if (await DomainModel.exists({ _id: sub.domainId, tenantId: sub.tenantId })) {
+          await suspendDomainForNonPayment(sub.domainId.toString());
+        }
+      }
       break;
     }
 

@@ -200,12 +200,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
     setActionLoading('cancel');
     setError(null);
     try {
-      for (const d of cart?.domains || []) {
-        await api.cancelDomainSubscription(d.domainId).catch(() => undefined);
-      }
-      if (api.cancelTenantSubscription) {
-        await api.cancelTenantSubscription().catch(() => undefined);
-      }
+      await api.cancelTenantSubscription();
       await load();
     } catch (err: any) {
       setError(err?.message || 'Failed to cancel subscription.');

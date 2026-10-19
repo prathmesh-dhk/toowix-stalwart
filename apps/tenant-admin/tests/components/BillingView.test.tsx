@@ -15,6 +15,7 @@ vi.mock('../../src/api', () => ({
     upgradeDomainPlan: vi.fn(),
     downgradeDomainPlan: vi.fn(),
     cancelDomainSubscription: vi.fn(),
+    cancelTenantSubscription: vi.fn(),
     listPaymentMethods: vi.fn().mockResolvedValue({ paymentMethods: [], defaultPaymentMethodId: null }),
     getBillingConfig: vi.fn().mockResolvedValue({ publishableKey: '', billingEnabled: false }),
     createTenantSetupIntent: vi.fn().mockResolvedValue({ clientSecret: 'bypassed' }),
@@ -144,16 +145,23 @@ describe('BillingView (company-wide)', () => {
     expect(screen.queryByLabelText(/change plan for/i)).not.toBeInTheDocument();
   });
 
-  it('cancels every domain subscription after confirmation', async () => {
+  it('cancels the whole subscription at period end after confirmation, without removing domains one by one', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    vi.mocked(api.cancelDomainSubscription).mockResolvedValue({ success: true });
+    vi.mocked(api.cancelTenantSubscription).mockResolvedValue({ success: true });
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
 
     await userEvent.click(await screen.findByRole('button', { name: /cancel subscription/i }));
-    await waitFor(() => {
-      expect(api.cancelDomainSubscription).toHaveBeenCalledWith('dom-1');
-      expect(api.cancelDomainSubscription).toHaveBeenCalledWith('dom-2');
-    });
+    await waitFor(() => expect(api.cancelTenantSubscription).toHaveBeenCalledTimes(1));
+    expect(api.cancelDomainSubscription).not.toHaveBeenCalled();
+  });
+
+  it('shows the error when cancelling fails', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(api.cancelTenantSubscription).mockRejectedValue(new Error('Stripe is unavailable'));
+    render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /cancel subscription/i }));
+    expect(await screen.findByText('Stripe is unavailable')).toBeInTheDocument();
   });
 
   it('lists invoice history', async () => {

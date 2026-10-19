@@ -514,6 +514,50 @@ describe('billing.service', () => {
       const updated = await DomainSubscriptionModel.findById(sub._id);
       expect(updated?.status).toBe('canceled');
     });
+
+    it('customer.subscription.deleted suspends every domain on the subscription and their mailboxes', async () => {
+      const domains = [];
+      for (const name of ['ended1.com', 'ended2.com']) {
+        const domain = await DomainModel.create({ tenantId, domainName: name, planId: fixedPlanId, status: 'active', stalwartDomainId: `sd-${name}` });
+        await DomainSubscriptionModel.create({
+          domainId: domain._id, tenantId, planId: fixedPlanId,
+          stripeSubscriptionId: 'sub_ended', stripeSubscriptionItemId: `si-${name}`, status: 'active', cancelAtPeriodEnd: true,
+        });
+        await MailboxModel.create({ tenantId, domainId: domain._id, localPart: name[5], address: `u@${name}`, status: 'active' });
+        domains.push(domain);
+      }
+
+      // A row on a domain another tenant owns (the shared platform domain) must not suspend it.
+      const otherTenant = await TenantModel.create({ name: 'Platform', status: 'active', mailboxLimit: 1, mailboxCount: 0 });
+      const platform = await DomainModel.create({ tenantId: otherTenant._id, domainName: 'platform.test', status: 'active', stalwartDomainId: 'sd-platform' });
+      await DomainSubscriptionModel.create({
+        domainId: platform._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_ended', stripeSubscriptionItemId: 'si-platform', status: 'active',
+      });
+
+      await handleWebhookEvent({ id: 'evt_sub_ended', type: 'customer.subscription.deleted', data: { object: { id: 'sub_ended' } } } as any);
+
+      for (const domain of domains) {
+        expect((await DomainModel.findById(domain._id))?.status).toBe('suspended');
+        expect((await MailboxModel.findOne({ domainId: domain._id }))?.status).toBe('suspended');
+        expect(stalwartClient.updateDomainStatus).toHaveBeenCalledWith(domain.stalwartDomainId, false);
+      }
+      expect((await DomainModel.findById(platform._id))?.status).toBe('active');
+    });
+
+    it('customer.subscription.deleted leaves a domain cancelled earlier on its own alone', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'left-earlier.com', planId: fixedPlanId, status: 'suspended', stalwartDomainId: 'sd-left' });
+      const retentionEndsAt = new Date('2026-11-01T00:00:00Z');
+      await DomainSubscriptionModel.create({
+        domainId: domain._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_ended2', stripeSubscriptionItemId: 'si-left', status: 'canceled', retentionEndsAt,
+      });
+
+      await handleWebhookEvent({ id: 'evt_sub_ended2', type: 'customer.subscription.deleted', data: { object: { id: 'sub_ended2' } } } as any);
+
+      expect(stalwartClient.updateDomainStatus).not.toHaveBeenCalled();
+      expect((await DomainSubscriptionModel.findOne({ domainId: domain._id }))?.retentionEndsAt).toEqual(retentionEndsAt);
+    });
   });
 
   describe('suspendDomainForNonPayment / reactivateDomainForPayment', () => {
@@ -747,9 +791,43 @@ describe('billing.service', () => {
       expect(stripeClient.removeSubscriptionItem).toHaveBeenCalledWith('si_remove');
       expect(stripeClient.cancelAtPeriodEnd).not.toHaveBeenCalled();
       expect((await DomainSubscriptionModel.findById(sub2._id))?.status).toBe('canceled');
-      // The other domain on the shared subscription is completely unaffected.
+      // Its item is gone from the bill now, so its mail stops now; the other domain is unaffected.
+      expect((await DomainModel.findById(domain2._id))?.status).toBe('suspended');
       const sibling = await DomainSubscriptionModel.findOne({ domainId: domain1._id });
       expect(sibling?.status).toBe('active');
+      expect((await DomainModel.findById(domain1._id))?.status).toBe('active');
+    });
+
+    it('a cancelled domain stays cancelled through later subscription events, so the last domain left cancels the subscription', async () => {
+      const keep = await DomainModel.create({ tenantId, domainName: 'keep2.com', planId: fixedPlanId, status: 'active' });
+      const keepSub = await DomainSubscriptionModel.create({
+        domainId: keep._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_two', stripeSubscriptionItemId: 'si_keep2', status: 'active',
+      });
+      const gone = await DomainModel.create({ tenantId, domainName: 'gone.com', planId: fixedPlanId, status: 'active' });
+      const goneSub = await DomainSubscriptionModel.create({
+        domainId: gone._id, tenantId, planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_two', stripeSubscriptionItemId: 'si_gone', status: 'active',
+      });
+
+      await cancelSubscription(gone._id.toString(), tenantId, actor);
+      // Shapes Stripe sent in the live run after the item was removed.
+      await handleWebhookEvent({
+        id: 'evt_upd_after_remove',
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_two', status: 'active', cancel_at_period_end: false, items: { data: [{ id: 'si_keep2', current_period_end: 1795000000 }] } } },
+      } as any);
+      await handleWebhookEvent({ id: 'evt_fail_after_remove', type: 'invoice.payment_failed', data: { object: { id: 'in_1', subscription: 'sub_two', created: 1795000000 } } } as any);
+      await handleWebhookEvent({ id: 'evt_paid_after_remove', type: 'invoice.payment_succeeded', data: { object: { subscription: 'sub_two', billing_reason: 'subscription_cycle' } } } as any);
+
+      expect((await DomainSubscriptionModel.findById(goneSub._id))?.status).toBe('canceled');
+      expect((await DomainModel.findById(gone._id))?.status).toBe('suspended');
+      expect(emailService.sendBillingGraceStartedEmail).toHaveBeenCalledTimes(1);
+      expect((await DomainSubscriptionModel.findById(keepSub._id))?.status).toBe('active');
+
+      await cancelSubscription(keep._id.toString(), tenantId, actor);
+      expect(stripeClient.cancelAtPeriodEnd).toHaveBeenCalledWith('sub_two', true);
+      expect(stripeClient.removeSubscriptionItem).toHaveBeenCalledTimes(1);
     });
   });
 

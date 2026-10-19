@@ -202,6 +202,25 @@ Last run 2026-10-19, with the same setup as scenario 6. Steps 1–2 ran live. Br
 
 ### 8. Cancel one domain, cancel the whole Tenant, and resume each
 
+Test card: `4242 4242 4242 4242`. Use a Tenant on a test clock (scenario 2) with **two** domains on the same subscription (scenario 4), each with an active mailbox. Cancellation only ever happens in the app (ADR-0001); never cancel in the Stripe Dashboard.
+
+1. **Cancel the Tenant.** On the Billing page click **Cancel subscription** and confirm.
+   Check: `stripe subscriptions retrieve sub_...` has `cancel_at_period_end: true` and **both** items still present. Both `domain_subscriptions` rows have `cancelAtPeriodEnd: true`. The Billing page shows "Cancels at the end of the current period (…)" and a **Resume subscription** button. Domains and mailboxes stay `active`.
+2. **Resume the Tenant.** Click **Resume subscription**.
+   Check: `cancel_at_period_end: false` in Stripe and on both rows; the banner is gone. `customer.subscription.updated` `[200]`.
+3. **Cancel one domain.** `POST /api/tenants/me/billing/domains/:id/cancel` for the second domain (there is no button for this).
+   Check: the Stripe subscription now has one item; the other domain's item and `cancel_at_period_end: false` are untouched. The cancelled domain's row is `canceled` and **stays** `canceled` after `customer.subscription.updated` arrives. That domain and its mailboxes are `suspended` straight away (in Stalwart too), since its item is no longer billed. The other domain is still `active`. There is no per-domain resume: once the item is removed the cancellation has already taken effect.
+4. **Cancel the last domain, then resume.** Cancel the remaining domain the same way.
+   Check: the subscription gets `cancel_at_period_end: true` (it is not deleted, and the item is kept); the domain stays `active` until period end. Clicking **Resume subscription** clears it again.
+5. **Cancellation takes effect.** Cancel the Tenant again, then advance the clock to one hour past `current_period_end` and wait for `ready`. The `listen` terminal shows `customer.subscription.deleted` `[200]`.
+   Check: Stripe status `canceled`; every row `canceled` with `retentionEndsAt` set; every domain and its mailboxes `suspended` in the app and in Stalwart. Data is kept.
+
+Last run 2026-10-20, set up like scenario 6 (separate database, Stalwart stubbed, subscription created by API and adopted, service calls in place of the buttons). Fixed:
+- `customer.subscription.updated` set a domain cancelled on its own back to `active` (and the invoice events could put it in grace or reactivate it). Cancelling the last remaining domain then saw a phantom sibling and tried to remove its item, which Stripe rejects ("A subscription must have at least one active plan"). Subscription events now leave `canceled` rows alone.
+- **Cancel subscription** on the Billing page cancelled each domain one at a time before cancelling the Tenant, so every domain but the last was removed from billing immediately and **Resume** couldn't bring them back. Errors were swallowed. It now only schedules the Tenant cancellation and shows any error.
+- Deleting a domain cancelled the whole shared subscription at once, ending billing for every other domain of the Tenant (and, with the next fix, it would have suspended them). It now removes only that domain's item while other domains remain.
+- A cancellation taking effect left the domains and mailboxes `active`, so mail kept working unbilled. Cancelling one domain off a shared subscription now suspends it at once; `customer.subscription.deleted` suspends every domain it covered that the Tenant owns. It skips domains already cancelled on their own and rows on the shared platform domain.
+
 ### 9. Replaying a delivered webhook produces no further change
 
 Run this against the backend HTTP API using either the Stripe CLI (`stripe events resend evt_...`) or signed HTTP POST requests to `/api/webhooks/stripe`.
