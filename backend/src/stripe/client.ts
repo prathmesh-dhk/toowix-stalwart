@@ -103,11 +103,16 @@ export class ToowixStripeClient {
     if (tenant.stripeCustomerId) return tenant.stripeCustomerId;
 
     const stripe = getStripe();
-    const customer = await stripe.customers.create({
-      name: tenant.name,
-      email: tenant.contactEmail || undefined,
-      metadata: { toowixTenantId: tenant._id.toString() },
-    });
+    // Keyed per tenant so concurrent requests (a double-clicked checkout) get the same customer back.
+    // shortcut: Stripe keeps keys 24h, which only matters if the id is lost from the tenant after that.
+    const customer = await stripe.customers.create(
+      {
+        name: tenant.name,
+        email: tenant.contactEmail || undefined,
+        metadata: { toowixTenantId: tenant._id.toString() },
+      },
+      { idempotencyKey: `tenant-customer-${tenant._id.toString()}` }
+    );
 
     tenant.stripeCustomerId = customer.id;
     await tenant.save();
@@ -299,6 +304,15 @@ export class ToowixStripeClient {
         { items: currentPhaseItems, start_date: currentPhase.start_date, end_date: currentPhase.end_date },
         { items: [{ price: newPriceId, quantity }] },
       ],
+    });
+  }
+
+  /** Moves a trialing subscription's trial end (coupon extension). Nothing is invoiced for the change. */
+  async setTrialEnd(subscriptionId: string, trialEnd: Date): Promise<void> {
+    const stripe = getStripe();
+    await stripe.subscriptions.update(subscriptionId, {
+      trial_end: Math.floor(trialEnd.getTime() / 1000),
+      proration_behavior: 'none',
     });
   }
 

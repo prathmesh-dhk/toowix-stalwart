@@ -349,6 +349,33 @@ describe('billing.service', () => {
       expect(stalwartClient.updateDomainStatus).toHaveBeenCalled();
     });
 
+    it('a ₹0 invoice paid during the trial (coupon extension, checkout) keeps the domain trialing', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'trialing.com', planId: fixedPlanId, status: 'active' });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id,
+        tenantId,
+        planId: fixedPlanId,
+        stripeSubscriptionId: 'sub_trialing',
+        stripeSubscriptionItemId: 'si_trialing',
+        status: 'trialing',
+      });
+
+      for (const billing_reason of ['subscription_create', 'subscription_update']) {
+        await handleWebhookEvent({
+          type: 'invoice.payment_succeeded',
+          data: { object: { subscription: 'sub_trialing', billing_reason, amount_paid: 0 } },
+        } as any);
+        expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('trialing');
+      }
+
+      // The first real invoice at trial end does make it active.
+      await handleWebhookEvent({
+        type: 'invoice.payment_succeeded',
+        data: { object: { subscription: 'sub_trialing', billing_reason: 'subscription_cycle', amount_paid: 4900 } },
+      } as any);
+      expect((await DomainSubscriptionModel.findById(sub._id))?.status).toBe('active');
+    });
+
     it('customer.subscription.deleted marks the subscription canceled', async () => {
       const domain = await DomainModel.create({ tenantId, domainName: 'canceled.com', planId: fixedPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({

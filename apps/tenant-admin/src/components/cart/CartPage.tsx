@@ -111,10 +111,25 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
     load();
   }, [load]);
 
+  const trialStarted = !!cart?.trial.started;
+
   const applyPromo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!promoCode.trim()) return;
     setPromoError(null);
+    if (trialStarted) {
+      // Trial already running: the code is redeemed now and moves the trial end.
+      try {
+        const res = await api.redeemCoupon(promoCode.trim());
+        setPromoOpen(false);
+        setPromoCode('');
+        setNotice({ tone: 'success', text: res.message });
+        await load();
+      } catch (err: any) {
+        setPromoError(err?.message || 'Invalid promo code');
+      }
+      return;
+    }
     try {
       const res = await api.validateCoupon(promoCode.trim());
       if (res.valid) setPromo(res);
@@ -153,7 +168,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
         expYear: pm?.expYear,
       });
       await redeemPromo(promo?.code);
-      setCart(res.cart);
+      setCart(promo ? await api.getCart() : res.cart);
       setNotice({ tone: 'success', text: 'Card confirmed — your 60-day free trial has started and your mailboxes are active.' });
     } catch (err: any) {
       setNotice({ tone: 'error', text: err?.message || 'Could not activate your mailboxes.' });
@@ -176,7 +191,6 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
 
   const domains = cart?.domains ?? [];
   const totalUsers = domains.reduce((sum, d) => sum + d.activeUsers + d.pendingUsers, 0);
-  const trialStarted = !!cart?.trial.started;
   const extraDays = promo?.extraTrialDays || 0;
 
   const handleBack = () => {
@@ -366,7 +380,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
 
             {trialStarted ? (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-900">
-                <strong>{cart!.trial.isTrialing ? `60-day trial · ${cart!.trial.daysRemaining} days left` : 'Subscription active'}</strong>
+                <strong>{cart!.trial.isTrialing ? `Free trial · ${cart!.trial.daysRemaining} days left` : 'Subscription active'}</strong>
                 {cart!.trial.isTrialing && (
                   <span className="block text-emerald-700 text-[11px] mt-0.5">
                     Ends {formatDate(cart!.trial.endsAt)} — one date for every domain and user.
@@ -395,7 +409,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
               </div>
             )}
 
-            {!trialStarted &&
+            {(!trialStarted || cart!.trial.isTrialing) &&
               (promo ? (
                 <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-800">
                   <span className="flex items-center gap-1.5">

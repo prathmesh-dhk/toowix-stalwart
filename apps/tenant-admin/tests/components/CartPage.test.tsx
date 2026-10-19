@@ -117,7 +117,7 @@ describe('CartPage', () => {
 
     await waitFor(() => expect(api.activateCart).toHaveBeenCalledWith(expect.objectContaining({ paymentMethodId: 'pm_1' })));
     expect(await screen.findByText(/your 60-day free trial has started/i)).toBeInTheDocument();
-    expect(screen.getByText(/60-day trial · 60 days left/)).toBeInTheDocument();
+    expect(screen.getByText(/Free trial · 60 days left/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /ready for checkout/i })).not.toBeInTheDocument();
   });
 
@@ -177,10 +177,40 @@ describe('CartPage', () => {
     const onBack = vi.fn();
     render(<CartPage onBack={onBack} />);
 
-    expect(await screen.findByText(/60-day trial · 43 days left/)).toBeInTheDocument();
+    expect(await screen.findByText(/Free trial · 43 days left/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /ready for checkout/i })).not.toBeInTheDocument();
     await userEvent.click(screen.getAllByRole('button', { name: /back to dashboard/i })[1]);
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it('during the trial a promo code extends it and the new end date shows', async () => {
+    const running: CartData = { ...pendingCart, requiresActivation: false, pendingMailboxes: [], trial: { started: true, startedAt: 'x', endsAt: '2026-12-18T00:00:00.000Z', daysRemaining: 60, isTrialing: true } };
+    const extended: CartData = { ...running, trial: { ...running.trial, endsAt: '2027-01-17T00:00:00.000Z', daysRemaining: 90 } };
+    vi.mocked(api.getCart).mockResolvedValueOnce(running).mockResolvedValue(extended);
+    vi.mocked(api.redeemCoupon).mockResolvedValue({ success: true, coupon: { code: 'STARTUP30', extraTrialDays: 30 }, newTrialEnd: extended.trial.endsAt, message: 'Success! Added 30 bonus trial days to your account.' });
+    render(<CartPage onBack={vi.fn()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /have a promo code/i }));
+    await userEvent.type(screen.getByLabelText('Promo code'), 'startup30');
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+
+    expect(api.redeemCoupon).toHaveBeenCalledWith('STARTUP30');
+    expect(await screen.findByText(/Added 30 bonus trial days/)).toBeInTheDocument();
+    expect(screen.getByText(/90 days left/)).toBeInTheDocument();
+  });
+
+  it('during the trial an invalid promo code is refused with the reason', async () => {
+    const running: CartData = { ...pendingCart, requiresActivation: false, pendingMailboxes: [], trial: { started: true, startedAt: 'x', endsAt: '2026-12-18T00:00:00.000Z', daysRemaining: 60, isTrialing: true } };
+    vi.mocked(api.getCart).mockResolvedValue(running);
+    vi.mocked(api.redeemCoupon).mockRejectedValue(new Error('Invalid coupon code.'));
+    render(<CartPage onBack={vi.fn()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /have a promo code/i }));
+    await userEvent.type(screen.getByLabelText('Promo code'), 'nope');
+    await userEvent.click(screen.getByRole('button', { name: /apply/i }));
+
+    expect(await screen.findByText('Invalid coupon code.')).toBeInTheDocument();
+    expect(screen.getByText(/60 days left/)).toBeInTheDocument();
   });
 });
 

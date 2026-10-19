@@ -20,6 +20,7 @@ import {
   resumeTenantSubscription,
   selectDomainPlan,
   startTenantTrialWithPayment,
+  redeemTrialCoupon,
   BillingError,
 } from '../services/billing.service';
 import { config, isBillingEnabled } from '../config';
@@ -346,7 +347,6 @@ tenantBillingRouter.post('/validate-coupon', async (req: Request, res: Response)
 
 const redeemCouponSchema = z.object({
   code: z.string().trim().min(1, 'Coupon code is required'),
-  domainId: z.string().optional().nullable(),
 });
 
 tenantBillingRouter.post('/redeem-coupon', async (req: Request, res: Response): Promise<void> => {
@@ -357,15 +357,10 @@ tenantBillingRouter.post('/redeem-coupon', async (req: Request, res: Response): 
   }
   const tenantId = req.adminUser!.tenantId!;
   try {
-    const result = await couponService.redeemCoupon(
-      parseResult.data.code,
-      tenantId,
-      parseResult.data.domainId,
-      req.adminUser?.id || null
-    );
+    const result = await redeemTrialCoupon(tenantId, parseResult.data.code, req.adminUser?.id || null);
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: 'REDEEM_COUPON_FAILED', message: err.message });
+    handleBillingError(res, err);
   }
 });
 

@@ -6,6 +6,7 @@ import { connectDatabase, disconnectDatabase } from '../src/db/connection';
 import { AdminUserModel, TenantModel, DomainModel, PlanModel, DomainSubscriptionModel, CouponModel } from '../src/db/models';
 import { generateOidcToken } from '../src/auth/service';
 import { couponService } from '../src/services/coupon.service';
+import { stripeClient } from '../src/stripe/client';
 
 vi.mock('../src/stripe/client', () => ({
   stripeClient: {
@@ -19,6 +20,7 @@ vi.mock('../src/stripe/client', () => ({
     reportMeteredUsage: vi.fn(),
     listInvoices: vi.fn().mockResolvedValue([]),
     createSetupIntent: vi.fn().mockResolvedValue({ client_secret: 'seti_test_secret' }),
+    setTrialEnd: vi.fn().mockResolvedValue(undefined),
   },
   meterEventNameForPlan: (plan: any) => `mailbox_count_${plan._id.toString()}`,
 }));
@@ -30,6 +32,7 @@ describe('Coupon routes & one-time redemption system', () => {
   let tenantAdminToken: string;
   let tenantId: string;
   let domainId: string;
+  let initialTrialEnd: Date;
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
@@ -42,6 +45,7 @@ describe('Coupon routes & one-time redemption system', () => {
   });
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     await AdminUserModel.deleteMany({});
     await TenantModel.deleteMany({});
     await DomainModel.deleteMany({});
@@ -62,7 +66,18 @@ describe('Coupon routes & one-time redemption system', () => {
     });
 
     // Create tenant and tenant admin
-    const tenant = await TenantModel.create({ name: 'Acme Corp', status: 'active', mailboxLimit: 50, mailboxCount: 0 });
+    // Trial already running (first mailbox created, card confirmed through Checkout).
+    initialTrialEnd = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+    const tenant = await TenantModel.create({
+      name: 'Acme Corp',
+      status: 'active',
+      mailboxLimit: 50,
+      mailboxCount: 0,
+      trialStartedAt: new Date(),
+      trialEndsAt: initialTrialEnd,
+      stripeCustomerId: 'cus_test',
+      stripeSubscriptionId: 'sub_test_123',
+    });
     tenantId = tenant._id.toString();
 
     const plan = await PlanModel.create({ name: 'Starter', seatCount: 10, displayOrder: 1, isActive: true, monthlyPriceInPaise: 4900 });
@@ -76,7 +91,6 @@ describe('Coupon routes & one-time redemption system', () => {
     domainId = domain._id.toString();
 
     // Create initial subscription with 60-day trial
-    const initialTrialEnd = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
     await DomainSubscriptionModel.create({
       domainId: domain._id,
       tenantId: tenant._id,
@@ -227,40 +241,86 @@ describe('Coupon routes & one-time redemption system', () => {
       expect(res.body.error).toBe('INVALID_COUPON');
     });
 
-    it('redeems a one-time coupon, extends the subscription trial end, and prevents second use', async () => {
+    it('redeems a one-time coupon, moves the trial end in the app and in Stripe, and prevents second use', async () => {
       await request(app)
         .post('/api/admin/coupons')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({ code: 'ONETIME60', extraTrialDays: 60 });
+      const expectedEnd = initialTrialEnd.getTime() + 60 * 24 * 60 * 60 * 1000;
 
-      // First redemption: success
       const redeemRes1 = await request(app)
         .post('/api/tenants/me/billing/redeem-coupon')
         .set('Authorization', `Bearer ${tenantAdminToken}`)
-        .send({ code: 'ONETIME60', domainId });
+        .send({ code: 'ONETIME60' });
 
       expect(redeemRes1.status).toBe(200);
-      expect(redeemRes1.body.success).toBe(true);
-      expect(redeemRes1.body.newTrialEnd).toBeDefined();
+      expect(new Date(redeemRes1.body.newTrialEnd).getTime()).toBe(expectedEnd);
+      expect(stripeClient.setTrialEnd).toHaveBeenCalledWith('sub_test_123', new Date(expectedEnd));
 
-      // Verify coupon is marked as used in DB
       const couponInDb = await CouponModel.findOne({ code: 'ONETIME60' });
       expect(couponInDb?.status).toBe('used');
       expect(couponInDb?.usedCount).toBe(1);
-      expect(couponInDb?.redemptions).toHaveLength(1);
 
-      // Verify domain subscription trialEnd was extended
+      const tenantInDb = await TenantModel.findById(tenantId);
+      expect(tenantInDb!.trialEndsAt!.getTime()).toBe(expectedEnd);
       const subInDb = await DomainSubscriptionModel.findOne({ domainId });
-      expect(new Date(subInDb!.trialEnd!).getTime()).toBeGreaterThan(Date.now() + 100 * 24 * 60 * 60 * 1000);
+      expect(subInDb!.trialEnd!.getTime()).toBe(expectedEnd);
+      const cart = await request(app).get('/api/tenants/me/cart').set('Authorization', `Bearer ${tenantAdminToken}`);
+      expect(new Date(cart.body.trial.endsAt).getTime()).toBe(expectedEnd);
 
-      // Second redemption attempt: must be rejected
       const redeemRes2 = await request(app)
         .post('/api/tenants/me/billing/redeem-coupon')
         .set('Authorization', `Bearer ${tenantAdminToken}`)
-        .send({ code: 'ONETIME60', domainId });
+        .send({ code: 'ONETIME60' });
 
       expect(redeemRes2.status).toBe(400);
       expect(redeemRes2.body.error).toBe('REDEEM_COUPON_FAILED');
+    });
+
+    it('refuses an unknown coupon with a clear message and leaves the trial alone', async () => {
+      const res = await request(app)
+        .post('/api/tenants/me/billing/redeem-coupon')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ code: 'NOPE123' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Invalid coupon code.');
+      expect(stripeClient.setTrialEnd).not.toHaveBeenCalled();
+      const tenantInDb = await TenantModel.findById(tenantId);
+      expect(tenantInDb!.trialEndsAt!.getTime()).toBe(initialTrialEnd.getTime());
+    });
+
+    it('rolls the trial and the coupon back when Stripe refuses the extension', async () => {
+      vi.mocked(stripeClient.setTrialEnd).mockRejectedValueOnce(new Error('stripe down'));
+      await CouponModel.create({ code: 'RETRY10', extraTrialDays: 10, maxUses: 1, usedCount: 0, status: 'active' });
+
+      const res = await request(app)
+        .post('/api/tenants/me/billing/redeem-coupon')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ code: 'RETRY10' });
+
+      expect(res.status).toBe(502);
+      const tenantInDb = await TenantModel.findById(tenantId);
+      expect(tenantInDb!.trialEndsAt!.getTime()).toBe(initialTrialEnd.getTime());
+      const coupon = await CouponModel.findOne({ code: 'RETRY10' });
+      expect(coupon?.usedCount).toBe(0);
+      expect(coupon?.status).toBe('active');
+      expect(coupon?.redemptions).toHaveLength(0);
+    });
+
+    it('refuses a coupon when no trial is running, without using it up', async () => {
+      await TenantModel.updateOne({ _id: tenantId }, { trialStartedAt: null, trialEndsAt: null });
+      await CouponModel.create({ code: 'EARLY10', extraTrialDays: 10, maxUses: 1, usedCount: 0, status: 'active' });
+
+      const res = await request(app)
+        .post('/api/tenants/me/billing/redeem-coupon')
+        .set('Authorization', `Bearer ${tenantAdminToken}`)
+        .send({ code: 'EARLY10' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/checkout/i);
+      expect((await CouponModel.findOne({ code: 'EARLY10' }))?.usedCount).toBe(0);
+      expect(stripeClient.setTrialEnd).not.toHaveBeenCalled();
     });
 
     it('allows the configured number of organizations to redeem a multi-use coupon', async () => {
@@ -270,17 +330,14 @@ describe('Coupon routes & one-time redemption system', () => {
         .send({ code: 'TEAM3', extraTrialDays: 10, maxUses: 3 });
 
       const tenant2 = await TenantModel.create({ name: 'Tenant Two', contactEmail: 'two@example.test', status: 'active' });
-      const domain2 = await DomainModel.create({ tenantId: tenant2._id, domainName: 'two.example.test', status: 'active' });
       const tenant3 = await TenantModel.create({ name: 'Tenant Three', contactEmail: 'three@example.test', status: 'active' });
-      const domain3 = await DomainModel.create({ tenantId: tenant3._id, domainName: 'three.example.test', status: 'active' });
       const tenant4 = await TenantModel.create({ name: 'Tenant Four', contactEmail: 'four@example.test', status: 'active' });
-      const domain4 = await DomainModel.create({ tenantId: tenant4._id, domainName: 'four.example.test', status: 'active' });
 
-      const redeemFor = async (id: string, domain: string) => couponService.redeemCoupon('TEAM3', id, domain);
-      await expect(redeemFor(tenantId, domainId)).resolves.toMatchObject({ success: true });
-      await expect(redeemFor(tenant2._id.toString(), domain2._id.toString())).resolves.toMatchObject({ success: true });
-      await expect(redeemFor(tenant3._id.toString(), domain3._id.toString())).resolves.toMatchObject({ success: true });
-      await expect(redeemFor(tenant4._id.toString(), domain4._id.toString())).rejects.toThrow(/redemption limit/i);
+      const redeemFor = async (id: string) => couponService.redeemCoupon('TEAM3', id);
+      await expect(redeemFor(tenantId)).resolves.toMatchObject({ success: true });
+      await expect(redeemFor(tenant2._id.toString())).resolves.toMatchObject({ success: true });
+      await expect(redeemFor(tenant3._id.toString())).resolves.toMatchObject({ success: true });
+      await expect(redeemFor(tenant4._id.toString())).rejects.toThrow(/redemption limit/i);
 
       const coupon = await CouponModel.findOne({ code: 'TEAM3' });
       expect(coupon?.usedCount).toBe(3);

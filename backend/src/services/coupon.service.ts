@@ -1,8 +1,6 @@
 import crypto from 'crypto';
 import mongoose, { Types } from 'mongoose';
 import { CouponModel, ICoupon, CouponStatus } from '../db/models/Coupon';
-import { TenantModel } from '../db/models/Tenant';
-import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { logAudit } from '../audit/service';
 import { config } from '../config';
 
@@ -332,11 +330,10 @@ export class CouponService {
     };
   }
 
-  /** Atomically redeems a coupon code for a tenant and updates their trial / billing. */
+  /** Atomically claims a coupon for a tenant. Moving the trial end is billing.service's job. */
   async redeemCoupon(
     code: string,
     tenantId: string,
-    domainId?: string | null,
     actorId?: string | null
   ): Promise<{
     success: boolean;
@@ -344,7 +341,6 @@ export class CouponService {
       code: string;
       extraTrialDays: number;
     };
-    newTrialEnd?: Date | null;
     message: string;
   }> {
     const cleanCode = (code || '').trim().toUpperCase();
@@ -353,7 +349,6 @@ export class CouponService {
     }
 
     const tenantObjectId = new Types.ObjectId(tenantId);
-    const domainObjectId = domainId ? new Types.ObjectId(domainId) : null;
 
     // Check pre-conditions
     const existing = await CouponModel.findOne({ code: cleanCode });
@@ -387,7 +382,7 @@ export class CouponService {
         $push: {
           redemptions: {
             tenantId: tenantObjectId,
-            domainId: domainObjectId,
+            domainId: null,
             redeemedAt: new Date(),
             extraTrialDays: existing.extraTrialDays,
           },
@@ -406,31 +401,8 @@ export class CouponService {
     }
 
     const extraDays = claimed.extraTrialDays;
-    const msToAdd = extraDays * 24 * 60 * 60 * 1000;
-    let newTrialEnd: Date | null = null;
 
-    // Update domain subscription if present
-    if (domainId) {
-      const sub = await DomainSubscriptionModel.findOne({ domainId: domainObjectId });
-      if (sub) {
-        const currentBase = sub.trialEnd && sub.trialEnd > new Date() ? sub.trialEnd : new Date();
-        newTrialEnd = new Date(currentBase.getTime() + msToAdd);
-        sub.trialEnd = newTrialEnd;
-        if (sub.status !== 'active') {
-          sub.status = 'trialing';
-        }
-        await sub.save();
-      }
-    }
-
-    // Record on tenant for combined billing
-    const tenant = await TenantModel.findById(tenantObjectId);
-    if (tenant) {
-      (tenant as any).extraTrialDays = ((tenant as any).extraTrialDays || 0) + extraDays;
-      await tenant.save();
-    }
-
-    const message = `Success! Added ${extraDays} bonus trial days to your account.`;
+    const message = `Success! Added ${extraDays} bonus days to your free trial.`;
 
     await logAudit({
       actorId: actorId || null,
@@ -442,7 +414,6 @@ export class CouponService {
       metadata: {
         code: claimed.code,
         extraTrialDays: claimed.extraTrialDays,
-        domainId: domainId || null,
       },
     });
 
@@ -452,9 +423,21 @@ export class CouponService {
         code: claimed.code,
         extraTrialDays: claimed.extraTrialDays,
       },
-      newTrialEnd,
       message,
     };
+  }
+
+  /** Gives a claimed redemption back (the trial could not be extended after all). */
+  async releaseRedemption(code: string, tenantId: string): Promise<void> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const coupon = await CouponModel.findOneAndUpdate(
+      { code, 'redemptions.tenantId': tenantObjectId },
+      { $inc: { usedCount: -1 }, $pull: { redemptions: { tenantId: tenantObjectId } } },
+      { returnDocument: 'after' }
+    );
+    if (coupon?.status === 'used' && coupon.usedCount < coupon.maxUses) {
+      await CouponModel.updateOne({ _id: coupon._id, status: 'used' }, { $set: { status: 'active' } });
+    }
   }
 }
 

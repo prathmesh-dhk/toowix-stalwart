@@ -347,10 +347,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
-  redeemCoupon: (code: string, domainId?: string | null) =>
+  redeemCoupon: (code: string) =>
     request<RedeemCouponResponse>('/api/tenants/me/billing/redeem-coupon', {
       method: 'POST',
-      body: JSON.stringify({ code, domainId: domainId ?? null }),
+      body: JSON.stringify({ code }),
     }),
 
   detectDnsProvider: (domain: string) =>

@@ -968,7 +968,7 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
 
   const promo = session.metadata?.promoCode;
   if (promo) {
-    await couponService.redeemCoupon(promo, tenantId, null, actor.id).catch((err: any) =>
+    await couponService.redeemCoupon(promo, tenantId, actor.id).catch((err: any) =>
       console.warn(`[BillingService] Promo ${promo} could not be recorded:`, err.message)
     );
   }
@@ -981,6 +981,58 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
     alreadyStarted: false,
     activatedMailboxes,
   };
+}
+
+/**
+ * Redeems a coupon against the tenant's running trial: the trial end moves by the coupon's days in
+ * the app and on the Stripe subscription. Before the trial starts, coupons go through Checkout
+ * instead (startCartCheckout). The coupon is claimed first so a double-click reaches Stripe once;
+ * if Stripe refuses, the claim and the date change are rolled back.
+ */
+export async function redeemTrialCoupon(tenantId: string, code: string, actorId: string | null) {
+  const tenant = await TenantModel.findById(tenantId);
+  if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+  if (!tenant.trialEndsAt) {
+    throw new BillingError('Your free trial has not started yet — enter this code at checkout.', 'REDEEM_COUPON_FAILED', 400);
+  }
+
+  let redeemed: Awaited<ReturnType<typeof couponService.redeemCoupon>>;
+  try {
+    redeemed = await couponService.redeemCoupon(code, tenantId, actorId);
+  } catch (err: any) {
+    throw new BillingError(err.message, 'REDEEM_COUPON_FAILED', 400);
+  }
+  const ms = redeemed.coupon.extraTrialDays * 86400 * 1000;
+
+  // Pipeline update so two different coupons redeemed at once both count.
+  const extended = await TenantModel.findOneAndUpdate(
+    { _id: tenantId, trialEndsAt: { $gt: new Date() } },
+    [{ $set: { trialEndsAt: { $add: ['$trialEndsAt', ms] } } }],
+    { new: true, updatePipeline: true }
+  );
+  if (!extended) {
+    await couponService.releaseRedemption(redeemed.coupon.code, tenantId);
+    throw new BillingError('Your free trial has already ended, so this code can no longer be applied.', 'REDEEM_COUPON_FAILED', 400);
+  }
+  const newTrialEnd = extended.trialEndsAt!;
+
+  // shortcut: two different coupons redeemed in the same instant can reach Stripe out of order and
+  // leave it on the shorter date; the reconcile job is the place to fix trial_end drift if it shows up.
+  if (isBillingEnabled() && !isSimulatedSubscriptionId(extended.stripeSubscriptionId)) {
+    try {
+      await stripeClient.setTrialEnd(extended.stripeSubscriptionId!, newTrialEnd);
+    } catch (err: any) {
+      await TenantModel.updateOne({ _id: tenantId }, [{ $set: { trialEndsAt: { $subtract: ['$trialEndsAt', ms] } } }], { updatePipeline: true });
+      await couponService.releaseRedemption(redeemed.coupon.code, tenantId);
+      throw new BillingError(`Stripe could not extend the trial: ${err.message}`, 'STRIPE_ERROR', 502);
+    }
+  }
+  await DomainSubscriptionModel.updateMany(
+    { tenantId, status: { $ne: 'canceled' } },
+    { trialEnd: newTrialEnd, currentPeriodEnd: newTrialEnd }
+  );
+
+  return { ...redeemed, newTrialEnd };
 }
 
 /** The return trip from Stripe. Idempotent — refreshing the return URL just reports current state. */
@@ -1774,7 +1826,9 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
 
       for (const sub of siblings) {
         const wasInGrace = sub.status === 'grace' || sub.status === 'past_due' || sub.status === 'suspended';
-        sub.status = 'active';
+        // Stripe pays ₹0 invoices during the trial (checkout, coupon extension); only the trial-end
+        // cycle invoice ends it.
+        if (isRenewal || sub.status !== 'trialing') sub.status = 'active';
         sub.gracePeriodEndsAt = null;
         sub.lastPaymentFailedInvoiceId = null;
         sub.lastPaymentRetryAt = null;

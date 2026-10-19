@@ -171,7 +171,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         await api.attachDomainWithSavedPayment(autoAttachDomainId);
       }
       if (appliedCoupon) {
-        await api.redeemCoupon(appliedCoupon.code, autoAttachDomainId).catch(() => {});
+        await api.redeemCoupon(appliedCoupon.code).catch(() => {});
       }
       const chosen = savedCards.find((c) => c.id === selectedCardId);
       onSuccess(chosen);
@@ -224,7 +224,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
       }
 
       if (appliedCoupon) {
-        await api.redeemCoupon(appliedCoupon.code, autoAttachDomainId).catch(() => {});
+        await api.redeemCoupon(appliedCoupon.code).catch(() => {});
       }
 
       onSuccess(res.paymentMethod);
