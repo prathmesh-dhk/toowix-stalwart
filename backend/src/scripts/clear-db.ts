@@ -11,6 +11,9 @@ import {
   BackupRecordModel,
   SystemSettingsModel,
   AdminSessionModel,
+  PlanModel,
+  DomainSubscriptionModel,
+  StripeEventModel,
 } from '../db/models';
 import { runMigrations } from '../db/migrate';
 import { seedAll } from '../db/seed';
@@ -44,6 +47,10 @@ async function clearDatabase() {
     { name: 'backup_records', model: BackupRecordModel },
     { name: 'system_settings', model: SystemSettingsModel },
     { name: 'admin_sessions', model: AdminSessionModel },
+    // Plans/subscriptions hold Stripe IDs (re-minted lazily under the current account); events are its dedupe log.
+    { name: 'plans', model: PlanModel },
+    { name: 'domain_subscriptions', model: DomainSubscriptionModel },
+    { name: 'stripe_events', model: StripeEventModel },
   ];
 
   for (const col of collections) {

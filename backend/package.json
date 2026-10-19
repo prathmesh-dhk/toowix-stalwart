@@ -11,6 +11,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:clear": "tsx src/scripts/clear-db.ts",
+    "job": "tsx src/scripts/run-job.ts",
     "test": "vitest run"
   },
   "dependencies": {
