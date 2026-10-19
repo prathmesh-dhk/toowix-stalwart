@@ -43,29 +43,17 @@ export class ToowixStripeClient {
     return meter.id;
   }
 
-  /** Lazily creates the Stripe Price for a Plan (fixed = licensed/per-seat quantity, metered = usage-based). */
+  /** Lazily creates the Stripe Price for a Plan (licensed recurring monthly per-unit price). */
   async getOrCreatePrice(plan: IPlan): Promise<string> {
     if (plan.stripePriceId) return plan.stripePriceId;
 
     const stripe = getStripe();
-    let price: Stripe.Price;
-
-    if (plan.billingMode === 'metered') {
-      const meterId = await this.getOrCreateMeter(plan);
-      price = await stripe.prices.create({
-        currency: CURRENCY,
-        unit_amount: plan.monthlyPriceInPaise,
-        recurring: { interval: 'month', usage_type: 'metered', meter: meterId },
-        product_data: { name: `${plan.name} (pay as you go)` },
-      });
-    } else {
-      price = await stripe.prices.create({
-        currency: CURRENCY,
-        unit_amount: plan.monthlyPriceInPaise,
-        recurring: { interval: 'month', usage_type: 'licensed' },
-        product_data: { name: `${plan.name} (${plan.seatCount} seats)` },
-      });
-    }
+    const price = await stripe.prices.create({
+      currency: CURRENCY,
+      unit_amount: plan.monthlyPriceInPaise,
+      recurring: { interval: 'month', usage_type: 'licensed' },
+      product_data: { name: `${plan.name}` },
+    });
 
     plan.stripePriceId = price.id;
     await plan.save();
@@ -303,10 +291,16 @@ export class ToowixStripeClient {
       price: typeof item.price === 'string' ? item.price : item.price.id,
       quantity: item.quantity,
     }));
+    const nextPhaseItems = currentPhaseItems.map((item, idx) => {
+      if (idx === 0) {
+        return { price: newPriceId, quantity: quantity ?? item.quantity ?? 1 };
+      }
+      return item;
+    });
     await stripe.subscriptionSchedules.update(schedule.id, {
       phases: [
         { items: currentPhaseItems, start_date: currentPhase.start_date, end_date: currentPhase.end_date },
-        { items: [{ price: newPriceId, quantity }] },
+        { items: nextPhaseItems },
       ],
     });
   }

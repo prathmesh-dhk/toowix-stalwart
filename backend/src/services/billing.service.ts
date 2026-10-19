@@ -1122,7 +1122,7 @@ export async function syncDomainActiveUserCount(domainId: string): Promise<void>
   const sub = await DomainSubscriptionModel.findOne({ domainId });
   if (!sub) return;
 
-  const activeCount = await MailboxModel.countDocuments({ domainId, status: 'active' });
+  const activeCount = await MailboxModel.countDocuments({ domainId, status: 'active', billingHold: false });
   sub.activeUserCount = activeCount;
   await sub.save();
 
@@ -1395,14 +1395,17 @@ export async function requestUpgrade(domainId: string, tenantId: string, newPlan
   if (!sub) throw new BillingError('No active subscription for this domain', 'NO_SUBSCRIPTION', 400);
 
   const attachment = await resolvePriceForDomainAttachment(tenantId, domain, newPlan);
+  const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
   await stripeClient.updateSubscriptionItemPrice(
     sub.stripeSubscriptionId,
     sub.stripeSubscriptionItemId,
     attachment.priceId,
-    newPlan.billingMode === 'fixed' ? newPlan.seatCount : undefined
+    newPlan.billingMode === 'fixed' ? newPlan.seatCount : (activeCount || undefined)
   );
 
   sub.planId = newPlan._id as any;
+  sub.pricePerUserMonthlyPaise = newPlan.monthlyPriceInPaise ?? newPlan.pricePerUserMonthlyPaise ?? 0;
+  sub.maxUsers = newPlan.seatCount ?? newPlan.maxUsers ?? 10;
   sub.dedicatedStripePriceId = attachment.dedicatedMeterEventName ? attachment.priceId : null;
   sub.dedicatedMeterEventName = attachment.dedicatedMeterEventName;
   await sub.save();
@@ -1428,6 +1431,16 @@ export async function requestDowngrade(domainId: string, tenantId: string, newPl
   const domain = await loadDomainForActor(domainId, tenantId);
   const newPlan = await PlanModel.findOne({ _id: newPlanId, isActive: true });
   if (!newPlan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
+
+  const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
+  const ceiling = newPlan.seatCount ?? newPlan.maxUsers ?? 10;
+  if (activeCount > ceiling) {
+    throw new BillingError(
+      `Cannot downgrade to ${newPlan.name}: domain has ${activeCount} active mailboxes, which exceeds the plan limit of ${ceiling}.`,
+      'ACTIVE_USERS_EXCEED_PLAN_LIMIT',
+      400
+    );
+  }
 
   if (!isBillingEnabled()) {
     let sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
@@ -1470,7 +1483,7 @@ export async function requestDowngrade(domainId: string, tenantId: string, newPl
   await stripeClient.scheduleDowngrade(
     sub.stripeSubscriptionId,
     newPriceId,
-    newPlan.billingMode === 'fixed' ? newPlan.seatCount : undefined
+    newPlan.billingMode === 'fixed' ? newPlan.seatCount : (activeCount || undefined)
   );
 
   sub.pendingDowngradePlanId = newPlan._id as any;
@@ -1846,6 +1859,25 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         if (isRenewal) {
           const currentCount = await MailboxModel.countDocuments({ domainId: sub.domainId });
           sub.peakMailboxCountThisPeriod = currentCount;
+
+          if (sub.pendingDowngradePlanId) {
+            const downgradedPlan = await PlanModel.findById(sub.pendingDowngradePlanId);
+            if (downgradedPlan) {
+              sub.planId = downgradedPlan._id as any;
+              sub.pricePerUserMonthlyPaise = downgradedPlan.monthlyPriceInPaise ?? downgradedPlan.pricePerUserMonthlyPaise ?? 0;
+              sub.maxUsers = downgradedPlan.seatCount ?? downgradedPlan.maxUsers ?? 10;
+              sub.pendingDowngradePlanId = null;
+
+              const domain = await DomainModel.findById(sub.domainId);
+              if (domain) {
+                domain.planId = downgradedPlan._id as any;
+                domain.planName = downgradedPlan.name;
+                domain.mailboxLimit = downgradedPlan.seatCount;
+                domain.employeeCount = downgradedPlan.seatCount;
+                await domain.save();
+              }
+            }
+          }
         }
         await sub.save();
 

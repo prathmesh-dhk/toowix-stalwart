@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { connectDatabase, disconnectDatabase } from '../src/db/connection';
-import { TenantModel } from '../src/db/models';
+import { TenantModel, PlanModel } from '../src/db/models';
 import { config } from '../src/config';
 
 // Fake Stripe that honours idempotency keys the way the real API does: same key, same customer.
@@ -16,12 +16,20 @@ const customersCreate = vi.fn(async (_params: unknown, opts?: { idempotencyKey?:
 });
 const productsCreate = vi.fn(async (params: any) => ({ id: `prod_${++seq}`, ...params }));
 const subscriptionItemsCreate = vi.fn(async (params: any) => ({ id: `si_${++seq}`, ...params }));
+const pricesCreate = vi.fn(async (params: any) => ({ id: `price_${++seq}`, ...params }));
+const subscriptionSchedulesCreate = vi.fn(async (params: any) => ({
+  id: `sched_${++seq}`,
+  phases: [{ start_date: 1000, end_date: 2000, items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] }],
+}));
+const subscriptionSchedulesUpdate = vi.fn(async (id: string, params: any) => ({ id, ...params }));
 
 vi.mock('stripe', () => ({
   default: vi.fn(() => ({
     customers: { create: customersCreate },
     products: { create: productsCreate },
     subscriptionItems: { create: subscriptionItemsCreate },
+    prices: { create: pricesCreate },
+    subscriptionSchedules: { create: subscriptionSchedulesCreate, update: subscriptionSchedulesUpdate },
   })),
 }));
 
@@ -79,5 +87,60 @@ describe('stripeClient.getOrCreateCustomer', () => {
       },
     });
     expect(item.id).toMatch(/^si_/);
+  });
+
+  it('getOrCreatePrice creates a licensed recurring price in Stripe and saves it on the Plan', async () => {
+    const plan = await PlanModel.create({
+      name: 'Starter',
+      seatCount: 10,
+      monthlyPriceInPaise: 4900,
+      billingMode: 'metered',
+      displayOrder: 1,
+      isActive: true,
+    });
+
+    const priceId = await stripeClient.getOrCreatePrice(plan);
+
+    expect(pricesCreate).toHaveBeenCalledWith({
+      currency: 'inr',
+      unit_amount: 4900,
+      recurring: { interval: 'month', usage_type: 'licensed' },
+      product_data: { name: 'Starter' },
+    });
+    expect(priceId).toMatch(/^price_/);
+    expect((await PlanModel.findById(plan._id))?.stripePriceId).toBe(priceId);
+
+    // Second call returns cached price without re-calling Stripe
+    pricesCreate.mockClear();
+    const cached = await stripeClient.getOrCreatePrice(plan);
+    expect(cached).toBe(priceId);
+    expect(pricesCreate).not.toHaveBeenCalled();
+  });
+
+  it('scheduleDowngrade preserves sibling domain items in Phase 2 and applies new price and quantity', async () => {
+    await stripeClient.scheduleDowngrade('sub_shared_123', 'price_starter_123', 2);
+
+    expect(subscriptionSchedulesCreate).toHaveBeenCalledWith({ from_subscription: 'sub_shared_123' });
+    expect(subscriptionSchedulesUpdate).toHaveBeenCalledWith(
+      expect.stringMatching(/^sched_/),
+      {
+        phases: [
+          {
+            items: [
+              { price: 'price_old', quantity: 2 },
+              { price: 'price_sibling', quantity: 1 },
+            ],
+            start_date: 1000,
+            end_date: 2000,
+          },
+          {
+            items: [
+              { price: 'price_starter_123', quantity: 2 },
+              { price: 'price_sibling', quantity: 1 },
+            ],
+          },
+        ],
+      }
+    );
   });
 });

@@ -95,6 +95,22 @@ Last run 2026-10-19. Hosted Checkout was replaced by an API-created subscription
 
 ### 3. Adding and suspending mailboxes changes the billed Active User count
 
+Run this on a Tenant with an active subscription (or past trial) on a plan with a seat ceiling (e.g. Starter, ceiling 10 mailboxes). Active mailboxes are billed per user; mailboxes on billing hold or suspended are not billed, and the plan's ceiling is never billed.
+
+1. **Active mailboxes.** Start with 1 active mailbox on the domain (`quantity: 1` in Stripe). Add 2 more mailboxes (`POST /api/mailboxes` under the domain).
+   Check: each added mailbox increments the Stripe subscription item's quantity (`quantity: 3`). `GET /api/tenants/me/billing/summary` and the Billing page show Active Users: 3, Subtotal: ₹147 (3 × ₹49), not the plan ceiling of 10.
+2. **Upcoming invoice.** Retrieve the upcoming invoice in Stripe (`stripe invoices retrieve upcoming --customer=cus_... --subscription=sub_...`).
+   Check: the line item quantity is 3 and the amount is ₹147.00.
+3. **Suspend a mailbox.** Suspend one of the mailboxes in the Tenant Admin (or `PATCH /api/mailboxes/:id/status` with `{ "status": "suspended" }`).
+   Check: the subscription item in Stripe immediately updates to `quantity: 2`. `GET /api/tenants/me/billing/summary` drops to 2 active users (₹98). The suspended mailbox does not count toward billable quantity.
+4. **Reactivate or add.** Reactivate the suspended mailbox (or create another active mailbox).
+   Check: the subscription item updates back to `quantity: 3`. Mailboxes created before checkout (in `billingHold: true` status) do not increment the billed quantity until activated.
+5. **Invoice generation.** When the invoice is generated or the test clock advances to cycle billing, Stripe bills Active Users × per-user price (3 × ₹49 = ₹147), never the plan ceiling (10).
+
+Last run 2026-10-19. Live run executed against Stripe test mode with a test clock. Fixed:
+- `stripeClient.getOrCreatePrice` created prices with `usage_type: 'metered'`, which Stripe rejected when updating licensed subscription items or setting item quantity (`You cannot set the quantity for metered plans`). It now creates `usage_type: 'licensed'` recurring monthly prices.
+- `billingService.syncDomainActiveUserCount` counted all mailboxes with `status: 'active'`, potentially including mailboxes still on billing hold. It now explicitly filters `billingHold: false`.
+
 ### 4. A second domain joins the same subscription and the same invoice
 
 Run this on a Tenant that already has a running subscription (from scenario 1 or 2, e.g. domain 1 on Starter with active mailboxes).
@@ -115,6 +131,35 @@ Last run 2026-10-19. Live run executed against Stripe test mode with a test cloc
 - Creating a domain with `planId` while the tenant already had an active subscription didn't attach the domain subscription item immediately; it now attaches immediately.
 
 ### 5. Upgrade and downgrade a domain's Plan
+
+Run this on a Tenant with an active domain subscription (e.g. on Starter @ ₹49/user, ceiling 10 users).
+
+1. **Upgrade.** In the Tenant Admin (or via `POST /api/tenants/me/billing/domains/:id/select-plan` with a higher tier, e.g. Pro @ ₹99/user):
+   Check:
+   - The Stripe subscription item (`items.data[0]`) immediately updates its price to the Pro price, retaining the current active user quantity.
+   - `DomainSubscription` updates `pricePerUserMonthlyPaise: 9900` and `maxUsers: 50`.
+   - `Domain` updates `planId`, `planName: "Pro"`, and `mailboxLimit: 50`.
+   - `GET /api/tenants/me/billing/summary` and the Billing page reflect the Pro plan and ₹99/user rate immediately.
+   - Stripe upcoming invoice (`stripe invoices retrieve upcoming --customer=cus_...`) immediately reflects line items charged at ₹99/user × active users.
+2. **Downgrade below current Active Users is refused.** With e.g. 5 active mailboxes on the domain, attempt to downgrade to a plan whose ceiling is below 5 (or seed/create active mailboxes exceeding the target plan's ceiling, e.g. 12 active users attempting to downgrade to Starter with ceiling 10).
+   Check: the request returns 400 Bad Request with error code `ACTIVE_USERS_EXCEED_PLAN_LIMIT` and message `"Cannot downgrade to <Plan>: domain has X active mailboxes, which exceeds the plan limit of Y."`. Stripe is not touched and the plan remains unchanged.
+3. **Valid downgrade.** With active mailboxes within the target plan ceiling (e.g. 2 active mailboxes downgrading from Pro to Starter):
+   Select the lower plan (`POST /api/tenants/me/billing/domains/:id/select-plan`).
+   Check:
+   - The downgrade is scheduled via Stripe Subscription Schedule for the end of the current billing period (`current_period_end`).
+   - Sibling domain items on multi-domain subscriptions are preserved in phase 2 so other domains are not dropped.
+   - `DomainSubscription` sets `pendingDowngradePlanId` to the target plan ID. Current plan and rates remain active until period end.
+4. **Renewal applies the downgrade.** Advance the test clock past the current period end (`stripe test_helpers test_clocks advance clock_... --frozen-time=<period_end + 1 hour>`).
+   Check:
+   - The `listen` terminal shows `invoice.payment_succeeded` and `customer.subscription.updated` `[200]`.
+   - The renewal invoice charges the downgraded rate (e.g. 2 × ₹49 = ₹98).
+   - The webhook handler applies `pendingDowngradePlanId`: `DomainSubscription` and `Domain` reflect Starter plan and ₹49/user, and `pendingDowngradePlanId` is cleared (`null`).
+
+Last run 2026-10-19. Live run executed against Stripe test mode with a test clock. Fixed:
+- `stripeClient.scheduleDowngrade` only put the downgraded domain's item into `phases[1].items`, dropping all sibling domain subscription items on multi-domain subscriptions upon phase change. It now carries over all other subscription items.
+- `billingService.requestDowngrade` did not check whether current active mailbox count exceeded the target plan's user ceiling, silently allowing downgrades that violate plan limits. It now validates and returns 400 `ACTIVE_USERS_EXCEED_PLAN_LIMIT`.
+- `billingService.requestUpgrade` did not update `DomainSubscription.pricePerUserMonthlyPaise` or `maxUsers`, leaving `getTenantBillingSummary` showing stale pricing. It now updates them immediately.
+- `billingService` webhook handler for `invoice.payment_succeeded` now updates `Domain` and `DomainSubscription` with the pending downgrade plan when the renewal invoice pays.
 
 ### 6. Failed payment opens the Grace Period; suspension after 7 days; paying restores
 

@@ -623,4 +623,247 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(directSub).not.toBeNull();
     expect(directSub?.stripeSubscriptionId).toBe('sub_shared');
   });
+
+  it('scenario 3: adding and suspending mailboxes updates Active User count and syncs quantity to Stripe', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const { syncDomainActiveUserCount } = await import('../src/services/billing.service');
+
+    const starterPlan = await PlanModel.create({
+      name: 'Starter Active',
+      seatCount: 10,
+      monthlyPriceInPaise: 4900,
+      billingMode: 'metered',
+      isActive: true,
+    });
+
+    const domain = await DomainModel.create({
+      tenantId,
+      domainName: 'activeusers.com',
+      status: 'active',
+      planId: starterPlan._id,
+      planName: 'Starter Active',
+      mailboxLimit: 10,
+    });
+
+    const sub = await DomainSubscriptionModel.create({
+      tenantId,
+      domainId: domain._id,
+      planId: starterPlan._id,
+      stripeSubscriptionId: 'sub_scenario3',
+      stripeSubscriptionItemId: 'si_scenario3',
+      status: 'active',
+      activeUserCount: 1,
+      maxUsers: 10,
+      pricePerUserMonthlyPaise: 4900,
+      cancelAtPeriodEnd: false,
+    });
+
+    await MailboxModel.create({
+      tenantId,
+      domainId: domain._id,
+      localPart: 'user1',
+      address: 'user1@activeusers.com',
+      status: 'active',
+      billingHold: false,
+    });
+
+    const mb2 = await MailboxModel.create({
+      tenantId,
+      domainId: domain._id,
+      localPart: 'user2',
+      address: 'user2@activeusers.com',
+      status: 'active',
+      billingHold: false,
+    });
+
+    vi.mocked(stripeClient.syncDomainUserQuantity).mockClear();
+    await syncDomainActiveUserCount(domain._id.toString());
+
+    expect(stripeClient.syncDomainUserQuantity).toHaveBeenCalledWith('si_scenario3', 2);
+    let subDoc = await DomainSubscriptionModel.findById(sub._id);
+    expect(subDoc?.activeUserCount).toBe(2);
+
+    let summaryRes = await request(app)
+      .get('/api/tenants/me/billing/summary')
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(summaryRes.status).toBe(200);
+    const domainSummary = summaryRes.body.domains.find((d: any) => d.domainId === domain._id.toString());
+    expect(domainSummary).toMatchObject({
+      activeUserCount: 2,
+      maxUsers: 10,
+      pricePerUserMonthlyPaise: 4900,
+      monthlySubtotalPaise: 9800,
+    });
+
+    // Suspend Mailbox 2
+    mb2.status = 'suspended';
+    await mb2.save();
+
+    vi.mocked(stripeClient.syncDomainUserQuantity).mockClear();
+    await syncDomainActiveUserCount(domain._id.toString());
+
+    expect(stripeClient.syncDomainUserQuantity).toHaveBeenCalledWith('si_scenario3', 1);
+    subDoc = await DomainSubscriptionModel.findById(sub._id);
+    expect(subDoc?.activeUserCount).toBe(1);
+
+    summaryRes = await request(app)
+      .get('/api/tenants/me/billing/summary')
+      .set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(summaryRes.status).toBe(200);
+    const updatedSummary = summaryRes.body.domains.find((d: any) => d.domainId === domain._id.toString());
+    expect(updatedSummary).toMatchObject({
+      activeUserCount: 1,
+      monthlySubtotalPaise: 4900,
+    });
+  });
+
+  it('scenario 5: upgrade changes item price in Stripe and summary; downgrade below active users is refused', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const { handleWebhookEvent } = await import('../src/services/billing.service');
+
+    const starterPlan = await PlanModel.create({
+      name: 'Starter Tier',
+      seatCount: 10,
+      monthlyPriceInPaise: 4900,
+      billingMode: 'metered',
+      isActive: true,
+    });
+    const proPlan = await PlanModel.create({
+      name: 'Pro Tier',
+      seatCount: 50,
+      monthlyPriceInPaise: 9900,
+      billingMode: 'metered',
+      isActive: true,
+    });
+    const soloPlan = await PlanModel.create({
+      name: 'Solo Tier',
+      seatCount: 1,
+      monthlyPriceInPaise: 2900,
+      billingMode: 'metered',
+      isActive: true,
+    });
+
+    const domain = await DomainModel.create({
+      tenantId,
+      domainName: 'planchange.com',
+      status: 'active',
+      planId: starterPlan._id,
+      planName: 'Starter Tier',
+      mailboxLimit: 10,
+    });
+
+    const sub = await DomainSubscriptionModel.create({
+      tenantId,
+      domainId: domain._id,
+      planId: starterPlan._id,
+      stripeSubscriptionId: 'sub_planchange',
+      stripeSubscriptionItemId: 'si_planchange',
+      status: 'active',
+      activeUserCount: 1,
+      maxUsers: 10,
+      pricePerUserMonthlyPaise: 4900,
+      cancelAtPeriodEnd: false,
+    });
+
+    await MailboxModel.create({
+      tenantId,
+      domainId: domain._id,
+      localPart: 'user1',
+      address: 'user1@planchange.com',
+      status: 'active',
+      billingHold: false,
+    });
+
+    vi.mocked(stripeClient.getOrCreatePrice).mockImplementation(async (plan: any) => `price_${plan.name.replace(/\s+/g, '_').toLowerCase()}`);
+    vi.mocked(stripeClient.updateSubscriptionItemPrice).mockClear();
+
+    // 1. Upgrade to Pro
+    const upgradeRes = await request(app)
+      .post(`/api/tenants/me/billing/domains/${domain._id}/upgrade`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ planId: proPlan._id.toString() });
+
+    expect(upgradeRes.status).toBe(200);
+    expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith(
+      'sub_planchange',
+      'si_planchange',
+      'price_pro_tier',
+      1
+    );
+
+    let updatedDomain = await DomainModel.findById(domain._id);
+    expect(updatedDomain?.planName).toBe('Pro Tier');
+    expect(updatedDomain?.mailboxLimit).toBe(50);
+
+    let updatedSub = await DomainSubscriptionModel.findById(sub._id);
+    expect(updatedSub?.pricePerUserMonthlyPaise).toBe(9900);
+    expect(updatedSub?.maxUsers).toBe(50);
+
+    // 2. Add another active mailbox so activeUserCount = 2
+    await MailboxModel.create({
+      tenantId,
+      domainId: domain._id,
+      localPart: 'user2',
+      address: 'user2@planchange.com',
+      status: 'active',
+      billingHold: false,
+    });
+    updatedSub!.activeUserCount = 2;
+    await updatedSub!.save();
+
+    // 3. Attempt to downgrade to Solo (ceiling = 1) with 2 active mailboxes -> refused with 400
+    vi.mocked(stripeClient.scheduleDowngrade).mockClear();
+    const badDowngradeRes = await request(app)
+      .post(`/api/tenants/me/billing/domains/${domain._id}/downgrade`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ planId: soloPlan._id.toString() });
+
+    expect(badDowngradeRes.status).toBe(400);
+    expect(badDowngradeRes.body.error).toBe('ACTIVE_USERS_EXCEED_PLAN_LIMIT');
+    expect(badDowngradeRes.body.message).toContain('exceeds the plan limit of 1');
+    expect(stripeClient.scheduleDowngrade).not.toHaveBeenCalled();
+
+    // 4. Downgrade to Starter (ceiling = 10, current users = 2) -> succeeds and schedules downgrade
+    const goodDowngradeRes = await request(app)
+      .post(`/api/tenants/me/billing/domains/${domain._id}/downgrade`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ planId: starterPlan._id.toString() });
+
+    expect(goodDowngradeRes.status).toBe(200);
+    expect(stripeClient.scheduleDowngrade).toHaveBeenCalledWith(
+      'sub_planchange',
+      'price_starter_tier',
+      2
+    );
+
+    updatedSub = await DomainSubscriptionModel.findById(sub._id);
+    expect(updatedSub?.pendingDowngradePlanId?.toString()).toBe(starterPlan._id.toString());
+    // Mailbox limit remains Pro limit (50) until period end renewal
+    updatedDomain = await DomainModel.findById(domain._id);
+    expect(updatedDomain?.mailboxLimit).toBe(50);
+
+    // 5. Renewal webhook applies pending downgrade
+    await handleWebhookEvent({
+      id: 'evt_renewal_cycle',
+      type: 'invoice.payment_succeeded',
+      data: {
+        object: {
+          id: 'in_renewal_123',
+          subscription: 'sub_planchange',
+          billing_reason: 'subscription_cycle',
+        } as any,
+      },
+    } as any);
+
+    updatedSub = await DomainSubscriptionModel.findById(sub._id);
+    expect(updatedSub?.pendingDowngradePlanId).toBeNull();
+    expect(updatedSub?.planId?.toString()).toBe(starterPlan._id.toString());
+    expect(updatedSub?.pricePerUserMonthlyPaise).toBe(4900);
+    expect(updatedSub?.maxUsers).toBe(10);
+
+    updatedDomain = await DomainModel.findById(domain._id);
+    expect(updatedDomain?.planId?.toString()).toBe(starterPlan._id.toString());
+    expect(updatedDomain?.planName).toBe('Starter Tier');
+    expect(updatedDomain?.mailboxLimit).toBe(10);
+  });
 });
