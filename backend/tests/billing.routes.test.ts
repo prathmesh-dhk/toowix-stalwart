@@ -378,6 +378,35 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect((await TenantModel.findById(tenantId))!.paymentMethods?.some((m) => m.last4 === '1111' && m.isDefault)).toBe(true);
   });
 
+  it('set default: the chosen card is the one the subscription charges, and the list shows it as default', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    await TenantModel.updateOne(
+      { _id: tenantId },
+      {
+        stripeCustomerId: 'cus_test',
+        stripeSubscriptionId: 'sub_live',
+        paymentMethods: [
+          { id: 'pm_visa', brand: 'visa', last4: '4242', expMonth: 1, expYear: 2031, isDefault: false },
+          { id: 'pm_mc', brand: 'mastercard', last4: '4444', expMonth: 1, expYear: 2031, isDefault: true },
+        ],
+      }
+    );
+    // Stripe lists the newest card first; the Checkout Visa is older than the Mastercard.
+    vi.mocked(stripeClient.listPaymentMethods).mockResolvedValue([
+      { id: 'pm_mc', card: { brand: 'mastercard', last4: '4444', exp_month: 1, exp_year: 2031 } },
+      { id: 'pm_visa', card: { brand: 'visa', last4: '4242', exp_month: 1, exp_year: 2031 } },
+    ] as any);
+
+    const set = await request(app).post('/api/tenants/me/billing/payment-methods/pm_visa/default').set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(set.status).toBe(200);
+    expect(stripeClient.setDefaultPaymentMethod).toHaveBeenCalledWith('cus_test', 'pm_visa');
+    expect(stripeClient.setSubscriptionDefaultPaymentMethod).toHaveBeenCalledWith('sub_live', 'pm_visa');
+
+    const list = await request(app).get('/api/tenants/me/billing/payment-methods').set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(list.body.defaultPaymentMethodId).toBe('pm_visa');
+    expect(list.body.paymentMethods.find((m: any) => m.isDefault).id).toBe('pm_visa');
+  });
+
   it('allows mailbox creation once the domain has a trialing subscription', async () => {
     await DomainSubscriptionModel.create({
       domainId,

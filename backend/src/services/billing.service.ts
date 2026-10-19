@@ -313,16 +313,19 @@ export async function listTenantPaymentMethods(tenantId: string): Promise<{
     try {
       const stripeMethods = await stripeClient.listPaymentMethods(tenant.stripeCustomerId);
       if (stripeMethods.length > 0) {
+        // Stripe lists newest first; the default is whichever card the app last made default.
+        const localDefault = localMethods.find((m) => m.isDefault)?.id;
+        const defaultId = stripeMethods.some((pm) => pm.id === localDefault) ? localDefault! : stripeMethods[0].id;
         return {
-          paymentMethods: stripeMethods.map((pm, idx) => ({
+          paymentMethods: stripeMethods.map((pm) => ({
             id: pm.id,
             brand: pm.card?.brand || 'visa',
             last4: pm.card?.last4 || '4242',
             expMonth: pm.card?.exp_month || 12,
             expYear: pm.card?.exp_year || 2028,
-            isDefault: idx === 0,
+            isDefault: pm.id === defaultId,
           })),
-          defaultPaymentMethodId: stripeMethods[0]?.id || null,
+          defaultPaymentMethodId: defaultId,
         };
       }
     } catch (err: any) {
@@ -438,11 +441,16 @@ export async function setDefaultPaymentMethod(tenantId: string, paymentMethodId:
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
 
+  // Not swallowed: the app must never show a default card that Stripe won't charge.
   if (isBillingEnabled() && tenant.stripeCustomerId && !paymentMethodId.startsWith('pm_sim_')) {
     try {
       await stripeClient.setDefaultPaymentMethod(tenant.stripeCustomerId, paymentMethodId);
+      // The subscription's own card (set at Checkout) outranks the customer's default when Stripe charges.
+      if (tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
+        await stripeClient.setSubscriptionDefaultPaymentMethod(tenant.stripeSubscriptionId, paymentMethodId);
+      }
     } catch (err: any) {
-      console.warn('[BillingService] Set default payment method error in Stripe:', err.message);
+      throw new BillingError(`Stripe could not change the default card: ${err.message}`, 'STRIPE_ERROR', 502);
     }
   }
 
@@ -1746,8 +1754,9 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         const daysLeft = subscription.trial_end
           ? Math.max(1, Math.ceil((subscription.trial_end * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
           : 3;
-        const brand = tenant.paymentMethods?.[0]?.brand || 'Card';
-        const last4 = tenant.paymentMethods?.[0]?.last4 ? `•••• ${tenant.paymentMethods[0].last4}` : 'on file';
+        const card = tenant.paymentMethods?.find((m) => m.isDefault) ?? tenant.paymentMethods?.[0];
+        const brand = card?.brand || 'Card';
+        const last4 = card?.last4 ? `•••• ${card.last4}` : 'on file';
         await emailService.sendBillingNoticeEmail({
           to: tenant.contactEmail,
           recipientName: tenant.name,

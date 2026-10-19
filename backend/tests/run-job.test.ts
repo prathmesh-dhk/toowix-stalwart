@@ -47,6 +47,22 @@ describe('runJob (dev run-once entry point)', () => {
     expect(await runJob('reconcile')).toEqual({ tenantsChecked: 0, driftCorrected: 0 });
   });
 
+  it('trial runs as of a given date, so a Stripe test clock can be followed', async () => {
+    const trialStartedAt = new Date('2026-10-19T12:00:00Z');
+    await TenantModel.create({
+      name: 'Clocked',
+      status: 'active',
+      mailboxLimit: 50,
+      mailboxCount: 1,
+      contactEmail: 'admin@clocked.com',
+      trialStartedAt,
+      trialEndsAt: new Date(trialStartedAt.getTime() + 60 * 86400000),
+    });
+
+    expect(await runJob('trial', new Date(trialStartedAt.getTime() + 46 * 86400000))).toEqual({ reminded: 1 });
+    expect((await TenantModel.findOne({ name: 'Clocked' }))?.trialRemindersSent).toEqual([45]);
+  });
+
   it('rejects an unknown job name, listing the valid ones', async () => {
     await expect(runJob('nope')).rejects.toThrow('grace, trial, reconcile');
   });

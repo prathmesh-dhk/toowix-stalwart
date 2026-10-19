@@ -138,6 +138,38 @@ describe('Billing Phase 3: Trial Reminders, Grace Notices & Payment Retries', ()
       expect(emailService.sendBillingNoticeEmail).toHaveBeenCalledTimes(3);
       expect(vi.mocked(emailService.sendBillingNoticeEmail).mock.calls[2][0].subject).toContain('ends in 1 days');
     });
+
+    it('reminders name the default card, not the first one saved', async () => {
+      await TenantModel.updateOne(
+        { _id: tenantId },
+        {
+          paymentMethods: [
+            { id: 'pm_1', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2028, isDefault: false, createdAt: new Date() },
+            { id: 'pm_2', brand: 'mastercard', last4: '4444', expMonth: 12, expYear: 2028, isDefault: true, createdAt: new Date() },
+          ],
+        }
+      );
+      await runTrialReminderSweepOnce(new Date(Date.now() + 6 * DAY));
+      await handleWebhookEvent({
+        id: 'evt_trial_end_default_card',
+        type: 'customer.subscription.trial_will_end',
+        data: { object: { id: 'sub_trial_phase3', trial_end: Math.floor((Date.now() + 3 * DAY) / 1000) } },
+      } as any);
+
+      for (const [notice] of vi.mocked(emailService.sendBillingNoticeEmail).mock.calls) {
+        expect(notice.paragraphs.join(' ')).toContain('mastercard ending in •••• 4444');
+      }
+      expect(emailService.sendBillingNoticeEmail).toHaveBeenCalledTimes(2);
+    });
+
+    it('a reminder whose email failed to send is retried on the next sweep', async () => {
+      const day46 = new Date(Date.now() + 6 * DAY);
+      vi.mocked(emailService.sendBillingNoticeEmail).mockResolvedValueOnce({ success: false, error: 'Unexpected socket close' });
+      expect((await runTrialReminderSweepOnce(day46)).reminded).toBe(0);
+
+      expect((await runTrialReminderSweepOnce(day46)).reminded).toBe(1);
+      expect(emailService.sendBillingNoticeEmail).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('Payment Failures, Grace Notices & Invoicing Retries', () => {

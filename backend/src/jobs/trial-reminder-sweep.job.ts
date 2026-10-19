@@ -39,8 +39,9 @@ export async function runTrialReminderSweepOnce(now = new Date()): Promise<Trial
       for (const milestone of TRIAL_REMINDER_DAYS) {
         if (elapsedDays >= milestone && !sent.includes(milestone)) {
           const daysLeft = Math.max(1, totalTrialDays - elapsedDays);
-          const brand = tenant.paymentMethods?.[0]?.brand || 'Card';
-          const last4 = tenant.paymentMethods?.[0]?.last4 ? `•••• ${tenant.paymentMethods[0].last4}` : 'on file';
+          const card = tenant.paymentMethods?.find((m) => m.isDefault) ?? tenant.paymentMethods?.[0];
+          const brand = card?.brand || 'Card';
+          const last4 = card?.last4 ? `•••• ${card.last4}` : 'on file';
 
           let estimatedText = '';
           try {
@@ -51,7 +52,7 @@ export async function runTrialReminderSweepOnce(now = new Date()): Promise<Trial
             // fallback if cart summary calculation fails
           }
 
-          await emailService.sendBillingNoticeEmail({
+          const delivery = await emailService.sendBillingNoticeEmail({
             to: tenant.contactEmail,
             recipientName: tenant.name,
             subject: `Reminder: Your Toowix trial ends in ${daysLeft} days`,
@@ -63,6 +64,8 @@ export async function runTrialReminderSweepOnce(now = new Date()): Promise<Trial
               `You can review active mailboxes, add domains, or make changes anytime before the trial ends in the Cart or Billing page in Tenant Admin.`,
             ],
           });
+          // Not recorded, so the next sweep retries it.
+          if (!delivery.success) continue;
 
           await TenantModel.updateOne(
             { _id: tenant._id },
