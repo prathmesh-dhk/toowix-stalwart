@@ -4,9 +4,9 @@
 
 **Blocked by:** 03: Trial ends and the first invoice is paid
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A valid date argument reaches the job as its `now`
-- [ ] No date argument runs the job as of the current time
-- [ ] An invalid date exits non-zero with `Invalid date "<arg>"` and runs nothing
-- [ ] No change to how the job behaves when run on its interval
+- [x] A valid date argument reaches the job as its `now`
+- [x] No date argument runs the job as of the current time
+- [x] An invalid date exits non-zero with `Invalid date "<arg>"` and runs nothing
+- [x] No change to how the job behaves when run on its interval
