@@ -288,7 +288,7 @@ export async function deleteTenantPaymentMethod(tenantId: string, paymentMethodI
     tenant.paymentMethods[0].isDefault = true;
     // Before the detach: Stripe clears the customer's default and leaves the subscription on the
     // detached card, so the next invoice would fail.
-    await pointStripeAtCard(tenant, tenant.paymentMethods[0].id);
+    await pointStripeAtCard(tenant, tenant.paymentMethods[0].id, removed?.isDefault ? removed.id : undefined);
   }
 
   if (isBillingEnabled() && !paymentMethodId.startsWith('pm_sim_')) {
@@ -311,17 +311,28 @@ async function hasBillingSubscription(tenant: ITenant): Promise<boolean> {
 }
 
 /** Makes Stripe charge this card: the customer's default and the subscription's own card. */
-async function pointStripeAtCard(tenant: ITenant, paymentMethodId: string): Promise<void> {
+async function pointStripeAtCard(tenant: ITenant, paymentMethodId: string, previousDefaultId?: string): Promise<void> {
   // Not swallowed: the app must never show a default card that Stripe won't charge.
   if (!isBillingEnabled() || !tenant.stripeCustomerId || paymentMethodId.startsWith('pm_sim_')) return;
+  const stripeError = (err: any) => new BillingError(`Stripe could not change the default card: ${err.message}`, 'STRIPE_ERROR', 502);
   try {
     await stripeClient.setDefaultPaymentMethod(tenant.stripeCustomerId, paymentMethodId);
+  } catch (err: any) {
+    throw stripeError(err);
+  }
+  try {
     // The subscription's own card (set at Checkout) outranks the customer's default when Stripe charges.
     if (tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
       await stripeClient.setSubscriptionDefaultPaymentMethod(tenant.stripeSubscriptionId, paymentMethodId);
     }
   } catch (err: any) {
-    throw new BillingError(`Stripe could not change the default card: ${err.message}`, 'STRIPE_ERROR', 502);
+    // Undo the customer default so Stripe and the app keep agreeing on the old card.
+    if (previousDefaultId && !previousDefaultId.startsWith('pm_sim_')) {
+      await stripeClient.setDefaultPaymentMethod(tenant.stripeCustomerId, previousDefaultId).catch((undoErr: any) =>
+        console.error('[BillingService] Could not restore the customer default card:', undoErr.message)
+      );
+    }
+    throw stripeError(err);
   }
 }
 
@@ -329,7 +340,7 @@ export async function setDefaultPaymentMethod(tenantId: string, paymentMethodId:
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
 
-  await pointStripeAtCard(tenant, paymentMethodId);
+  await pointStripeAtCard(tenant, paymentMethodId, tenant.paymentMethods?.find((m) => m.isDefault)?.id);
 
   for (const pm of tenant.paymentMethods || []) {
     pm.isDefault = pm.id === paymentMethodId;

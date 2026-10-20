@@ -435,6 +435,31 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(list.body.paymentMethods.find((m: any) => m.isDefault).id).toBe('pm_visa');
   });
 
+  it('set default: when Stripe refuses the subscription update, the customer default goes back to the old card', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    vi.mocked(stripeClient.setDefaultPaymentMethod).mockClear();
+    await TenantModel.updateOne(
+      { _id: tenantId },
+      {
+        stripeCustomerId: 'cus_test',
+        stripeSubscriptionId: 'sub_live',
+        paymentMethods: [
+          { id: 'pm_visa', brand: 'visa', last4: '4242', expMonth: 1, expYear: 2031, isDefault: false },
+          { id: 'pm_mc', brand: 'mastercard', last4: '4444', expMonth: 1, expYear: 2031, isDefault: true },
+        ],
+      }
+    );
+    vi.mocked(stripeClient.setSubscriptionDefaultPaymentMethod).mockRejectedValueOnce(new Error('Stripe is unavailable'));
+
+    const set = await request(app).post('/api/tenants/me/billing/payment-methods/pm_visa/default').set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    expect(set.status).toBe(502);
+    expect(set.body.error).toBe('STRIPE_ERROR');
+    expect(vi.mocked(stripeClient.setDefaultPaymentMethod).mock.calls).toEqual([['cus_test', 'pm_visa'], ['cus_test', 'pm_mc']]);
+    const pms = (await TenantModel.findById(tenantId))!.paymentMethods!;
+    expect(pms.find((m) => m.isDefault)!.id).toBe('pm_mc');
+  });
+
   it('allows mailbox creation once the domain has a trialing subscription', async () => {
     await DomainSubscriptionModel.create({
       domainId,
@@ -542,6 +567,20 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       expect(stripeClient.detachPaymentMethod).toHaveBeenCalledWith('pm_card_a');
       const left = (await TenantModel.findById(tenantId))!.paymentMethods!;
       expect(left.map((m) => [m.id, m.isDefault])).toEqual([['pm_card_b', true]]);
+    });
+
+    it('when Stripe refuses the subscription update, removing the default card changes nothing', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await TenantModel.updateOne({ _id: tenantId }, { paymentMethods: cards });
+      vi.mocked(stripeClient.setSubscriptionDefaultPaymentMethod).mockRejectedValueOnce(new Error('Stripe is unavailable'));
+
+      const res = await remove('pm_card_a');
+
+      expect(res.status).toBe(502);
+      expect(vi.mocked(stripeClient.setDefaultPaymentMethod).mock.calls).toEqual([['cus_cards', 'pm_card_b'], ['cus_cards', 'pm_card_a']]);
+      expect(stripeClient.detachPaymentMethod).not.toHaveBeenCalled();
+      const left = (await TenantModel.findById(tenantId))!.paymentMethods!;
+      expect(left.map((m) => [m.id, m.isDefault])).toEqual([['pm_card_a', true], ['pm_card_b', false]]);
     });
 
     it('removing a card that is not the default only detaches it', async () => {

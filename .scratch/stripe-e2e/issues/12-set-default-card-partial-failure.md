@@ -6,9 +6,9 @@ Found during the issue 03 review. Spec story 20: "I want my saved default card t
 
 **Blocked by:** 03: Trial ends and the first invoice is paid
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] When the subscription update fails, the card Stripe will charge and the card the Billing page shows as default are the same
-- [ ] The Tenant Admin still sees a clear error and can retry
-- [ ] The success path is unchanged: both Stripe defaults and the app move to the chosen card
-- [ ] Every fix has a regression test
+- [x] When the subscription update fails, the card Stripe will charge and the card the Billing page shows as default are the same
+- [x] The Tenant Admin still sees a clear error and can retry
+- [x] The success path is unchanged: both Stripe defaults and the app move to the chosen card
+- [x] Every fix has a regression test
