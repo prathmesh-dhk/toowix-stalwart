@@ -25,6 +25,7 @@ import { api } from '../api';
 import { CartData, DomainItem, InvoiceItem, PaymentMethodItem, Plan, TenantBillingSummary } from '../types';
 import { PaymentMethodModal } from './PaymentMethodModal';
 import { formatPaise } from './cart/format';
+import { BillingDomain, DomainBillingRow } from './DomainBillingRow';
 import { StatusBadge } from './ui/StatusBadge';
 
 export interface BillingViewProps {
@@ -252,19 +253,19 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const isCanceling = Boolean(summary?.cancelAtPeriodEnd);
 
   // Domains list: prefer cart domains; fallback to summary domains or propDomains
-  const domainsList = useMemo(() => {
+  const domainsList = useMemo((): BillingDomain[] => {
     if (cart?.domains && cart.domains.length > 0) return cart.domains;
     if (summary?.domains && summary.domains.length > 0) {
       return summary.domains.map((d) => ({
         domainId: d.domainId,
         domainName: d.domainName,
-        planId: (d as any).planId || '',
+        planId: null,
         planName: d.planName || 'Standard',
-        maxUsers: d.seatCount ?? 0,
-        activeUsers: d.seatCount ?? 0,
+        maxUsers: d.maxUsers,
+        activeUsers: d.activeUserCount,
         pendingUsers: 0,
-        ratePaise: 0,
-        monthlyPaise: 0,
+        ratePaise: d.pricePerUserMonthlyPaise,
+        monthlyPaise: d.monthlySubtotalPaise,
       }));
     }
     return (propDomains || []).map((d) => ({
@@ -413,56 +414,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
         )}
 
         {/* 4-Card Domain Metric Ribbon */}
-        <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Tile 1: Plan Tier */}
-            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Tier</span>
-              <div className="text-base font-bold text-slate-900 mt-1 flex items-center gap-1.5">
-                <span>{targetDomainPlan?.name || targetDomainData.planName || 'Standard'}</span>
-                {targetDomainPlan?.badge && (
-                  <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                    {targetDomainPlan.badge}
-                  </span>
-                )}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-1">
-                Capped at {targetDomainData.maxUsers} seats
-              </div>
-            </div>
-
-            {/* Tile 2: Mailbox Capacity */}
-            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Mailbox Usage</span>
-              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-                <span>{used} / {targetDomainData.maxUsers} seats</span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-1">
-                {Math.max(0, targetDomainData.maxUsers - used)} seats available
-              </div>
-            </div>
-
-            {/* Tile 3: Billing Rate */}
-            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Seat Billing Rate</span>
-              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-                {formatPaise(targetDomainData.ratePaise)}
-                <span className="text-xs font-normal text-slate-500 ml-1">/ active user</span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-1">Pay only for active mailboxes</div>
-            </div>
-
-            {/* Tile 4: Monthly Cost */}
-            <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Monthly Cost</span>
-              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-                {formatPaise(targetDomainData.monthlyPaise)}
-                <span className="text-xs font-normal text-slate-500 ml-1">/ mo</span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-1">Consolidated on master bill</div>
-            </div>
-          </div>
-        </section>
+        <DomainBillingRow domain={targetDomainData} layout="tiles" plan={targetDomainPlan} />
 
         {/* Quota & Resource Allocation Card */}
         <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
@@ -873,65 +825,9 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {filteredDomains.map((d) => {
-                  const used = d.activeUsers + (d.pendingUsers || 0);
-                  const max = d.maxUsers || 1;
-                  const pct = Math.min(100, Math.round((used / max) * 100));
-
-                  return (
-                    <tr key={d.domainId} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Domain Name */}
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <Globe size={14} className="text-slate-400 shrink-0" />
-                          <span className="font-semibold text-slate-900 text-xs">{d.domainName}</span>
-                        </div>
-                      </td>
-
-                      {/* Plan Tier Badge (Clean read-only tag, no dropdown) */}
-                      <td>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          {d.planName || 'Standard'}
-                        </span>
-                      </td>
-
-                      {/* Mailboxes & Capacity Bar */}
-                      <td>
-                        <div className="flex flex-col gap-1 max-w-xs">
-                          <div className="flex items-center justify-between text-xs text-slate-700 tabular-nums">
-                            <span className="font-medium text-slate-700">
-                              {used} / {d.maxUsers} users
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-medium">{pct}%</span>
-                          </div>
-                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                pct >= 90 ? 'bg-amber-500' : 'bg-indigo-600'
-                              }`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Billing Rate */}
-                      <td>
-                        <span className="text-xs text-slate-600 tabular-nums">
-                          {formatPaise(d.ratePaise)} <span className="text-slate-400">/ active user</span>
-                        </span>
-                      </td>
-
-                      {/* Monthly Subtotal */}
-                      <td style={{ textAlign: 'right' }}>
-                        <span className="tabular-nums font-bold text-slate-900 text-xs">
-                          {formatPaise(d.monthlyPaise)}
-                          <span className="text-slate-400 font-normal ml-0.5">/mo</span>
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filteredDomains.map((d) => (
+                  <DomainBillingRow key={d.domainId} domain={d} layout="row" />
+                ))}
               </tbody>
             </table>
           </div>

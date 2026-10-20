@@ -52,9 +52,12 @@ const summary: TenantBillingSummary = {
   status: 'trialing',
   currentPeriodEnd: '2026-10-31T00:00:00.000Z',
   trialEnd: '2026-10-31T00:00:00.000Z',
+  trialStartedAt: '2026-09-01T00:00:00.000Z',
   cancelAtPeriodEnd: false,
+  paymentActionUrl: null,
+  totalMonthlyPaise: 290000,
   domains: [],
-} as any;
+};
 
 describe('BillingView (company-wide)', () => {
   const onCartUpdated = vi.fn();
@@ -111,7 +114,7 @@ describe('BillingView (company-wide)', () => {
   });
 
   it('shows a prominent payment-failed banner', async () => {
-    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({ ...summary, status: 'past_due' } as any);
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({ ...summary, status: 'past_due' });
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
     expect(await screen.findByText(/Payment failed\./)).toBeInTheDocument();
   });
@@ -121,7 +124,7 @@ describe('BillingView (company-wide)', () => {
       ...summary,
       status: 'grace',
       paymentActionUrl: 'https://invoice.stripe.com/i/in_3ds',
-    } as any);
+    });
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
     expect(await screen.findByRole('link', { name: /Authenticate payment/ })).toHaveAttribute('href', 'https://invoice.stripe.com/i/in_3ds');
     expect(screen.queryByText(/Payment failed\./)).not.toBeInTheDocument();
@@ -132,10 +135,25 @@ describe('BillingView (company-wide)', () => {
       ...summary,
       status: 'suspended',
       paymentActionUrl: 'https://invoice.stripe.com/i/in_3ds',
-    } as any);
+    });
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
     expect(await screen.findByText(/suspended due to non-payment/)).toBeInTheDocument();
     expect(screen.queryByText(/Mail keeps working/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the summary for each domain when the cart has no domains', async () => {
+    const emptyCart: CartData = { ...cart, domains: [] };
+    vi.mocked(api.getCart).mockResolvedValue(emptyCart);
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({
+      ...summary,
+      domains: [
+        { domainId: 'dom-1', domainName: 'acme.com', planName: 'Starter', seatCount: 10, activeUserCount: 3, maxUsers: 10, pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 30000 },
+      ],
+    });
+    render(<BillingView cart={emptyCart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+
+    expect(await screen.findByText(/3 \/ 10 users/)).toBeInTheDocument();
+    expect(screen.getByText(/₹300/)).toBeInTheDocument();
   });
 
   it('renders domain plans as clean badges and does not allow inline plan changes', async () => {

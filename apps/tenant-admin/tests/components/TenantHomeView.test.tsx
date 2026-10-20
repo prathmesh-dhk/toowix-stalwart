@@ -104,10 +104,13 @@ describe('TenantHomeView Component', () => {
       status: 'active',
       currentPeriodEnd: '2026-11-01T00:00:00.000Z',
       trialEnd: null,
+      trialStartedAt: null,
       cancelAtPeriodEnd: false,
+      paymentActionUrl: null,
+      totalMonthlyPaise: 0,
       domains: [
-        { domainId: 'dom-1', domainName: 'acmecorp.com', planName: 'Team', seatCount: 10 },
-        { domainId: 'dom-2', domainName: 'secondary.com', planName: 'Individual', seatCount: 1 },
+        { domainId: 'dom-1', domainName: 'acmecorp.com', planName: 'Team', seatCount: 10, activeUserCount: 0, maxUsers: 10, pricePerUserMonthlyPaise: 0, monthlySubtotalPaise: 0 },
+        { domainId: 'dom-2', domainName: 'secondary.com', planName: 'Individual', seatCount: 1, activeUserCount: 0, maxUsers: 1, pricePerUserMonthlyPaise: 0, monthlySubtotalPaise: 0 },
       ],
     });
     vi.mocked(api.listBillingInvoices).mockResolvedValue({ invoices: [] });

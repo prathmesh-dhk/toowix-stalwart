@@ -140,10 +140,21 @@ export interface TenantBillingSummary {
   status: DomainSubscriptionStatus | null;
   currentPeriodEnd: string | null;
   trialEnd: string | null;
+  trialStartedAt: string | null;
   cancelAtPeriodEnd: boolean;
   // Set while the bank needs 3-D Secure on an invoice: Stripe's hosted page where it's completed.
-  paymentActionUrl?: string | null;
-  domains: Array<{ domainId: string; domainName: string; planName: string | null; seatCount: number | null }>;
+  paymentActionUrl: string | null;
+  totalMonthlyPaise: number;
+  domains: Array<{
+    domainId: string;
+    domainName: string;
+    planName: string | null;
+    seatCount: number | null;
+    activeUserCount: number;
+    maxUsers: number;
+    pricePerUserMonthlyPaise: number;
+    monthlySubtotalPaise: number;
+  }>;
 }
 
 export interface PaymentMethodItem {

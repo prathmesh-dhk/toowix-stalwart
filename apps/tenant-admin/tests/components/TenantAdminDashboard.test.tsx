@@ -45,7 +45,10 @@ vi.mock('../../src/api', () => ({
       status: 'active',
       currentPeriodEnd: null,
       trialEnd: null,
+      trialStartedAt: null,
       cancelAtPeriodEnd: false,
+      paymentActionUrl: null,
+      totalMonthlyPaise: 0,
       domains: [],
     }),
     getDomainBillingStatus: vi.fn().mockResolvedValue({
