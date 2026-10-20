@@ -119,6 +119,7 @@ describe('TenantDetailView Component in Super Admin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(api, 'getTenantDetails').mockResolvedValue(mockTenantDetails);
+    vi.spyOn(api, 'listTenantInvoices').mockResolvedValue({ invoices: [] });
     vi.spyOn(api, 'updateMailboxLimit').mockResolvedValue(mockTenantDetails.tenant as any);
     vi.spyOn(api, 'suspendTenant').mockResolvedValue(mockTenantDetails.tenant as any);
     vi.spyOn(api, 'getOrganisationDeletion').mockResolvedValue({
@@ -338,6 +339,42 @@ describe('TenantDetailView Component in Super Admin', () => {
       expect(await screen.findByText('No billing data for this tenant yet.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /sync with stripe/i })).toBeInTheDocument();
       expect(screen.queryByText('Trial ends')).not.toBeInTheDocument();
+    });
+
+    it("lists the Tenant's invoices with date, amount, status and the hosted invoice link", async () => {
+      const listInvoices = vi.spyOn(api, 'listTenantInvoices').mockResolvedValue({
+        invoices: [
+          { id: 'in_1', status: 'paid', amountPaid: 49900, currency: 'inr', createdAt: '2026-09-21T12:00:00.000Z', hostedInvoiceUrl: 'https://invoice.stripe.com/i/in_1', invoicePdf: null },
+        ],
+      });
+      render(<TenantDetailView {...defaultProps} activeSubTab="billing" />);
+
+      // The desktop table and the mobile cards are both in the DOM; CSS picks one.
+      expect(await screen.findAllByText('21 Sept 2026')).toHaveLength(2);
+      expect(screen.getAllByText('₹499.00')).toHaveLength(2);
+      expect(screen.getAllByText('paid')).toHaveLength(2);
+      for (const link of screen.getAllByRole('link', { name: /view/i })) {
+        expect(link).toHaveAttribute('href', 'https://invoice.stripe.com/i/in_1');
+      }
+      expect(listInvoices).toHaveBeenCalledWith(defaultProps.tenantId);
+    });
+
+    it('shows an error in the invoice list when it fails to load, and the rest of the tab still renders', async () => {
+      vi.spyOn(api, 'getTenantDetails').mockResolvedValue({ ...mockTenantDetails, billing });
+      vi.spyOn(api, 'listTenantInvoices').mockRejectedValue(new Error('Stripe is down'));
+      render(<TenantDetailView {...defaultProps} activeSubTab="billing" />);
+
+      expect(await screen.findByText(/couldn't load invoices: stripe is down/i)).toBeInTheDocument();
+      expect(screen.getByText('Trial ends')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sync with stripe/i })).toBeInTheDocument();
+    });
+
+    it('does not load invoices until the Billing tab is opened', async () => {
+      const listInvoices = vi.spyOn(api, 'listTenantInvoices').mockResolvedValue({ invoices: [] });
+      render(<TenantDetailView {...defaultProps} activeSubTab="overview" />);
+
+      expect(await screen.findByRole('heading', { name: 'Wayne Enterprises' })).toBeInTheDocument();
+      expect(listInvoices).not.toHaveBeenCalled();
     });
   });
 });

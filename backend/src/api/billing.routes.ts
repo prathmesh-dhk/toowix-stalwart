@@ -91,18 +91,7 @@ tenantBillingRouter.get('/summary', async (req: Request, res: Response): Promise
 tenantBillingRouter.get('/invoices', async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.adminUser!.tenantId!;
   try {
-    const invoices = await listTenantInvoices(tenantId);
-    res.json({
-      invoices: invoices.map((inv) => ({
-        id: inv.id,
-        status: inv.status,
-        amountPaid: inv.amount_paid,
-        currency: inv.currency,
-        createdAt: inv.created ? new Date(inv.created * 1000).toISOString() : null,
-        hostedInvoiceUrl: inv.hosted_invoice_url || null,
-        invoicePdf: inv.invoice_pdf || null,
-      })),
-    });
+    res.json({ invoices: await listTenantInvoices(tenantId) });
   } catch (err: any) {
     handleBillingError(res, err);
   }

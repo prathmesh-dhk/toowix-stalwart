@@ -31,8 +31,9 @@ import {
   StickyNote,
   RotateCw,
   Code2,
+  ExternalLink,
 } from 'lucide-react';
-import { TenantFullDetails, TenantSummary } from '../../types';
+import { InvoiceItem, TenantFullDetails, TenantSummary } from '../../types';
 import { api } from '../../api';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
@@ -54,6 +55,32 @@ export type TenantDetailSubTab = 'overview' | 'domains' | 'mailboxes' | 'admins'
 
 function formatPaise(paise: number): string {
   return `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+
+function formatAmount(paise: number, currency: string): string {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency.toUpperCase() }).format(paise / 100);
+}
+
+const INVOICE_BADGE: Record<string, string> = { paid: 'success', open: 'warning', uncollectible: 'danger' };
+
+function InvoiceStatus({ status }: { status: string | null }) {
+  return <StatusBadge status={INVOICE_BADGE[status ?? ''] ?? 'closed'}>{status || '—'}</StatusBadge>;
+}
+
+function InvoiceLink({ url }: { url: string | null }) {
+  return url ? (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-semibold text-xs"
+    >
+      <span>View</span>
+      <ExternalLink className="w-3 h-3" />
+    </a>
+  ) : (
+    <span className="text-slate-400 text-xs">—</span>
+  );
 }
 
 function formatDate(iso: string | null): string {
@@ -153,6 +180,8 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
 
   // Billing & Plans
   const [syncingStripe, setSyncingStripe] = useState(false);
+  const [invoices, setInvoices] = useState<InvoiceItem[] | null>(null);
+  const [invoicesError, setInvoicesError] = useState<string | null>(null);
 
   // Audit trail JSON inspector
   const [inspectedLog, setInspectedLog] = useState<TenantFullDetails['auditLogs'][number] | null>(null);
@@ -184,6 +213,18 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
   useEffect(() => {
     fetchTenantDetails();
   }, [fetchTenantDetails]);
+
+  // Invoices come from Stripe, so they load apart from the detail page and only when the tab opens.
+  useEffect(() => {
+    if (activeSubTab !== 'billing') return;
+    let cancelled = false;
+    setInvoices(null);
+    setInvoicesError(null);
+    api.listTenantInvoices(tenantId)
+      .then((res) => { if (!cancelled) setInvoices(res.invoices); })
+      .catch((err: any) => { if (!cancelled) setInvoicesError(err.message || 'Failed to load invoices'); });
+    return () => { cancelled = true; };
+  }, [activeSubTab, tenantId]);
 
   useEffect(() => {
     if (!importOpen) {
@@ -1994,6 +2035,58 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
               No billing data for this tenant yet.
             </div>
           )}
+
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold text-slate-900">Invoices</h4>
+            {invoicesError ? (
+              <Alert type="error" message={`Couldn't load invoices: ${invoicesError}`} />
+            ) : invoices === null ? (
+              <div className="p-4 text-center text-xs text-slate-400">Loading invoices…</div>
+            ) : invoices.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                No invoices yet.
+              </div>
+            ) : (
+              <>
+              <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Amount Paid</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Invoice</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map((inv) => (
+                      <tr key={inv.id}>
+                        <td className="text-xs text-slate-700 tabular-nums">{formatDate(inv.createdAt)}</td>
+                        <td className="text-xs font-semibold text-slate-900 tabular-nums">{formatAmount(inv.amountPaid, inv.currency)}</td>
+                        <td><InvoiceStatus status={inv.status} /></td>
+                        <td style={{ textAlign: 'right' }}><InvoiceLink url={inv.hostedInvoiceUrl} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="md:hidden space-y-3">
+                {invoices.map((inv) => (
+                  <div key={inv.id} className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatAmount(inv.amountPaid, inv.currency)}</span>
+                      <InvoiceStatus status={inv.status} />
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span className="tabular-nums">{formatDate(inv.createdAt)}</span>
+                      <InvoiceLink url={inv.hostedInvoiceUrl} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              </>
+            )}
+          </div>
         </section>
       )}
 

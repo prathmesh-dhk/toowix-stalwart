@@ -1111,10 +1111,20 @@ export async function getDomainBillingStatus(domainId: string, tenantId: string)
   return { domain, subscription: sub };
 }
 
-export async function listTenantInvoices(tenantId: string): Promise<Stripe.Invoice[]> {
+/** A Tenant's invoices as the Tenant Admin and Super Admin invoice lists show them. */
+export async function listTenantInvoices(tenantId: string) {
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant?.stripeCustomerId) return [];
-  return stripeClient.listInvoices(tenant.stripeCustomerId);
+  const invoices = await stripeClient.listInvoices(tenant.stripeCustomerId);
+  return invoices.map((inv) => ({
+    id: inv.id,
+    status: inv.status,
+    amountPaid: inv.amount_paid,
+    currency: inv.currency,
+    createdAt: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+    hostedInvoiceUrl: inv.hosted_invoice_url || null,
+    invoicePdf: inv.invoice_pdf || null,
+  }));
 }
 
 /**

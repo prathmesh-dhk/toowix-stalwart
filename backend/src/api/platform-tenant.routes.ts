@@ -22,7 +22,7 @@ import { captureRequestContext } from '../services/request-context.service';
 import { MailboxService } from '../services/mailbox.service';
 import { isRegistrationEmailBlocked, REGISTRATION_EMAIL_BLOCKED_RESPONSE } from '../services/registration-block.service';
 import { platformDeletionRouter } from './organisation-deletion.routes';
-import { getTenantBillingSummary } from '../services/billing.service';
+import { getTenantBillingSummary, listTenantInvoices } from '../services/billing.service';
 import { DomainSubscriptionModel, DomainSubscriptionStatus } from '../db/models/DomainSubscription';
 import { stripeClient } from '../stripe/client';
 import { isValidMailDomain } from '../utils/domain-validator';
@@ -121,6 +121,19 @@ platformTenantRouter.get('/unmanaged-domains', async (req: Request, res: Respons
   } catch (err: any) {
     console.error('[Unmanaged Domains Error]:', err);
     return res.status(502).json({ error: 'STALWART_UNAVAILABLE', message: err.message || 'Failed to list Stalwart domains' });
+  }
+});
+
+// Loaded by the Billing tab on its own, so a Stripe failure only breaks the invoice list.
+platformTenantRouter.get('/:id/invoices', async (req: Request, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'INVALID_ID', message: 'Malformed tenant ID' });
+  }
+  try {
+    return res.status(200).json({ invoices: await listTenantInvoices(req.params.id) });
+  } catch (err: any) {
+    console.error('[Tenant Invoices Error]:', err);
+    return res.status(502).json({ error: 'STRIPE_UNAVAILABLE', message: err.message || 'Failed to list invoices' });
   }
 });
 

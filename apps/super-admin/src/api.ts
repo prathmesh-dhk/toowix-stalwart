@@ -19,6 +19,7 @@ import {
   CouponItem,
   CreateCouponInput,
   BatchCreateCouponInput,
+  InvoiceItem,
 } from './types';
 
 const TOKEN_KEY = 'toowix_mail_auth_token';
@@ -237,6 +238,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ notes }),
     }),
+  listTenantInvoices: (id: string) => request<{ invoices: InvoiceItem[] }>(`/api/platform/tenants/${id}/invoices`),
   syncTenantStripe: (id: string) =>
     request<{ success: boolean; synced: boolean; stripeStatus?: string; message?: string }>(
       `/api/platform/tenants/${id}/sync-stripe`,

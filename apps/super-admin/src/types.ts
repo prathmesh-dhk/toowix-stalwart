@@ -351,6 +351,17 @@ export interface PlatformAnalytics {
 }
 
 
+/** One Stripe invoice, in the same shape as the Tenant Admin's invoice list. */
+export interface InvoiceItem {
+  id: string;
+  status: string | null;
+  amountPaid: number;
+  currency: string;
+  createdAt: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdf: string | null;
+}
+
 export interface TenantFullDetails {
   tenant: {
     id: string;

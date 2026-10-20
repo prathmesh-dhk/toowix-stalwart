@@ -849,6 +849,60 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(row(gone._id.toString())).toMatchObject({ cancelled: true, pendingDowngrade: null });
   });
 
+  describe("Super Admin invoice list (/api/platform/tenants/:id/invoices)", () => {
+    let superToken: string;
+
+    beforeEach(async () => {
+      const superAdmin = await AdminUserModel.create({ email: 'super@toowix.test', passwordHash: 'x', role: 'SUPER_ADMIN', status: 'active', twoFactorEnabled: true });
+      superToken = generateOidcToken({ id: superAdmin._id.toString(), email: superAdmin.email, role: 'SUPER_ADMIN', tenantId: null, twoFactorEnabled: true });
+    });
+
+    it("returns the Tenant's invoices in the Tenant Admin's shape", async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await TenantModel.updateOne({ _id: tenantId }, { stripeCustomerId: 'cus_inv' });
+      vi.mocked(stripeClient.listInvoices).mockResolvedValue([
+        { id: 'in_1', status: 'paid', amount_paid: 49900, currency: 'inr', created: 1790000000, hosted_invoice_url: 'https://invoice.stripe.com/i/in_1', invoice_pdf: 'https://pay.stripe.com/in_1.pdf' },
+      ] as any);
+
+      const res = await request(app).get(`/api/platform/tenants/${tenantId}/invoices`).set('Authorization', `Bearer ${superToken}`);
+      const tenantRes = await request(app).get('/api/tenants/me/billing/invoices').set('Authorization', `Bearer ${tenantAdminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(stripeClient.listInvoices).toHaveBeenCalledWith('cus_inv');
+      expect(res.body.invoices).toEqual([
+        {
+          id: 'in_1', status: 'paid', amountPaid: 49900, currency: 'inr', createdAt: '2026-09-21T14:13:20.000Z',
+          hostedInvoiceUrl: 'https://invoice.stripe.com/i/in_1', invoicePdf: 'https://pay.stripe.com/in_1.pdf',
+        },
+      ]);
+      expect(res.body).toEqual(tenantRes.body);
+    });
+
+    it('is empty when the Tenant has no Stripe customer', async () => {
+      const res = await request(app).get(`/api/platform/tenants/${tenantId}/invoices`).set('Authorization', `Bearer ${superToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.invoices).toEqual([]);
+    });
+
+    it('reports a Stripe failure as an error', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await TenantModel.updateOne({ _id: tenantId }, { stripeCustomerId: 'cus_inv' });
+      vi.mocked(stripeClient.listInvoices).mockRejectedValueOnce(new Error('Stripe is down'));
+
+      const res = await request(app).get(`/api/platform/tenants/${tenantId}/invoices`).set('Authorization', `Bearer ${superToken}`);
+
+      expect(res.status).toBe(502);
+      expect(res.body).toMatchObject({ error: 'STRIPE_UNAVAILABLE', message: 'Stripe is down' });
+    });
+
+    it('refuses a Tenant Admin', async () => {
+      const res = await request(app).get(`/api/platform/tenants/${tenantId}/invoices`).set('Authorization', `Bearer ${tenantAdminToken}`);
+
+      expect(res.status).toBe(403);
+    });
+  });
+
   it('when Stripe refuses the new item, the cancelled domain stays suspended', async () => {
     const { stripeClient } = await import('../src/stripe/client');
     const { stalwartClient } = await import('../src/stalwart/client');
