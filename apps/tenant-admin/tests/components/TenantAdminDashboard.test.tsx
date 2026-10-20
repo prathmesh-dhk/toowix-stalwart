@@ -514,6 +514,7 @@ describe('TenantAdminDashboard Component', () => {
           address: 'alice@acmecorp.com',
           stalwartAccountId: 'acc-alice',
           status: 'suspended',
+          adminSuspended: true,
           createdAt: '2026-01-02T00:00:00.000Z',
           updatedAt: '2026-01-02T00:00:00.000Z',
         },
@@ -563,6 +564,31 @@ describe('TenantAdminDashboard Component', () => {
       expect(api.reactivateMailbox).toHaveBeenCalledWith('mb-1');
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
+  });
+
+  it('labels why a mailbox is suspended and hides Reactivate when only paying restores it', async () => {
+    const base = { tenantId: 'tenant-123', domainId: 'dom-1', stalwartAccountId: null, status: 'suspended' as const, createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' };
+    vi.mocked(api.listMyMailboxes).mockResolvedValue({
+      mailboxes: [
+        { ...base, id: 'mb-admin', localPart: 'admin', address: 'admin@acmecorp.com', adminSuspended: true },
+        { ...base, id: 'mb-unpaid', localPart: 'unpaid', address: 'unpaid@acmecorp.com', adminSuspended: false },
+      ],
+    });
+
+    renderDashboard();
+    await screen.findByText('Admin Overview');
+    fireEvent.click(screen.getByText('View all mailboxes'));
+
+    expect(await screen.findByText('Suspended – by admin')).toBeInTheDocument();
+    expect(screen.getByText('Suspended – billing')).toBeInTheDocument();
+
+    const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
+    fireEvent.click(actionButtons[1]);
+    expect(await screen.findByText(/paying the outstanding invoice restores this mailbox/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reactivate mailbox/i })).not.toBeInTheDocument();
+
+    fireEvent.click(actionButtons[0]);
+    expect(await screen.findByRole('button', { name: /reactivate mailbox/i })).toBeInTheDocument();
   });
 
   it('displays onboarding empty state card on dashboard when tenant has 0 domains', async () => {

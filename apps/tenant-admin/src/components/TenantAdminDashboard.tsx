@@ -64,6 +64,12 @@ interface TenantAdminDashboardProps {
   onNavChange?: (nav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team') => void;
 }
 
+// Held mailboxes keep their "pending activation" handling; only payment restores a billing-suspended one.
+const isBillingSuspended = (mb: MailboxItem) => mb.status === 'suspended' && !mb.adminSuspended && !mb.billingHold;
+
+const suspensionLabel = (mb: MailboxItem) =>
+  mb.status !== 'suspended' || mb.billingHold ? null : mb.adminSuspended ? 'Suspended – by admin' : 'Suspended – billing';
+
 export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   domainId,
   user,
@@ -1512,7 +1518,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                                     pending activation
                                   </span>
                                 ) : (
-                                  <StatusBadge status={mb.status} label={mb.status} />
+                                  <StatusBadge status={mb.status} label={suspensionLabel(mb) ?? mb.status} />
                                 )}
                               </div>
                             </div>
@@ -1704,7 +1710,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                                     mb.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
                                   }`}
                                 ></span>
-                                <span className="capitalize">{mb.status}</span>
+                                <span className={suspensionLabel(mb) ? undefined : 'capitalize'}>{suspensionLabel(mb) ?? mb.status}</span>
                               </span>
                             </td>
                             <td className="px-5 py-3.5 text-slate-500 text-xs">
@@ -1803,6 +1809,10 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                         <Ban className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                         <span>Suspend Mailbox</span>
                       </button>
+                    ) : isBillingSuspended(mb) ? (
+                      <p className="px-3.5 py-2 text-xs text-slate-500">
+                        Paying the outstanding invoice restores this mailbox.
+                      </p>
                     ) : (
                       <button
                         type="button"

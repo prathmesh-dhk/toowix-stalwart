@@ -164,6 +164,34 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(reactivate.body.error).toBe('PAYMENT_METHOD_REQUIRED');
   });
 
+  it('the mailbox list says which suspended mailboxes an admin suspended', async () => {
+    await MailboxModel.create({ tenantId, domainId, localPart: 'admin', address: 'admin@acme.com', status: 'suspended', adminSuspended: true });
+    await MailboxModel.create({ tenantId, domainId, localPart: 'unpaid', address: 'unpaid@acme.com', status: 'suspended' });
+
+    const res = await request(app).get('/api/tenants/me/mailboxes').set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    expect(res.status).toBe(200);
+    const byAddress = Object.fromEntries(res.body.mailboxes.map((m: any) => [m.address, m.adminSuspended]));
+    expect(byAddress).toEqual({ 'admin@acme.com': true, 'unpaid@acme.com': false });
+  });
+
+  it('a billing-suspended mailbox cannot be reactivated by hand; an admin-suspended one can', async () => {
+    const { stalwartClient } = await import('../src/stalwart/client');
+    vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue(undefined as any);
+    const unpaid = await MailboxModel.create({ tenantId, domainId, localPart: 'unpaid', address: 'unpaid@acme.com', status: 'suspended' });
+    const byAdmin = await MailboxModel.create({ tenantId, domainId, localPart: 'admin', address: 'admin@acme.com', status: 'suspended', adminSuspended: true });
+
+    const refused = await request(app).post(`/api/mailboxes/${unpaid._id}/reactivate`).set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(refused.status).toBe(402);
+    expect(refused.body.error).toBe('PAYMENT_REQUIRED');
+    expect(refused.body.message).toBe('Pay the outstanding invoice to restore this mailbox');
+    expect((await MailboxModel.findById(unpaid._id))!.status).toBe('suspended');
+
+    const restored = await request(app).post(`/api/mailboxes/${byAdmin._id}/reactivate`).set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(restored.status).toBe(200);
+    expect(restored.body.mailbox.status).toBe('active');
+  });
+
   it('cart activation confirms the card, starts ONE trial, releases held mailboxes, and later mailboxes are live at once', async () => {
     process.env.SKIP_BILLING = 'true';
     try {

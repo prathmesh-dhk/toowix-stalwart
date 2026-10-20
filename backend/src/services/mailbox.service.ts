@@ -46,6 +46,7 @@ export interface MailboxRecord {
   stalwartAccountId: string | null;
   status: 'active' | 'suspended';
   billingHold: boolean;
+  adminSuspended: boolean;
   aliases?: MailboxAliasRecord[];
   createdAt: string;
   updatedAt: string;
@@ -63,6 +64,7 @@ export class MailboxService {
       stalwartAccountId: doc.stalwartAccountId || null,
       status: doc.status,
       billingHold: !!doc.billingHold,
+      adminSuspended: !!doc.adminSuspended,
       aliases: (doc.aliases || []).map((a: any) => ({
         id: a._id.toString(),
         localPart: a.localPart,
@@ -627,6 +629,11 @@ export class MailboxService {
         code: 'PAYMENT_METHOD_REQUIRED',
         message: 'This mailbox is pending activation. Open the cart, add a payment method and confirm to activate it.',
       };
+    }
+
+    // Billing suspended it: only payment (reactivateDomainForPayment) brings it back.
+    if (mailbox.status === 'suspended' && !mailbox.adminSuspended) {
+      throw { status: 402, code: 'PAYMENT_REQUIRED', message: 'Pay the outstanding invoice to restore this mailbox' };
     }
 
     if (mailbox.stalwartAccountId) {

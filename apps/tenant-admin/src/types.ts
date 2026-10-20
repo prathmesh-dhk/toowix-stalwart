@@ -224,6 +224,8 @@ export interface MailboxItem {
   status: 'provisioning' | 'active' | 'failed' | 'suspended';
   /** Created before the tenant confirmed a payment method — suspended until activated from the cart. */
   billingHold?: boolean;
+  /** Suspended by an admin; a suspended mailbox without it (and not held) was suspended by billing. */
+  adminSuspended?: boolean;
   aliases?: MailboxAliasItem[];
   createdAt: string;
   updatedAt: string;
