@@ -9,7 +9,9 @@
 
 **Blocked by:** 13: Suspension stays inside the Tenant; choosing a Plan again restores a cancelled domain
 
-**Status:** needs-info
+**Decided (2026-10-21):** leave them on. When a Tenant's Grace Period expires, its own domains are suspended; its mailboxes on the shared platform domain keep working, and nothing else changes. Reasons: the platform mailboxes include the Tenant Admin's login identity, which may also receive the billing emails that ask them to pay, and the Tenant's own domains already stop. App sign-in uses the app's stored password first, so it would not have been the blocker. The `domain_subscriptions` row for the platform domain still goes to `suspended`, as today.
+
+**Status:** wontfix
 
 - [ ] The agreed consequence applies to that Tenant's platform mailboxes only; the platform domain and other Tenants are untouched
 - [ ] The Tenant Admin can still sign in and pay
