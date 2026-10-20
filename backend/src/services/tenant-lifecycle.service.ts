@@ -100,8 +100,10 @@ export async function restoreTenantInfrastructure(tenantId: string | Types.Objec
     }
   }
 
-  const mailboxes = await MailboxModel.find({ tenantId });
-  await MailboxModel.updateMany({ tenantId }, { status: 'active' });
+  // A mailbox an admin suspended on purpose stays suspended.
+  const restorable = { tenantId, adminSuspended: { $ne: true } };
+  const mailboxes = await MailboxModel.find(restorable);
+  await MailboxModel.updateMany(restorable, { status: 'active' });
 
   for (const mailbox of mailboxes) {
     if (!mailbox.stalwartAccountId) continue;

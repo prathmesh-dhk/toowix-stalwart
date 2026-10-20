@@ -623,6 +623,8 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       domainId, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_old', status: 'canceled',
     });
     const mailbox = await MailboxModel.create({ tenantId, domainId, localPart: 'back', address: 'back@acme.com', status: 'suspended', billingHold: false });
+    // Suspended by the Tenant Admin before the cancellation: stays off and unbilled.
+    const left = await MailboxModel.create({ tenantId, domainId, localPart: 'left', address: 'left@acme.com', status: 'suspended', adminSuspended: true });
     vi.mocked(stripeClient.addDomainSubscriptionItem).mockResolvedValueOnce({ id: 'si_back' } as any);
 
     const res = await request(app)
@@ -633,7 +635,9 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(res.status).toBe(200);
     expect(stripeClient.addDomainSubscriptionItem).toHaveBeenCalledWith('sub_shared', expect.objectContaining({ quantity: 1 }));
     expect((await DomainSubscriptionModel.findOne({ domainId }))?.stripeSubscriptionItemId).toBe('si_back');
+    expect((await DomainSubscriptionModel.findOne({ domainId }))?.activeUserCount).toBe(1);
     expect((await MailboxModel.findById(mailbox._id))?.status).toBe('active');
+    expect((await MailboxModel.findById(left._id))?.status).toBe('suspended');
     expect((await DomainModel.findById(domainId))?.status).toBe('active');
   });
 

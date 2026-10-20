@@ -502,6 +502,38 @@ describe('billing.service', () => {
       expect((await MailboxModel.findById(held._id))?.status).toBe('suspended');
     });
 
+    it('payment brings back only the mailboxes billing suspended, not the ones the Tenant Admin suspended', async () => {
+      const { MailboxService } = await import('../src/services/mailbox.service');
+      const domain = await DomainModel.create({ tenantId, domainName: 'left.com', status: 'active' });
+      const stays = await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'stays', address: 'stays@left.com', status: 'active' });
+      const left = await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'left', address: 'left@left.com', status: 'active' });
+      await MailboxService.suspendMailbox(left._id.toString(), tenantId);
+
+      await suspendDomainForNonPayment(domain._id.toString(), tenantId);
+      await reactivateDomainForPayment(domain._id.toString(), tenantId);
+
+      expect((await MailboxModel.findById(stays._id))?.status).toBe('active');
+      expect((await MailboxModel.findById(left._id))?.status).toBe('suspended');
+
+      // Once the Tenant Admin reactivates it, it's an ordinary billed mailbox again.
+      await MailboxService.reactivateMailbox(left._id.toString(), tenantId);
+      await suspendDomainForNonPayment(domain._id.toString(), tenantId);
+      await reactivateDomainForPayment(domain._id.toString(), tenantId);
+      expect((await MailboxModel.findById(left._id))?.status).toBe('active');
+    });
+
+    it('restoring a suspended Tenant keeps the mailboxes its admin suspended off', async () => {
+      const { restoreTenantInfrastructure } = await import('../src/services/tenant-lifecycle.service');
+      const domain = await DomainModel.create({ tenantId, domainName: 'restore.com', stalwartDomainId: 'dom-r', status: 'suspended' });
+      const back = await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'back', address: 'back@restore.com', status: 'suspended' });
+      const left = await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'left', address: 'left@restore.com', status: 'suspended', adminSuspended: true });
+
+      await restoreTenantInfrastructure(tenantId);
+
+      expect((await MailboxModel.findById(back._id))?.status).toBe('active');
+      expect((await MailboxModel.findById(left._id))?.status).toBe('suspended');
+    });
+
     it('a payment never reactivates a domain another tenant owns (the shared platform domain)', async () => {
       const owner = await TenantModel.create({ name: 'Platform', status: 'active', mailboxLimit: 1, mailboxCount: 0 });
       const platform = await DomainModel.create({ tenantId: owner._id, domainName: 'platform2.test', status: 'suspended' });

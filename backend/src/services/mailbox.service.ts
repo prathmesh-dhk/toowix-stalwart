@@ -571,7 +571,7 @@ export class MailboxService {
 
     const updatedDoc = await MailboxModel.findByIdAndUpdate(
       mailbox.id,
-      { status: 'suspended' },
+      { status: 'suspended', adminSuspended: true },
       { returnDocument: 'after' }
     );
 
@@ -639,7 +639,7 @@ export class MailboxService {
 
     const updatedDoc = await MailboxModel.findByIdAndUpdate(
       mailbox.id,
-      { status: 'active' },
+      { status: 'active', adminSuspended: false },
       { returnDocument: 'after' }
     );
 

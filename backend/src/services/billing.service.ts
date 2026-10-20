@@ -1233,8 +1233,9 @@ export async function reactivateDomainForPayment(domainId: string, tenantId: str
     }
   }
 
-  // Held mailboxes aren't billed yet; activation releases them, not payment.
-  const billed = { domainId: domain._id, billingHold: { $ne: true } };
+  // Held mailboxes aren't billed yet; activation releases them, not payment. An admin's own
+  // suspension outlasts the billing one.
+  const billed = { domainId: domain._id, billingHold: { $ne: true }, adminSuspended: { $ne: true } };
   const mailboxes = await MailboxModel.find(billed);
   await MailboxModel.updateMany(billed, { status: 'active' });
   for (const mailbox of mailboxes) {
