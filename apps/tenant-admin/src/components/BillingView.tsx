@@ -697,7 +697,10 @@ export const BillingView: React.FC<BillingViewProps> = ({
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <strong>Payment failed.</strong> We couldn't process your payment method. Mail keeps working for now — update your card to avoid interruption.
+              <strong>Payment failed.</strong>{' '}
+              {summary?.gracePeriodEndsAt
+                ? `Mail stops on ${formatDate(summary.gracePeriodEndsAt)} unless you pay.`
+                : "We couldn't process your payment method. Mail keeps working for now — update your card to avoid interruption."}
             </div>
           </div>
           <button

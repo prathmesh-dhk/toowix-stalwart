@@ -144,6 +144,8 @@ export interface TenantBillingSummary {
   cancelAtPeriodEnd: boolean;
   // Set while the bank needs 3-D Secure on an invoice: Stripe's hosted page where it's completed.
   paymentActionUrl: string | null;
+  // The earliest Grace Period end across the Tenant's domains; null when none is open.
+  gracePeriodEndsAt: string | null;
   totalMonthlyPaise: number;
   domains: Array<{
     domainId: string;
@@ -159,6 +161,7 @@ export interface TenantBillingSummary {
     cancelled: boolean;
     // Takes effect when the current period ends.
     pendingDowngrade: { planId: string; planName: string; effectiveAt: string | null } | null;
+    gracePeriodEndsAt: string | null;
   }>;
 }
 

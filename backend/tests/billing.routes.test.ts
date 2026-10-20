@@ -757,6 +757,26 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(res.body.domains).toHaveLength(2);
     expect(res.body.domains.find((d: any) => d.domainId === domainId)).toMatchObject({ cancelled: true, monthlySubtotalPaise: 0 });
     expect(res.body.domains.find((d: any) => d.domainId !== domainId)).toMatchObject({ cancelled: false, monthlySubtotalPaise: 200000 });
+    expect(res.body.gracePeriodEndsAt).toBeNull();
+  });
+
+  it("the summary returns each domain's Grace Period end and the Tenant's earliest at the top level", async () => {
+    const later = new Date('2026-11-05T00:00:00.000Z');
+    const earlier = new Date('2026-11-02T00:00:00.000Z');
+    await DomainSubscriptionModel.create({
+      domainId, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_a', status: 'grace', gracePeriodEndsAt: later,
+    });
+    const other = await DomainModel.create({ tenantId, domainName: 'other.com', planId, status: 'active' });
+    await DomainSubscriptionModel.create({
+      domainId: other._id, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_b', status: 'grace', gracePeriodEndsAt: earlier,
+    });
+
+    const res = await request(app).get('/api/tenants/me/billing/summary').set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.gracePeriodEndsAt).toBe(earlier.toISOString());
+    expect(res.body.domains.find((d: any) => d.domainId === domainId).gracePeriodEndsAt).toBe(later.toISOString());
+    expect(res.body.domains.find((d: any) => d.domainId === other._id.toString()).gracePeriodEndsAt).toBe(earlier.toISOString());
   });
 
   it('when Stripe refuses the new item, the cancelled domain stays suspended', async () => {

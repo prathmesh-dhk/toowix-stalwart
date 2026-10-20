@@ -57,6 +57,7 @@ const summary: TenantBillingSummary = {
   trialStartedAt: '2026-09-01T00:00:00.000Z',
   cancelAtPeriodEnd: false,
   paymentActionUrl: null,
+  gracePeriodEndsAt: null,
   totalMonthlyPaise: 290000,
   domains: [],
 };
@@ -119,6 +120,16 @@ describe('BillingView (company-wide)', () => {
     vi.mocked(api.getTenantBillingSummary).mockResolvedValue({ ...summary, status: 'past_due' });
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
     expect(await screen.findByText(/Payment failed\./)).toBeInTheDocument();
+    // No Grace Period end yet: the undated wording stays.
+    expect(screen.getByText(/Mail keeps working for now/)).toBeInTheDocument();
+  });
+
+  it('the payment-failed banner says when mail stops, with Update Card beside it', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({ ...summary, status: 'grace', gracePeriodEndsAt: '2026-11-02T00:00:00.000Z' });
+    render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+    expect(await screen.findByText(/Mail stops on 2 Nov 2026 unless you pay\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Mail keeps working for now/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update Card' })).toBeInTheDocument();
   });
 
   it('asks the Tenant Admin to authenticate a 3-D Secure payment instead of showing payment failed', async () => {
@@ -236,7 +247,7 @@ describe("BillingView: changing a domain's Plan", () => {
   ];
   const billedDomain = (over: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary['domains'][number] => ({
     domainId: 'dom-1', domainName: 'acme.com', planId: 'plan-starter', planName: 'Starter', seatCount: 10, activeUserCount: 5, maxUsers: 10,
-    pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 50000, cancelled: false, pendingDowngrade: null, ...over,
+    pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 50000, cancelled: false, pendingDowngrade: null, gracePeriodEndsAt: null, ...over,
   });
   const billedSummary = (over: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary => ({
     ...summary, status: 'active', currentPeriodEnd: periodEnd, domains: [billedDomain(over)],

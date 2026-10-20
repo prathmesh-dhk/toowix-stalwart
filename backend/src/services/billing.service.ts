@@ -1131,6 +1131,8 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
   trialStartedAt: Date | null;
   cancelAtPeriodEnd: boolean;
   paymentActionUrl: string | null;
+  // The Tenant's earliest Grace Period end; null when none is open.
+  gracePeriodEndsAt: Date | null;
   totalMonthlyPaise: number;
   domains: Array<{
     domainId: string;
@@ -1146,6 +1148,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     cancelled: boolean;
     // A scheduled downgrade takes effect when the current period ends.
     pendingDowngrade: { planId: string; planName: string; effectiveAt: Date | null } | null;
+    gracePeriodEndsAt: Date | null;
   }>;
 }> {
   const tenant = await TenantModel.findById(tenantId);
@@ -1175,6 +1178,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
             monthlySubtotalPaise: activeCount * rate,
             cancelled: false,
             pendingDowngrade: null,
+            gracePeriodEndsAt: null,
           };
         })
       );
@@ -1187,6 +1191,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
         trialStartedAt: tenant?.trialStartedAt ?? null,
         cancelAtPeriodEnd: false,
         paymentActionUrl: null,
+        gracePeriodEndsAt: null,
         totalMonthlyPaise: domainBreakdown.reduce((sum, d) => sum + d.monthlySubtotalPaise, 0),
         domains: domainBreakdown,
       };
@@ -1199,6 +1204,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
       trialStartedAt: tenant?.trialStartedAt ?? null,
       cancelAtPeriodEnd: false,
       paymentActionUrl: null,
+      gracePeriodEndsAt: null,
       totalMonthlyPaise: 0,
       domains: [],
     };
@@ -1228,8 +1234,10 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
       pendingDowngrade: pending
         ? { planId: pending._id.toString(), planName: pending.name, effectiveAt: sub.currentPeriodEnd ?? null }
         : null,
+      gracePeriodEndsAt: sub.status === 'grace' ? sub.gracePeriodEndsAt ?? null : null,
     };
   });
+  const graceEndTimes = domainBreakdown.flatMap((d) => (d.gracePeriodEndsAt ? [d.gracePeriodEndsAt.getTime()] : []));
 
   return {
     hasSubscription: true,
@@ -1239,6 +1247,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     trialStartedAt: tenant?.trialStartedAt ?? null,
     cancelAtPeriodEnd: primary.cancelAtPeriodEnd,
     paymentActionUrl: live.find((s) => s.paymentActionUrl)?.paymentActionUrl ?? null,
+    gracePeriodEndsAt: graceEndTimes.length ? new Date(Math.min(...graceEndTimes)) : null,
     totalMonthlyPaise: domainBreakdown.reduce((sum, d) => sum + d.monthlySubtotalPaise, 0),
     domains: domainBreakdown,
   };
