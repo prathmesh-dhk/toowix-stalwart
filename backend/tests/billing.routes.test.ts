@@ -1178,4 +1178,42 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(updatedDomain?.planName).toBe('Starter Tier');
     expect(updatedDomain?.mailboxLimit).toBe(10);
   });
+
+  it('summary returns each domain its Plan id and pending downgrade; an upgrade clears it and a second downgrade replaces it', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const periodEnd = new Date('2026-11-30T00:00:00.000Z');
+    const plan = (name: string, monthlyPriceInPaise: number) => PlanModel.create({ name, seatCount: 10, monthlyPriceInPaise, isActive: true });
+    const [mid, low, lower, high] = await Promise.all([plan('Mid', 4900), plan('Low', 2900), plan('Lower', 1900), plan('High', 9900)]);
+    await DomainSubscriptionModel.create({
+      tenantId,
+      domainId,
+      planId: mid._id,
+      stripeSubscriptionId: 'sub_pending',
+      stripeSubscriptionItemId: 'si_pending',
+      status: 'active',
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+    });
+    vi.mocked(stripeClient.createDomainPrice).mockResolvedValue('price_domain_test');
+
+    const auth = { Authorization: `Bearer ${tenantAdminToken}` };
+    const change = (kind: 'upgrade' | 'downgrade', p: { _id: unknown }) =>
+      request(app).post(`/api/tenants/me/billing/domains/${domainId}/${kind}`).set(auth).send({ planId: String(p._id) });
+    const domainInSummary = async () => (await request(app).get('/api/tenants/me/billing/summary').set(auth)).body.domains[0];
+
+    expect(await domainInSummary()).toMatchObject({ planId: String(mid._id), pendingDowngrade: null });
+
+    expect((await change('downgrade', low)).status).toBe(200);
+    const pending = await domainInSummary();
+    expect(pending.pendingDowngrade).toEqual({ planId: String(low._id), planName: 'Low', effectiveAt: periodEnd.toISOString() });
+    // Today's charges stay on the current Plan until the downgrade takes effect.
+    expect(pending).toMatchObject({ planName: 'Mid', pricePerUserMonthlyPaise: 4900 });
+
+    expect((await change('downgrade', lower)).status).toBe(200);
+    expect((await domainInSummary()).pendingDowngrade).toMatchObject({ planId: String(lower._id), planName: 'Lower' });
+
+    expect((await change('upgrade', high)).status).toBe(200);
+    const after = await domainInSummary();
+    expect(after).toMatchObject({ planId: String(high._id), planName: 'High', pricePerUserMonthlyPaise: 9900, pendingDowngrade: null });
+  });
 });

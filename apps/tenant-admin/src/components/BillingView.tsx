@@ -24,8 +24,9 @@ import {
 import { api } from '../api';
 import { CartData, DomainItem, InvoiceItem, PaymentMethodItem, Plan, TenantBillingSummary } from '../types';
 import { PaymentMethodModal } from './PaymentMethodModal';
-import { formatPaise } from './cart/format';
+import { formatDate, formatPaise } from './cart/format';
 import { BillingDomain, DomainBillingRow } from './DomainBillingRow';
+import { ChangePlanDialog } from './ChangePlanDialog';
 import { StatusBadge } from './ui/StatusBadge';
 
 export interface BillingViewProps {
@@ -34,11 +35,6 @@ export interface BillingViewProps {
   cart?: CartData | null;
   onOpenCart?: () => void;
   onCartUpdated?: (cart: CartData) => void;
-}
-
-function formatDate(iso?: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatAmount(paise: number, currency: string): string {
@@ -83,6 +79,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showCardModal, setShowCardModal] = useState(false);
   const [domainSearchQuery, setDomainSearchQuery] = useState('');
+  const [billingEnabled, setBillingEnabled] = useState(false);
+  const [changingPlanFor, setChangingPlanFor] = useState<BillingDomain | null>(null);
 
   // Promo code modal state
   const [showCouponModal, setShowCouponModal] = useState(false);
@@ -125,15 +123,21 @@ export const BillingView: React.FC<BillingViewProps> = ({
         .then(() => (api.getTenantBillingSummary ? api.getTenantBillingSummary() : null))
         .catch(() => null);
 
-      const [summaryRes, plansRes, invoicesRes, pmRes, cartRes] = await Promise.all([
+      const configPromise = Promise.resolve()
+        .then(() => api.getBillingConfig())
+        .catch(() => null);
+
+      const [summaryRes, plansRes, invoicesRes, pmRes, cartRes, configRes] = await Promise.all([
         summaryPromise,
         plansPromise,
         invoicesPromise,
         pmPromise,
         cartPromise,
+        configPromise,
       ]);
 
       if (summaryRes) setSummary(summaryRes);
+      setBillingEnabled(Boolean(configRes?.billingEnabled));
       if (plansRes?.plans) setPlans(plansRes.plans);
       if (invoicesRes?.invoices) setInvoices(invoicesRes.invoices);
       if (pmRes?.paymentMethods) setPaymentMethods(pmRes.paymentMethods);
@@ -259,7 +263,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
       return summary.domains.map((d) => ({
         domainId: d.domainId,
         domainName: d.domainName,
-        planId: null,
+        planId: d.planId,
         planName: d.planName || 'Standard',
         maxUsers: d.maxUsers,
         activeUsers: d.activeUserCount,
@@ -318,6 +322,28 @@ export const BillingView: React.FC<BillingViewProps> = ({
     if (!targetDomainData?.planId) return null;
     return plans.find((p) => p.id === targetDomainData.planId) || null;
   }, [targetDomainData, plans]);
+
+  // Plan changes need a billed subscription: with billing on, the summary lists exactly the billed domains.
+  const billedDomain = (domainId: string) => (billingEnabled ? summary?.domains.find((s) => s.domainId === domainId) : undefined);
+  const rowBilling = (d: BillingDomain) => {
+    const billed = billedDomain(d.domainId);
+    if (!billed) return {};
+    // Price and count the dialog against what the subscription bills, not the cart's live counts.
+    const asBilled = { ...d, ratePaise: billed.pricePerUserMonthlyPaise, activeUsers: billed.activeUserCount };
+    return { pendingDowngrade: billed.pendingDowngrade, onChangePlan: () => setChangingPlanFor(asBilled) };
+  };
+  const changePlanDialog = changingPlanFor && (
+    <ChangePlanDialog
+      domain={changingPlanFor}
+      plans={plans}
+      currentPeriodEnd={summary?.currentPeriodEnd ?? null}
+      onClose={() => setChangingPlanFor(null)}
+      onChanged={() => {
+        setChangingPlanFor(null);
+        load();
+      }}
+    />
+  );
 
   // Primary payment method label
   const primaryPaymentMethodText = useMemo(() => {
@@ -414,7 +440,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
         )}
 
         {/* 4-Card Domain Metric Ribbon */}
-        <DomainBillingRow domain={targetDomainData} layout="tiles" plan={targetDomainPlan} />
+        <DomainBillingRow domain={targetDomainData} layout="tiles" plan={targetDomainPlan} {...rowBilling(targetDomainData)} />
+        {changePlanDialog}
 
         {/* Quota & Resource Allocation Card */}
         <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
@@ -822,16 +849,18 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   <th>Mailboxes &amp; Capacity</th>
                   <th>Billing Rate</th>
                   <th style={{ textAlign: 'right' }}>Monthly Subtotal</th>
+                  <th><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {filteredDomains.map((d) => (
-                  <DomainBillingRow key={d.domainId} domain={d} layout="row" />
+                  <DomainBillingRow key={d.domainId} domain={d} layout="row" {...rowBilling(d)} />
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        {changePlanDialog}
 
         <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
           <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />

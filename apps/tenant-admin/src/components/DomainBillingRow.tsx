@@ -1,7 +1,7 @@
 import React from 'react';
 import { Globe } from 'lucide-react';
-import { CartDomainRow, Plan } from '../types';
-import { formatPaise } from './cart/format';
+import { CartDomainRow, Plan, TenantBillingSummary } from '../types';
+import { formatDate, formatPaise } from './cart/format';
 
 export type BillingDomain = Omit<CartDomainRow, 'users'>;
 
@@ -10,12 +10,29 @@ export interface DomainBillingRowProps {
   /** 'row' is a table row in the organisation-wide view; 'tiles' is the single-domain view's metric ribbon. */
   layout: 'row' | 'tiles';
   plan?: Plan | null;
+  pendingDowngrade?: TenantBillingSummary['domains'][number]['pendingDowngrade'];
+  /** Set only for a domain on a billed subscription. */
+  onChangePlan?: () => void;
 }
 
 /** One domain's billing on the Billing page. Both Billing views render domains through this. */
-export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan }) => {
+export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan }) => {
   const used = d.activeUsers + (d.pendingUsers || 0);
   const pct = Math.min(100, Math.round((used / (d.maxUsers || 1)) * 100));
+  const pendingBadge = pendingDowngrade && (
+    <div className="text-[11px] font-medium text-amber-700 mt-1">
+      Moves to {pendingDowngrade.planName} on {formatDate(pendingDowngrade.effectiveAt)}
+    </div>
+  );
+  const changePlanButton = onChangePlan && (
+    <button
+      type="button"
+      onClick={onChangePlan}
+      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+    >
+      Change plan
+    </button>
+  );
 
   if (layout === 'tiles') {
     return (
@@ -35,6 +52,8 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
             <div className="text-[11px] text-slate-500 mt-1">
               Capped at {d.maxUsers} seats
             </div>
+            {pendingBadge}
+            {changePlanButton && <div className="mt-2 -ml-2.5">{changePlanButton}</div>}
           </div>
 
           {/* Tile 2: Mailbox Capacity */}
@@ -87,6 +106,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
           {d.planName || 'Standard'}
         </span>
+        {pendingBadge}
       </td>
 
       {/* Mailboxes & Capacity Bar */}
@@ -123,6 +143,8 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
           <span className="text-slate-400 font-normal ml-0.5">/mo</span>
         </span>
       </td>
+
+      <td style={{ textAlign: 'right' }}>{changePlanButton}</td>
     </tr>
   );
 };

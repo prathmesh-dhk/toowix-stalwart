@@ -148,12 +148,15 @@ export interface TenantBillingSummary {
   domains: Array<{
     domainId: string;
     domainName: string;
+    planId: string | null;
     planName: string | null;
     seatCount: number | null;
     activeUserCount: number;
     maxUsers: number;
     pricePerUserMonthlyPaise: number;
     monthlySubtotalPaise: number;
+    // Takes effect when the current period ends.
+    pendingDowngrade: { planId: string; planName: string; effectiveAt: string | null } | null;
   }>;
 }
 

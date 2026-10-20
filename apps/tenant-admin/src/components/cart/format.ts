@@ -11,3 +11,8 @@ export function goToCart(returnTo?: string): void {
     window.dispatchEvent(new PopStateEvent('popstate'));
   }
 }
+
+export function formatDate(iso?: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}

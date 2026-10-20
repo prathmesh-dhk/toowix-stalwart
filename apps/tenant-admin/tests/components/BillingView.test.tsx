@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BillingView } from '../../src/components/BillingView';
 import { api } from '../../src/api';
@@ -147,7 +147,7 @@ describe('BillingView (company-wide)', () => {
     vi.mocked(api.getTenantBillingSummary).mockResolvedValue({
       ...summary,
       domains: [
-        { domainId: 'dom-1', domainName: 'acme.com', planName: 'Starter', seatCount: 10, activeUserCount: 3, maxUsers: 10, pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 30000 },
+        { domainId: 'dom-1', domainName: 'acme.com', planId: 'plan-starter', planName: 'Starter', seatCount: 10, activeUserCount: 3, maxUsers: 10, pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 30000, pendingDowngrade: null },
       ],
     });
     render(<BillingView cart={emptyCart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
@@ -156,12 +156,12 @@ describe('BillingView (company-wide)', () => {
     expect(screen.getByText(/₹300/)).toBeInTheDocument();
   });
 
-  it('renders domain plans as clean badges and does not allow inline plan changes', async () => {
+  it('renders domain plans as clean badges, with no Change plan while billing is disabled', async () => {
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
 
     expect(await screen.findByText('Starter')).toBeInTheDocument();
     expect(screen.getByText('Business')).toBeInTheDocument();
-    expect(screen.queryByLabelText(/change plan for/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /change plan/i })).not.toBeInTheDocument();
   });
 
   it('cancels the whole subscription at period end after confirmation, without removing domains one by one', async () => {
@@ -220,5 +220,161 @@ describe('BillingView (company-wide)', () => {
     // Does NOT render the other domain or the 18-domain table
     expect(screen.queryByText('acme.in')).not.toBeInTheDocument();
     expect(screen.queryByText('Domains & plans')).not.toBeInTheDocument();
+  });
+});
+
+describe("BillingView: changing a domain's Plan", () => {
+  const periodEnd = '2026-11-30T00:00:00.000Z';
+  const changePlans: Plan[] = [
+    { id: 'plan-mini', name: 'Mini', seatCount: 3, displayOrder: 0, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 5000 },
+    { id: 'plan-basic', name: 'Basic', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 8000 },
+    { id: 'plan-starter', name: 'Starter', seatCount: 10, displayOrder: 2, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 10000 },
+    { id: 'plan-business', name: 'Business', seatCount: 50, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 20000 },
+    { id: 'plan-retired', name: 'Retired', seatCount: 50, displayOrder: 4, isActive: false, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 1000 },
+  ];
+  const billedDomain = (over: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary['domains'][number] => ({
+    domainId: 'dom-1', domainName: 'acme.com', planId: 'plan-starter', planName: 'Starter', seatCount: 10, activeUserCount: 5, maxUsers: 10,
+    pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 50000, pendingDowngrade: null, ...over,
+  });
+  const billedSummary = (over: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary => ({
+    ...summary, status: 'active', currentPeriodEnd: periodEnd, domains: [billedDomain(over)],
+  });
+  const oneDomainCart: CartData = { ...cart, domains: [cart.domains[0]] };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getBillingConfig).mockResolvedValue({ publishableKey: '', billingEnabled: true });
+    vi.mocked(api.getCart).mockResolvedValue(oneDomainCart);
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue(billedSummary());
+    vi.mocked(api.listPlans).mockResolvedValue({ plans: changePlans });
+    vi.mocked(api.listBillingInvoices).mockResolvedValue({ invoices: [] });
+    vi.mocked(api.listPaymentMethods).mockResolvedValue({ paymentMethods: [], defaultPaymentMethodId: null });
+  });
+
+  // No cart prop: the view then shows the cart it reloads after a change, as the app's parent does via onCartUpdated.
+  const renderOrgView = () => render(<BillingView onOpenCart={vi.fn()} />);
+  const rowPlan = (name: string) => within(screen.getByRole('table')).getByText(name);
+  const openDialog = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /change plan/i }));
+    return screen.getByRole('dialog');
+  };
+  const choose = async (name: string) => {
+    const dialog = await openDialog();
+    await userEvent.click(option(dialog, name));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+    return dialog;
+  };
+  const option = (dialog: HTMLElement, name: string) => within(dialog).getByRole('button', { name: new RegExp(`^${name}\\b`) });
+
+  it("lists every active Plan with its price per Active User and this domain's monthly cost, current Plan marked", async () => {
+    renderOrgView();
+    const dialog = await openDialog();
+
+    expect(within(dialog).queryByText('Retired')).not.toBeInTheDocument();
+    // acme.com has 5 Active Users.
+    expect(option(dialog, 'Business')).toHaveTextContent('₹200 / Active User');
+    expect(option(dialog, 'Business')).toHaveTextContent('₹1,000 / month');
+    expect(option(dialog, 'Basic')).toHaveTextContent('₹400 / month');
+    expect(option(dialog, 'Starter')).toHaveTextContent('Current plan');
+    expect(option(dialog, 'Starter')).toBeDisabled();
+    expect(option(dialog, 'Business')).toHaveTextContent('Starts now; the difference is prorated on your next invoice');
+    expect(option(dialog, 'Basic')).toHaveTextContent('Starts on 30 Nov 2026');
+  });
+
+  it("disables a Plan whose user limit is below the domain's Active Users, with the reason", async () => {
+    renderOrgView();
+    const dialog = await openDialog();
+
+    expect(option(dialog, 'Mini')).toBeDisabled();
+    expect(option(dialog, 'Mini')).toHaveTextContent('Allows up to 3 Active Users; acme.com has 5');
+    expect(option(dialog, 'Basic')).toBeEnabled();
+  });
+
+  it('prices against the billed subscription, not the cart', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue(billedSummary({ activeUserCount: 2 }));
+    renderOrgView();
+    const dialog = await openDialog();
+
+    expect(option(dialog, 'Business')).toHaveTextContent('₹400 / month');
+    expect(option(dialog, 'Mini')).toBeEnabled();
+  });
+
+  it('changes nothing until the choice is confirmed', async () => {
+    renderOrgView();
+    const dialog = await openDialog();
+    await userEvent.click(option(dialog, 'Business'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(api.upgradeDomainPlan).not.toHaveBeenCalled();
+  });
+
+  it('is offered in the single-domain view too', async () => {
+    const activeDomain = { id: 'dom-1', domainName: 'acme.com', status: 'active', mailboxCount: 5, mailboxLimit: 10, planId: 'plan-starter', planName: 'Starter' } as any;
+    render(<BillingView activeDomain={activeDomain} onOpenCart={vi.fn()} />);
+    expect(option(await openDialog(), 'Business')).toBeEnabled();
+  });
+
+  it('is hidden when the domain has no billed subscription yet', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({ ...summary, domains: [] });
+    renderOrgView();
+    expect(await screen.findByText('acme.com')).toBeInTheDocument();
+    await waitFor(() => expect(api.getBillingConfig).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /change plan/i })).not.toBeInTheDocument();
+  });
+
+  it('an upgrade calls the upgrade endpoint, shows the new Plan straight away and clears a pending downgrade', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue(
+      billedSummary({ pendingDowngrade: { planId: 'plan-basic', planName: 'Basic', effectiveAt: periodEnd } })
+    );
+    vi.mocked(api.upgradeDomainPlan).mockImplementation(async () => {
+      vi.mocked(api.getCart).mockResolvedValue({ ...oneDomainCart, domains: [{ ...oneDomainCart.domains[0], planId: 'plan-business', planName: 'Business', ratePaise: 20000 }] });
+      vi.mocked(api.getTenantBillingSummary).mockResolvedValue(billedSummary({ planId: 'plan-business', planName: 'Business' }));
+      return { success: true };
+    });
+    renderOrgView();
+    expect(await screen.findByText('Moves to Basic on 30 Nov 2026')).toBeInTheDocument();
+
+    await choose('Business');
+
+    expect(api.upgradeDomainPlan).toHaveBeenCalledWith('dom-1', 'plan-business');
+    expect(api.downgradeDomainPlan).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await within(screen.getByRole('table')).findByText('Business')).toBeInTheDocument();
+    expect(screen.queryByText(/Moves to/)).not.toBeInTheDocument();
+  });
+
+  it('a downgrade calls the downgrade endpoint and the row shows the pending move; a second downgrade replaces it', async () => {
+    vi.mocked(api.downgradeDomainPlan).mockImplementation(async (_domainId, planId) => {
+      vi.mocked(api.getTenantBillingSummary).mockResolvedValue(
+        billedSummary({ activeUserCount: 2, pendingDowngrade: { planId, planName: planId === 'plan-basic' ? 'Basic' : 'Mini', effectiveAt: periodEnd } })
+      );
+      return { success: true };
+    });
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue(billedSummary({ activeUserCount: 2 }));
+    renderOrgView();
+
+    await choose('Basic');
+    expect(api.downgradeDomainPlan).toHaveBeenCalledWith('dom-1', 'plan-basic');
+    expect(api.upgradeDomainPlan).not.toHaveBeenCalled();
+    expect(await screen.findByText('Moves to Basic on 30 Nov 2026')).toBeInTheDocument();
+    // Today's charges stay on the current Plan.
+    expect(rowPlan('Starter')).toBeInTheDocument();
+
+    await choose('Mini');
+    expect(await screen.findByText('Moves to Mini on 30 Nov 2026')).toBeInTheDocument();
+    expect(screen.queryByText(/Moves to Basic/)).not.toBeInTheDocument();
+  });
+
+  it('a refusal shows the backend message and leaves the Plan unchanged', async () => {
+    vi.mocked(api.downgradeDomainPlan).mockRejectedValue(
+      new Error('Cannot downgrade to Basic: domain has 11 active mailboxes, which exceeds the plan limit of 10.')
+    );
+    renderOrgView();
+    const dialog = await choose('Basic');
+
+    expect(await within(dialog).findByText(/exceeds the plan limit of 10/)).toBeInTheDocument();
+    expect(rowPlan('Starter')).toBeInTheDocument();
+    expect(screen.queryByText(/Moves to/)).not.toBeInTheDocument();
   });
 });

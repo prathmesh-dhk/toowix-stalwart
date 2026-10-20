@@ -1135,18 +1135,22 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
   domains: Array<{
     domainId: string;
     domainName: string;
+    planId: string | null;
     planName: string | null;
     seatCount: number | null;
     activeUserCount: number;
     maxUsers: number;
     pricePerUserMonthlyPaise: number;
     monthlySubtotalPaise: number;
+    // A scheduled downgrade takes effect when the current period ends.
+    pendingDowngrade: { planId: string; planName: string; effectiveAt: Date | null } | null;
   }>;
 }> {
   const tenant = await TenantModel.findById(tenantId);
   const subs = await DomainSubscriptionModel.find({ tenantId, status: { $ne: 'canceled' } })
     .populate('planId')
-    .populate('domainId');
+    .populate('domainId')
+    .populate('pendingDowngradePlanId');
 
   if (subs.length === 0) {
     if (!isBillingEnabled()) {
@@ -1159,12 +1163,14 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
           return {
             domainId: d._id.toString(),
             domainName: d.domainName,
+            planId: d.planId ? d.planId.toString() : null,
             planName: d.planName || plan?.name || null,
             seatCount: d.mailboxLimit || plan?.seatCount || null,
             activeUserCount: activeCount,
             maxUsers: plan?.seatCount ?? plan?.maxUsers ?? 10,
             pricePerUserMonthlyPaise: rate,
             monthlySubtotalPaise: activeCount * rate,
+            pendingDowngrade: null,
           };
         })
       );
@@ -1198,17 +1204,22 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
   const domainBreakdown = subs.map((sub) => {
     const plan = sub.planId as unknown as IPlan | null;
     const domain = sub.domainId as unknown as IDomain | null;
+    const pending = sub.pendingDowngradePlanId as unknown as IPlan | null;
     const activeCount = sub.activeUserCount ?? 0;
     const rate = plan?.monthlyPriceInPaise ?? plan?.pricePerUserMonthlyPaise ?? sub.pricePerUserMonthlyPaise ?? 0;
     return {
       domainId: domain?._id?.toString() || (sub.domainId ? sub.domainId.toString() : ''),
       domainName: domain?.domainName || '',
+      planId: plan?._id?.toString() || null,
       planName: plan?.name || null,
       seatCount: plan?.seatCount ?? null,
       activeUserCount: activeCount,
       maxUsers: plan?.seatCount ?? plan?.maxUsers ?? sub.maxUsers ?? 10,
       pricePerUserMonthlyPaise: rate,
       monthlySubtotalPaise: activeCount * rate,
+      pendingDowngrade: pending
+        ? { planId: pending._id.toString(), planName: pending.name, effectiveAt: sub.currentPeriodEnd ?? null }
+        : null,
     };
   });
 
