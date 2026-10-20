@@ -21,6 +21,7 @@ vi.mock('../src/stripe/client', () => ({
     syncDomainUserQuantity: vi.fn().mockResolvedValue({}),
     listPaymentMethods: vi.fn().mockResolvedValue([{ id: 'pm_real_1' }]),
     attachPaymentMethod: vi.fn().mockResolvedValue({}),
+    detachPaymentMethod: vi.fn().mockResolvedValue({}),
     setDefaultPaymentMethod: vi.fn().mockResolvedValue({}),
     createActivationCheckoutSession: vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/activation-session' }),
     createCardUpdateCheckoutSession: vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/card-session' }),
@@ -507,6 +508,65 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       .set('Authorization', `Bearer ${tenantAdminToken}`);
     expect(delRes.status).toBe(200);
     expect(delRes.body.success).toBe(true);
+  });
+
+  describe('removing a card', () => {
+    const cards = [
+      { id: 'pm_card_a', brand: 'visa', last4: '1111', expMonth: 12, expYear: 2030, isDefault: true },
+      { id: 'pm_card_b', brand: 'mastercard', last4: '2222', expMonth: 12, expYear: 2030, isDefault: false },
+    ];
+    const remove = (id: string) =>
+      request(app).delete(`/api/tenants/me/billing/payment-methods/${id}`).set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    beforeEach(async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      for (const fn of ['detachPaymentMethod', 'setDefaultPaymentMethod', 'setSubscriptionDefaultPaymentMethod'] as const) {
+        vi.mocked(stripeClient[fn]).mockClear();
+      }
+      await TenantModel.updateOne({ _id: tenantId }, { stripeCustomerId: 'cus_cards', stripeSubscriptionId: 'sub_cards' });
+      await DomainSubscriptionModel.create({
+        domainId, tenantId, planId, stripeSubscriptionId: 'sub_cards', stripeSubscriptionItemId: 'si_cards', status: 'active',
+      });
+    });
+
+    it('removing the default card makes Stripe charge the card the app now shows as default', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await TenantModel.updateOne({ _id: tenantId }, { paymentMethods: cards });
+
+      const res = await remove('pm_card_a');
+
+      expect(res.status).toBe(200);
+      // Stripe clears the customer's default and leaves the subscription on the detached card.
+      expect(stripeClient.setDefaultPaymentMethod).toHaveBeenCalledWith('cus_cards', 'pm_card_b');
+      expect(stripeClient.setSubscriptionDefaultPaymentMethod).toHaveBeenCalledWith('sub_cards', 'pm_card_b');
+      expect(stripeClient.detachPaymentMethod).toHaveBeenCalledWith('pm_card_a');
+      const left = (await TenantModel.findById(tenantId))!.paymentMethods!;
+      expect(left.map((m) => [m.id, m.isDefault])).toEqual([['pm_card_b', true]]);
+    });
+
+    it('removing a card that is not the default only detaches it', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await TenantModel.updateOne({ _id: tenantId }, { paymentMethods: cards });
+
+      const res = await remove('pm_card_b');
+
+      expect(res.status).toBe(200);
+      expect(stripeClient.detachPaymentMethod).toHaveBeenCalledWith('pm_card_b');
+      expect(stripeClient.setDefaultPaymentMethod).not.toHaveBeenCalled();
+      expect(stripeClient.setSubscriptionDefaultPaymentMethod).not.toHaveBeenCalled();
+    });
+
+    it('the only card cannot be removed while the subscription still bills', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await TenantModel.updateOne({ _id: tenantId }, { paymentMethods: [cards[0]] });
+
+      const res = await remove('pm_card_a');
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('LAST_CARD');
+      expect(stripeClient.detachPaymentMethod).not.toHaveBeenCalled();
+      expect((await TenantModel.findById(tenantId))!.paymentMethods).toHaveLength(1);
+    });
   });
 
   it('picking a plan again for a cancelled, suspended domain bills it again and brings its mail back', async () => {

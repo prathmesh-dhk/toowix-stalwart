@@ -279,6 +279,18 @@ export async function deleteTenantPaymentMethod(tenantId: string, paymentMethodI
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
 
+  const removed = (tenant.paymentMethods || []).find((m) => m.id === paymentMethodId);
+  tenant.paymentMethods = (tenant.paymentMethods || []).filter((m) => m.id !== paymentMethodId);
+  if (removed && tenant.paymentMethods.length === 0 && (await hasBillingSubscription(tenant))) {
+    throw new BillingError('Add another card before removing this one — your subscription still bills to it.', 'LAST_CARD', 409);
+  }
+  if (tenant.paymentMethods.length > 0 && !tenant.paymentMethods.some((m) => m.isDefault)) {
+    tenant.paymentMethods[0].isDefault = true;
+    // Before the detach: Stripe clears the customer's default and leaves the subscription on the
+    // detached card, so the next invoice would fail.
+    await pointStripeAtCard(tenant, tenant.paymentMethods[0].id);
+  }
+
   if (isBillingEnabled() && !paymentMethodId.startsWith('pm_sim_')) {
     try {
       await stripeClient.detachPaymentMethod(paymentMethodId);
@@ -287,31 +299,37 @@ export async function deleteTenantPaymentMethod(tenantId: string, paymentMethodI
     }
   }
 
-  tenant.paymentMethods = (tenant.paymentMethods || []).filter((m) => m.id !== paymentMethodId);
-  if (tenant.paymentMethods.length > 0 && !tenant.paymentMethods.some((m) => m.isDefault)) {
-    tenant.paymentMethods[0].isDefault = true;
-  }
   await tenant.save();
 
   return { success: true };
+}
+
+/** Whether the tenant's Stripe subscription still bills a domain. */
+async function hasBillingSubscription(tenant: ITenant): Promise<boolean> {
+  if (!tenant.stripeSubscriptionId) return false;
+  return !!(await DomainSubscriptionModel.exists({ stripeSubscriptionId: tenant.stripeSubscriptionId, status: { $ne: 'canceled' } }));
+}
+
+/** Makes Stripe charge this card: the customer's default and the subscription's own card. */
+async function pointStripeAtCard(tenant: ITenant, paymentMethodId: string): Promise<void> {
+  // Not swallowed: the app must never show a default card that Stripe won't charge.
+  if (!isBillingEnabled() || !tenant.stripeCustomerId || paymentMethodId.startsWith('pm_sim_')) return;
+  try {
+    await stripeClient.setDefaultPaymentMethod(tenant.stripeCustomerId, paymentMethodId);
+    // The subscription's own card (set at Checkout) outranks the customer's default when Stripe charges.
+    if (tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
+      await stripeClient.setSubscriptionDefaultPaymentMethod(tenant.stripeSubscriptionId, paymentMethodId);
+    }
+  } catch (err: any) {
+    throw new BillingError(`Stripe could not change the default card: ${err.message}`, 'STRIPE_ERROR', 502);
+  }
 }
 
 export async function setDefaultPaymentMethod(tenantId: string, paymentMethodId: string): Promise<{ success: boolean }> {
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
 
-  // Not swallowed: the app must never show a default card that Stripe won't charge.
-  if (isBillingEnabled() && tenant.stripeCustomerId && !paymentMethodId.startsWith('pm_sim_')) {
-    try {
-      await stripeClient.setDefaultPaymentMethod(tenant.stripeCustomerId, paymentMethodId);
-      // The subscription's own card (set at Checkout) outranks the customer's default when Stripe charges.
-      if (tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
-        await stripeClient.setSubscriptionDefaultPaymentMethod(tenant.stripeSubscriptionId, paymentMethodId);
-      }
-    } catch (err: any) {
-      throw new BillingError(`Stripe could not change the default card: ${err.message}`, 'STRIPE_ERROR', 502);
-    }
-  }
+  await pointStripeAtCard(tenant, paymentMethodId);
 
   for (const pm of tenant.paymentMethods || []) {
     pm.isDefault = pm.id === paymentMethodId;

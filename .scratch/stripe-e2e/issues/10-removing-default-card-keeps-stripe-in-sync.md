@@ -6,10 +6,18 @@ Found during issue 03. Spec story 21: "I want to add, remove and set a default c
 
 **Blocked by:** 03: Trial ends and the first invoice is paid
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Live check recorded: Stripe's customer and subscription defaults after the default card is removed
-- [ ] After removing the default card, the next invoice is charged to the card the Billing page shows as default
-- [ ] Removing a card that isn't the default changes nothing in Stripe beyond detaching it
-- [ ] Removing the only card is handled deliberately (refused, or the outcome made clear to the Tenant Admin)
-- [ ] Every fix has a regression test
+- [x] Live check recorded: Stripe's customer and subscription defaults after the default card is removed
+- [x] After removing the default card, the next invoice is charged to the card the Billing page shows as default
+- [x] Removing a card that isn't the default changes nothing in Stripe beyond detaching it
+- [x] Removing the only card is handled deliberately (refused, or the outcome made clear to the Tenant Admin)
+- [x] Every fix has a regression test
+
+## Notes (2026-10-20)
+
+- **Live check (Stripe test mode, before the fix):** a customer with two cards, a subscription on card A, and A as the customer default. After detaching A, the customer's `invoice_settings.default_payment_method` was `null` and the subscription's `default_payment_method` was still A (detached). The next invoice would have failed while the Billing page showed card B as default.
+- **Fix:** `deleteTenantPaymentMethod` points Stripe at the new default (customer default + subscription card, the same as **Set default**, now shared as `pointStripeAtCard`) before detaching. If Stripe refuses, the removal fails with 502 and nothing changes. Removing a card that isn't the default only detaches it.
+- **Only card:** refused with 409 `LAST_CARD` ("Add another card before removing this one") while a domain on the tenant's subscription still bills. With no billing subscription, it can be removed. The Billing page shows the message.
+- **Live check after the fix:** the same sequence through `stripeClient` left both the customer default and the subscription card on B.
+- Regression tests: `backend/tests/billing.routes.test.ts`, "removing a card".
