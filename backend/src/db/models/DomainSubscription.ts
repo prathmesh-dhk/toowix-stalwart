@@ -49,14 +49,13 @@ export interface IDomainSubscription extends Document {
   // as the event value, so whatever was LAST reported at period-close IS
   // the period's peak. Reset to 0 when a new billing period starts.
   peakMailboxCountThisPeriod: number;
-  // Informational mirror of a pending Stripe Subscription Schedule phase
-  // change (downgrade scheduled for next renewal) — Stripe's schedule is
-  // the actual source of truth; this is for display only.
+  // A downgrade waiting for the next renewal. These rows are what the subscription's Stripe
+  // schedule is rebuilt from (see syncPendingDowngrades in billing.service.ts).
   pendingDowngradePlanId?: Types.ObjectId | null;
-  // Set only when this domain needed a dedicated Price/Meter because another domain on the
-  // same tenant already occupies the plan's shared one (see resolvePriceForDomainAttachment in
-  // billing.service.ts). Null means "use the plan's shared price" — the common,
-  // single-domain-per-plan case.
+  // The Stripe price that downgrade moves this domain's item to; the schedule is rebuilt from it.
+  pendingDowngradePriceId?: string | null;
+  // Meter-era: a Price/Meter dedicated to this domain. No path sets these any more; existing rows
+  // may still carry them until a plan change clears them.
   dedicatedStripePriceId?: string | null;
   dedicatedMeterEventName?: string | null;
   createdAt: Date;
@@ -164,6 +163,10 @@ const DomainSubscriptionSchema = new Schema<IDomainSubscription>(
     pendingDowngradePlanId: {
       type: Schema.Types.ObjectId,
       ref: 'Plan',
+      default: null,
+    },
+    pendingDowngradePriceId: {
+      type: String,
       default: null,
     },
     dedicatedStripePriceId: {

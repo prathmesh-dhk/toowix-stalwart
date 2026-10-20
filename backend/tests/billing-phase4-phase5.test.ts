@@ -226,6 +226,35 @@ describe('Billing Phase 4 & 5: Cancellation, Abuse Defense & Nightly Reconciliat
       expect(stripeClient.cancelSubscription).toHaveBeenCalledWith('sub_new_session');
     });
 
+    it('the checkout webhook for a refused card is acknowledged once its subscription is cancelled, and retried until then', async () => {
+      await TenantModel.create({ name: 'Prior Org', status: 'active', trialStartedAt: new Date(), cardFingerprint: 'fp_used_456' });
+      const refusedSubscription = (status: string) => ({
+        id: 'sub_refused', status, trial_start: 1, trial_end: 2, items: { data: [] },
+        default_payment_method: { id: 'pm_reuse', card: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, fingerprint: 'fp_used_456' } },
+      });
+      const completed = (id: string) => ({
+        id, type: 'checkout.session.completed',
+        data: { object: { id: 'cs_refused', subscription: 'sub_refused', metadata: { tenantId, purpose: 'cart_activation' } } },
+      }) as any;
+
+      // The cancel fails: Stripe must retry, or the subscription charges when its trial ends.
+      vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValue(refusedSubscription('trialing') as any);
+      vi.mocked(stripeClient.cancelSubscription).mockRejectedValueOnce(new Error('Stripe is unavailable'));
+      await expect(handleWebhookEvent(completed('evt_refused_1'))).rejects.toThrow('Stripe is unavailable');
+
+      // The retry cancels it and is acknowledged.
+      vi.mocked(stripeClient.cancelSubscription).mockResolvedValueOnce({ id: 'sub_refused', status: 'canceled' } as any);
+      await expect(handleWebhookEvent(completed('evt_refused_1'))).resolves.toBeUndefined();
+      expect(stripeClient.cancelSubscription).toHaveBeenLastCalledWith('sub_refused');
+
+      // A later delivery finds it already cancelled and is acknowledged without cancelling again.
+      vi.mocked(stripeClient.cancelSubscription).mockClear();
+      vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValue(refusedSubscription('canceled') as any);
+      await expect(handleWebhookEvent(completed('evt_refused_2'))).resolves.toBeUndefined();
+      expect(stripeClient.cancelSubscription).not.toHaveBeenCalled();
+      expect((await TenantModel.findById(tenantId))?.trialStartedAt ?? null).toBeNull();
+    });
+
     it('runBillingReconciliationOnce fixes quantity drift between Stripe items and active mailboxes', async () => {
       // In Mongo: 2 active mailboxes for domain
       await MailboxModel.create({

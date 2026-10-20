@@ -11,11 +11,9 @@ import { stripeClient } from '../src/stripe/client';
 vi.mock('../src/stripe/client', () => ({
   stripeClient: {
     getOrCreateCustomer: vi.fn().mockResolvedValue('cus_test'),
-    getOrCreatePrice: vi.fn().mockResolvedValue('price_test'),
-    createCheckoutSession: vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/test' }),
     retrieveSubscription: vi.fn(),
     updateSubscriptionItemPrice: vi.fn(),
-    scheduleDowngrade: vi.fn(),
+    setPendingPrices: vi.fn(),
     cancelAtPeriodEnd: vi.fn(),
     reportMeteredUsage: vi.fn(),
     listInvoices: vi.fn().mockResolvedValue([]),

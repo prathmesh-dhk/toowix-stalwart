@@ -9,17 +9,14 @@ import { generateOidcToken } from '../src/auth/service';
 vi.mock('../src/stripe/client', () => ({
   stripeClient: {
     getOrCreateCustomer: vi.fn().mockResolvedValue('cus_test'),
-    getOrCreatePrice: vi.fn().mockResolvedValue('price_test'),
     createDomainPrice: vi.fn().mockResolvedValue('price_domain_test'),
-    createCheckoutSession: vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/test' }),
     retrieveSubscription: vi.fn(),
     updateSubscriptionItemPrice: vi.fn(),
-    scheduleDowngrade: vi.fn(),
+    setPendingPrices: vi.fn(),
     cancelAtPeriodEnd: vi.fn(),
     reportMeteredUsage: vi.fn(),
     listInvoices: vi.fn().mockResolvedValue([]),
     createSetupIntent: vi.fn().mockResolvedValue({ client_secret: 'seti_test_secret' }),
-    addSubscriptionItem: vi.fn().mockResolvedValue({ id: 'si_added' }),
     addDomainSubscriptionItem: vi.fn().mockResolvedValue({ id: 'si_domain_added' }),
     syncDomainUserQuantity: vi.fn().mockResolvedValue({}),
     listPaymentMethods: vi.fn().mockResolvedValue([{ id: 'pm_real_1' }]),
@@ -97,27 +94,6 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
   it('rejects unauthenticated requests', async () => {
     const res = await request(app).get(`/api/tenants/me/billing/domains/${domainId}`);
     expect(res.status).toBe(401);
-  });
-
-  it('starts a Checkout session for a domain with a plan', async () => {
-    const res = await request(app)
-      .post(`/api/tenants/me/billing/domains/${domainId}/checkout`)
-      .set('Authorization', `Bearer ${tenantAdminToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.url).toBe('https://checkout.stripe.com/test');
-  });
-
-  it('returns 404 for a domain belonging to another tenant', async () => {
-    const otherTenant = await TenantModel.create({ name: 'Other', status: 'active', mailboxLimit: 10, mailboxCount: 0 });
-    const otherDomain = await DomainModel.create({ tenantId: otherTenant._id, domainName: 'other.com', planId, status: 'active' });
-
-    const res = await request(app)
-      .post(`/api/tenants/me/billing/domains/${otherDomain._id}/checkout`)
-      .set('Authorization', `Bearer ${tenantAdminToken}`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe('DOMAIN_NOT_FOUND');
   });
 
   it('returns the domain billing status (no subscription yet)', async () => {
@@ -953,7 +929,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     await updatedSub!.save();
 
     // 3. Attempt to downgrade to Solo (ceiling = 1) with 2 active mailboxes -> refused with 400
-    vi.mocked(stripeClient.scheduleDowngrade).mockClear();
+    vi.mocked(stripeClient.setPendingPrices).mockClear();
     const badDowngradeRes = await request(app)
       .post(`/api/tenants/me/billing/domains/${domain._id}/downgrade`)
       .set('Authorization', `Bearer ${tenantAdminToken}`)
@@ -962,7 +938,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(badDowngradeRes.status).toBe(400);
     expect(badDowngradeRes.body.error).toBe('ACTIVE_USERS_EXCEED_PLAN_LIMIT');
     expect(badDowngradeRes.body.message).toContain('exceeds the plan limit of 1');
-    expect(stripeClient.scheduleDowngrade).not.toHaveBeenCalled();
+    expect(stripeClient.setPendingPrices).not.toHaveBeenCalled();
 
     // 4. Downgrade to Starter (ceiling = 10, current users = 2) -> succeeds and schedules downgrade
     const goodDowngradeRes = await request(app)
@@ -971,12 +947,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       .send({ planId: starterPlan._id.toString() });
 
     expect(goodDowngradeRes.status).toBe(200);
-    expect(stripeClient.scheduleDowngrade).toHaveBeenCalledWith(
-      'sub_planchange',
-      'si_planchange',
-      'price_starter_tier',
-      2
-    );
+    expect(stripeClient.setPendingPrices).toHaveBeenCalledWith('sub_planchange', { si_planchange: 'price_starter_tier' });
 
     updatedSub = await DomainSubscriptionModel.findById(sub._id);
     expect(updatedSub?.pendingDowngradePlanId?.toString()).toBe(starterPlan._id.toString());

@@ -8,18 +8,14 @@ import { emailService } from '../src/services/email.service';
 vi.mock('../src/stripe/client', () => ({
   stripeClient: {
     getOrCreateCustomer: vi.fn(),
-    getOrCreatePrice: vi.fn(),
-    createCheckoutSession: vi.fn(),
     retrieveSubscription: vi.fn(),
     updateSubscriptionItemPrice: vi.fn(),
-    scheduleDowngrade: vi.fn(),
+    setPendingPrices: vi.fn(),
     cancelAtPeriodEnd: vi.fn(),
     reportMeteredUsage: vi.fn(),
     listInvoices: vi.fn(),
     createSetupIntent: vi.fn(),
-    addSubscriptionItem: vi.fn(),
     removeSubscriptionItem: vi.fn(),
-    createDedicatedMeteredPrice: vi.fn(),
     createDomainPrice: vi.fn(),
     retrieveSubscriptionExpanded: vi.fn(),
   },
@@ -28,7 +24,6 @@ vi.mock('../src/stripe/client', () => ({
 
 import { stripeClient } from '../src/stripe/client';
 import {
-  startCheckout,
   handleWebhookEvent,
   suspendDomainForNonPayment,
   reactivateDomainForPayment,
@@ -96,159 +91,9 @@ describe('billing.service', () => {
     meteredPlanId = meteredPlan._id.toString();
 
     vi.mocked(stripeClient.getOrCreateCustomer).mockResolvedValue('cus_test123');
-    vi.mocked(stripeClient.getOrCreatePrice).mockResolvedValue('price_test123');
     vi.spyOn(stalwartClient, 'updateDomainStatus').mockResolvedValue();
     vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue();
     vi.spyOn(emailService, 'sendBillingGraceStartedEmail').mockResolvedValue({ success: true });
-  });
-
-  describe('startCheckout', () => {
-    it('creates a Stripe Customer + Price + Checkout Session and returns the redirect URL', async () => {
-      const domain = await DomainModel.create({
-        tenantId,
-        domainName: 'acme.com',
-        planId: fixedPlanId,
-        planName: 'Team',
-        status: 'active',
-        isPrimary: true,
-      });
-
-      vi.mocked(stripeClient.createCheckoutSession).mockResolvedValue({ url: 'https://checkout.stripe.com/test' } as any);
-
-      const result = await startCheckout(domain._id.toString(), tenantId, actor);
-
-      expect(result.url).toBe('https://checkout.stripe.com/test');
-      expect(stripeClient.getOrCreateCustomer).toHaveBeenCalled();
-      expect(stripeClient.getOrCreatePrice).toHaveBeenCalled();
-      expect(stripeClient.createCheckoutSession).toHaveBeenCalledWith(
-        expect.objectContaining({ customerId: 'cus_test123', priceId: 'price_test123', quantity: 10 })
-      );
-    });
-
-    it('rejects a domain with no plan selected', async () => {
-      const domain = await DomainModel.create({
-        tenantId,
-        domainName: 'noplan.com',
-        status: 'active',
-        isPrimary: true,
-      });
-
-      await expect(startCheckout(domain._id.toString(), tenantId, actor)).rejects.toThrow(BillingError);
-    });
-
-    it('rejects starting a second checkout when a non-canceled subscription already exists', async () => {
-      const domain = await DomainModel.create({
-        tenantId,
-        domainName: 'already.com',
-        planId: fixedPlanId,
-        status: 'active',
-        isPrimary: true,
-      });
-      await DomainSubscriptionModel.create({
-        domainId: domain._id,
-        tenantId,
-        planId: fixedPlanId,
-        stripeSubscriptionId: 'sub_existing',
-        stripeSubscriptionItemId: 'si_existing',
-        status: 'active',
-      });
-
-      await expect(startCheckout(domain._id.toString(), tenantId, actor)).rejects.toMatchObject({
-        code: 'SUBSCRIPTION_EXISTS',
-      });
-    });
-
-    it('attaches a second domain to the tenant\'s existing subscription instead of starting a new Checkout', async () => {
-      const domain1 = await DomainModel.create({
-        tenantId,
-        domainName: 'first.com',
-        planId: fixedPlanId,
-        status: 'active',
-        isPrimary: true,
-      });
-      await DomainSubscriptionModel.create({
-        domainId: domain1._id,
-        tenantId,
-        planId: fixedPlanId,
-        stripeSubscriptionId: 'sub_shared',
-        stripeSubscriptionItemId: 'si_first',
-        status: 'trialing',
-        currentPeriodEnd: new Date('2026-10-01'),
-        trialEnd: new Date('2026-10-01'),
-      });
-
-      const domain2 = await DomainModel.create({
-        tenantId,
-        domainName: 'second.com',
-        planId: fixedPlanId,
-        status: 'active',
-        isPrimary: false,
-      });
-
-      vi.mocked(stripeClient.addSubscriptionItem).mockResolvedValue({ id: 'si_second' } as any);
-
-      const result = await startCheckout(domain2._id.toString(), tenantId, actor);
-
-      expect(result).toEqual({ attached: true });
-      expect(stripeClient.createCheckoutSession).not.toHaveBeenCalled();
-      expect(stripeClient.addSubscriptionItem).toHaveBeenCalledWith('sub_shared', 'price_test123', 10);
-
-      const sub2 = await DomainSubscriptionModel.findOne({ domainId: domain2._id });
-      expect(sub2?.stripeSubscriptionId).toBe('sub_shared');
-      expect(sub2?.stripeSubscriptionItemId).toBe('si_second');
-      // Rides the remainder of the existing (still-trialing) shared subscription.
-      expect(sub2?.status).toBe('trialing');
-      expect(sub2?.trialEnd?.toISOString()).toBe(new Date('2026-10-01').toISOString());
-      // Licensed (fixed) prices are safe to reuse — no dedicated price minted.
-      expect(sub2?.dedicatedStripePriceId).toBeFalsy();
-      expect(sub2?.dedicatedMeterEventName).toBeFalsy();
-    });
-
-    it('mints a dedicated Price/Meter when a second domain attaches to a metered plan a sibling domain already uses', async () => {
-      const domain1 = await DomainModel.create({
-        tenantId,
-        domainName: 'first-metered.com',
-        planId: meteredPlanId,
-        status: 'active',
-        isPrimary: true,
-      });
-      await DomainSubscriptionModel.create({
-        domainId: domain1._id,
-        tenantId,
-        planId: meteredPlanId,
-        stripeSubscriptionId: 'sub_shared_metered',
-        stripeSubscriptionItemId: 'si_first_metered',
-        status: 'active',
-      });
-
-      const domain2 = await DomainModel.create({
-        tenantId,
-        domainName: 'second-metered.com',
-        planId: meteredPlanId,
-        status: 'active',
-        isPrimary: false,
-      });
-
-      vi.mocked(stripeClient.createDedicatedMeteredPrice).mockResolvedValue({
-        priceId: 'price_dedicated_1',
-        meterEventName: 'mailbox_count_custom_dedicated_1',
-      });
-      vi.mocked(stripeClient.addSubscriptionItem).mockResolvedValue({ id: 'si_second_metered' } as any);
-
-      const result = await startCheckout(domain2._id.toString(), tenantId, actor);
-
-      expect(result).toEqual({ attached: true });
-      expect(stripeClient.createDedicatedMeteredPrice).toHaveBeenCalledWith(
-        expect.objectContaining({ _id: expect.anything() }),
-        'second-metered.com'
-      );
-      // The dedicated price is what actually gets attached, not the shared one.
-      expect(stripeClient.addSubscriptionItem).toHaveBeenCalledWith('sub_shared_metered', 'price_dedicated_1', undefined);
-
-      const sub2 = await DomainSubscriptionModel.findOne({ domainId: domain2._id });
-      expect(sub2?.dedicatedStripePriceId).toBe('price_dedicated_1');
-      expect(sub2?.dedicatedMeterEventName).toBe('mailbox_count_custom_dedicated_1');
-    });
   });
 
   describe('handleWebhookEvent', () => {
@@ -430,6 +275,44 @@ describe('billing.service', () => {
       const row = await DomainSubscriptionModel.findById(sub._id);
       expect(row?.stripeSubscriptionItemId).toBe('si_after_phase');
       expect(row?.currentPeriodEnd?.toISOString()).toBe('2027-02-18T00:00:00.000Z');
+    });
+
+    it('a change made while a downgrade is pending keeps the downgrade in the next phase', async () => {
+      const [a, b] = await DomainModel.create([
+        { tenantId, domainName: 'pending-a.com', planId: fixedPlanId, status: 'active' },
+        { tenantId, domainName: 'joined-b.com', planId: fixedPlanId, status: 'active' },
+      ]);
+      await DomainSubscriptionModel.create([
+        {
+          domainId: a._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_pending',
+          stripeSubscriptionItemId: 'si_a', status: 'active', pendingDowngradePriceId: 'price_a_down',
+        },
+        { domainId: b._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_pending', stripeSubscriptionItemId: 'si_b', status: 'active' },
+      ]);
+      vi.mocked(stripeClient.setPendingPrices).mockClear();
+
+      // A domain joined the subscription after the downgrade was scheduled.
+      await handleWebhookEvent({
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_pending', status: 'active', cancel_at_period_end: false, schedule: 'sched_1', items: { data: [{ id: 'si_a' }, { id: 'si_b' }] } } },
+      } as any);
+
+      expect(stripeClient.setPendingPrices).toHaveBeenCalledWith('sub_pending', { si_a: 'price_a_down' });
+    });
+
+    it('a subscription update with no schedule and nothing pending does not touch schedules', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'plain.com', planId: fixedPlanId, status: 'active' });
+      await DomainSubscriptionModel.create({
+        domainId: domain._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_plain', stripeSubscriptionItemId: 'si_plain', status: 'active',
+      });
+      vi.mocked(stripeClient.setPendingPrices).mockClear();
+
+      await handleWebhookEvent({
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_plain', status: 'active', cancel_at_period_end: false, schedule: null, items: { data: [{ id: 'si_plain' }] } } },
+      } as any);
+
+      expect(stripeClient.setPendingPrices).not.toHaveBeenCalled();
     });
 
     it("paying after suspension restores the mailboxes even when Stripe's active update arrives first", async () => {
@@ -755,11 +638,27 @@ describe('billing.service', () => {
         domainId: domain._id.toString(),
         planId: meteredPlanId,
       });
-      expect(stripeClient.createDedicatedMeteredPrice).not.toHaveBeenCalled();
       expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_shared_up', 'si_upgrading', 'price_upgrading_custom', 1);
       const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
       expect(sub?.planId?.toString()).toBe(meteredPlanId);
       expect(sub?.pricePerUserMonthlyPaise).toBe(15000);
+    });
+
+    it('requestUpgrade drops a downgrade the domain had pending', async () => {
+      const domain = await DomainModel.create({ tenantId, domainName: 'changed-mind.com', planId: fixedPlanId, status: 'active' });
+      const sub = await DomainSubscriptionModel.create({
+        domainId: domain._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_mind', stripeSubscriptionItemId: 'si_mind',
+        status: 'active', pendingDowngradePlanId: fixedPlanId, pendingDowngradePriceId: 'price_mind_down',
+      });
+      vi.mocked(stripeClient.createDomainPrice).mockResolvedValue('price_mind_up');
+      vi.mocked(stripeClient.setPendingPrices).mockClear();
+
+      await requestUpgrade(domain._id.toString(), tenantId, meteredPlanId, actor);
+
+      expect(stripeClient.setPendingPrices).toHaveBeenCalledWith('sub_mind', {});
+      const row = await DomainSubscriptionModel.findById(sub._id);
+      expect(row?.pendingDowngradePlanId).toBeNull();
+      expect(row?.pendingDowngradePriceId).toBeNull();
     });
 
     it('requestDowngrade schedules the change without touching Domain.mailboxLimit yet', async () => {
@@ -785,7 +684,7 @@ describe('billing.service', () => {
       await requestDowngrade(domain._id.toString(), tenantId, smallerPlan._id.toString(), actor);
 
       expect(stripeClient.createDomainPrice).toHaveBeenCalledWith(expect.objectContaining({ name: 'Individual — downgrade.com', domainId: domain._id.toString() }));
-      expect(stripeClient.scheduleDowngrade).toHaveBeenCalledWith('sub_down', 'si_down', 'price_smaller', 1);
+      expect(stripeClient.setPendingPrices).toHaveBeenCalledWith('sub_down', { si_down: 'price_smaller' });
       expect((await DomainModel.findById(domain._id))?.mailboxLimit).toBe(10); // unchanged until renewal
       expect((await DomainSubscriptionModel.findById(sub._id))?.pendingDowngradePlanId?.toString()).toBe(smallerPlan._id.toString());
     });

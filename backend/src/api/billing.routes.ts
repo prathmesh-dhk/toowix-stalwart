@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireTenantAdmin } from '../auth/middleware';
 import {
-  startCheckout,
   createPaymentMethodSetupIntent,
   createTenantSetupIntent,
   listTenantPaymentMethods,
@@ -52,16 +51,6 @@ tenantBillingRouter.get('/config', async (_req: Request, res: Response): Promise
     publishableKey: config.stripe.publishableKey,
     billingEnabled: isBillingEnabled(),
   });
-});
-
-tenantBillingRouter.post('/domains/:domainId/checkout', async (req: Request, res: Response): Promise<void> => {
-  const tenantId = req.adminUser!.tenantId!;
-  try {
-    const result = await startCheckout(req.params.domainId, tenantId, actorFromReq(req));
-    res.json(result);
-  } catch (err: any) {
-    handleBillingError(res, err);
-  }
 });
 
 tenantBillingRouter.get('/domains/:domainId', async (req: Request, res: Response): Promise<void> => {

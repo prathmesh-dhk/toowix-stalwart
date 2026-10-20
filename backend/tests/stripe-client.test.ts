@@ -22,7 +22,15 @@ const subscriptionSchedulesCreate = vi.fn(async (params: any) => ({
   phases: [{ start_date: 1000, end_date: 2000, items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] }],
 }));
 const subscriptionSchedulesUpdate = vi.fn(async (id: string, params: any) => ({ id, ...params }));
-const subscriptionsRetrieve = vi.fn(async (id: string) => ({ id, schedule: null as string | null }));
+const subscriptionSchedulesRelease = vi.fn(async (id: string) => ({ id }));
+const liveItems = (extra: any[] = []) => ({
+  data: [
+    { id: 'si_old', price: { id: 'price_old' }, quantity: 2 },
+    { id: 'si_sibling', price: { id: 'price_sibling' }, quantity: 1 },
+    ...extra,
+  ],
+});
+const subscriptionsRetrieve = vi.fn(async (id: string): Promise<any> => ({ id, schedule: null as string | null, items: liveItems() }));
 const subscriptionSchedulesRetrieve = vi.fn(async (id: string) => ({
   id,
   current_phase: { start_date: 1000, end_date: 2000 },
@@ -31,15 +39,19 @@ const subscriptionSchedulesRetrieve = vi.fn(async (id: string) => ({
     { start_date: 2000, end_date: 3000, items: [{ price: 'price_old_down', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] },
   ],
 }));
-const subscriptionItemsRetrieve = vi.fn(async (id: string) => ({ id, price: { id: id === 'si_sibling' ? 'price_sibling' : 'price_old' } }));
 
 vi.mock('stripe', () => ({
   default: vi.fn(() => ({
     customers: { create: customersCreate },
     products: { create: productsCreate },
-    subscriptionItems: { create: subscriptionItemsCreate, retrieve: subscriptionItemsRetrieve },
+    subscriptionItems: { create: subscriptionItemsCreate },
     prices: { create: pricesCreate },
-    subscriptionSchedules: { create: subscriptionSchedulesCreate, update: subscriptionSchedulesUpdate, retrieve: subscriptionSchedulesRetrieve },
+    subscriptionSchedules: {
+      create: subscriptionSchedulesCreate,
+      update: subscriptionSchedulesUpdate,
+      retrieve: subscriptionSchedulesRetrieve,
+      release: subscriptionSchedulesRelease,
+    },
     subscriptions: { retrieve: subscriptionsRetrieve },
   })),
 }));
@@ -100,88 +112,72 @@ describe('stripeClient.getOrCreateCustomer', () => {
     expect(item.id).toMatch(/^si_/);
   });
 
-  it('getOrCreatePrice creates a licensed recurring price in Stripe and saves it on the Plan', async () => {
-    const plan = await PlanModel.create({
-      name: 'Starter',
-      seatCount: 10,
-      monthlyPriceInPaise: 4900,
-      billingMode: 'metered',
-      displayOrder: 1,
-      isActive: true,
-    });
-
-    const priceId = await stripeClient.getOrCreatePrice(plan);
-
-    expect(pricesCreate).toHaveBeenCalledWith({
-      currency: 'inr',
-      unit_amount: 4900,
-      recurring: { interval: 'month', usage_type: 'licensed' },
-      product_data: { name: 'Starter' },
-    });
-    expect(priceId).toMatch(/^price_/);
-    expect((await PlanModel.findById(plan._id))?.stripePriceId).toBe(priceId);
-
-    // Second call returns cached price without re-calling Stripe
-    pricesCreate.mockClear();
-    const cached = await stripeClient.getOrCreatePrice(plan);
-    expect(cached).toBe(priceId);
-    expect(pricesCreate).not.toHaveBeenCalled();
-  });
-
-  it('scheduleDowngrade changes only the downgraded domain item in Phase 2, wherever it sits', async () => {
-    await stripeClient.scheduleDowngrade('sub_shared_123', 'si_sibling', 'price_starter_123', 3);
+  it('setPendingPrices schedules only the pending item’s new price for the next period', async () => {
+    await stripeClient.setPendingPrices('sub_shared_123', { si_sibling: 'price_starter_123' });
 
     expect(subscriptionSchedulesCreate).toHaveBeenCalledWith({ from_subscription: 'sub_shared_123' });
-    expect(subscriptionSchedulesUpdate).toHaveBeenCalledWith(
-      expect.stringMatching(/^sched_/),
-      {
-        phases: [
-          {
-            items: [
-              { price: 'price_old', quantity: 2 },
-              { price: 'price_sibling', quantity: 1 },
-            ],
-            start_date: 1000,
-            end_date: 2000,
-          },
-          {
-            items: [
-              { price: 'price_old', quantity: 2 },
-              { price: 'price_starter_123', quantity: 3 },
-            ],
-          },
-        ],
-      }
-    );
+    expect(subscriptionSchedulesUpdate).toHaveBeenLastCalledWith(expect.stringMatching(/^sched_/), {
+      phases: [
+        { items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }], start_date: 1000, end_date: 2000 },
+        { items: [{ price: 'price_old', quantity: 2 }, { price: 'price_starter_123', quantity: 1 }] },
+      ],
+    });
   });
 
-  it('scheduleDowngrade reuses a schedule already attached and keeps the change it has pending', async () => {
-    subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: 'sched_existing' });
+  it('setPendingPrices rebuilds both phases from the live items, so a domain added or a quantity changed since survives', async () => {
+    // The attached schedule copied the items when the downgrade was made; since then si_old went
+    // to 5 users and a new domain joined.
+    subscriptionsRetrieve.mockResolvedValueOnce({
+      id: 'sub_shared_123',
+      schedule: 'sched_existing',
+      items: {
+        data: [
+          { id: 'si_old', price: { id: 'price_old_up' }, quantity: 5 },
+          { id: 'si_sibling', price: { id: 'price_sibling' }, quantity: 1 },
+          { id: 'si_new', price: { id: 'price_new' }, quantity: 3 },
+        ],
+      },
+    });
     subscriptionSchedulesCreate.mockClear();
 
-    await stripeClient.scheduleDowngrade('sub_shared_123', 'si_sibling', 'price_sibling_down', 1);
+    await stripeClient.setPendingPrices('sub_shared_123', { si_sibling: 'price_sibling_down' });
 
     expect(subscriptionSchedulesCreate).not.toHaveBeenCalled();
     expect(subscriptionSchedulesUpdate).toHaveBeenLastCalledWith('sched_existing', {
       phases: [
-        { items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }], start_date: 1000, end_date: 2000 },
-        { items: [{ price: 'price_old_down', quantity: 2 }, { price: 'price_sibling_down', quantity: 1 }] },
+        {
+          items: [{ price: 'price_old_up', quantity: 5 }, { price: 'price_sibling', quantity: 1 }, { price: 'price_new', quantity: 3 }],
+          start_date: 1000,
+          end_date: 2000,
+        },
+        { items: [{ price: 'price_old_up', quantity: 5 }, { price: 'price_sibling_down', quantity: 1 }, { price: 'price_new', quantity: 3 }] },
       ],
     });
   });
 
-  it('scheduleDowngrade replaces a downgrade the same domain already has pending', async () => {
-    subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: 'sched_existing' });
+  it('setPendingPrices leaves a schedule that is already in step alone', async () => {
+    subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: 'sched_existing', items: liveItems() });
+    subscriptionSchedulesUpdate.mockClear();
 
-    // si_old is on price_old now; its first downgrade (price_old_down) waits in the next phase.
-    await stripeClient.scheduleDowngrade('sub_shared_123', 'si_old', 'price_old_lower', 2);
+    // The fake schedule's next phase already holds si_old's downgrade to price_old_down.
+    await stripeClient.setPendingPrices('sub_shared_123', { si_old: 'price_old_down' });
 
-    expect(subscriptionSchedulesUpdate).toHaveBeenLastCalledWith('sched_existing', {
-      phases: [
-        { items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }], start_date: 1000, end_date: 2000 },
-        { items: [{ price: 'price_old_lower', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] },
-      ],
-    });
+    expect(subscriptionSchedulesUpdate).not.toHaveBeenCalled();
+  });
+
+  it('setPendingPrices releases the schedule once nothing is pending, and does nothing without one', async () => {
+    subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: 'sched_existing', items: liveItems() });
+    subscriptionSchedulesUpdate.mockClear();
+    subscriptionSchedulesCreate.mockClear();
+
+    // A pending price the item already has (its phase started) is no longer pending.
+    await stripeClient.setPendingPrices('sub_shared_123', { si_old: 'price_old' });
+    expect(subscriptionSchedulesRelease).toHaveBeenCalledWith('sched_existing');
+
+    subscriptionSchedulesRelease.mockClear();
+    await stripeClient.setPendingPrices('sub_shared_123', {});
+    expect(subscriptionSchedulesRelease).not.toHaveBeenCalled();
+    expect(subscriptionSchedulesCreate).not.toHaveBeenCalled();
+    expect(subscriptionSchedulesUpdate).not.toHaveBeenCalled();
   });
 });
-

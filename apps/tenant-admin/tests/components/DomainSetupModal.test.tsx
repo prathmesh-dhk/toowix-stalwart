@@ -14,7 +14,6 @@ vi.mock('../../src/api', () => ({
     deleteTenantDnsCredential: vi.fn(),
     getDomainDnsStatus: vi.fn(),
     listPlans: vi.fn(),
-    startDomainCheckout: vi.fn(),
     selectDomainPlan: vi.fn(),
     detectDnsProvider: vi.fn(),
     checkDomainAvailability: vi.fn(),

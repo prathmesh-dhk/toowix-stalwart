@@ -1,5 +1,4 @@
 import Stripe from 'stripe';
-import { randomUUID } from 'crypto';
 import { config } from '../config';
 import { IPlan } from '../db/models/Plan';
 import { ITenant } from '../db/models/Tenant';
@@ -43,49 +42,6 @@ export class ToowixStripeClient {
     return meter.id;
   }
 
-  /** Lazily creates the Stripe Price for a Plan (licensed recurring monthly per-unit price). */
-  async getOrCreatePrice(plan: IPlan): Promise<string> {
-    if (plan.stripePriceId) return plan.stripePriceId;
-
-    const stripe = getStripe();
-    const price = await stripe.prices.create({
-      currency: CURRENCY,
-      unit_amount: plan.monthlyPriceInPaise,
-      recurring: { interval: 'month', usage_type: 'licensed' },
-      product_data: { name: `${plan.name}` },
-    });
-
-    plan.stripePriceId = price.id;
-    await plan.save();
-    return price.id;
-  }
-
-  /**
-   * Mints a Price + Meter dedicated to one domain's subscription item — used when another
-   * domain on the same tenant already occupies the plan's shared metered Price/Meter. Stripe
-   * meters aggregate usage by customer only (no per-item key in a meter event's payload), so
-   * two subscription items can't safely share one meter. Never cached on the Plan document —
-   * it's instance-specific and disposable.
-   */
-  async createDedicatedMeteredPrice(plan: IPlan, label: string): Promise<{ priceId: string; meterEventName: string }> {
-    const stripe = getStripe();
-    const meterEventName = `${METER_EVENT_PREFIX}_${plan._id.toString()}_${randomUUID()}`;
-    const meter = await stripe.billing.meters.create({
-      display_name: `${plan.name} — ${label}`,
-      event_name: meterEventName,
-      default_aggregation: { formula: 'last' },
-      customer_mapping: { event_payload_key: 'stripe_customer_id', type: 'by_id' },
-      value_settings: { event_payload_key: 'value' },
-    });
-    const price = await stripe.prices.create({
-      currency: CURRENCY,
-      unit_amount: plan.monthlyPriceInPaise,
-      recurring: { interval: 'month', usage_type: 'metered', meter: meter.id },
-      product_data: { name: `${plan.name} (${label})` },
-    });
-    return { priceId: price.id, meterEventName };
-  }
-
   /** Lazily creates the one Stripe Customer per Tenant. */
   async getOrCreateCustomer(tenant: ITenant): Promise<string> {
     if (tenant.stripeCustomerId) return tenant.stripeCustomerId;
@@ -107,40 +63,6 @@ export class ToowixStripeClient {
     return customer.id;
   }
 
-  async createCheckoutSession(params: {
-    customerId: string;
-    priceId: string;
-    isMetered: boolean;
-    quantity: number;
-    trialPeriodDays: number;
-    successUrl: string;
-    cancelUrl: string;
-    metadata: Record<string, string>;
-  }): Promise<Stripe.Checkout.Session> {
-    const stripe = getStripe();
-    return stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer: params.customerId,
-      line_items: [
-        params.isMetered
-          ? { price: params.priceId }
-          : { price: params.priceId, quantity: params.quantity },
-      ],
-      subscription_data: {
-        trial_period_days: params.trialPeriodDays,
-        metadata: params.metadata,
-      },
-      success_url: params.successUrl,
-      cancel_url: params.cancelUrl,
-    });
-  }
-
-  /**
-   * Hosted Stripe screen that starts the tenant's ONE trial: a subscription Checkout with a card
-   * (3-D Secure / RBI e-mandate is handled by Stripe for India cards) and one line per domain that
-   * already has users. Nothing is charged today. Each line's product carries {domainId, planId} in
-   * its metadata so the subscription can be adopted back into our per-domain rows on completion.
-   */
   async createActivationCheckoutSession(params: {
     customerId: string;
     lines: Array<{ name: string; unitAmountPaise: number; quantity: number; domainId: string; planId: string }>;
@@ -298,38 +220,39 @@ export class ToowixStripeClient {
     });
   }
 
-  /** Downgrade: schedules the price change to take effect at the current period's end. */
-  async scheduleDowngrade(
-    subscriptionId: string,
-    subscriptionItemId: string,
-    newPriceId: string,
-    quantity: number | undefined
-  ): Promise<void> {
+  /**
+   * Pending downgrades: from the next period, each item in `pending` (item id → price) moves to
+   * its new price. The schedule's phases are rebuilt from the subscription's live items every
+   * time, because Stripe applies a phase's own copy of the items when it starts — an upgrade, a
+   * new domain or a quantity change made after the copy would be undone. Once nothing is pending,
+   * the schedule is released.
+   */
+  async setPendingPrices(subscriptionId: string, pending: Record<string, string>): Promise<void> {
     const stripe = getStripe();
-    // Phase items carry no item id; each domain's item has its own price, which finds it.
-    const item = await stripe.subscriptionItems.retrieve(subscriptionItemId);
-    // Stripe allows one schedule per subscription; an earlier downgrade's stays attached until it
-    // releases a period after taking effect, so reuse it and keep any change it still has pending.
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const attached = typeof subscription.schedule === 'string' ? subscription.schedule : subscription.schedule?.id;
+    const current = subscription.items.data.map((i) => ({ price: i.price.id, quantity: i.quantity }));
+    const next = subscription.items.data.map((i, n) => ({ ...current[n], price: pending[i.id] ?? i.price.id }));
+    if (next.every((item, n) => item.price === current[n].price)) {
+      if (attached) await stripe.subscriptionSchedules.release(attached);
+      return;
+    }
+
+    // Stripe allows one schedule per subscription; reuse the one attached.
     const schedule = attached
       ? await stripe.subscriptionSchedules.retrieve(attached)
       : await stripe.subscriptionSchedules.create({ from_subscription: subscriptionId });
     const at = Math.max(0, schedule.phases.findIndex((p) => p.start_date === schedule.current_phase?.start_date));
     const currentPhase = schedule.phases[at];
-    const itemsOf = (phase: Stripe.SubscriptionSchedule.Phase) =>
-      phase.items.map((i) => ({ price: typeof i.price === 'string' ? i.price : i.price.id, quantity: i.quantity }));
-    // Found by position in the current phase: the next phase lists the same items in the same
-    // order, but may already hold this domain's earlier downgrade price.
-    const position = itemsOf(currentPhase).findIndex((phaseItem) => phaseItem.price === item.price.id);
-    if (position < 0) throw new Error(`Subscription item ${subscriptionItemId} is not on the subscription's schedule`);
-    const nextPhaseItems = itemsOf(schedule.phases[at + 1] ?? currentPhase).map((phaseItem, i) =>
-      i === position ? { price: newPriceId, quantity: quantity ?? phaseItem.quantity ?? 1 } : phaseItem
-    );
+    const itemsOf = (phase: Stripe.SubscriptionSchedule.Phase | undefined) =>
+      phase?.items.map((i) => ({ price: typeof i.price === 'string' ? i.price : i.price.id, quantity: i.quantity }));
+    // Runs on every subscription update; skip the write (and the update event it makes) when in step.
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    if (same(itemsOf(currentPhase), current) && same(itemsOf(schedule.phases[at + 1]), next)) return;
     await stripe.subscriptionSchedules.update(schedule.id, {
       phases: [
-        { items: itemsOf(currentPhase), start_date: currentPhase.start_date, end_date: currentPhase.end_date },
-        { items: nextPhaseItems },
+        { items: current, start_date: currentPhase.start_date, end_date: currentPhase.end_date },
+        { items: next },
       ],
     });
   }
@@ -346,24 +269,6 @@ export class ToowixStripeClient {
   async cancelAtPeriodEnd(subscriptionId: string, cancel: boolean): Promise<Stripe.Subscription> {
     const stripe = getStripe();
     return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: cancel });
-  }
-
-  /**
-   * Attaches a new domain's plan to an already-existing tenant subscription
-   * (combined-billing model: every domain under a tenant shares one Stripe
-   * Subscription, one item per domain, so Stripe combines them onto a single
-   * invoice per cycle). Prorated immediately unless the subscription is
-   * still in its trial window, in which case Stripe doesn't invoice at all
-   * until the trial ends — the new item rides the remainder of that trial.
-   */
-  async addSubscriptionItem(subscriptionId: string, priceId: string, quantity?: number): Promise<Stripe.SubscriptionItem> {
-    const stripe = getStripe();
-    return stripe.subscriptionItems.create({
-      subscription: subscriptionId,
-      price: priceId,
-      quantity,
-      proration_behavior: 'create_prorations',
-    });
   }
 
   /**

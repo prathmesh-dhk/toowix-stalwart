@@ -243,11 +243,6 @@ export const api = {
 
   // Billing (Stripe — one Subscription per Domain, see backend/src/services/billing.service.ts)
   getBillingConfig: () => request<{ publishableKey: string; billingEnabled?: boolean }>('/api/tenants/me/billing/config'),
-  // Combined-billing model: every domain after a tenant's first shares one
-  // Stripe subscription, so checkout for domain #2+ attaches directly with
-  // no redirect (`attached: true`) instead of returning a Checkout `url`.
-  startDomainCheckout: (domainId: string) =>
-    request<{ url: string } | { attached: true }>(`/api/tenants/me/billing/domains/${domainId}/checkout`, { method: 'POST' }),
   // First-time plan pick for a domain created without one — the tail end of the domain-setup
   // wizard, once DNS is configured. Distinct from upgrade/downgrade, which change the plan on a
   // domain that already has a live subscription.

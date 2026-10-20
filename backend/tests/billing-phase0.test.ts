@@ -9,15 +9,12 @@ import { config } from '../src/config';
 vi.mock('../src/stripe/client', () => ({
   stripeClient: {
     getOrCreateCustomer: vi.fn(),
-    getOrCreatePrice: vi.fn(),
     retrieveCheckoutSession: vi.fn(),
     retrieveSubscriptionExpanded: vi.fn(),
-    addSubscriptionItem: vi.fn(),
     addDomainSubscriptionItem: vi.fn(),
     syncDomainUserQuantity: vi.fn(),
     retrieveSubscription: vi.fn(),
     listInvoices: vi.fn(),
-    createDedicatedMeteredPrice: vi.fn(),
   },
   meterEventNameForPlan: (plan: any) => `mailbox_count_${plan._id.toString()}`,
 }));
@@ -56,7 +53,6 @@ describe('billing hardening (phase 0)', () => {
     planId = (await PlanModel.create({ name: 'Team', seatCount: 10, displayOrder: 1, isActive: true, billingMode: 'fixed', monthlyPriceInPaise: 10000 }))._id.toString();
 
     vi.mocked(stripeClient.getOrCreateCustomer).mockResolvedValue('cus_1');
-    vi.mocked(stripeClient.getOrCreatePrice).mockResolvedValue('price_1');
     vi.mocked(stripeClient.addDomainSubscriptionItem).mockResolvedValue({ id: 'si_added' } as any);
     vi.mocked(stripeClient.retrieveCheckoutSession).mockResolvedValue({
       id: 'cs_1', status: 'complete', subscription: 'sub_master', metadata: { tenantId, purpose: 'cart_activation' },
