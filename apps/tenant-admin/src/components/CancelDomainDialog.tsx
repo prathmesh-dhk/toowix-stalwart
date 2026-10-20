@@ -38,8 +38,8 @@ export const CancelDomainDialog: React.FC<CancelDomainDialogProps> = ({ domain, 
       title={`Cancel ${domain.domainName}?`}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Keep domain</Button>
-          <Button variant="danger" onClick={confirm} loading={busy}>Cancel domain</Button>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={confirm} loading={busy}>Confirm</Button>
         </>
       }
     >

@@ -582,7 +582,9 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 )}
               </div>
               <p className="text-slate-500 max-w-lg leading-relaxed">
-                {activeDomain.domainName} is covered under your company master subscription. Charges ({formatPaise(targetDomainData.monthlyPaise)}/mo) are automatically consolidated on your organization bill.
+                {billedDomain(targetDomainData.domainId)?.cancelled
+                  ? `${activeDomain.domainName} is cancelled and not on your organization bill.`
+                  : `${activeDomain.domainName} is covered under your company master subscription. Charges (${formatPaise(targetDomainData.monthlyPaise)}/mo) are automatically consolidated on your organization bill.`}
               </p>
             </div>
 

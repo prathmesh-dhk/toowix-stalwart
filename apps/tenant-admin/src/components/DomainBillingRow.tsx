@@ -2,6 +2,7 @@ import React from 'react';
 import { Globe } from 'lucide-react';
 import { CartDomainRow, Plan, TenantBillingSummary } from '../types';
 import { formatDate, formatPaise } from './cart/format';
+import { StatusBadge } from './ui/StatusBadge';
 
 export type BillingDomain = Omit<CartDomainRow, 'users'>;
 
@@ -41,29 +42,23 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
     </div>
   );
   const monthlyPaise = cancelled ? 0 : d.monthlyPaise;
-  const action = (label: string, onClick: () => void, danger = false) => (
+  const action = (label: string, onClick: () => void) => (
     <button
       type="button"
       onClick={onClick}
-      className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-        danger ? 'text-rose-600 hover:text-rose-700 hover:bg-rose-50' : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'
-      }`}
+      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
     >
       {label}
     </button>
   );
-  const cancelledBadge = cancelled && (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-      Cancelled
-    </span>
-  );
+  const cancelledBadge = cancelled && <StatusBadge status="closed">Cancelled</StatusBadge>;
   const actions =
     cancelled ? (
       onChooseAgain && action('Choose a plan again', onChooseAgain)
     ) : (onChangePlan || onCancel) ? (
       <span className="inline-flex gap-1">
         {onChangePlan && action('Change plan', onChangePlan)}
-        {onCancel && action('Cancel this domain', onCancel, true)}
+        {onCancel && action('Cancel this domain', onCancel)}
       </span>
     ) : null;
 

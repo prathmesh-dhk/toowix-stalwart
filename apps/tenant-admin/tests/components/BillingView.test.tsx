@@ -418,7 +418,7 @@ describe("BillingView: changing a domain's Plan", () => {
       await userEvent.click(within(await rowOf('acme.com')).getByRole('button', { name: 'Cancel this domain' }));
       const dialog = screen.getByRole('dialog');
       expect(dialog).toHaveTextContent("acme.com's mail stops now and it comes off your bill.");
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel domain' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
 
       expect(api.cancelDomainSubscription).toHaveBeenCalledWith('dom-1');
       expect(api.cancelTenantSubscription).not.toHaveBeenCalled();
@@ -443,7 +443,7 @@ describe("BillingView: changing a domain's Plan", () => {
     it('closing the confirm cancels nothing', async () => {
       renderOrgView();
       await userEvent.click(await screen.findByRole('button', { name: 'Cancel this domain' }));
-      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep domain' }));
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(api.cancelDomainSubscription).not.toHaveBeenCalled();
