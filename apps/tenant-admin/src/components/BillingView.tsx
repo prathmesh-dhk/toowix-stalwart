@@ -699,7 +699,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
             <div className="leading-relaxed">
               <strong>Payment failed.</strong>{' '}
               {summary?.gracePeriodEndsAt
-                ? `Mail stops on ${formatDate(summary.gracePeriodEndsAt)} unless you pay.`
+                ? // Past the end but not yet suspended: the grace sweep runs every 15 minutes.
+                  `Mail stops ${new Date(summary.gracePeriodEndsAt) <= new Date() ? 'today' : `on ${formatDate(summary.gracePeriodEndsAt)}`} unless you pay.`
                 : "We couldn't process your payment method. Mail keeps working for now — update your card to avoid interruption."}
             </div>
           </div>

@@ -132,6 +132,12 @@ describe('BillingView (company-wide)', () => {
     expect(screen.getByRole('button', { name: 'Update Card' })).toBeInTheDocument();
   });
 
+  it('says mail stops today once the Grace Period end has passed but the sweep has not suspended yet', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({ ...summary, status: 'grace', gracePeriodEndsAt: new Date(Date.now() - 60000).toISOString() });
+    render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+    expect(await screen.findByText(/Mail stops today unless you pay\./)).toBeInTheDocument();
+  });
+
   it('asks the Tenant Admin to authenticate a 3-D Secure payment instead of showing payment failed', async () => {
     vi.mocked(api.getTenantBillingSummary).mockResolvedValue({
       ...summary,
