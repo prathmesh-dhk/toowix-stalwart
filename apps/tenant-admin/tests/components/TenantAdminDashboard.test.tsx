@@ -572,6 +572,7 @@ describe('TenantAdminDashboard Component', () => {
       mailboxes: [
         { ...base, id: 'mb-admin', localPart: 'admin', address: 'admin@acmecorp.com', adminSuspended: true },
         { ...base, id: 'mb-unpaid', localPart: 'unpaid', address: 'unpaid@acmecorp.com', adminSuspended: false },
+        { ...base, id: 'mb-gone', localPart: 'gone', address: 'gone@acmecorp.com', adminSuspended: false, domainCancelled: true },
       ],
     });
 
@@ -581,10 +582,15 @@ describe('TenantAdminDashboard Component', () => {
 
     expect(await screen.findByText('Suspended – by admin')).toBeInTheDocument();
     expect(screen.getByText('Suspended – billing')).toBeInTheDocument();
+    expect(screen.getByText('Suspended – domain cancelled')).toBeInTheDocument();
 
     const actionButtons = await screen.findAllByRole('button', { name: /mailbox actions/i });
     fireEvent.click(actionButtons[1]);
     expect(await screen.findByText(/paying the outstanding invoice restores this mailbox/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reactivate mailbox/i })).not.toBeInTheDocument();
+
+    fireEvent.click(actionButtons[2]);
+    expect(await screen.findByText(/choose a plan again in billing to restore this mailbox/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /reactivate mailbox/i })).not.toBeInTheDocument();
 
     fireEvent.click(actionButtons[0]);

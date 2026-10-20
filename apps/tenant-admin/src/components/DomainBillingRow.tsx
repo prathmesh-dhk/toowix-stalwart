@@ -79,7 +79,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
               )}
             </div>
             <div className="text-[11px] text-slate-500 mt-1">
-              Capped at {d.maxUsers} seats
+              User limit: {d.maxUsers}
             </div>
             {pendingBadge}
             {actions && <div className="mt-2 -ml-2.5">{actions}</div>}
@@ -89,10 +89,10 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
           <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
             <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Mailbox Usage</span>
             <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-              <span>{used} / {d.maxUsers} seats</span>
+              <span>{used} / {d.maxUsers} Active Users</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1">
-              {Math.max(0, d.maxUsers - used)} seats available
+              {Math.max(0, d.maxUsers - used)} left under the user limit
             </div>
           </div>
 
@@ -101,7 +101,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
             <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Price per Active User</span>
             <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
               {formatPaise(d.ratePaise)}
-              <span className="text-xs font-normal text-slate-500 ml-1">/ active user</span>
+              <span className="text-xs font-normal text-slate-500 ml-1">/ Active User</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1">Pay only for active mailboxes</div>
           </div>
@@ -162,7 +162,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
       {/* Billing Rate */}
       <td>
         <span className="text-xs text-slate-600 tabular-nums">
-          {formatPaise(d.ratePaise)} <span className="text-slate-400">/ active user</span>
+          {formatPaise(d.ratePaise)} <span className="text-slate-400">/ Active User</span>
         </span>
       </td>
 

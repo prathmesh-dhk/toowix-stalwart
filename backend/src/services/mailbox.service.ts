@@ -47,6 +47,8 @@ export interface MailboxRecord {
   status: 'active' | 'suspended';
   billingHold: boolean;
   adminSuspended: boolean;
+  // Set by listMailboxes only. Its domain was cancelled: choosing a plan again, not paying, restores it.
+  domainCancelled?: boolean;
   aliases?: MailboxAliasRecord[];
   createdAt: string;
   updatedAt: string;
@@ -374,9 +376,13 @@ export class MailboxService {
       filter.domainId = domainId;
     }
 
-    const docs = await MailboxModel.find(filter).sort({ createdAt: 1 });
+    const [docs, cancelledDomainIds] = await Promise.all([
+      MailboxModel.find(filter).sort({ createdAt: 1 }),
+      DomainSubscriptionModel.distinct('domainId', { tenantId, status: 'canceled' }),
+    ]);
+    const cancelled = new Set(cancelledDomainIds.map(String));
 
-    return docs.map((doc) => this.mapToRecord(doc));
+    return docs.map((doc) => ({ ...this.mapToRecord(doc), domainCancelled: cancelled.has(String(doc.domainId)) }));
   }
 
   /**
@@ -631,8 +637,11 @@ export class MailboxService {
       };
     }
 
-    // Billing suspended it: only payment (reactivateDomainForPayment) brings it back.
+    // Billing suspended it: only payment or choosing a plan again (reactivateDomainForPayment) brings it back.
     if (mailbox.status === 'suspended' && !mailbox.adminSuspended) {
+      if (await DomainSubscriptionModel.exists({ domainId: mailbox.domainId, status: 'canceled' })) {
+        throw { status: 402, code: 'DOMAIN_CANCELLED', message: 'This domain is cancelled. Choose a plan again to restore this mailbox' };
+      }
       throw { status: 402, code: 'PAYMENT_REQUIRED', message: 'Pay the outstanding invoice to restore this mailbox' };
     }
 

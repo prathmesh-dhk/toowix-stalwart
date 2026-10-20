@@ -224,6 +224,8 @@ export interface MailboxItem {
   billingHold?: boolean;
   /** Suspended by an admin; a suspended mailbox without it (and not held) was suspended by billing. */
   adminSuspended?: boolean;
+  /** Its domain was cancelled: choosing a plan again, not paying, restores it. */
+  domainCancelled?: boolean;
   aliases?: MailboxAliasItem[];
   createdAt: string;
   updatedAt: string;

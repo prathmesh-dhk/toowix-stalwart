@@ -64,11 +64,24 @@ interface TenantAdminDashboardProps {
   onNavChange?: (nav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team') => void;
 }
 
-// Held mailboxes keep their "pending activation" handling; only payment restores a billing-suspended one.
-const isBillingSuspended = (mb: MailboxItem) => mb.status === 'suspended' && !mb.adminSuspended && !mb.billingHold;
+// Held mailboxes keep their "pending activation" handling, so they have no suspension reason.
+const suspensionReason = (mb: MailboxItem) =>
+  mb.status !== 'suspended' || mb.billingHold ? null : mb.adminSuspended ? 'admin' : mb.domainCancelled ? 'cancelled' : 'billing';
 
-const suspensionLabel = (mb: MailboxItem) =>
-  mb.status !== 'suspended' || mb.billingHold ? null : mb.adminSuspended ? 'Suspended – by admin' : 'Suspended – billing';
+const SUSPENSION_LABELS = { admin: 'Suspended – by admin', cancelled: 'Suspended – domain cancelled', billing: 'Suspended – billing' };
+
+const suspensionLabel = (mb: MailboxItem) => {
+  const reason = suspensionReason(mb);
+  return reason && SUSPENSION_LABELS[reason];
+};
+
+// Only an admin's suspension can be undone by hand; the others say what restores the mailbox.
+const restoreHint = (mb: MailboxItem) => {
+  const reason = suspensionReason(mb);
+  if (reason === 'billing') return 'Paying the outstanding invoice restores this mailbox.';
+  if (reason === 'cancelled') return 'Choose a plan again in Billing to restore this mailbox.';
+  return null;
+};
 
 export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   domainId,
@@ -1702,12 +1715,14 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
                                   mb.status === 'active'
                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
+                                    : suspensionLabel(mb)
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                     : 'bg-amber-50 text-amber-700 border border-amber-200/70'
                                 }`}
                               >
                                 <span
                                   className={`w-1.5 h-1.5 rounded-full ${
-                                    mb.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
+                                    mb.status === 'active' ? 'bg-emerald-500' : suspensionLabel(mb) ? 'bg-rose-500' : 'bg-amber-500'
                                   }`}
                                 ></span>
                                 <span className={suspensionLabel(mb) ? undefined : 'capitalize'}>{suspensionLabel(mb) ?? mb.status}</span>
@@ -1809,10 +1824,8 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                         <Ban className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                         <span>Suspend Mailbox</span>
                       </button>
-                    ) : isBillingSuspended(mb) ? (
-                      <p className="px-3.5 py-2 text-xs text-slate-500">
-                        Paying the outstanding invoice restores this mailbox.
-                      </p>
+                    ) : restoreHint(mb) ? (
+                      <p className="px-3.5 py-2 text-xs text-slate-500">{restoreHint(mb)}</p>
                     ) : (
                       <button
                         type="button"

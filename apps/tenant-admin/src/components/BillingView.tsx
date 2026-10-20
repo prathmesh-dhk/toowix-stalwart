@@ -487,7 +487,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
         <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Seat Utilization &amp; Quota Limits</h2>
+              <h2 className="text-sm font-bold text-slate-900">Active Users &amp; User Limit</h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Resource and mailbox provisioning limits for {activeDomain.domainName} under the {targetDomainPlan?.name || targetDomainData.planName || 'Standard'} plan.
               </p>
@@ -504,7 +504,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 Active mailboxes: <strong>{used}</strong> of <strong>{targetDomainData.maxUsers}</strong>
               </span>
               <span className="text-slate-400">
-                {Math.max(0, targetDomainData.maxUsers - used)} seats remaining
+                {Math.max(0, targetDomainData.maxUsers - used)} left under the user limit
               </span>
             </div>
             <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
@@ -525,7 +525,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 <span>Active Users</span>
               </div>
               <p className="text-slate-500 leading-relaxed">
-                Currently <strong>{used}</strong> provisioned mailbox accounts are billed at {formatPaise(targetDomainData.ratePaise)} per active user.
+                Currently <strong>{used}</strong> provisioned mailbox accounts are billed at {formatPaise(targetDomainData.ratePaise)} per Active User.
               </p>
             </div>
 
@@ -785,12 +785,12 @@ export const BillingView: React.FC<BillingViewProps> = ({
             <div className="text-[11px] text-slate-500 mt-1">Based on active mailboxes</div>
           </div>
 
-          {/* Tile 3: Mailbox Seats */}
+          {/* Tile 3: Mailbox Capacity */}
           <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
             <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Mailbox Capacity</span>
             <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums flex items-baseline gap-1">
               <span>{totalActiveUsers}</span>
-              <span className="text-xs font-normal text-slate-400">/ {totalMailboxLimit} seats</span>
+              <span className="text-xs font-normal text-slate-400">/ {totalMailboxLimit} user limit</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1">
               Across {domainsList.length} domain{domainsList.length === 1 ? '' : 's'}
@@ -858,7 +858,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Pay only for active mailboxes · Plan caps maximum seats
+              Pay only for active mailboxes · the Plan's user limit caps Active Users
             </p>
           </div>
 

@@ -192,6 +192,19 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(restored.body.mailbox.status).toBe('active');
   });
 
+  it("a cancelled domain's mailboxes are flagged in the list and point to choosing a plan again, not paying", async () => {
+    await DomainSubscriptionModel.create({ domainId, tenantId, planId, stripeSubscriptionId: 'sub_x', stripeSubscriptionItemId: 'si_x', status: 'canceled' });
+    const mailbox = await MailboxModel.create({ tenantId, domainId, localPart: 'gone', address: 'gone@acme.com', status: 'suspended' });
+
+    const list = await request(app).get('/api/tenants/me/mailboxes').set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(list.body.mailboxes[0]).toMatchObject({ address: 'gone@acme.com', domainCancelled: true });
+
+    const refused = await request(app).post(`/api/mailboxes/${mailbox._id}/reactivate`).set('Authorization', `Bearer ${tenantAdminToken}`);
+    expect(refused.status).toBe(402);
+    expect(refused.body.error).toBe('DOMAIN_CANCELLED');
+    expect(refused.body.message).toBe('This domain is cancelled. Choose a plan again to restore this mailbox');
+  });
+
   it('cart activation confirms the card, starts ONE trial, releases held mailboxes, and later mailboxes are live at once', async () => {
     process.env.SKIP_BILLING = 'true';
     try {

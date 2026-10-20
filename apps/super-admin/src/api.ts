@@ -269,7 +269,7 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ mailboxId }) }
     ),
 
-  // Plans (seat tiers)
+  // Plans
   listPlans: () => request<{ plans: Plan[] }>('/api/plans'),
   listAllPlans: () => request<{ plans: Plan[] }>('/api/plans/all'),
   createPlan: (body: { name: string; badge?: string | null; description?: string | null; seatCount: number; displayOrder?: number; isActive?: boolean; isDefault?: boolean; monthlyPriceInPaise?: number }) =>

@@ -1939,7 +1939,7 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
               </div>
               {billing.gracePeriodEndsAt && (
                 <div>
-                  <dt className="text-[10px] uppercase font-semibold text-rose-500 tracking-wider">Grace Period ends</dt>
+                  <dt className="text-[10px] uppercase font-semibold text-rose-700 tracking-wider">Grace Period ends</dt>
                   <dd className="text-rose-700 font-semibold mt-1">{formatDate(billing.gracePeriodEndsAt)}</dd>
                 </div>
               )}
