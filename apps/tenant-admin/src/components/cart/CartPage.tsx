@@ -98,7 +98,11 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
         .completeCartCheckout(sessionId)
         .then((res) => {
           setCart(res.cart);
-          setNotice({ tone: 'success', text: 'Card confirmed — your 60-day free trial has started and your mailboxes are active.' });
+          // A returning Tenant pays straight away; only a first Checkout starts the trial.
+          const text = res.cart.trial.isTrialing
+            ? 'Card confirmed — your 60-day free trial has started and your mailboxes are active.'
+            : 'Payment confirmed — your subscription is active again and your mailboxes are back on.';
+          setNotice({ tone: 'success', text });
         })
         .catch((err: any) => {
           setNotice({ tone: 'error', text: err?.message || 'We could not confirm your card. Nothing was charged.' });
@@ -112,6 +116,8 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
   }, [load]);
 
   const trialStarted = !!cart?.trial.started;
+  const subscriptionEnded = !!cart?.subscriptionEnded;
+  const needsCheckout = !trialStarted || subscriptionEnded;
 
   const applyPromo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,7 +384,19 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
             </div>
             <p className="text-[11px] text-slate-400 text-center leading-tight">Billed only for active users. Subtotal does not include applicable taxes.</p>
 
-            {trialStarted ? (
+            {subscriptionEnded ? (
+              <div className="bg-slate-50/70 border border-slate-100 rounded-lg p-3 flex flex-col gap-1.5 text-xs">
+                <strong className="text-slate-800">Your subscription has ended</strong>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Due today</span>
+                  <span className="tabular-nums font-semibold text-slate-800">{formatPaise(cart?.estimatedMonthlyPaise ?? 0)}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed border-t border-slate-200/60 pt-2">
+                  Your free trial has been used, so Stripe charges this month when you confirm your card. Paying turns mail back on for your
+                  domains; users you suspended yourself stay suspended.
+                </p>
+              </div>
+            ) : trialStarted ? (
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-900">
                 <strong>{cart!.trial.isTrialing ? `Free trial · ${cart!.trial.daysRemaining} days left` : 'Subscription active'}</strong>
                 {cart!.trial.isTrialing && (
@@ -409,7 +427,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
               </div>
             )}
 
-            {(!trialStarted || cart!.trial.isTrialing) &&
+            {!subscriptionEnded && (!trialStarted || cart!.trial.isTrialing) &&
               (promo ? (
                 <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-800">
                   <span className="flex items-center gap-1.5">
@@ -449,7 +467,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) =>
                 </button>
               ))}
 
-            {trialStarted ? (
+            {!needsCheckout ? (
               <button
                 type="button"
                 onClick={onBack}

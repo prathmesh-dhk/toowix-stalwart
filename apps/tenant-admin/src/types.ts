@@ -434,6 +434,8 @@ export interface CartData {
     daysRemaining: number;
     isTrialing: boolean;
   };
+  /** The whole subscription ended (cancellation took effect): the Cart offers a new Checkout. */
+  subscriptionEnded: boolean;
   hasPaymentMethod: boolean;
   paymentMethod: { brand: string; last4: string } | null;
   requiresActivation: boolean;

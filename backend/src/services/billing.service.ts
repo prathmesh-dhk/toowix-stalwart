@@ -310,6 +310,14 @@ async function hasBillingSubscription(tenant: ITenant): Promise<boolean> {
   return !!(await DomainSubscriptionModel.exists({ stripeSubscriptionId: tenant.stripeSubscriptionId, status: { $ne: 'canceled' } }));
 }
 
+/** The Tenant's whole Stripe subscription has ended: coming back takes a new Checkout. */
+export async function hasEndedSubscription(tenant: ITenant): Promise<boolean> {
+  if (!isBillingEnabled() || !tenant.trialStartedAt || isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) return false;
+  // Ended means Stripe deleted it (customer.subscription.deleted cancels every row), not just "no rows yet".
+  const cancelled = await DomainSubscriptionModel.exists({ stripeSubscriptionId: tenant.stripeSubscriptionId, status: 'canceled' });
+  return !!cancelled && !(await hasBillingSubscription(tenant));
+}
+
 /** Makes Stripe charge this card: the customer's default and the subscription's own card. */
 async function pointStripeAtCard(tenant: ITenant, paymentMethodId: string, previousDefaultId?: string): Promise<void> {
   // Not swallowed: the app must never show a default card that Stripe won't charge.
@@ -428,6 +436,8 @@ export async function ensureDomainSubscription(
 
   const tenant = await TenantModel.findById(domain.tenantId);
   if (!tenant?.trialStartedAt || !domain.planId) return null;
+  // Stripe refuses items on an ended subscription; the Cart's Checkout starts a new one.
+  if (await hasEndedSubscription(tenant)) return null;
   const plan = await PlanModel.findById(domain.planId);
   if (!plan) return null;
 
@@ -521,11 +531,14 @@ type TrialResult = { trialStartedAt: Date; trialEndsAt: Date; stripeSubscription
  * clicks (or a click racing the Stripe webhook) can never both start a trial; the loser either sees
  * the trial already started or gets a retryable 409.
  */
-async function claimActivationLock(tenantId: string): Promise<ITenant | null> {
+async function claimActivationLock(
+  tenantId: string,
+  notYetAdopted: Record<string, unknown> = { trialStartedAt: null }
+): Promise<ITenant | null> {
   return TenantModel.findOneAndUpdate(
     {
       _id: tenantId,
-      trialStartedAt: null,
+      ...notYetAdopted,
       $or: [{ activationLock: null }, { activationLock: { $lt: new Date(Date.now() - ACTIVATION_LOCK_TTL_MS) } }],
     },
     { $set: { activationLock: new Date() } },
@@ -618,6 +631,9 @@ export async function attachDomainWithSavedPayment(
   assertSandboxOrBilling();
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
+  if (await hasEndedSubscription(tenant)) {
+    throw new BillingError('Your subscription has ended. Check out from the Cart to subscribe again.', 'SUBSCRIPTION_ENDED', 409);
+  }
 
   const trial = await startTenantTrial(tenant, actor);
   const sub = await ensureDomainSubscription(domain, actor);
@@ -720,14 +736,21 @@ export async function startCartCheckout(
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
   assertSandboxOrBilling();
   if (!isBillingEnabled()) return { sandbox: true };
-  if (tenant.trialStartedAt) throw new BillingError('Your trial has already started', 'ALREADY_ACTIVE', 409);
+  // A returning Tenant has used its one Trial: its Checkout charges straight away.
+  const returning = await hasEndedSubscription(tenant);
+  if (tenant.trialStartedAt && !returning) throw new BillingError('Your trial has already started', 'ALREADY_ACTIVE', 409);
 
   const domains = await DomainModel.find({ tenantId, planId: { $ne: null } });
   const lines: Array<{ name: string; unitAmountPaise: number; quantity: number; domainId: string; planId: string }> = [];
   for (const domain of domains) {
     const plan = await PlanModel.findById(domain.planId);
     if (!plan) continue;
-    const users = await MailboxModel.countDocuments({ domainId: domain._id, $or: [{ status: 'active' }, { billingHold: true }] });
+    // Returning: the cancellation suspended the mail; paying brings back all but an admin's own suspensions.
+    const users = await MailboxModel.countDocuments(
+      returning
+        ? { domainId: domain._id, billingHold: { $ne: true }, adminSuspended: { $ne: true } }
+        : { domainId: domain._id, $or: [{ status: 'active' }, { billingHold: true }] }
+    );
     if (users === 0) continue;
     lines.push({
       name: `${plan.name} — ${domain.domainName}`,
@@ -741,6 +764,9 @@ export async function startCartCheckout(
 
   let extraDays = 0;
   const code = promoCode?.trim().toUpperCase() || '';
+  if (code && returning) {
+    throw new BillingError('Promo codes extend the free trial, which your organisation has already used.', 'INVALID_COUPON', 400);
+  }
   if (code) {
     const promo = await couponService.validateCoupon(code, tenantId);
     if (!promo.valid) throw new BillingError(promo.message || 'Invalid promo code', 'INVALID_COUPON', 400);
@@ -751,10 +777,10 @@ export async function startCartCheckout(
   const session = await stripeClient.createActivationCheckoutSession({
     customerId,
     lines,
-    trialDays: TRIAL_DAYS + extraDays,
+    trialDays: returning ? 0 : TRIAL_DAYS + extraDays,
     successUrl: `${config.tenantAdminUrl}/cart?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${config.tenantAdminUrl}/cart?checkout=cancelled`,
-    metadata: { tenantId, purpose: 'cart_activation', promoCode: code, actorId: actor.id },
+    metadata: { tenantId, purpose: 'cart_activation', promoCode: code, actorId: actor.id, resubscribe: String(returning) },
   });
   if (!session.url) throw new BillingError('Stripe did not return a checkout URL', 'STRIPE_ERROR', 502);
   return { url: session.url };
@@ -773,11 +799,15 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
   if (!subscriptionId) throw new BillingError('Checkout finished without a subscription', 'CARD_CONFIRMATION_FAILED', 402);
 
-  const claimed = await claimActivationLock(tenantId);
+  const before = await TenantModel.findById(tenantId);
+  const returning = !!before && (await hasEndedSubscription(before));
+  const claimed = await claimActivationLock(tenantId, returning ? { stripeSubscriptionId: before!.stripeSubscriptionId } : undefined);
   if (!claimed) {
     const current = await TenantModel.findById(tenantId);
-    if (current?.trialStartedAt && current.trialEndsAt) {
-      const activatedMailboxes = await releaseBillingHolds(tenantId, actor);
+    // A returning Tenant had a Trial all along; it's done only once the new subscription is recorded.
+    if (current?.trialStartedAt && current.trialEndsAt && (!returning || current.stripeSubscriptionId === subscriptionId)) {
+      // Held mailboxes weren't on a resubscribe Checkout's bill, so they stay held.
+      const activatedMailboxes = session.metadata?.resubscribe === 'true' ? 0 : await releaseBillingHolds(tenantId, actor);
       return { success: true, trialStartedAt: current.trialStartedAt, trialEndsAt: current.trialEndsAt, stripeSubscriptionId: current.stripeSubscriptionId || null, alreadyStarted: true, activatedMailboxes };
     }
     throw new BillingError('Activation is already in progress — try again in a moment', 'ACTIVATION_IN_PROGRESS', 409);
@@ -785,6 +815,9 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
 
   try {
     const subscription = await stripeClient.retrieveSubscriptionExpanded(subscriptionId);
+    if (returning && subscription.status === 'canceled') {
+      throw new BillingError('This checkout is for a subscription that has ended', 'SUBSCRIPTION_ENDED', 409);
+    }
     const trialStartedAt = subscription.trial_start ? new Date(subscription.trial_start * 1000) : new Date();
     const trialEndsAt = subscription.trial_end
       ? new Date(subscription.trial_end * 1000)
@@ -793,7 +826,8 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
     // Checked before anything is recorded, so a refused card leaves no trial and no released mailboxes.
     const card = subscription.default_payment_method;
     const fingerprint = card && typeof card !== 'string' ? (card.card as any)?.fingerprint : undefined;
-    if (fingerprint) {
+    // No Trial for a returning Tenant, so no Trial to guard; its first card stays on record.
+    if (fingerprint && !returning) {
       const prior = await TenantModel.findOne({
         _id: { $ne: claimed._id },
         cardFingerprint: fingerprint,
@@ -812,9 +846,14 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
     }
 
     claimed.stripeSubscriptionId = subscription.id;
-    claimed.trialStartedAt = trialStartedAt;
-    claimed.trialEndsAt = trialEndsAt;
-    if (fingerprint) claimed.cardFingerprint = fingerprint;
+    if (returning) {
+      // Cancelled mid-trial: the Trial ends now, since the new subscription bills straight away.
+      if (claimed.trialEndsAt && claimed.trialEndsAt.getTime() > Date.now()) claimed.trialEndsAt = new Date();
+    } else {
+      claimed.trialStartedAt = trialStartedAt;
+      claimed.trialEndsAt = trialEndsAt;
+      if (fingerprint) claimed.cardFingerprint = fingerprint;
+    }
     await claimed.save();
 
     if (card && typeof card !== 'string' && card.card) {
@@ -836,6 +875,8 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
       const planId = meta?.planId;
       if (!domainId || !planId) continue;
       const plan = await PlanModel.findById(planId);
+      // Billed again, so the mail the cancellation stopped comes back (before counting users).
+      if (returning) await reactivateDomainForPayment(domainId, tenantId);
       await DomainSubscriptionModel.findOneAndUpdate(
         { domainId },
         {
@@ -844,9 +885,10 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
           planId,
           stripeSubscriptionId: subscription.id,
           stripeSubscriptionItemId: item.id,
-          status: 'trialing',
-          currentPeriodEnd: trialEndsAt,
-          trialEnd: trialEndsAt,
+          status: returning ? mapStripeStatus(subscription.status) : 'trialing',
+          currentPeriodEnd: returning ? (item.current_period_end ? new Date(item.current_period_end * 1000) : null) : trialEndsAt,
+          trialEnd: returning ? null : trialEndsAt,
+          retentionEndsAt: null,
           cancelAtPeriodEnd: false,
           activeUserCount: await MailboxModel.countDocuments({ domainId, status: 'active', billingHold: false }),
           maxUsers: plan?.seatCount ?? plan?.maxUsers ?? 10,
@@ -862,10 +904,10 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
       actorRole: actor.role,
       actorEmail: actor.email,
       tenantId,
-      action: 'BILLING_TRIAL_STARTED',
+      action: returning ? 'BILLING_RESUBSCRIBED' : 'BILLING_TRIAL_STARTED',
       resource: 'TENANT',
       resourceId: tenantId,
-      metadata: { trialDays: Math.round((trialEndsAt.getTime() - trialStartedAt.getTime()) / 86400000), stripeSubscriptionId: subscription.id, domainsCount: covered.size },
+      metadata: { trialDays: returning ? 0 : Math.round((trialEndsAt.getTime() - trialStartedAt.getTime()) / 86400000), stripeSubscriptionId: subscription.id, domainsCount: covered.size },
     });
   } finally {
     await releaseActivationLock(tenantId);
@@ -874,7 +916,8 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
   const tenant = (await TenantModel.findById(tenantId)) as ITenant;
   const planned = await DomainModel.find({ tenantId, planId: { $ne: null } });
   for (const domain of planned) await ensureDomainSubscription(domain, actor);
-  const activatedMailboxes = await releaseBillingHolds(tenantId, actor);
+  // Held mailboxes stay held for a returning Tenant: they were never on the bill it just paid.
+  const activatedMailboxes = returning ? 0 : await releaseBillingHolds(tenantId, actor);
   fireAndForgetActivation(planned, actor);
 
   const promo = session.metadata?.promoCode;
@@ -1631,8 +1674,8 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         try {
           await adoptActivationSession(session.metadata.tenantId, session, SYSTEM_ACTOR);
         } catch (err) {
-          // Refused, and its subscription is cancelled: nothing left for a retry to do.
-          if (!(err instanceof BillingError && err.code === 'TRIAL_ALREADY_USED_FOR_CARD')) throw err;
+          // Refused, and its subscription is cancelled (or long ended): nothing left for a retry to do.
+          if (!(err instanceof BillingError && ['TRIAL_ALREADY_USED_FOR_CARD', 'SUBSCRIPTION_ENDED'].includes(err.code))) throw err;
         }
         break;
       }

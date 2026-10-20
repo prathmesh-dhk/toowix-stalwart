@@ -87,8 +87,11 @@ export class ToowixStripeClient {
         },
       })),
       subscription_data: {
-        trial_period_days: params.trialDays,
-        trial_settings: { end_behavior: { missing_payment_method: 'cancel' } },
+        // Stripe wants at least one Trial day when it's set at all; 0 means charge now.
+        ...(params.trialDays > 0 && {
+          trial_period_days: params.trialDays,
+          trial_settings: { end_behavior: { missing_payment_method: 'cancel' as const } },
+        }),
         metadata: params.metadata,
       },
       metadata: params.metadata,

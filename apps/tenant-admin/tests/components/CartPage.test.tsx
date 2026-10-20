@@ -26,6 +26,7 @@ const baseCart: CartData = {
   trial: { started: false, startedAt: null, endsAt: null, daysRemaining: 0, isTrialing: false },
   hasPaymentMethod: false,
   paymentMethod: null,
+  subscriptionEnded: false,
   requiresActivation: false,
   pendingMailboxes: [],
   domains: [],
@@ -181,6 +182,29 @@ describe('CartPage', () => {
     expect(screen.queryByRole('button', { name: /ready for checkout/i })).not.toBeInTheDocument();
     await userEvent.click(screen.getAllByRole('button', { name: /back to dashboard/i })[1]);
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it('after the subscription ended it offers a Checkout that charges today, with no trial or promo code', async () => {
+    const ended: CartData = {
+      ...pendingCart,
+      requiresActivation: false,
+      pendingMailboxes: [],
+      subscriptionEnded: true,
+      trial: { started: true, startedAt: 'x', endsAt: new Date(Date.now() - 86400000).toISOString(), daysRemaining: 0, isTrialing: false },
+    };
+    vi.mocked(api.getCart).mockResolvedValue(ended);
+    vi.mocked(api.startCartCheckout).mockResolvedValue({ url: 'https://checkout.stripe.com/c/pay/cs_back' });
+    const original = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, href: '', search: '', pathname: '/cart' } });
+
+    render(<CartPage onBack={vi.fn()} />);
+
+    expect(await screen.findByText(/subscription has ended/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing is charged today/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /promo code/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /ready for checkout/i }));
+    await waitFor(() => expect(window.location.href).toBe('https://checkout.stripe.com/c/pay/cs_back'));
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
   });
 
   it('during the trial a promo code extends it and the new end date shows', async () => {

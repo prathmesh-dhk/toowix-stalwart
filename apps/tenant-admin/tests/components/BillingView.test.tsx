@@ -34,6 +34,7 @@ const cart: CartData = {
   trial: { started: true, startedAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-10-31T00:00:00.000Z', daysRemaining: 40, isTrialing: true },
   hasPaymentMethod: true,
   paymentMethod: { brand: 'visa', last4: '4242' },
+  subscriptionEnded: false,
   requiresActivation: false,
   pendingMailboxes: [],
   domains: [

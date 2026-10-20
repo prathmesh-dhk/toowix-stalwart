@@ -320,6 +320,92 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(vi.mocked(stripeClient.retrieveSubscriptionExpanded)).toHaveBeenCalledTimes(1);
   });
 
+  it('after its subscription ended, a Tenant comes back through a Checkout that charges now (no second Trial)', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const { stalwartClient } = await import('../src/stalwart/client');
+    vi.spyOn(stalwartClient, 'updateDomainStatus').mockResolvedValue();
+    vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue();
+    vi.mocked(stripeClient.addDomainSubscriptionItem).mockClear();
+    vi.mocked(stripeClient.createActivationCheckoutSession).mockClear();
+    const trialStartedAt = new Date(Date.now() - 120 * 86400000);
+    const trialEndsAt = new Date(Date.now() - 60 * 86400000);
+    await TenantModel.updateOne(
+      { _id: tenantId },
+      { stripeCustomerId: 'cus_test', stripeSubscriptionId: 'sub_old', trialStartedAt, trialEndsAt, cardFingerprint: 'fp_old' }
+    );
+    await DomainModel.updateOne({ _id: domainId }, { status: 'suspended' });
+    await DomainSubscriptionModel.create({
+      domainId, tenantId, planId, stripeSubscriptionId: 'sub_old', stripeSubscriptionItemId: 'si_old', status: 'canceled', retentionEndsAt: new Date(),
+    });
+    const back = await MailboxModel.create({ tenantId, domainId, localPart: 'back', address: 'back@acme.com', status: 'suspended' });
+    const left = await MailboxModel.create({ tenantId, domainId, localPart: 'left', address: 'left@acme.com', status: 'suspended', adminSuspended: true });
+    const held = await MailboxModel.create({ tenantId, domainId, localPart: 'held', address: 'held@acme.com', status: 'suspended', billingHold: true });
+    const auth = { Authorization: `Bearer ${tenantAdminToken}` };
+
+    // Picking a Plan no longer reaches for the ended subscription; activating points at the Cart.
+    const replan = await request(app).post(`/api/tenants/me/billing/domains/${domainId}/select-plan`).set(auth).send({ planId });
+    expect(replan.status).toBe(200);
+    expect(stripeClient.addDomainSubscriptionItem).not.toHaveBeenCalled();
+    const attach = await request(app).post(`/api/tenants/me/billing/domains/${domainId}/attach-payment`).set(auth);
+    expect(attach.status).toBe(409);
+    expect(attach.body.error).toBe('SUBSCRIPTION_ENDED');
+    const cart = (await request(app).get('/api/tenants/me/cart').set(auth)).body;
+    expect(cart.subscriptionEnded).toBe(true);
+    // The Cart lists what paying brings back: 'back', not the mailbox the Tenant Admin suspended.
+    expect(cart.domains[0]).toMatchObject({ activeUsers: 0, pendingUsers: 1 });
+
+    // Promo codes lengthen the Trial, which this Tenant has used.
+    const promo = await request(app).post('/api/tenants/me/cart/checkout').set(auth).send({ promoCode: 'BONUS30' });
+    expect(promo.status).toBe(400);
+    expect(promo.body.error).toBe('INVALID_COUPON');
+
+    const checkout = await request(app).post('/api/tenants/me/cart/checkout').set(auth).send({});
+    expect(checkout.status).toBe(200);
+    expect(stripeClient.createActivationCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trialDays: 0,
+        lines: [expect.objectContaining({ domainId, planId, quantity: 1 })],
+        metadata: expect.objectContaining({ resubscribe: 'true' }),
+      })
+    );
+
+    // The old, cancelled subscription is never adopted again.
+    vi.mocked(stripeClient.retrieveCheckoutSession).mockResolvedValue({ metadata: { tenantId, purpose: 'cart_activation', resubscribe: 'true' }, status: 'complete', subscription: 'sub_new' } as any);
+    vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValueOnce({ id: 'sub_old', status: 'canceled', items: { data: [] } } as any);
+    expect((await request(app).post('/api/tenants/me/cart/complete').set(auth).send({ sessionId: 'cs_stale' })).status).toBe(409);
+
+    const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
+    vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValueOnce({
+      id: 'sub_new',
+      status: 'active',
+      trial_start: null,
+      trial_end: null,
+      default_payment_method: { id: 'pm_back', card: { brand: 'visa', last4: '1881', exp_month: 12, exp_year: 2031, fingerprint: 'fp_new' } },
+      items: { data: [{ id: 'si_new', current_period_end: periodEnd, price: { product: { metadata: { domainId, planId } } } }] },
+    } as any);
+    const done = await request(app).post('/api/tenants/me/cart/complete').set(auth).send({ sessionId: 'cs_back' });
+
+    expect(done.status).toBe(200);
+    const tenant = (await TenantModel.findById(tenantId))!;
+    expect(tenant.stripeSubscriptionId).toBe('sub_new');
+    expect(tenant.trialStartedAt!.getTime()).toBe(trialStartedAt.getTime());
+    expect(tenant.cardFingerprint).toBe('fp_old');
+    const sub = await DomainSubscriptionModel.findOne({ domainId });
+    expect(sub).toMatchObject({ stripeSubscriptionId: 'sub_new', stripeSubscriptionItemId: 'si_new', status: 'active', trialEnd: null, retentionEndsAt: null, activeUserCount: 1 });
+    expect(sub!.currentPeriodEnd!.getTime()).toBe(periodEnd * 1000);
+    expect((await DomainModel.findById(domainId))?.status).toBe('active');
+    expect((await MailboxModel.findById(back._id))?.status).toBe('active');
+    expect((await MailboxModel.findById(left._id))?.status).toBe('suspended');
+    expect((await MailboxModel.findById(held._id))?.status).toBe('suspended');
+    expect(stripeClient.addDomainSubscriptionItem).not.toHaveBeenCalled();
+    expect(done.body.cart.subscriptionEnded).toBe(false);
+
+    // The webhook landed first, so the return trip is the second adopter: still nothing released.
+    const again = await request(app).post('/api/tenants/me/cart/complete').set(auth).send({ sessionId: 'cs_back' });
+    expect(again.body.alreadyStarted).toBe(true);
+    expect((await MailboxModel.findById(held._id))?.status).toBe('suspended');
+  });
+
   it('checkout.session.completed webhook adopts the same way (whichever lands first wins)', async () => {
     const { stripeClient } = await import('../src/stripe/client');
     const { handleWebhookEvent } = await import('../src/services/billing.service');
@@ -608,6 +694,14 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     });
   });
 
+  // A domain cancelled on its own leaves the subscription running for the rest.
+  async function liveSiblingOnSharedSubscription() {
+    const other = await DomainModel.create({ tenantId, domainName: 'other.com', planId, status: 'active' });
+    await DomainSubscriptionModel.create({
+      domainId: other._id, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_other', status: 'trialing',
+    });
+  }
+
   it('picking a plan again for a cancelled, suspended domain bills it again and brings its mail back', async () => {
     const { stripeClient } = await import('../src/stripe/client');
     const { stalwartClient } = await import('../src/stalwart/client');
@@ -622,6 +716,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     await DomainSubscriptionModel.create({
       domainId, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_old', status: 'canceled',
     });
+    await liveSiblingOnSharedSubscription();
     const mailbox = await MailboxModel.create({ tenantId, domainId, localPart: 'back', address: 'back@acme.com', status: 'suspended', billingHold: false });
     // Suspended by the Tenant Admin before the cancellation: stays off and unbilled.
     const left = await MailboxModel.create({ tenantId, domainId, localPart: 'left', address: 'left@acme.com', status: 'suspended', adminSuspended: true });
@@ -654,6 +749,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     await DomainSubscriptionModel.create({
       domainId, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_old', status: 'canceled',
     });
+    await liveSiblingOnSharedSubscription();
     const mailbox = await MailboxModel.create({ tenantId, domainId, localPart: 'still', address: 'still@acme.com', status: 'suspended', billingHold: false });
     vi.mocked(stripeClient.addDomainSubscriptionItem).mockRejectedValueOnce(new Error('Stripe is unavailable'));
 

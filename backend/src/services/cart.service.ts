@@ -4,6 +4,7 @@ import { PlanModel, IPlan } from '../db/models/Plan';
 import { MailboxModel } from '../db/models/Mailbox';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { HELD_MAILBOX_TTL_DAYS } from './mailbox.service';
+import { hasEndedSubscription } from './billing.service';
 
 export type CartChangeKind =
   | 'USER_ADDED'
@@ -20,6 +21,8 @@ export interface CartSummary {
     daysRemaining: number;
     isTrialing: boolean;
   };
+  /** The whole subscription ended (cancellation took effect): the Cart offers a new Checkout. */
+  subscriptionEnded: boolean;
   hasPaymentMethod: boolean;
   paymentMethod: { brand: string; last4: string } | null;
   /** Mailboxes created before activation — suspended until the tenant confirms a card. */
@@ -88,14 +91,19 @@ export async function getCartSummary(tenantId: string): Promise<CartSummary> {
   }
   const planOf = (d: IDomain): IPlan | null => (d.planId ? plans.get(d.planId.toString()) || null : null);
 
-  const mailboxes = await MailboxModel.find({ tenantId }).select('domainId address status billingHold createdAt');
+  const mailboxes = await MailboxModel.find({ tenantId }).select('domainId address status billingHold adminSuspended createdAt');
+  const subscriptionEnded = !!tenant && (await hasEndedSubscription(tenant));
+  // Waiting on a payment: held mailboxes before the first one; after the subscription ended, every
+  // mailbox it suspended (an admin's own suspensions stay off).
+  const waiting = (m: (typeof mailboxes)[number]) =>
+    subscriptionEnded ? m.status === 'suspended' && !m.billingHold && !m.adminSuspended : !!m.billingHold;
   const domainNameById = new Map(domains.map((d) => [d._id.toString(), d.domainName]));
 
   const rows = domains.map((d) => {
     const plan = planOf(d);
     const mine = mailboxes.filter((m) => m.domainId.toString() === d._id.toString());
     const activeUsers = mine.filter((m) => m.status === 'active').length;
-    const pendingUsers = mine.filter((m) => m.billingHold).length;
+    const pendingUsers = mine.filter(waiting).length;
     const rate = ratePaise(plan);
     return {
       domainId: d._id.toString(),
@@ -108,7 +116,7 @@ export async function getCartSummary(tenantId: string): Promise<CartSummary> {
       ratePaise: rate,
       monthlyPaise: (activeUsers + pendingUsers) * rate,
       users: mine
-        .map((m) => ({ id: m._id.toString(), address: m.address, status: m.status as 'active' | 'suspended', pendingActivation: !!m.billingHold }))
+        .map((m) => ({ id: m._id.toString(), address: m.address, status: m.status as 'active' | 'suspended', pendingActivation: waiting(m) }))
         .sort((a, b) => a.address.localeCompare(b.address)),
     };
   });
@@ -183,6 +191,7 @@ export async function getCartSummary(tenantId: string): Promise<CartSummary> {
       daysRemaining: isTrialing ? Math.ceil((endsAt!.getTime() - now) / DAY_MS) : 0,
       isTrialing,
     },
+    subscriptionEnded,
     hasPaymentMethod: !!card,
     paymentMethod: card ? { brand: card.brand, last4: card.last4 } : null,
     requiresActivation: !started && pendingMailboxes.length > 0,
