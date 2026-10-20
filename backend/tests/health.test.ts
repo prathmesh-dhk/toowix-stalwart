@@ -22,6 +22,6 @@ describe('GET /healthz', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.services.database).toBe('healthy');
-    expect(['reachable', 'unreachable', 'timeout', 'unknown']).toContain(res.body.services.stalwart);
+    expect(['reachable', 'unhealthy', 'unreachable', 'timeout', 'unknown']).toContain(res.body.services.stalwart);
   });
 });

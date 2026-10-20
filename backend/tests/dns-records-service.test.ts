@@ -6,6 +6,10 @@ import {
   buildZoneFileText,
 } from '../src/services/dns-records.service';
 import { StalwartDkimKey } from '../src/stalwart/types';
+import { config } from '../src/config';
+
+// The expectations use the default mail host; a developer's .env (MAIL_HOSTNAME) must not leak in.
+config.mailHostname = 'mail.toowix.com';
 
 describe('dns-records.service — buildRequiredDnsRecords', () => {
   const dkimKeys: StalwartDkimKey[] = [

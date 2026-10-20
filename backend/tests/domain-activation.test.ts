@@ -25,6 +25,10 @@ vi.mock('dns/promises', () => ({
 }));
 
 import { resolveMx, resolveTxt, resolveCname, resolveSrv, resolveCaa } from 'dns/promises';
+import { config } from '../src/config';
+
+// The expectations use the default mail host; a developer's .env (MAIL_HOSTNAME) must not leak in.
+config.mailHostname = 'mail.toowix.com';
 
 let mongoServer: MongoMemoryServer;
 
@@ -67,6 +71,9 @@ describe('domain-activation.service', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks();
+    // Activation also toggles the domain and its DKIM on Stalwart; never let a test reach the real server.
+    vi.spyOn(stalwartClient, 'updateDomainStatus').mockResolvedValue(undefined);
+    vi.spyOn(stalwartClient, 'ensureAutomaticDkim').mockResolvedValue(undefined);
     await TenantModel.deleteMany({});
     await DomainModel.deleteMany({});
     await DomainDnsCredentialModel.deleteMany({});
