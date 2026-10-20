@@ -9,7 +9,8 @@ import {
 } from '../src/stalwart/errors';
 import { config } from '../src/config';
 
-// Probe if live Stalwart server is reachable on the configured port
+// Live server: runs only with STALWART_LIVE=1 (it creates and deletes a test domain and account
+// there; see tests/setup/no-live-stalwart.ts). Probe if live Stalwart server is reachable on the configured port
 async function checkStalwartReachable(): Promise<boolean> {
   return new Promise((resolve) => {
     try {
@@ -47,7 +48,8 @@ describe.skipIf(!isStalwartOnline)('Phase 5: Stalwart Integration Client (Live S
   it('should list existing domains from Stalwart', async () => {
     const domains = await stalwartClient.listDomains();
     expect(domains.length).toBeGreaterThan(0);
-    const primary = domains.find(d => d.name === 'toowix.test');
+    // The platform's own mail domain exists on any Stalwart this app is pointed at.
+    const primary = domains.find(d => d.name === config.platformMailDomain);
     expect(primary).toBeDefined();
   });
 

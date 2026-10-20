@@ -8,6 +8,7 @@ export default defineConfig({
     testTimeout: 20000,
     hookTimeout: 20000,
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/setup/no-live-stalwart.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
