@@ -736,6 +736,29 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect((await DomainModel.findById(domainId))?.status).toBe('active');
   });
 
+  it('the summary lists a domain cancelled on its own as cancelled, at zero and out of the total', async () => {
+    await TenantModel.updateOne({ _id: tenantId }, { stripeSubscriptionId: 'sub_shared' });
+    await liveSiblingOnSharedSubscription();
+    await DomainSubscriptionModel.updateOne({ stripeSubscriptionItemId: 'si_other' }, { activeUserCount: 2 });
+    await DomainSubscriptionModel.create({
+      domainId, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_old', status: 'canceled', activeUserCount: 3,
+    });
+    // A row left over from an earlier subscription isn't part of this bill.
+    const old = await DomainModel.create({ tenantId, domainName: 'old.com', planId, status: 'suspended' });
+    await DomainSubscriptionModel.create({
+      domainId: old._id, tenantId, planId, stripeSubscriptionId: 'sub_ended', stripeSubscriptionItemId: 'si_ended', status: 'canceled',
+    });
+
+    const res = await request(app).get('/api/tenants/me/billing/summary').set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('trialing');
+    expect(res.body.totalMonthlyPaise).toBe(200000);
+    expect(res.body.domains).toHaveLength(2);
+    expect(res.body.domains.find((d: any) => d.domainId === domainId)).toMatchObject({ cancelled: true, monthlySubtotalPaise: 0 });
+    expect(res.body.domains.find((d: any) => d.domainId !== domainId)).toMatchObject({ cancelled: false, monthlySubtotalPaise: 200000 });
+  });
+
   it('when Stripe refuses the new item, the cancelled domain stays suspended', async () => {
     const { stripeClient } = await import('../src/stripe/client');
     const { stalwartClient } = await import('../src/stalwart/client');

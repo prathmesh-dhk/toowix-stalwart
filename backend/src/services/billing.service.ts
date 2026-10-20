@@ -1142,17 +1142,20 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     maxUsers: number;
     pricePerUserMonthlyPaise: number;
     monthlySubtotalPaise: number;
+    // Cancelled on its own while the subscription runs on for other domains.
+    cancelled: boolean;
     // A scheduled downgrade takes effect when the current period ends.
     pendingDowngrade: { planId: string; planName: string; effectiveAt: Date | null } | null;
   }>;
 }> {
   const tenant = await TenantModel.findById(tenantId);
-  const subs = await DomainSubscriptionModel.find({ tenantId, status: { $ne: 'canceled' } })
+  const rows = await DomainSubscriptionModel.find({ tenantId })
     .populate('planId')
     .populate('domainId')
     .populate('pendingDowngradePlanId');
+  const live = rows.filter((s) => s.status !== 'canceled');
 
-  if (subs.length === 0) {
+  if (live.length === 0) {
     if (!isBillingEnabled()) {
       const allDomains = await DomainModel.find({ tenantId });
       const domainBreakdown = await Promise.all(
@@ -1170,6 +1173,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
             maxUsers: plan?.seatCount ?? plan?.maxUsers ?? 10,
             pricePerUserMonthlyPaise: rate,
             monthlySubtotalPaise: activeCount * rate,
+            cancelled: false,
             pendingDowngrade: null,
           };
         })
@@ -1200,8 +1204,11 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     };
   }
 
-  const primary = subs[0];
+  const primary = live[0];
+  // Domains cancelled on their own stay listed (at zero) so they can be billed again.
+  const subs = [...live, ...rows.filter((s) => s.status === 'canceled' && s.stripeSubscriptionId === primary.stripeSubscriptionId)];
   const domainBreakdown = subs.map((sub) => {
+    const cancelled = sub.status === 'canceled';
     const plan = sub.planId as unknown as IPlan | null;
     const domain = sub.domainId as unknown as IDomain | null;
     const pending = sub.pendingDowngradePlanId as unknown as IPlan | null;
@@ -1216,7 +1223,8 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
       activeUserCount: activeCount,
       maxUsers: plan?.seatCount ?? plan?.maxUsers ?? sub.maxUsers ?? 10,
       pricePerUserMonthlyPaise: rate,
-      monthlySubtotalPaise: activeCount * rate,
+      monthlySubtotalPaise: cancelled ? 0 : activeCount * rate,
+      cancelled,
       pendingDowngrade: pending
         ? { planId: pending._id.toString(), planName: pending.name, effectiveAt: sub.currentPeriodEnd ?? null }
         : null,
@@ -1230,7 +1238,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     trialEnd: primary.trialEnd ?? null,
     trialStartedAt: tenant?.trialStartedAt ?? null,
     cancelAtPeriodEnd: primary.cancelAtPeriodEnd,
-    paymentActionUrl: subs.find((s) => s.paymentActionUrl)?.paymentActionUrl ?? null,
+    paymentActionUrl: live.find((s) => s.paymentActionUrl)?.paymentActionUrl ?? null,
     totalMonthlyPaise: domainBreakdown.reduce((sum, d) => sum + d.monthlySubtotalPaise, 0),
     domains: domainBreakdown,
   };

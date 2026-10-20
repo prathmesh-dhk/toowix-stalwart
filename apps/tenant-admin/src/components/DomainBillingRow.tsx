@@ -15,10 +15,15 @@ export interface DomainBillingRowProps {
   onChangePlan?: () => void;
   /** Set only alongside a pending downgrade. */
   onKeepCurrentPlan?: () => void;
+  /** Set only for a domain on a billed subscription. */
+  onCancel?: () => void;
+  /** Cancelled on its own: off the bill, with Choose a plan again. */
+  cancelled?: boolean;
+  onChooseAgain?: () => void;
 }
 
 /** One domain's billing on the Billing page. Both Billing views render domains through this. */
-export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan, onKeepCurrentPlan }) => {
+export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan, onKeepCurrentPlan, onCancel, cancelled, onChooseAgain }) => {
   const used = d.activeUsers + (d.pendingUsers || 0);
   const pct = Math.min(100, Math.round((used / (d.maxUsers || 1)) * 100));
   const pendingBadge = pendingDowngrade && (
@@ -35,15 +40,32 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
       )}
     </div>
   );
-  const changePlanButton = onChangePlan && (
+  const monthlyPaise = cancelled ? 0 : d.monthlyPaise;
+  const action = (label: string, onClick: () => void, danger = false) => (
     <button
       type="button"
-      onClick={onChangePlan}
-      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+      onClick={onClick}
+      className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
+        danger ? 'text-rose-600 hover:text-rose-700 hover:bg-rose-50' : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'
+      }`}
     >
-      Change plan
+      {label}
     </button>
   );
+  const cancelledBadge = cancelled && (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+      Cancelled
+    </span>
+  );
+  const actions =
+    cancelled ? (
+      onChooseAgain && action('Choose a plan again', onChooseAgain)
+    ) : (onChangePlan || onCancel) ? (
+      <span className="inline-flex gap-1">
+        {onChangePlan && action('Change plan', onChangePlan)}
+        {onCancel && action('Cancel this domain', onCancel, true)}
+      </span>
+    ) : null;
 
   if (layout === 'tiles') {
     return (
@@ -54,6 +76,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
             <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Tier</span>
             <div className="text-base font-bold text-slate-900 mt-1 flex items-center gap-1.5">
               <span>{plan?.name || d.planName || 'Standard'}</span>
+              {cancelledBadge}
               {plan?.badge && (
                 <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
                   {plan.badge}
@@ -64,7 +87,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
               Capped at {d.maxUsers} seats
             </div>
             {pendingBadge}
-            {changePlanButton && <div className="mt-2 -ml-2.5">{changePlanButton}</div>}
+            {actions && <div className="mt-2 -ml-2.5">{actions}</div>}
           </div>
 
           {/* Tile 2: Mailbox Capacity */}
@@ -92,7 +115,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
           <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
             <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Monthly Cost</span>
             <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-              {formatPaise(d.monthlyPaise)}
+              {formatPaise(monthlyPaise)}
               <span className="text-xs font-normal text-slate-500 ml-1">/ mo</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1">Consolidated on master bill</div>
@@ -117,6 +140,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
           {d.planName || 'Standard'}
         </span>
+        {cancelledBadge && <span className="ml-1">{cancelledBadge}</span>}
         {pendingBadge}
       </td>
 
@@ -150,12 +174,12 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
       {/* Monthly Subtotal */}
       <td style={{ textAlign: 'right' }}>
         <span className="tabular-nums font-bold text-slate-900 text-xs">
-          {formatPaise(d.monthlyPaise)}
+          {formatPaise(monthlyPaise)}
           <span className="text-slate-400 font-normal ml-0.5">/mo</span>
         </span>
       </td>
 
-      <td style={{ textAlign: 'right' }}>{changePlanButton}</td>
+      <td style={{ textAlign: 'right' }}>{actions}</td>
     </tr>
   );
 };

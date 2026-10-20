@@ -16,6 +16,7 @@ vi.mock('../../src/api', () => ({
     downgradeDomainPlan: vi.fn(),
     keepCurrentPlan: vi.fn(),
     cancelDomainSubscription: vi.fn(),
+    selectDomainPlan: vi.fn(),
     cancelTenantSubscription: vi.fn(),
     listPaymentMethods: vi.fn().mockResolvedValue({ paymentMethods: [], defaultPaymentMethodId: null }),
     getBillingConfig: vi.fn().mockResolvedValue({ publishableKey: '', billingEnabled: false }),
@@ -235,7 +236,7 @@ describe("BillingView: changing a domain's Plan", () => {
   ];
   const billedDomain = (over: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary['domains'][number] => ({
     domainId: 'dom-1', domainName: 'acme.com', planId: 'plan-starter', planName: 'Starter', seatCount: 10, activeUserCount: 5, maxUsers: 10,
-    pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 50000, pendingDowngrade: null, ...over,
+    pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 50000, cancelled: false, pendingDowngrade: null, ...over,
   });
   const billedSummary = (over: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary => ({
     ...summary, status: 'active', currentPeriodEnd: periodEnd, domains: [billedDomain(over)],
@@ -396,5 +397,85 @@ describe("BillingView: changing a domain's Plan", () => {
     expect(await within(dialog).findByText(/exceeds the plan limit of 10/)).toBeInTheDocument();
     expect(rowPlan('Starter')).toBeInTheDocument();
     expect(screen.queryByText(/Moves to/)).not.toBeInTheDocument();
+  });
+
+  describe('cancelling a domain and choosing a plan again', () => {
+    const rowOf = async (name: string) => (await screen.findByText(name)).closest('tr') as HTMLElement;
+    const twoBilled = (first: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary => ({
+      ...billedSummary(first),
+      domains: [billedDomain(first), billedDomain({ domainId: 'dom-2', domainName: 'acme.in', planId: 'plan-business', planName: 'Business' })],
+    });
+
+    it('with other domains billed, says mail stops now; confirming cancels the domain and the row shows cancelled', async () => {
+      vi.mocked(api.getCart).mockResolvedValue(cart);
+      vi.mocked(api.getTenantBillingSummary).mockResolvedValue(twoBilled());
+      vi.mocked(api.cancelDomainSubscription).mockImplementation(async () => {
+        vi.mocked(api.getTenantBillingSummary).mockResolvedValue(twoBilled({ cancelled: true, monthlySubtotalPaise: 0 }));
+        return { success: true };
+      });
+      renderOrgView();
+
+      await userEvent.click(within(await rowOf('acme.com')).getByRole('button', { name: 'Cancel this domain' }));
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toHaveTextContent("acme.com's mail stops now and it comes off your bill.");
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel domain' }));
+
+      expect(api.cancelDomainSubscription).toHaveBeenCalledWith('dom-1');
+      expect(api.cancelTenantSubscription).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      const row = await rowOf('acme.com');
+      expect(await within(row).findByText('Cancelled')).toBeInTheDocument();
+      expect(row).toHaveTextContent('₹0');
+      expect(within(row).getByRole('button', { name: 'Choose a plan again' })).toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: /change plan|cancel this domain/i })).not.toBeInTheDocument();
+    });
+
+    it('as the only billed domain, says the subscription ends at period end and mail works until then', async () => {
+      renderOrgView();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Cancel this domain' }));
+
+      expect(screen.getByRole('dialog')).toHaveTextContent(
+        'This cancels your subscription at the end of the period, on 30 Nov 2026. Mail keeps working until then.'
+      );
+    });
+
+    it('closing the confirm cancels nothing', async () => {
+      renderOrgView();
+      await userEvent.click(await screen.findByRole('button', { name: 'Cancel this domain' }));
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep domain' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(api.cancelDomainSubscription).not.toHaveBeenCalled();
+    });
+
+    it('Choose a plan again picks a Plan through Plan selection and the domain is billed again', async () => {
+      vi.mocked(api.getTenantBillingSummary).mockResolvedValue(twoBilled({ cancelled: true, monthlySubtotalPaise: 0 }));
+      vi.mocked(api.selectDomainPlan).mockImplementation(async () => {
+        vi.mocked(api.getTenantBillingSummary).mockResolvedValue(twoBilled({ planId: 'plan-business', planName: 'Business' }));
+        return { success: true } as any;
+      });
+      renderOrgView();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Choose a plan again' }));
+      const dialog = screen.getByRole('dialog');
+      // Its old Plan is a choice like any other.
+      expect(option(dialog, 'Starter')).toBeEnabled();
+      expect(option(dialog, 'Business')).toHaveTextContent('Billed from today; its mail switches back on');
+      await userEvent.click(option(dialog, 'Business'));
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+
+      expect(api.selectDomainPlan).toHaveBeenCalledWith('dom-1', 'plan-business');
+      expect(api.upgradeDomainPlan).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(await screen.findByRole('button', { name: /change plan/i })).toBeInTheDocument();
+      expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+    });
+
+    it('is offered in the single-domain view too', async () => {
+      const activeDomain = { id: 'dom-1', domainName: 'acme.com', status: 'active', mailboxCount: 5, mailboxLimit: 10, planId: 'plan-starter', planName: 'Starter' } as any;
+      render(<BillingView activeDomain={activeDomain} onOpenCart={vi.fn()} />);
+      expect(await screen.findByRole('button', { name: 'Cancel this domain' })).toBeInTheDocument();
+    });
   });
 });

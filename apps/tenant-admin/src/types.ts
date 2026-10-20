@@ -155,6 +155,8 @@ export interface TenantBillingSummary {
     maxUsers: number;
     pricePerUserMonthlyPaise: number;
     monthlySubtotalPaise: number;
+    // Cancelled on its own while the subscription runs on for other domains.
+    cancelled: boolean;
     // Takes effect when the current period ends.
     pendingDowngrade: { planId: string; planName: string; effectiveAt: string | null } | null;
   }>;

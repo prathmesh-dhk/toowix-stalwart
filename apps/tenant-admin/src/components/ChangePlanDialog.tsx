@@ -11,12 +11,14 @@ export interface ChangePlanDialogProps {
   domain: BillingDomain;
   plans: Plan[];
   currentPeriodEnd: string | null;
+  /** A domain cancelled on its own: any Plan puts it back on the bill now, through Plan selection. */
+  chooseAgain?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
 
 /** Moves a billed domain to another Plan: a pricier Plan upgrades now, a cheaper one is scheduled for period end. */
-export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plans, currentPeriodEnd, onClose, onChanged }) => {
+export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plans, currentPeriodEnd, chooseAgain, onClose, onChanged }) => {
   const [selected, setSelected] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +30,8 @@ export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plan
     setBusy(true);
     setError(null);
     try {
-      await (isUpgrade(selected) ? api.upgradeDomainPlan : api.downgradeDomainPlan)(domain.domainId, selected.id);
+      const change = chooseAgain ? api.selectDomainPlan : isUpgrade(selected) ? api.upgradeDomainPlan : api.downgradeDomainPlan;
+      await change(domain.domainId, selected.id);
       onChanged();
     } catch (err: any) {
       setError(err?.message || 'Could not change the plan.');
@@ -40,7 +43,7 @@ export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plan
     <Modal
       isOpen
       onClose={onClose}
-      title={`Change plan for ${domain.domainName}`}
+      title={`${chooseAgain ? 'Choose a plan' : 'Change plan'} for ${domain.domainName}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -53,7 +56,7 @@ export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plan
         {plans
           .filter((p) => p.isActive)
           .map((p) => {
-            const current = p.id === domain.planId;
+            const current = !chooseAgain && p.id === domain.planId;
             const tooSmall = p.seatCount < domain.activeUsers;
             const isSelected = selected?.id === p.id;
             return (
@@ -78,6 +81,8 @@ export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plan
                   <div className={`text-[11px] mt-1 ${tooSmall ? 'text-rose-700' : 'text-slate-500'}`}>
                     {tooSmall
                       ? `Allows up to ${p.seatCount} Active Users; ${domain.domainName} has ${domain.activeUsers}`
+                      : chooseAgain
+                      ? 'Billed from today; its mail switches back on'
                       : isUpgrade(p)
                       ? 'Starts now; the difference is prorated on your next invoice'
                       : `Starts on ${formatDate(currentPeriodEnd)}`}
