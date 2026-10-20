@@ -293,6 +293,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ planId }),
     }),
+  keepCurrentPlan: (domainId: string) =>
+    request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/downgrade/cancel`, { method: 'POST' }),
   cancelDomainSubscription: (domainId: string) =>
     request<{ success: boolean }>(`/api/tenants/me/billing/domains/${domainId}/cancel`, { method: 'POST' }),
   cancelTenantSubscription: () =>

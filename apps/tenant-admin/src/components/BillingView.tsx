@@ -214,6 +214,20 @@ export const BillingView: React.FC<BillingViewProps> = ({
     }
   };
 
+  const keepCurrentPlan = async (domainId: string) => {
+    if (actionLoading) return;
+    setActionLoading(`keep-${domainId}`);
+    setError(null);
+    try {
+      await api.keepCurrentPlan(domainId);
+      await load();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to keep the current plan.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const resumeSubscription = async () => {
     setActionLoading('resume');
     setError(null);
@@ -330,7 +344,11 @@ export const BillingView: React.FC<BillingViewProps> = ({
     if (!billed) return {};
     // Price and count the dialog against what the subscription bills, not the cart's live counts.
     const asBilled = { ...d, ratePaise: billed.pricePerUserMonthlyPaise, activeUsers: billed.activeUserCount };
-    return { pendingDowngrade: billed.pendingDowngrade, onChangePlan: () => setChangingPlanFor(asBilled) };
+    return {
+      pendingDowngrade: billed.pendingDowngrade,
+      onChangePlan: () => setChangingPlanFor(asBilled),
+      onKeepCurrentPlan: () => keepCurrentPlan(d.domainId),
+    };
   };
   const changePlanDialog = changingPlanFor && (
     <ChangePlanDialog

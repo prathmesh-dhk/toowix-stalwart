@@ -14,6 +14,7 @@ vi.mock('../../src/api', () => ({
     startCardUpdate: vi.fn(),
     upgradeDomainPlan: vi.fn(),
     downgradeDomainPlan: vi.fn(),
+    keepCurrentPlan: vi.fn(),
     cancelDomainSubscription: vi.fn(),
     cancelTenantSubscription: vi.fn(),
     listPaymentMethods: vi.fn().mockResolvedValue({ paymentMethods: [], defaultPaymentMethodId: null }),
@@ -364,6 +365,25 @@ describe("BillingView: changing a domain's Plan", () => {
     await choose('Mini');
     expect(await screen.findByText('Moves to Mini on 30 Nov 2026')).toBeInTheDocument();
     expect(screen.queryByText(/Moves to Basic/)).not.toBeInTheDocument();
+  });
+
+  it('Keep current plan on the pending badge cancels the downgrade and the badge disappears', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue(
+      billedSummary({ pendingDowngrade: { planId: 'plan-basic', planName: 'Basic', effectiveAt: periodEnd } })
+    );
+    vi.mocked(api.keepCurrentPlan).mockImplementation(async () => {
+      vi.mocked(api.getTenantBillingSummary).mockResolvedValue(billedSummary());
+      return { success: true };
+    });
+    renderOrgView();
+    expect(await screen.findByText('Moves to Basic on 30 Nov 2026')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Keep current plan' }));
+
+    expect(api.keepCurrentPlan).toHaveBeenCalledWith('dom-1');
+    await waitFor(() => expect(screen.queryByText(/Moves to/)).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Keep current plan' })).not.toBeInTheDocument();
+    expect(rowPlan('Starter')).toBeInTheDocument();
   });
 
   it('a refusal shows the backend message and leaves the Plan unchanged', async () => {

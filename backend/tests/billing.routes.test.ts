@@ -3,7 +3,7 @@ import request from 'supertest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { app } from '../src/app';
 import { connectDatabase, disconnectDatabase } from '../src/db/connection';
-import { AdminUserModel, TenantModel, DomainModel, PlanModel, DomainSubscriptionModel, MailboxModel } from '../src/db/models';
+import { AdminUserModel, TenantModel, DomainModel, PlanModel, DomainSubscriptionModel, MailboxModel, AuditLogModel } from '../src/db/models';
 import { generateOidcToken } from '../src/auth/service';
 
 vi.mock('../src/stripe/client', () => ({
@@ -1244,5 +1244,66 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect((await change('upgrade', high)).status).toBe(200);
     const after = await domainInSummary();
     expect(after).toMatchObject({ planId: String(high._id), planName: 'High', pricePerUserMonthlyPaise: 9900, pendingDowngrade: null });
+  });
+  describe('keep current plan', () => {
+    const keep = (id: string) =>
+      request(app).post(`/api/tenants/me/billing/domains/${id}/downgrade/cancel`).set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    it('clears the pending downgrade and rebuilds the schedule from the downgrades still pending', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      const low = await PlanModel.create({ name: 'Low', seatCount: 10, monthlyPriceInPaise: 2900, isActive: true });
+      const other = await DomainModel.create({ tenantId, domainName: 'other.com', planId, status: 'active', dnsStatus: 'active' });
+      const sub = (domain: string, item: string, price: string) =>
+        DomainSubscriptionModel.create({
+          tenantId, domainId: domain, planId, stripeSubscriptionId: 'sub_keep', stripeSubscriptionItemId: item,
+          status: 'active', cancelAtPeriodEnd: false, pendingDowngradePlanId: low._id, pendingDowngradePriceId: price,
+        });
+      await sub(domainId, 'si_keep', 'price_low_keep');
+      await sub(other._id.toString(), 'si_other', 'price_low_other');
+      vi.mocked(stripeClient.setPendingPrices).mockClear();
+
+      const res = await keep(domainId);
+
+      expect(res.status).toBe(200);
+      expect(stripeClient.setPendingPrices).toHaveBeenCalledWith('sub_keep', { si_other: 'price_low_other' });
+      expect(await DomainSubscriptionModel.findOne({ domainId })).toMatchObject({ pendingDowngradePlanId: null, pendingDowngradePriceId: null });
+      expect((await DomainSubscriptionModel.findOne({ domainId: other._id }))?.pendingDowngradePriceId).toBe('price_low_other');
+      expect(await AuditLogModel.findOne({ action: 'BILLING_PLAN_DOWNGRADE_CANCELLED', resourceId: domainId })).toBeTruthy();
+
+      // The last pending downgrade gone: the schedule is released.
+      expect((await keep(other._id.toString())).status).toBe(200);
+      expect(stripeClient.setPendingPrices).toHaveBeenLastCalledWith('sub_keep', {});
+    });
+
+    it('keeps the pending downgrade when Stripe fails, so a retry can sync it', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      const low = await PlanModel.create({ name: 'Low', seatCount: 10, monthlyPriceInPaise: 2900, isActive: true });
+      await DomainSubscriptionModel.create({
+        tenantId, domainId, planId, stripeSubscriptionId: 'sub_keep', stripeSubscriptionItemId: 'si_keep',
+        status: 'active', cancelAtPeriodEnd: false, pendingDowngradePlanId: low._id, pendingDowngradePriceId: 'price_low_keep',
+      });
+      vi.mocked(stripeClient.setPendingPrices).mockRejectedValueOnce(new Error('Stripe down'));
+
+      expect((await keep(domainId)).status).toBeGreaterThanOrEqual(500);
+      expect((await DomainSubscriptionModel.findOne({ domainId }))?.pendingDowngradePriceId).toBe('price_low_keep');
+    });
+
+    it('succeeds and changes nothing when no downgrade is pending', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await DomainSubscriptionModel.create({
+        tenantId, domainId, planId, stripeSubscriptionId: 'sub_keep', stripeSubscriptionItemId: 'si_keep', status: 'active', cancelAtPeriodEnd: false,
+      });
+      vi.mocked(stripeClient.setPendingPrices).mockClear();
+
+      expect((await keep(domainId)).status).toBe(200);
+      expect(stripeClient.setPendingPrices).not.toHaveBeenCalled();
+    });
+
+    it("refuses another Tenant's domain", async () => {
+      const otherTenant = await TenantModel.create({ name: 'Other', status: 'active', mailboxLimit: 5, mailboxCount: 0 });
+      const foreign = await DomainModel.create({ tenantId: otherTenant._id, domainName: 'foreign.com', planId, status: 'active', dnsStatus: 'active' });
+
+      expect((await keep(foreign._id.toString())).status).toBe(404);
+    });
   });
 });

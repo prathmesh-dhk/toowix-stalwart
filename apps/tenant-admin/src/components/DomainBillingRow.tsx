@@ -13,15 +13,26 @@ export interface DomainBillingRowProps {
   pendingDowngrade?: TenantBillingSummary['domains'][number]['pendingDowngrade'];
   /** Set only for a domain on a billed subscription. */
   onChangePlan?: () => void;
+  /** Set only alongside a pending downgrade. */
+  onKeepCurrentPlan?: () => void;
 }
 
 /** One domain's billing on the Billing page. Both Billing views render domains through this. */
-export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan }) => {
+export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan, onKeepCurrentPlan }) => {
   const used = d.activeUsers + (d.pendingUsers || 0);
   const pct = Math.min(100, Math.round((used / (d.maxUsers || 1)) * 100));
   const pendingBadge = pendingDowngrade && (
     <div className="text-[11px] font-medium text-amber-700 mt-1">
       Moves to {pendingDowngrade.planName} on {formatDate(pendingDowngrade.effectiveAt)}
+      {onKeepCurrentPlan && (
+        <button
+          type="button"
+          onClick={onKeepCurrentPlan}
+          className="ml-2 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+        >
+          Keep current plan
+        </button>
+      )}
     </div>
   );
   const changePlanButton = onChangePlan && (

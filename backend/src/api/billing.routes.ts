@@ -14,6 +14,7 @@ import {
   getTenantBillingSummary,
   requestUpgrade,
   requestDowngrade,
+  cancelPendingDowngrade,
   cancelSubscription,
   cancelTenantSubscription,
   resumeTenantSubscription,
@@ -171,6 +172,17 @@ tenantBillingRouter.post('/domains/:domainId/downgrade', async (req: Request, re
   const tenantId = req.adminUser!.tenantId!;
   try {
     await requestDowngrade(req.params.domainId, tenantId, parseResult.data.planId, actorFromReq(req));
+    res.json({ success: true });
+  } catch (err: any) {
+    handleBillingError(res, err);
+  }
+});
+
+// Keep current plan: undoes a pending downgrade. A no-op when none is pending.
+tenantBillingRouter.post('/domains/:domainId/downgrade/cancel', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.adminUser!.tenantId!;
+  try {
+    await cancelPendingDowngrade(req.params.domainId, tenantId, actorFromReq(req));
     res.json({ success: true });
   } catch (err: any) {
     handleBillingError(res, err);

@@ -1521,6 +1521,39 @@ export async function requestDowngrade(domainId: string, tenantId: string, newPl
   });
 }
 
+/** Keep current plan: drops the domain's pending downgrade here and from the Stripe schedule. */
+export async function cancelPendingDowngrade(domainId: string, tenantId: string, actor: BillingActor): Promise<void> {
+  const domain = await loadDomainForActor(domainId, tenantId);
+  const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
+  if (!sub?.pendingDowngradePlanId && !sub?.pendingDowngradePriceId) return;
+
+  const { pendingDowngradePlanId, pendingDowngradePriceId } = sub;
+  sub.pendingDowngradePlanId = null;
+  sub.pendingDowngradePriceId = null;
+  await sub.save();
+  if (pendingDowngradePriceId) {
+    try {
+      await syncPendingDowngrades(sub.stripeSubscriptionId);
+    } catch (err) {
+      // Put it back so the app still shows what Stripe will charge, and a retry syncs again.
+      sub.pendingDowngradePlanId = pendingDowngradePlanId;
+      sub.pendingDowngradePriceId = pendingDowngradePriceId;
+      await sub.save();
+      throw err;
+    }
+  }
+
+  await logAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actorEmail: actor.email,
+    tenantId,
+    action: 'BILLING_PLAN_DOWNGRADE_CANCELLED',
+    resource: 'DOMAIN',
+    resourceId: domain._id.toString(),
+  });
+}
+
 /**
  * Cancels this domain's billing. Under the combined-subscription model most
  * domains SHARE a subscription with siblings, so canceling one domain must
