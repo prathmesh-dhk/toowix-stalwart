@@ -1179,6 +1179,35 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(updatedDomain?.mailboxLimit).toBe(10);
   });
 
+  it('refuses an upgrade to a Plan whose user limit is below the domain\'s Active Users', async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const small = await PlanModel.create({ name: 'Small Pricey', seatCount: 1, monthlyPriceInPaise: 999900, isActive: true });
+    await DomainSubscriptionModel.create({
+      tenantId,
+      domainId,
+      planId,
+      stripeSubscriptionId: 'sub_ceiling',
+      stripeSubscriptionItemId: 'si_ceiling',
+      status: 'active',
+      cancelAtPeriodEnd: false,
+    });
+    for (const localPart of ['a', 'b']) {
+      await MailboxModel.create({ tenantId, domainId, localPart, address: `${localPart}@acme.com`, status: 'active', billingHold: false });
+    }
+    vi.mocked(stripeClient.updateSubscriptionItemPrice).mockClear();
+
+    const res = await request(app)
+      .post(`/api/tenants/me/billing/domains/${domainId}/upgrade`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ planId: small._id.toString() });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('ACTIVE_USERS_EXCEED_PLAN_LIMIT');
+    expect(res.body.message).toContain('exceeds the plan limit of 1');
+    expect(stripeClient.updateSubscriptionItemPrice).not.toHaveBeenCalled();
+    expect((await DomainModel.findById(domainId))?.planId?.toString()).toBe(planId);
+  });
+
   it('summary returns each domain its Plan id and pending downgrade; an upgrade clears it and a second downgrade replaces it', async () => {
     const { stripeClient } = await import('../src/stripe/client');
     const periodEnd = new Date('2026-11-30T00:00:00.000Z');

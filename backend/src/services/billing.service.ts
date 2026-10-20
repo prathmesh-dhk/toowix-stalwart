@@ -1351,10 +1351,24 @@ function domainPriceParams(domain: IDomain, plan: IPlan) {
   };
 }
 
+/** A domain can't move to a Plan whose user limit is below its Active Users. */
+async function assertPlanFitsActiveUsers(domain: IDomain, plan: IPlan, change: 'upgrade' | 'downgrade'): Promise<void> {
+  const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
+  const ceiling = plan.seatCount ?? plan.maxUsers ?? 10;
+  if (activeCount > ceiling) {
+    throw new BillingError(
+      `Cannot ${change} to ${plan.name}: domain has ${activeCount} active mailboxes, which exceeds the plan limit of ${ceiling}.`,
+      'ACTIVE_USERS_EXCEED_PLAN_LIMIT',
+      400
+    );
+  }
+}
+
 export async function requestUpgrade(domainId: string, tenantId: string, newPlanId: string, actor: BillingActor): Promise<void> {
   const domain = await loadDomainForActor(domainId, tenantId);
   const newPlan = await PlanModel.findOne({ _id: newPlanId, isActive: true });
   if (!newPlan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
+  await assertPlanFitsActiveUsers(domain, newPlan, 'upgrade');
 
   if (!isBillingEnabled()) {
     let sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
@@ -1451,15 +1465,7 @@ export async function requestDowngrade(domainId: string, tenantId: string, newPl
   const newPlan = await PlanModel.findOne({ _id: newPlanId, isActive: true });
   if (!newPlan) throw new BillingError('Plan not found', 'PLAN_NOT_FOUND', 404);
 
-  const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
-  const ceiling = newPlan.seatCount ?? newPlan.maxUsers ?? 10;
-  if (activeCount > ceiling) {
-    throw new BillingError(
-      `Cannot downgrade to ${newPlan.name}: domain has ${activeCount} active mailboxes, which exceeds the plan limit of ${ceiling}.`,
-      'ACTIVE_USERS_EXCEED_PLAN_LIMIT',
-      400
-    );
-  }
+  await assertPlanFitsActiveUsers(domain, newPlan, 'downgrade');
 
   if (!isBillingEnabled()) {
     let sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
