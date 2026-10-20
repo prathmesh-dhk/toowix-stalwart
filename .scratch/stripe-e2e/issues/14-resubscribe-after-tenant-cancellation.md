@@ -4,11 +4,11 @@
 
 Found during issues 08 and 13. Spec story 34: "I want to resume a cancellation before it takes effect, so that I can change my mind." This extends that story to after the cancellation takes effect.
 
-**Open question (needs-info):** a returning Tenant has already used its 60-day Trial (`trialStartedAt` is set, one Trial per Tenant and per card fingerprint). Should the new Checkout charge straight away with no Trial (the suggested default), or grant a new Trial?
+**Decided (2026-10-20):** a returning Tenant has already used its 60-day Trial (`trialStartedAt` is set, one Trial per Tenant and per card fingerprint). The new Checkout charges straight away, with no Trial.
 
 **Blocked by:** 13: Suspension stays inside the Tenant; choosing a Plan again restores a cancelled domain
 
-**Status:** needs-info
+**Status:** ready-for-agent
 
 - [ ] After a cancellation takes effect, the Cart offers a Checkout instead of failing at Stripe
 - [ ] Paying creates one new subscription with an item per planned domain, on the agreed Trial rule
