@@ -807,6 +807,35 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(res.body.domains.find((d: any) => d.domainId === other._id.toString()).gracePeriodEndsAt).toBe(earlier.toISOString());
   });
 
+  it("the Super Admin's tenant detail returns the billing state: Trial, period end, cancellation, Grace, downgrade, cancelled domain", async () => {
+    const trialEnd = new Date('2026-10-01T00:00:00.000Z');
+    const periodEnd = new Date('2026-11-30T00:00:00.000Z');
+    const graceEnd = new Date('2026-11-04T00:00:00.000Z');
+    const low = await PlanModel.create({ name: 'Low', seatCount: 5, displayOrder: 0, isActive: true, monthlyPriceInPaise: 5000 });
+    await DomainSubscriptionModel.create({
+      domainId, tenantId, planId, stripeSubscriptionId: 'sub_sa', stripeSubscriptionItemId: 'si_a', status: 'grace',
+      trialEnd, currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true, gracePeriodEndsAt: graceEnd,
+      pendingDowngradePlanId: low._id, pendingDowngradePriceId: 'price_low',
+    });
+    const gone = await DomainModel.create({ tenantId, domainName: 'gone.com', planId, status: 'suspended' });
+    await DomainSubscriptionModel.create({ domainId: gone._id, tenantId, planId, stripeSubscriptionId: 'sub_sa', stripeSubscriptionItemId: 'si_b', status: 'canceled' });
+    const superAdmin = await AdminUserModel.create({ email: 'super@toowix.test', passwordHash: 'x', role: 'SUPER_ADMIN', status: 'active', twoFactorEnabled: true });
+    const superToken = generateOidcToken({ id: superAdmin._id.toString(), email: superAdmin.email, role: 'SUPER_ADMIN', tenantId: null, twoFactorEnabled: true });
+
+    const res = await request(app).get(`/api/platform/tenants/${tenantId}`).set('Authorization', `Bearer ${superToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.billing).toMatchObject({
+      trialEnd: trialEnd.toISOString(),
+      currentPeriodEnd: periodEnd.toISOString(),
+      cancelAtPeriodEnd: true,
+      gracePeriodEndsAt: graceEnd.toISOString(),
+    });
+    const row = (id: string) => res.body.billing.domains.find((d: any) => d.domainId === id);
+    expect(row(domainId)).toMatchObject({ cancelled: false, pendingDowngrade: { planId: String(low._id), planName: 'Low', effectiveAt: periodEnd.toISOString() } });
+    expect(row(gone._id.toString())).toMatchObject({ cancelled: true, pendingDowngrade: null });
+  });
+
   it('when Stripe refuses the new item, the cancelled domain stays suspended', async () => {
     const { stripeClient } = await import('../src/stripe/client');
     const { stalwartClient } = await import('../src/stalwart/client');

@@ -56,6 +56,10 @@ function formatPaise(paise: number): string {
   return `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
+function formatDate(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+}
+
 export interface TenantDetailViewProps {
   tenantId: string;
   onBack: () => void;
@@ -1917,6 +1921,31 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
             </div>
           </div>
 
+          {billing && (
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+              <div>
+                <dt className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Trial ends</dt>
+                <dd className="text-slate-700 mt-1">{formatDate(billing.trialEnd)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Current period ends</dt>
+                <dd className="text-slate-700 mt-1">{formatDate(billing.currentPeriodEnd)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Cancels at period end</dt>
+                <dd className="text-slate-700 mt-1">
+                  {billing.cancelAtPeriodEnd ? `Cancels on ${formatDate(billing.currentPeriodEnd)}` : 'No, renews'}
+                </dd>
+              </div>
+              {billing.gracePeriodEndsAt && (
+                <div>
+                  <dt className="text-[10px] uppercase font-semibold text-rose-500 tracking-wider">Grace Period ends</dt>
+                  <dd className="text-rose-700 font-semibold mt-1">{formatDate(billing.gracePeriodEndsAt)}</dd>
+                </div>
+              )}
+            </dl>
+          )}
+
           {billing && billing.domains.length > 0 ? (
             <div className="overflow-x-auto border border-slate-200 rounded-lg">
               <table className="data-table">
@@ -1932,8 +1961,20 @@ export const TenantDetailView: React.FC<TenantDetailViewProps> = ({
                 <tbody>
                   {billing.domains.map((d) => (
                     <tr key={d.domainId}>
-                      <td className="text-xs font-medium text-slate-900">{d.domainName}</td>
-                      <td className="text-xs text-slate-700">{d.planName || '—'}</td>
+                      <td className="text-xs font-medium text-slate-900">
+                        {d.domainName}
+                        {d.cancelled && (
+                          <StatusBadge status="closed" className="ml-2">Cancelled</StatusBadge>
+                        )}
+                      </td>
+                      <td className="text-xs text-slate-700">
+                        {d.planName || '—'}
+                        {d.pendingDowngrade && (
+                          <span className="block text-[11px] text-amber-700">
+                            Moves to {d.pendingDowngrade.planName} on {formatDate(d.pendingDowngrade.effectiveAt)}
+                          </span>
+                        )}
+                      </td>
                       <td className="text-xs text-slate-700">{d.activeUserCount} / {d.maxUsers}</td>
                       <td className="text-xs text-slate-700">{formatPaise(d.pricePerUserMonthlyPaise)}</td>
                       <td className="text-xs font-semibold text-slate-900">{formatPaise(d.monthlySubtotalPaise)}</td>

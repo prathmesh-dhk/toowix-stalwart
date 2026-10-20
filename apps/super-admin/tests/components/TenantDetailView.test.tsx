@@ -275,4 +275,69 @@ describe('TenantDetailView Component in Super Admin', () => {
     expect(screen.getAllByText('bruce@waynecorp.com')[0]).toBeInTheDocument();
     expect(screen.getAllByText('alfred@waynecorp.com')[0]).toBeInTheDocument();
   });
+
+  describe('Billing tab', () => {
+    const billing: NonNullable<TenantFullDetails['billing']> = {
+      hasSubscription: true,
+      status: 'grace',
+      currentPeriodEnd: '2026-11-30T12:00:00.000Z',
+      trialEnd: '2026-10-01T12:00:00.000Z',
+      trialStartedAt: '2026-08-02T12:00:00.000Z',
+      cancelAtPeriodEnd: true,
+      gracePeriodEndsAt: '2026-11-04T12:00:00.000Z',
+      totalMonthlyPaise: 50000,
+      domains: [
+        {
+          domainId: 'domain-1', domainName: 'waynecorp.com', planName: 'Business', seatCount: 15, activeUserCount: 5, maxUsers: 15,
+          pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 50000, cancelled: false,
+          pendingDowngrade: { planId: 'plan-starter', planName: 'Starter', effectiveAt: '2026-11-30T12:00:00.000Z' },
+        },
+        {
+          domainId: 'domain-2', domainName: 'wayne-tech.test', planName: 'Business', seatCount: 5, activeUserCount: 0, maxUsers: 5,
+          pricePerUserMonthlyPaise: 10000, monthlySubtotalPaise: 0, cancelled: true, pendingDowngrade: null,
+        },
+      ],
+    };
+
+    it('shows Trial end, period end, cancel at period end with its date, and the Grace Period end', async () => {
+      vi.spyOn(api, 'getTenantDetails').mockResolvedValue({ ...mockTenantDetails, billing });
+      render(<TenantDetailView {...defaultProps} activeSubTab="billing" />);
+
+      expect(await screen.findByText('Trial ends')).toBeInTheDocument();
+      expect(screen.getByText('1 Oct 2026')).toBeInTheDocument();
+      expect(screen.getByText('Current period ends')).toBeInTheDocument();
+      expect(screen.getByText('Cancels on 30 Nov 2026')).toBeInTheDocument();
+      expect(screen.getByText('Grace Period ends')).toBeInTheDocument();
+      expect(screen.getByText('4 Nov 2026')).toBeInTheDocument();
+    });
+
+    it("shows each domain's pending downgrade and whether it was cancelled on its own", async () => {
+      vi.spyOn(api, 'getTenantDetails').mockResolvedValue({ ...mockTenantDetails, billing });
+      render(<TenantDetailView {...defaultProps} activeSubTab="billing" />);
+
+      expect(await screen.findByText('Moves to Starter on 30 Nov 2026')).toBeInTheDocument();
+      expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    });
+
+    it('hides the Grace Period end when none is open and says when the subscription renews', async () => {
+      vi.spyOn(api, 'getTenantDetails').mockResolvedValue({
+        ...mockTenantDetails,
+        billing: { ...billing, status: 'active', cancelAtPeriodEnd: false, gracePeriodEndsAt: null },
+      });
+      render(<TenantDetailView {...defaultProps} activeSubTab="billing" />);
+
+      expect(await screen.findByText('Current period ends')).toBeInTheDocument();
+      expect(screen.getByText('No, renews')).toBeInTheDocument();
+      expect(screen.queryByText('Grace Period ends')).not.toBeInTheDocument();
+    });
+
+    it('still renders the detail page, with Sync with Stripe, when billing is null', async () => {
+      vi.spyOn(api, 'getTenantDetails').mockResolvedValue({ ...mockTenantDetails, billing: null });
+      render(<TenantDetailView {...defaultProps} activeSubTab="billing" />);
+
+      expect(await screen.findByText('No billing data for this tenant yet.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sync with stripe/i })).toBeInTheDocument();
+      expect(screen.queryByText('Trial ends')).not.toBeInTheDocument();
+    });
+  });
 });

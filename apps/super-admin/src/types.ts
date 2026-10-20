@@ -371,6 +371,8 @@ export interface TenantFullDetails {
     trialEnd: string | null;
     trialStartedAt: string | null;
     cancelAtPeriodEnd: boolean;
+    // The Tenant's earliest Grace Period end; null when none is open.
+    gracePeriodEndsAt: string | null;
     totalMonthlyPaise: number;
     domains: Array<{
       domainId: string;
@@ -381,6 +383,9 @@ export interface TenantFullDetails {
       maxUsers: number;
       pricePerUserMonthlyPaise: number;
       monthlySubtotalPaise: number;
+      // Cancelled on its own while the subscription runs on for other domains.
+      cancelled: boolean;
+      pendingDowngrade: { planId: string; planName: string; effectiveAt: string | null } | null;
     }>;
   } | null;
   domains: Array<{
