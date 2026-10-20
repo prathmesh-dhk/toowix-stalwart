@@ -12,7 +12,7 @@
 
 **Blocked by:** 09: Full runbook re-run and reconcile check
 
-**Status:** done, except point 5 (needs-info)
+**Status:** done
 
 - [x] No billing path attaches a domain with a shared or metered Plan price, or the endpoint is gone
 - [x] Super-admin Sync with Stripe matches every item to its domain
@@ -25,5 +25,5 @@
 - **1, 4:** Deleted `startCheckout`, `POST /billing/domains/:id/checkout`, `startDomainCheckout`, and the helpers only it used (`resolvePriceForDomainAttachment`, `getOrCreatePrice`, `createCheckoutSession`, `addSubscriptionItem`, `createDedicatedMeteredPrice`). Nothing now attaches a shared Plan price, so every new item's product carries `domainId`. Items already on a shared price in Stripe (if any exist) are not migrated. The `checkout.session.completed` branch for `domainId` metadata stays, so an old Checkout still in flight completes.
 - **2, 6:** The refused card's subscription is now cancelled before the refusal is thrown. A failed cancel throws, so the webhook answers 500 and Stripe retries; a retry skips the cancel when the subscription is already `canceled`. The webhook acknowledges `TRIAL_ALREADY_USED_FOR_CARD` with 200. In the Tenant Admin, a failed cancel now shows a generic error instead of the card message.
 - **3:** Kept the schedule but rebuilt it from live items. `DomainSubscription.pendingDowngradePriceId` stores each pending downgrade. `stripeClient.setPendingPrices` replaces `scheduleDowngrade`: both phases come from the subscription's live items, with the pending prices swapped into the next phase, and the schedule is released once nothing is pending. It runs on every `customer.subscription.updated`, when a schedule is attached or a downgrade is pending, and on downgrade. An upgrade drops the domain's pending downgrade. Not tried against live Stripe yet: rerun runbook steps for a downgrade, then add a domain and an upgrade before the test clock crosses the renewal.
-- **5:** Still open. The reconcile job sets every item to Active Users, and the downgrade now carries the live quantity, not `seatCount`. Seeded Plans are all `metered`. Do `fixed` Plans still exist?
+- **5:** Answered by the user (2026-10-20): there are no `fixed` Plans; every Plan bills per Active User. Billing every item at its Active Users count is correct. The leftover `billingMode === 'fixed'` branches are dead code and were left in place.
 
