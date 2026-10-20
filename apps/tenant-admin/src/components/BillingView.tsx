@@ -522,7 +522,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
             <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs">
               <div className="flex items-center gap-2 text-slate-900 font-semibold mb-1">
                 <Users size={14} className="text-indigo-600" />
-                <span>Active Mailbox Seats</span>
+                <span>Active Users</span>
               </div>
               <p className="text-slate-500 leading-relaxed">
                 Currently <strong>{used}</strong> provisioned mailbox accounts are billed at {formatPaise(targetDomainData.ratePaise)} per active user.

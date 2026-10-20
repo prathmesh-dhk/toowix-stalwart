@@ -1332,7 +1332,7 @@ export async function reactivateDomainForPayment(domainId: string, tenantId: str
  * Reports the running peak mailbox count for a metered domain's current
  * period (see DomainSubscription.peakMailboxCountThisPeriod doc for why
  * this simulates 'max' aggregation on top of Stripe's 'last'-only Meters
- * API). Call after every mailbox create/delete. No-ops for fixed plans.
+ * API). Call after every mailbox create/delete.
  */
 export async function reportMeteredUsage(domainId: string): Promise<void> {
   if (!isBillingEnabled()) return;
@@ -1340,7 +1340,7 @@ export async function reportMeteredUsage(domainId: string): Promise<void> {
   if (!sub) return;
 
   const plan = await PlanModel.findById(sub.planId);
-  if (!plan || plan.billingMode !== 'metered') return;
+  if (!plan) return;
 
   const tenant = await TenantModel.findById(sub.tenantId);
   if (!tenant?.stripeCustomerId) return;
@@ -1429,7 +1429,7 @@ export async function requestUpgrade(domainId: string, tenantId: string, newPlan
     sub.stripeSubscriptionId,
     sub.stripeSubscriptionItemId,
     priceId,
-    newPlan.billingMode === 'fixed' ? newPlan.seatCount : (activeCount || undefined)
+    activeCount || undefined
   );
 
   sub.planId = newPlan._id as any;

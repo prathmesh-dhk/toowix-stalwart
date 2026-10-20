@@ -42,7 +42,7 @@ describe('Billing Phase 3: Trial Reminders, Grace Notices & Payment Retries', ()
       seatCount: 10,
       displayOrder: 1,
       isActive: true,
-      billingMode: 'fixed',
+      billingMode: 'metered',
       monthlyPriceInPaise: 100000,
     });
 

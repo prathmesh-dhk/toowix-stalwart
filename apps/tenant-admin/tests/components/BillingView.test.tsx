@@ -28,8 +28,8 @@ vi.mock('../../src/api', () => ({
 }));
 
 const plans: Plan[] = [
-  { id: 'plan-starter', name: 'Starter', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 10000 },
-  { id: 'plan-business', name: 'Business', seatCount: 50, displayOrder: 2, isActive: true, isDefault: false, billingMode: 'fixed', monthlyPriceInPaise: 20000 },
+  { id: 'plan-starter', name: 'Starter', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, monthlyPriceInPaise: 10000 },
+  { id: 'plan-business', name: 'Business', seatCount: 50, displayOrder: 2, isActive: true, isDefault: false, monthlyPriceInPaise: 20000 },
 ];
 
 const cart: CartData = {
@@ -245,11 +245,11 @@ describe('BillingView (company-wide)', () => {
 describe("BillingView: changing a domain's Plan", () => {
   const periodEnd = '2026-11-30T00:00:00.000Z';
   const changePlans: Plan[] = [
-    { id: 'plan-mini', name: 'Mini', seatCount: 3, displayOrder: 0, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 5000 },
-    { id: 'plan-basic', name: 'Basic', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 8000 },
-    { id: 'plan-starter', name: 'Starter', seatCount: 10, displayOrder: 2, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 10000 },
-    { id: 'plan-business', name: 'Business', seatCount: 50, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 20000 },
-    { id: 'plan-retired', name: 'Retired', seatCount: 50, displayOrder: 4, isActive: false, isDefault: false, billingMode: 'metered', monthlyPriceInPaise: 1000 },
+    { id: 'plan-mini', name: 'Mini', seatCount: 3, displayOrder: 0, isActive: true, isDefault: false, monthlyPriceInPaise: 5000 },
+    { id: 'plan-basic', name: 'Basic', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, monthlyPriceInPaise: 8000 },
+    { id: 'plan-starter', name: 'Starter', seatCount: 10, displayOrder: 2, isActive: true, isDefault: false, monthlyPriceInPaise: 10000 },
+    { id: 'plan-business', name: 'Business', seatCount: 50, displayOrder: 3, isActive: true, isDefault: false, monthlyPriceInPaise: 20000 },
+    { id: 'plan-retired', name: 'Retired', seatCount: 50, displayOrder: 4, isActive: false, isDefault: false, monthlyPriceInPaise: 1000 },
   ];
   const billedDomain = (over: Partial<TenantBillingSummary['domains'][number]> = {}): TenantBillingSummary['domains'][number] => ({
     domainId: 'dom-1', domainName: 'acme.com', planId: 'plan-starter', planName: 'Starter', seatCount: 10, activeUserCount: 5, maxUsers: 10,

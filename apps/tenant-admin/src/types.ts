@@ -90,7 +90,6 @@ export interface DomainItem {
   createdAt?: string;
 }
 
-export type PlanBillingMode = 'fixed' | 'metered';
 
 export interface Plan {
   id: string;
@@ -101,7 +100,6 @@ export interface Plan {
   displayOrder: number;
   isActive: boolean;
   isDefault: boolean;
-  billingMode: PlanBillingMode;
   monthlyPriceInPaise: number;
   storageQuotaGb?: number | null;
   apps?: string[];

@@ -34,7 +34,7 @@ describe('held (unactivated) mailboxes', () => {
 
     const tenant = await TenantModel.create({ name: 'Acme', contactEmail: 'owner@acme.test', status: 'active', mailboxLimit: 100, mailboxCount: 0 });
     tenantId = tenant._id.toString();
-    const plan = await PlanModel.create({ name: 'Team', seatCount: 50, displayOrder: 1, isActive: true, billingMode: 'fixed', monthlyPriceInPaise: 10000 });
+    const plan = await PlanModel.create({ name: 'Team', seatCount: 50, displayOrder: 1, isActive: true, billingMode: 'metered', monthlyPriceInPaise: 10000 });
     const domain = await DomainModel.create({ tenantId, domainName: 'acme.com', planId: plan._id, planName: 'Team', mailboxLimit: 50, status: 'active', dnsStatus: 'active', isPrimary: true });
     domainId = domain._id.toString();
     const admin = await AdminUserModel.create({ email: 'admin@acme.test', passwordHash: 'x', role: 'TENANT_ADMIN', tenantId: tenant._id, status: 'active', twoFactorEnabled: false });

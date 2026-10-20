@@ -98,7 +98,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
 
           {/* Tile 3: Billing Rate */}
           <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Seat Billing Rate</span>
+            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Price per Active User</span>
             <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
               {formatPaise(d.ratePaise)}
               <span className="text-xs font-normal text-slate-500 ml-1">/ active user</span>

@@ -52,6 +52,16 @@ describe('PlansManagementView Component', () => {
     expect(screen.getAllByText('Inactive')[0]).toBeInTheDocument();
   });
 
+  it('describes every Plan as priced per Active User up to its limit', () => {
+    render(<PlansManagementView {...defaultProps} />);
+    expect(screen.getAllByText('/ Active User / mo')).toHaveLength(2);
+    expect(screen.queryByText(/seat|fixed/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Customer Preview Cards View'));
+    expect(screen.getByText('Per Active User, up to 10 Active Users')).toBeInTheDocument();
+    expect(screen.queryByText(/seat|fixed/i)).not.toBeInTheDocument();
+  });
+
   it('calls onCreatePlan when "New Plan" is clicked', () => {
     render(<PlansManagementView {...defaultProps} />);
     fireEvent.click(screen.getByRole('button', { name: /new plan/i }));

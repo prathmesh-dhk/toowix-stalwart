@@ -25,9 +25,9 @@ vi.mock('../../src/api', () => ({
 }));
 
 const MOCK_PLANS = [
-  { id: 'plan-starter', name: 'Starter', badge: null, description: 'Email only — up to 10 mailboxes', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, billingMode: 'metered' as const, monthlyPriceInPaise: 4900, storageQuotaGb: 5, apps: [] },
-  { id: 'plan-pro', name: 'Pro', badge: 'Most Popular', description: 'Email + Toowix Suite — up to 20 mailboxes', seatCount: 20, displayOrder: 2, isActive: true, isDefault: true, billingMode: 'metered' as const, monthlyPriceInPaise: 9900, storageQuotaGb: 20, apps: ['meet', 'sign'] },
-  { id: 'plan-enterprise', name: 'Enterprise', badge: null, description: 'Unlimited mailboxes — full Toowix Suite + 30 GB', seatCount: 9999, displayOrder: 3, isActive: true, isDefault: false, billingMode: 'metered' as const, monthlyPriceInPaise: 14900, storageQuotaGb: 30, apps: ['meet', 'sign'] },
+  { id: 'plan-starter', name: 'Starter', badge: null, description: 'Email only — up to 10 mailboxes', seatCount: 10, displayOrder: 1, isActive: true, isDefault: false, monthlyPriceInPaise: 4900, storageQuotaGb: 5, apps: [] },
+  { id: 'plan-pro', name: 'Pro', badge: 'Most Popular', description: 'Email + Toowix Suite — up to 20 mailboxes', seatCount: 20, displayOrder: 2, isActive: true, isDefault: true, monthlyPriceInPaise: 9900, storageQuotaGb: 20, apps: ['meet', 'sign'] },
+  { id: 'plan-enterprise', name: 'Enterprise', badge: null, description: 'Unlimited mailboxes — full Toowix Suite + 30 GB', seatCount: 9999, displayOrder: 3, isActive: true, isDefault: false, monthlyPriceInPaise: 14900, storageQuotaGb: 30, apps: ['meet', 'sign'] },
 ];
 
 /** Domain as returned by createTenantDomain — no plan yet; the wizard only asks for one after DNS. */

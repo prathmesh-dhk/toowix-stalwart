@@ -39,7 +39,7 @@ let mongoServer: MongoMemoryServer;
 
 describe('billing.service', () => {
   let tenantId: string;
-  let fixedPlanId: string;
+  let teamPlanId: string;
   let meteredPlanId: string;
   const actor = { id: 'admin-1', email: 'admin@acme.test', role: 'TENANT_ADMIN' };
 
@@ -70,15 +70,15 @@ describe('billing.service', () => {
     });
     tenantId = tenant._id.toString();
 
-    const fixedPlan = await PlanModel.create({
+    const teamPlan = await PlanModel.create({
       name: 'Team',
       seatCount: 10,
       displayOrder: 1,
       isActive: true,
-      billingMode: 'fixed',
+      billingMode: 'metered',
       monthlyPriceInPaise: 100000,
     });
-    fixedPlanId = fixedPlan._id.toString();
+    teamPlanId = teamPlan._id.toString();
 
     const meteredPlan = await PlanModel.create({
       name: 'Custom',
@@ -101,7 +101,7 @@ describe('billing.service', () => {
       const domain = await DomainModel.create({
         tenantId,
         domainName: 'newsub.com',
-        planId: fixedPlanId,
+        planId: teamPlanId,
         status: 'active',
         isPrimary: true,
       });
@@ -119,7 +119,7 @@ describe('billing.service', () => {
         data: {
           object: {
             subscription: 'sub_1',
-            metadata: { domainId: domain._id.toString(), tenantId, planId: fixedPlanId },
+            metadata: { domainId: domain._id.toString(), tenantId, planId: teamPlanId },
           },
         },
       } as any);
@@ -134,14 +134,14 @@ describe('billing.service', () => {
       const domain = await DomainModel.create({
         tenantId,
         domainName: 'failing.com',
-        planId: fixedPlanId,
+        planId: teamPlanId,
         status: 'active',
         isPrimary: true,
       });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_fail',
         stripeSubscriptionItemId: 'si_fail',
         status: 'active',
@@ -167,7 +167,7 @@ describe('billing.service', () => {
       const domain = await DomainModel.create({
         tenantId,
         domainName: 'recovering.com',
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stalwartDomainId: 'stalwart-dom-recover',
         status: 'suspended',
         isPrimary: true,
@@ -175,7 +175,7 @@ describe('billing.service', () => {
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_recover',
         stripeSubscriptionItemId: 'si_recover',
         status: 'suspended',
@@ -197,11 +197,11 @@ describe('billing.service', () => {
     });
 
     it("Stripe's payment retries keep the Grace Period deadline 7 days after the failed invoice (test clock time)", async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'retrying.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'retrying.com', planId: teamPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_retry',
         stripeSubscriptionItemId: 'si_retry',
         status: 'active',
@@ -219,11 +219,11 @@ describe('billing.service', () => {
     });
 
     it('a payment retry failing after the grace sweep suspended the domain keeps it suspended', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'still-unpaid.com', planId: fixedPlanId, status: 'suspended' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'still-unpaid.com', planId: teamPlanId, status: 'suspended' });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_unpaid',
         stripeSubscriptionItemId: 'si_unpaid',
         status: 'suspended',
@@ -236,11 +236,11 @@ describe('billing.service', () => {
     });
 
     it("Stripe's past_due subscription update arriving after the failed invoice keeps the Grace Period open", async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'late-update.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'late-update.com', planId: teamPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_late',
         stripeSubscriptionItemId: 'si_late',
         status: 'active',
@@ -256,9 +256,9 @@ describe('billing.service', () => {
     });
 
     it('follows a domain onto the new item Stripe creates when a scheduled downgrade starts', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'renewed.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'renewed.com', planId: teamPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
-        domainId: domain._id, tenantId, planId: fixedPlanId,
+        domainId: domain._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_phase', stripeSubscriptionItemId: 'si_before_phase', status: 'active',
       });
       vi.mocked(stripeClient.retrieveSubscriptionExpanded).mockResolvedValue({
@@ -279,15 +279,15 @@ describe('billing.service', () => {
 
     it('a change made while a downgrade is pending keeps the downgrade in the next phase', async () => {
       const [a, b] = await DomainModel.create([
-        { tenantId, domainName: 'pending-a.com', planId: fixedPlanId, status: 'active' },
-        { tenantId, domainName: 'joined-b.com', planId: fixedPlanId, status: 'active' },
+        { tenantId, domainName: 'pending-a.com', planId: teamPlanId, status: 'active' },
+        { tenantId, domainName: 'joined-b.com', planId: teamPlanId, status: 'active' },
       ]);
       await DomainSubscriptionModel.create([
         {
-          domainId: a._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_pending',
+          domainId: a._id, tenantId, planId: teamPlanId, stripeSubscriptionId: 'sub_pending',
           stripeSubscriptionItemId: 'si_a', status: 'active', pendingDowngradePriceId: 'price_a_down',
         },
-        { domainId: b._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_pending', stripeSubscriptionItemId: 'si_b', status: 'active' },
+        { domainId: b._id, tenantId, planId: teamPlanId, stripeSubscriptionId: 'sub_pending', stripeSubscriptionItemId: 'si_b', status: 'active' },
       ]);
       vi.mocked(stripeClient.setPendingPrices).mockClear();
 
@@ -301,9 +301,9 @@ describe('billing.service', () => {
     });
 
     it('a subscription update with no schedule and nothing pending does not touch schedules', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'plain.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'plain.com', planId: teamPlanId, status: 'active' });
       await DomainSubscriptionModel.create({
-        domainId: domain._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_plain', stripeSubscriptionItemId: 'si_plain', status: 'active',
+        domainId: domain._id, tenantId, planId: teamPlanId, stripeSubscriptionId: 'sub_plain', stripeSubscriptionItemId: 'si_plain', status: 'active',
       });
       vi.mocked(stripeClient.setPendingPrices).mockClear();
 
@@ -319,7 +319,7 @@ describe('billing.service', () => {
       const domain = await DomainModel.create({
         tenantId,
         domainName: 'paid-late.com',
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stalwartDomainId: 'stalwart-dom-late',
         status: 'suspended',
       });
@@ -334,7 +334,7 @@ describe('billing.service', () => {
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_paid_late',
         stripeSubscriptionItemId: 'si_paid_late',
         status: 'suspended',
@@ -356,12 +356,12 @@ describe('billing.service', () => {
     });
 
     it('a retried 3-D Secure charge on the same invoice does not ask the Tenant Admin to authenticate again', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: '3ds-retry.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: '3ds-retry.com', planId: teamPlanId, status: 'active' });
       await TenantModel.updateOne({ _id: tenantId }, { stripeSubscriptionId: 'sub_3ds_retry' });
       await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_3ds_retry',
         stripeSubscriptionItemId: 'si_3ds_retry',
         status: 'grace',
@@ -376,11 +376,11 @@ describe('billing.service', () => {
     });
 
     it('a ₹0 invoice paid during the trial (coupon extension, checkout) keeps the domain trialing', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'trialing.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'trialing.com', planId: teamPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_trialing',
         stripeSubscriptionItemId: 'si_trialing',
         status: 'trialing',
@@ -403,11 +403,11 @@ describe('billing.service', () => {
     });
 
     it('customer.subscription.deleted marks the subscription canceled', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'canceled.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'canceled.com', planId: teamPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_del',
         stripeSubscriptionItemId: 'si_del',
         status: 'active',
@@ -425,9 +425,9 @@ describe('billing.service', () => {
     it('customer.subscription.deleted suspends every domain on the subscription and their mailboxes', async () => {
       const domains = [];
       for (const name of ['ended1.com', 'ended2.com']) {
-        const domain = await DomainModel.create({ tenantId, domainName: name, planId: fixedPlanId, status: 'active', stalwartDomainId: `sd-${name}` });
+        const domain = await DomainModel.create({ tenantId, domainName: name, planId: teamPlanId, status: 'active', stalwartDomainId: `sd-${name}` });
         await DomainSubscriptionModel.create({
-          domainId: domain._id, tenantId, planId: fixedPlanId,
+          domainId: domain._id, tenantId, planId: teamPlanId,
           stripeSubscriptionId: 'sub_ended', stripeSubscriptionItemId: `si-${name}`, status: 'active', cancelAtPeriodEnd: true,
         });
         await MailboxModel.create({ tenantId, domainId: domain._id, localPart: name[5], address: `u@${name}`, status: 'active' });
@@ -438,7 +438,7 @@ describe('billing.service', () => {
       const otherTenant = await TenantModel.create({ name: 'Platform', status: 'active', mailboxLimit: 1, mailboxCount: 0 });
       const platform = await DomainModel.create({ tenantId: otherTenant._id, domainName: 'platform.test', status: 'active', stalwartDomainId: 'sd-platform' });
       await DomainSubscriptionModel.create({
-        domainId: platform._id, tenantId, planId: fixedPlanId,
+        domainId: platform._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_ended', stripeSubscriptionItemId: 'si-platform', status: 'active',
       });
 
@@ -453,10 +453,10 @@ describe('billing.service', () => {
     });
 
     it('customer.subscription.deleted leaves a domain cancelled earlier on its own alone', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'left-earlier.com', planId: fixedPlanId, status: 'suspended', stalwartDomainId: 'sd-left' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'left-earlier.com', planId: teamPlanId, status: 'suspended', stalwartDomainId: 'sd-left' });
       const retentionEndsAt = new Date('2026-11-01T00:00:00Z');
       await DomainSubscriptionModel.create({
-        domainId: domain._id, tenantId, planId: fixedPlanId,
+        domainId: domain._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_ended2', stripeSubscriptionItemId: 'si-left', status: 'canceled', retentionEndsAt,
       });
 
@@ -538,7 +538,7 @@ describe('billing.service', () => {
       const owner = await TenantModel.create({ name: 'Platform', status: 'active', mailboxLimit: 1, mailboxCount: 0 });
       const platform = await DomainModel.create({ tenantId: owner._id, domainName: 'platform2.test', status: 'suspended' });
       await DomainSubscriptionModel.create({
-        domainId: platform._id, tenantId, planId: fixedPlanId,
+        domainId: platform._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_plat', stripeSubscriptionItemId: 'si_plat', status: 'suspended',
       });
 
@@ -574,21 +574,6 @@ describe('billing.service', () => {
       expect((await DomainSubscriptionModel.findById(sub._id))?.peakMailboxCountThisPeriod).toBe(2);
     });
 
-    it('no-ops for a fixed-tier plan', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'fixed.com', planId: fixedPlanId, status: 'active' });
-      await DomainSubscriptionModel.create({
-        domainId: domain._id,
-        tenantId,
-        planId: fixedPlanId,
-        stripeSubscriptionId: 'sub_fixed',
-        stripeSubscriptionItemId: 'si_fixed',
-        status: 'active',
-      });
-
-      await reportMeteredUsage(domain._id.toString());
-      expect(stripeClient.reportMeteredUsage).not.toHaveBeenCalled();
-    });
-
     it('reports to the dedicated meter when this domain has one, instead of the plan\'s shared meter', async () => {
       const domain = await DomainModel.create({ tenantId, domainName: 'dedicated.com', planId: meteredPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
@@ -615,25 +600,29 @@ describe('billing.service', () => {
       const domain = await DomainModel.create({
         tenantId,
         domainName: 'upgrade.com',
-        planId: fixedPlanId,
+        planId: teamPlanId,
         mailboxLimit: 10,
         status: 'active',
       });
       await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_up',
         stripeSubscriptionItemId: 'si_up',
         status: 'active',
       });
+
+      await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'a', address: 'a@upgrade.com', status: 'active' });
+      await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'b', address: 'b@upgrade.com', status: 'active' });
 
       const biggerPlan = await PlanModel.create({ name: 'Growth', seatCount: 25, displayOrder: 3, isActive: true, monthlyPriceInPaise: 200000 });
       vi.mocked(stripeClient.createDomainPrice).mockResolvedValue('price_bigger');
 
       await requestUpgrade(domain._id.toString(), tenantId, biggerPlan._id.toString(), actor);
 
-      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_up', 'si_up', 'price_bigger', 25);
+      // Billed for its 2 Active Users, not the Plan's limit of 25.
+      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_up', 'si_up', 'price_bigger', 2);
       expect((await DomainModel.findById(domain._id))?.mailboxLimit).toBe(25);
     });
 
@@ -648,11 +637,11 @@ describe('billing.service', () => {
         status: 'active',
       });
 
-      const domain = await DomainModel.create({ tenantId, domainName: 'upgrading.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'upgrading.com', planId: teamPlanId, status: 'active' });
       await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_shared_up',
         stripeSubscriptionItemId: 'si_upgrading',
         status: 'active',
@@ -677,10 +666,10 @@ describe('billing.service', () => {
     });
 
     it('requestUpgrade drops a downgrade the domain had pending', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'changed-mind.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'changed-mind.com', planId: teamPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
-        domainId: domain._id, tenantId, planId: fixedPlanId, stripeSubscriptionId: 'sub_mind', stripeSubscriptionItemId: 'si_mind',
-        status: 'active', pendingDowngradePlanId: fixedPlanId, pendingDowngradePriceId: 'price_mind_down',
+        domainId: domain._id, tenantId, planId: teamPlanId, stripeSubscriptionId: 'sub_mind', stripeSubscriptionItemId: 'si_mind',
+        status: 'active', pendingDowngradePlanId: teamPlanId, pendingDowngradePriceId: 'price_mind_down',
       });
       vi.mocked(stripeClient.createDomainPrice).mockResolvedValue('price_mind_up');
       vi.mocked(stripeClient.setPendingPrices).mockClear();
@@ -697,14 +686,14 @@ describe('billing.service', () => {
       const domain = await DomainModel.create({
         tenantId,
         domainName: 'downgrade.com',
-        planId: fixedPlanId,
+        planId: teamPlanId,
         mailboxLimit: 10,
         status: 'active',
       });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_down',
         stripeSubscriptionItemId: 'si_down',
         status: 'active',
@@ -722,11 +711,11 @@ describe('billing.service', () => {
     });
 
     it('cancelSubscription sets cancel_at_period_end on Stripe when this is the last domain on the subscription', async () => {
-      const domain = await DomainModel.create({ tenantId, domainName: 'cancel.com', planId: fixedPlanId, status: 'active' });
+      const domain = await DomainModel.create({ tenantId, domainName: 'cancel.com', planId: teamPlanId, status: 'active' });
       const sub = await DomainSubscriptionModel.create({
         domainId: domain._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_cancel',
         stripeSubscriptionItemId: 'si_cancel',
         status: 'active',
@@ -740,20 +729,20 @@ describe('billing.service', () => {
     });
 
     it('cancelSubscription only detaches this domain\'s item when siblings remain on the shared subscription', async () => {
-      const domain1 = await DomainModel.create({ tenantId, domainName: 'keep.com', planId: fixedPlanId, status: 'active' });
+      const domain1 = await DomainModel.create({ tenantId, domainName: 'keep.com', planId: teamPlanId, status: 'active' });
       await DomainSubscriptionModel.create({
         domainId: domain1._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_multi',
         stripeSubscriptionItemId: 'si_keep',
         status: 'active',
       });
-      const domain2 = await DomainModel.create({ tenantId, domainName: 'remove.com', planId: fixedPlanId, status: 'active' });
+      const domain2 = await DomainModel.create({ tenantId, domainName: 'remove.com', planId: teamPlanId, status: 'active' });
       const sub2 = await DomainSubscriptionModel.create({
         domainId: domain2._id,
         tenantId,
-        planId: fixedPlanId,
+        planId: teamPlanId,
         stripeSubscriptionId: 'sub_multi',
         stripeSubscriptionItemId: 'si_remove',
         status: 'active',
@@ -772,14 +761,14 @@ describe('billing.service', () => {
     });
 
     it('a cancelled domain stays cancelled through later subscription events, so the last domain left cancels the subscription', async () => {
-      const keep = await DomainModel.create({ tenantId, domainName: 'keep2.com', planId: fixedPlanId, status: 'active' });
+      const keep = await DomainModel.create({ tenantId, domainName: 'keep2.com', planId: teamPlanId, status: 'active' });
       const keepSub = await DomainSubscriptionModel.create({
-        domainId: keep._id, tenantId, planId: fixedPlanId,
+        domainId: keep._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_two', stripeSubscriptionItemId: 'si_keep2', status: 'active',
       });
-      const gone = await DomainModel.create({ tenantId, domainName: 'gone.com', planId: fixedPlanId, status: 'active' });
+      const gone = await DomainModel.create({ tenantId, domainName: 'gone.com', planId: teamPlanId, status: 'active' });
       const goneSub = await DomainSubscriptionModel.create({
-        domainId: gone._id, tenantId, planId: fixedPlanId,
+        domainId: gone._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_two', stripeSubscriptionItemId: 'si_gone', status: 'active',
       });
 
@@ -806,14 +795,14 @@ describe('billing.service', () => {
 
   describe('combined-billing webhook cascade', () => {
     it('invoice.payment_failed puts every sibling domain on the shared subscription into grace', async () => {
-      const domain1 = await DomainModel.create({ tenantId, domainName: 'sibling1.com', planId: fixedPlanId, status: 'active' });
-      const domain2 = await DomainModel.create({ tenantId, domainName: 'sibling2.com', planId: fixedPlanId, status: 'active' });
+      const domain1 = await DomainModel.create({ tenantId, domainName: 'sibling1.com', planId: teamPlanId, status: 'active' });
+      const domain2 = await DomainModel.create({ tenantId, domainName: 'sibling2.com', planId: teamPlanId, status: 'active' });
       const sub1 = await DomainSubscriptionModel.create({
-        domainId: domain1._id, tenantId, planId: fixedPlanId,
+        domainId: domain1._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_shared_fail', stripeSubscriptionItemId: 'si_s1', status: 'active',
       });
       const sub2 = await DomainSubscriptionModel.create({
-        domainId: domain2._id, tenantId, planId: fixedPlanId,
+        domainId: domain2._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_shared_fail', stripeSubscriptionItemId: 'si_s2', status: 'active',
       });
 
@@ -836,15 +825,15 @@ describe('billing.service', () => {
     });
 
     it('lists every domain sharing the tenant\'s subscription', async () => {
-      const domain1 = await DomainModel.create({ tenantId, domainName: 'sum1.com', planId: fixedPlanId, status: 'active' });
-      const domain2 = await DomainModel.create({ tenantId, domainName: 'sum2.com', planId: fixedPlanId, status: 'active' });
+      const domain1 = await DomainModel.create({ tenantId, domainName: 'sum1.com', planId: teamPlanId, status: 'active' });
+      const domain2 = await DomainModel.create({ tenantId, domainName: 'sum2.com', planId: teamPlanId, status: 'active' });
       await DomainSubscriptionModel.create({
-        domainId: domain1._id, tenantId, planId: fixedPlanId,
+        domainId: domain1._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_sum', stripeSubscriptionItemId: 'si_sum1', status: 'active',
         currentPeriodEnd: new Date('2026-11-01'),
       });
       await DomainSubscriptionModel.create({
-        domainId: domain2._id, tenantId, planId: fixedPlanId,
+        domainId: domain2._id, tenantId, planId: teamPlanId,
         stripeSubscriptionId: 'sub_sum', stripeSubscriptionItemId: 'si_sum2', status: 'active',
       });
 

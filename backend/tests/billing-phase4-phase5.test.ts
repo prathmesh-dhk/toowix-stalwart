@@ -48,7 +48,7 @@ describe('Billing Phase 4 & 5: Cancellation, Abuse Defense & Nightly Reconciliat
       seatCount: 10,
       displayOrder: 1,
       isActive: true,
-      billingMode: 'fixed',
+      billingMode: 'metered',
       monthlyPriceInPaise: 100000,
     });
 

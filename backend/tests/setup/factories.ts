@@ -57,7 +57,7 @@ export async function createTestPlan(overrides: Partial<IPlan> = {}): Promise<IP
     seatCount: 10,
     displayOrder: 1,
     isActive: true,
-    billingMode: 'fixed',
+    billingMode: 'metered',
     monthlyPriceInPaise: 0,
     ...overrides,
   });

@@ -50,7 +50,7 @@ describe('billing hardening (phase 0)', () => {
     await Promise.all([TenantModel, DomainModel, PlanModel, DomainSubscriptionModel, MailboxModel, StripeEventModel].map((m) => m.deleteMany({})));
     const tenant = await TenantModel.create({ name: 'Acme', contactEmail: 'admin@acme.test', status: 'active', mailboxLimit: 50, mailboxCount: 0 });
     tenantId = tenant._id.toString();
-    planId = (await PlanModel.create({ name: 'Team', seatCount: 10, displayOrder: 1, isActive: true, billingMode: 'fixed', monthlyPriceInPaise: 10000 }))._id.toString();
+    planId = (await PlanModel.create({ name: 'Team', seatCount: 10, displayOrder: 1, isActive: true, billingMode: 'metered', monthlyPriceInPaise: 10000 }))._id.toString();
 
     vi.mocked(stripeClient.getOrCreateCustomer).mockResolvedValue('cus_1');
     vi.mocked(stripeClient.addDomainSubscriptionItem).mockResolvedValue({ id: 'si_added' } as any);

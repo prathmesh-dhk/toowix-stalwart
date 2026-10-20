@@ -78,9 +78,9 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
       <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
           <div className="flex flex-col gap-1">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Plans &amp; Seat Tiers</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Plans</h1>
             <p className="text-xs text-slate-500">
-              Configure subscription tiers, seat capacities, and customer pricing for self-service domain onboarding.
+              Configure Plans, user limits, and per-Active-User pricing for self-service domain onboarding.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -279,7 +279,6 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
             <tbody>
               {filteredPlans.map((plan) => {
                 const priceFormatted = `₹${(plan.monthlyPriceInPaise / 100).toLocaleString('en-IN')}`;
-                const isMetered = plan.billingMode === 'metered';
 
                 return (
                   <tr key={plan.id} className="hover:bg-slate-50/80 transition-colors">
@@ -319,7 +318,7 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
                           <span>
                             <span className="font-semibold text-slate-900">{plan.seatCount}</span>{' '}
                             <span className="text-slate-500 font-normal">
-                              {isMetered ? 'seat cap (metered)' : 'seats included'}
+                              Active Users max
                             </span>
                           </span>
                         </div>
@@ -337,7 +336,7 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
                       <div className="tabular-nums">
                         <span className="text-sm font-bold text-slate-900">{priceFormatted}</span>
                         <span className="text-xs text-slate-500 font-normal ml-1">
-                          {isMetered ? '/ seat / mo' : '/ mo'}
+                          / Active User / mo
                         </span>
                       </div>
                     </td>
@@ -409,7 +408,6 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredPlans.map((plan) => {
             const priceFormatted = `₹${(plan.monthlyPriceInPaise / 100).toLocaleString('en-IN')}`;
-            const isMetered = plan.billingMode === 'metered';
 
             return (
               <div
@@ -465,11 +463,11 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
                         {priceFormatted}
                       </span>
                       <span className="text-xs text-slate-500 font-normal">
-                        {isMetered ? '/ seat / month' : '/ month'}
+                        / Active User / month
                       </span>
                     </div>
                     <div className="text-xs text-indigo-600 font-medium mt-1">
-                      {isMetered ? `Pay as you grow up to ${plan.seatCount} seats` : `Fixed pack of ${plan.seatCount} mailboxes`}
+                      {`Per Active User, up to ${plan.seatCount} Active Users`}
                     </div>
                   </div>
 

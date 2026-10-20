@@ -18,7 +18,6 @@ function serializePlan(plan: any) {
     displayOrder: plan.displayOrder,
     isActive: plan.isActive,
     isDefault: plan.isDefault,
-    billingMode: plan.billingMode,
     monthlyPriceInPaise: plan.monthlyPriceInPaise,
     storageQuotaGb: plan.storageQuotaGb ?? null,
     apps: plan.apps || ['email'],
@@ -48,7 +47,6 @@ const createPlanSchema = z.object({
   displayOrder: z.number().int().optional(),
   isActive: z.boolean().optional(),
   isDefault: z.boolean().optional(),
-  billingMode: z.enum(['fixed', 'metered']).optional(),
   monthlyPriceInPaise: z.number().int().min(0, 'Price cannot be negative').optional(),
   storageQuotaGb: z.number().int().min(1).optional().nullable(),
   apps: z.array(z.string()).optional(),
@@ -78,7 +76,7 @@ plansRouter.post('/', requireSuperAdmin, async (req: Request, res: Response): Pr
     displayOrder: data.displayOrder ?? 0,
     isActive: data.isActive ?? true,
     isDefault: data.isDefault ?? false,
-    billingMode: data.billingMode ?? 'fixed',
+    billingMode: 'metered',
     monthlyPriceInPaise: data.monthlyPriceInPaise ?? 0,
     storageQuotaGb: data.storageQuotaGb ?? null,
     apps: data.apps ?? ['email'],
@@ -129,15 +127,16 @@ plansRouter.patch('/:id', requireSuperAdmin, async (req: Request, res: Response)
   if (data.displayOrder !== undefined) plan.displayOrder = data.displayOrder;
   if (data.isActive !== undefined) plan.isActive = data.isActive;
   if (data.isDefault !== undefined) plan.isDefault = data.isDefault;
-  if (data.billingMode !== undefined) plan.billingMode = data.billingMode;
+  // Every Plan bills per Active User; this also moves a legacy 'fixed' Plan over on edit.
+  plan.billingMode = 'metered';
   if (data.monthlyPriceInPaise !== undefined) plan.monthlyPriceInPaise = data.monthlyPriceInPaise;
   if (data.storageQuotaGb !== undefined) plan.storageQuotaGb = data.storageQuotaGb;
   if (data.apps !== undefined) plan.apps = data.apps;
   if (data.features !== undefined) plan.features = data.features;
-  // Stripe Price objects are immutable — a price/mode change means the
+  // Stripe Price objects are immutable — a price change means the
   // cached stripePriceId is stale; clear it so the next checkout creates
   // a fresh Price instead of billing the old amount.
-  if (data.monthlyPriceInPaise !== undefined || data.billingMode !== undefined) {
+  if (data.monthlyPriceInPaise !== undefined) {
     plan.stripePriceId = null;
   }
 

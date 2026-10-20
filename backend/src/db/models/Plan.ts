@@ -15,6 +15,7 @@ export interface IPlan extends Document {
   // Billing (see backend/src/services/billing.service.ts):
   // Pay-as-you-go per active user: monthlyPriceInPaise is the price per active user per month.
   // Capacity ceiling is defined by seatCount / maxUsers.
+  // Unread: every Plan bills per Active User. Kept so stored documents still validate.
   billingMode: PlanBillingMode;
   monthlyPriceInPaise: number;
   pricePerUserMonthlyPaise?: number;
@@ -69,7 +70,7 @@ const PlanSchema = new Schema<IPlan>(
     billingMode: {
       type: String,
       enum: ['fixed', 'metered'],
-      default: 'fixed',
+      default: 'metered',
     },
     monthlyPriceInPaise: {
       type: Number,

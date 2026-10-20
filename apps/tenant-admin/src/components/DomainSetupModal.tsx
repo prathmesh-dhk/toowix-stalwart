@@ -975,7 +975,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                           {plans.map((plan) => {
                             const isSelected = selectedPlanId === plan.id;
                             const isPopular = plan.badge === 'Most Popular';
-                            const isFixedSolo = plan.billingMode === 'fixed' && plan.monthlyPriceInPaise === 0;
 
                             return (
                               <div
@@ -1014,9 +1013,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                                           isSelected ? 'text-indigo-950' : 'text-slate-900'
                                         }`}
                                       >
-                                        {isFixedSolo
-                                          ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
-                                          : plan.name}
+                                        {plan.name}
                                       </span>
 
                                       {plan.badge && !isPopular && (
@@ -1031,12 +1028,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                                         </span>
                                       )}
 
-                                      {/* Accessible Seat badge for fixed tests */}
-                                      {plan.billingMode === 'fixed' && !isFixedSolo && (
-                                        <span className="text-[10px] font-medium text-slate-500">
-                                          {`${plan.seatCount} Seats`}
-                                        </span>
-                                      )}
                                     </div>
                                   </div>
 
@@ -1045,8 +1036,6 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                                       <span className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
                                         {plan.monthlyPriceInPaise > 0
                                           ? `₹${(plan.monthlyPriceInPaise / 100).toLocaleString('en-IN')}`
-                                          : plan.billingMode === 'fixed'
-                                          ? `${plan.seatCount} ${plan.seatCount === 1 ? 'Seat' : 'Seats'}`
                                           : 'Free'}
                                       </span>
                                       {plan.monthlyPriceInPaise > 0 && (

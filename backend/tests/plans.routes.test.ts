@@ -123,6 +123,28 @@ describe('Plans API (seat tiers)', () => {
     expect(updateRes.body.plan.seatCount).toBe(15);
   });
 
+  it('saves every created or edited Plan as per-Active-User, keeping an edited Plan\'s price and limit', async () => {
+    const createRes = await request(app)
+      .post('/api/plans')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ name: 'Starter', seatCount: 10, monthlyPriceInPaise: 9900, billingMode: 'fixed' });
+    expect(createRes.status).toBe(201);
+    expect((await PlanModel.findById(createRes.body.plan.id))!.billingMode).toBe('metered');
+
+    const legacy = await PlanModel.collection.insertOne({
+      name: 'Legacy', seatCount: 25, monthlyPriceInPaise: 50000, billingMode: 'fixed', displayOrder: 3, isActive: true, isDefault: false, createdAt: new Date(), updatedAt: new Date(),
+    });
+    const updateRes = await request(app)
+      .patch(`/api/plans/${legacy.insertedId}`)
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ name: 'Legacy Plus' });
+    expect(updateRes.status).toBe(200);
+    const saved = (await PlanModel.findById(legacy.insertedId))!;
+    expect(saved.billingMode).toBe('metered');
+    expect(saved.monthlyPriceInPaise).toBe(50000);
+    expect(saved.seatCount).toBe(25);
+  });
+
   it('blocks deleting a plan still assigned to a domain, allows it once unassigned', async () => {
     const plan = await PlanModel.create({ name: 'Team', seatCount: 10, displayOrder: 1, isActive: true });
     const domain = await DomainModel.create({
