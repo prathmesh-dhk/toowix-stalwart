@@ -132,10 +132,14 @@ export class ToowixStripeClient {
     });
   }
 
-  /** Adds one domain to the tenant's subscription with an invoice line that names the domain. */
+  /**
+   * Adds one domain to the tenant's subscription with an invoice line that names the domain.
+   * With chargeNow, its users' remaining days are invoiced at once; otherwise on the next bill.
+   */
   async addDomainSubscriptionItem(
     subscriptionId: string,
-    params: { name: string; unitAmountPaise: number; quantity: number; domainId: string; planId: string }
+    params: { name: string; unitAmountPaise: number; quantity: number; domainId: string; planId: string },
+    chargeNow = false
   ): Promise<Stripe.SubscriptionItem> {
     const stripe = getStripe();
     const product = await stripe.products.create({
@@ -145,7 +149,7 @@ export class ToowixStripeClient {
     return stripe.subscriptionItems.create({
       subscription: subscriptionId,
       quantity: Math.max(0, params.quantity),
-      proration_behavior: 'create_prorations',
+      proration_behavior: chargeNow ? 'always_invoice' : 'create_prorations',
       price_data: {
         currency: CURRENCY,
         unit_amount: params.unitAmountPaise,
@@ -211,7 +215,8 @@ export class ToowixStripeClient {
 
   /**
    * Upgrade: immediate change. With chargeNow, the prorated difference is invoiced and paid at
-   * once, and Stripe refuses the whole change if that payment fails.
+   * once, and Stripe refuses the whole change if the card is declined. A charge the bank must
+   * approve (3-D Secure) still applies, with the invoice left open for the customer to authenticate.
    */
   async updateSubscriptionItemPrice(
     subscriptionId: string,
@@ -221,12 +226,15 @@ export class ToowixStripeClient {
     chargeNow: boolean
   ): Promise<Stripe.Subscription> {
     const stripe = getStripe();
-    return stripe.subscriptions.update(subscriptionId, {
-      items: [{ id: subscriptionItemId, price: newPriceId, quantity }],
-      ...(chargeNow
-        ? { proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' }
-        : { proration_behavior: 'create_prorations' }),
-    });
+    const items = [{ id: subscriptionItemId, price: newPriceId, quantity }];
+    if (!chargeNow) return stripe.subscriptions.update(subscriptionId, { items, proration_behavior: 'create_prorations' });
+    try {
+      return await stripe.subscriptions.update(subscriptionId, { items, proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' });
+    } catch (err: any) {
+      // The refused try changed nothing; this one applies the upgrade and leaves the invoice to approve.
+      if (err?.code !== 'subscription_payment_intent_requires_action') throw err;
+      return stripe.subscriptions.update(subscriptionId, { items, proration_behavior: 'always_invoice', payment_behavior: 'allow_incomplete' });
+    }
   }
 
   /**

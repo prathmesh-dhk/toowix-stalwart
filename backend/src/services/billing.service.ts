@@ -471,7 +471,7 @@ export async function ensureDomainSubscription(
         quantity: activeCount,
         domainId: domain._id.toString(),
         planId: plan._id.toString(),
-      });
+      }, status !== 'trialing' && activeCount > 0); // users arriving with the domain are charged now, like added users
       stripeSubscriptionItemId = item.id;
     } catch (err) {
       // Not billed after all, so its mail goes back off.
@@ -1449,13 +1449,6 @@ export async function requestUpgrade(domainId: string, tenantId: string, newPlan
     );
   } catch (err: any) {
     // Stripe made no change, so neither do we.
-    if (err?.code === 'subscription_payment_intent_requires_action') {
-      throw new BillingError(
-        "Your bank needs to approve this charge, which can't be done for an upgrade, so the Plan is unchanged. Try again with a card that doesn't ask for approval.",
-        'PAYMENT_FAILED',
-        402
-      );
-    }
     if (err?.type === 'StripeCardError') {
       throw new BillingError(`Your card couldn't be charged for the upgrade, so the Plan is unchanged. ${err.message}`, 'PAYMENT_FAILED', 402);
     }

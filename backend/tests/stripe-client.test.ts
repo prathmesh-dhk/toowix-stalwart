@@ -157,6 +157,12 @@ describe('stripeClient.getOrCreateCustomer', () => {
     });
   });
 
+  it('a domain added with chargeNow invoices its remaining days at once', async () => {
+    await stripeClient.addDomainSubscriptionItem('sub_master_123', { name: 'Pro — back.com', unitAmountPaise: 9900, quantity: 2, domainId: 'dom_back', planId: 'plan_pro' }, true);
+
+    expect(subscriptionItemsCreate).toHaveBeenLastCalledWith(expect.objectContaining({ quantity: 2, proration_behavior: 'always_invoice' }));
+  });
+
   it('an upgrade charged now invoices the difference at once, and Stripe refuses the change if that payment fails', async () => {
     await stripeClient.updateSubscriptionItemPrice('sub_up', 'si_up', 'price_pro', 2, true);
     expect(subscriptionsUpdate).toHaveBeenLastCalledWith('sub_up', {
@@ -171,6 +177,32 @@ describe('stripeClient.getOrCreateCustomer', () => {
       items: [{ id: 'si_up', price: 'price_pro', quantity: 2 }],
       proration_behavior: 'create_prorations',
     });
+  });
+
+  it('an upgrade whose charge needs the bank to approve still applies, leaving the invoice for the customer to authenticate', async () => {
+    subscriptionsUpdate.mockClear();
+    subscriptionsUpdate.mockRejectedValueOnce(
+      Object.assign(new Error('Payment for this subscription requires additional user action...'), {
+        type: 'StripeCardError',
+        code: 'subscription_payment_intent_requires_action',
+      })
+    );
+
+    await stripeClient.updateSubscriptionItemPrice('sub_up', 'si_up', 'price_pro', 2, true);
+
+    // Stripe made no change on the refused try; the retry applies the upgrade with the invoice left open.
+    expect(subscriptionsUpdate.mock.calls).toEqual([
+      ['sub_up', { items: [{ id: 'si_up', price: 'price_pro', quantity: 2 }], proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' }],
+      ['sub_up', { items: [{ id: 'si_up', price: 'price_pro', quantity: 2 }], proration_behavior: 'always_invoice', payment_behavior: 'allow_incomplete' }],
+    ]);
+  });
+
+  it('a declined upgrade charge is not retried', async () => {
+    subscriptionsUpdate.mockClear();
+    subscriptionsUpdate.mockRejectedValueOnce(Object.assign(new Error('Your card was declined.'), { type: 'StripeCardError', code: 'card_declined' }));
+
+    await expect(stripeClient.updateSubscriptionItemPrice('sub_up', 'si_up', 'price_pro', 2, true)).rejects.toThrow('Your card was declined.');
+    expect(subscriptionsUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('a quantity charged now invoices the remaining days at once; otherwise the proration waits for the next bill', async () => {

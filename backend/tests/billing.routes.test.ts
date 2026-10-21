@@ -753,12 +753,37 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
   });
 
   // A domain cancelled on its own leaves the subscription running for the rest.
-  async function liveSiblingOnSharedSubscription() {
+  async function liveSiblingOnSharedSubscription(status: 'trialing' | 'active' = 'trialing') {
     const other = await DomainModel.create({ tenantId, domainName: 'other.com', planId, status: 'active' });
     await DomainSubscriptionModel.create({
-      domainId: other._id, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_other', status: 'trialing',
+      domainId: other._id, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_other', status,
     });
   }
+
+  it("picking a plan again after the Trial charges the domain's remaining days at once", async () => {
+    const { stripeClient } = await import('../src/stripe/client');
+    const { stalwartClient } = await import('../src/stalwart/client');
+    vi.spyOn(stalwartClient, 'updateDomainStatus').mockResolvedValue();
+    vi.spyOn(stalwartClient, 'updateAccountStatus').mockResolvedValue();
+    await TenantModel.updateOne(
+      { _id: tenantId },
+      { stripeCustomerId: 'cus_test', stripeSubscriptionId: 'sub_shared', trialStartedAt: new Date(Date.now() - 90 * 86400000), trialEndsAt: new Date(Date.now() - 30 * 86400000) }
+    );
+    await DomainModel.updateOne({ _id: domainId }, { status: 'suspended', planId: null });
+    await DomainSubscriptionModel.create({ domainId, tenantId, planId, stripeSubscriptionId: 'sub_shared', stripeSubscriptionItemId: 'si_old', status: 'canceled' });
+    await liveSiblingOnSharedSubscription('active');
+    await MailboxModel.create({ tenantId, domainId, localPart: 'back', address: 'back@acme.com', status: 'suspended', billingHold: false });
+    vi.mocked(stripeClient.addDomainSubscriptionItem).mockClear();
+    vi.mocked(stripeClient.addDomainSubscriptionItem).mockResolvedValueOnce({ id: 'si_back' } as any);
+
+    const res = await request(app)
+      .post(`/api/tenants/me/billing/domains/${domainId}/select-plan`)
+      .set('Authorization', `Bearer ${tenantAdminToken}`)
+      .send({ planId });
+
+    expect(res.status).toBe(200);
+    expect(stripeClient.addDomainSubscriptionItem).toHaveBeenCalledWith('sub_shared', expect.objectContaining({ quantity: 1 }), true);
+  });
 
   it('picking a plan again for a cancelled, suspended domain bills it again and brings its mail back', async () => {
     const { stripeClient } = await import('../src/stripe/client');
@@ -786,7 +811,8 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       .send({ planId });
 
     expect(res.status).toBe(200);
-    expect(stripeClient.addDomainSubscriptionItem).toHaveBeenCalledWith('sub_shared', expect.objectContaining({ quantity: 1 }));
+    // During the Trial nothing is owed, so nothing is charged now.
+    expect(stripeClient.addDomainSubscriptionItem).toHaveBeenCalledWith('sub_shared', expect.objectContaining({ quantity: 1 }), false);
     expect((await DomainSubscriptionModel.findOne({ domainId }))?.stripeSubscriptionItemId).toBe('si_back');
     expect((await DomainSubscriptionModel.findOne({ domainId }))?.activeUserCount).toBe(1);
     expect((await MailboxModel.findById(mailbox._id))?.status).toBe('active');
@@ -1010,7 +1036,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       quantity: 0,
       domainId: secondDomain._id.toString(),
       planId: proPlan._id.toString(),
-    });
+    }, false);
 
     // DomainSubscription for second domain created and rides the shared trial
     const sub2 = await DomainSubscriptionModel.findOne({ domainId: secondDomain._id });
@@ -1082,7 +1108,7 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       name: 'Pro — direct-with-plan.com',
       unitAmountPaise: 9900,
       planId: proPlan._id.toString(),
-    }));
+    }), false);
 
     const directSub = await DomainSubscriptionModel.findOne({ stripeSubscriptionItemId: 'si_dom_direct' });
     expect(directSub).not.toBeNull();
@@ -1424,24 +1450,6 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       expect(res.body.message).toContain('Your card was declined.');
       expect((await DomainModel.findById(domain._id))?.planId?.toString()).toBe(starter._id.toString());
       expect((await DomainSubscriptionModel.findById(sub._id))?.pricePerUserMonthlyPaise).toBe(4900);
-    });
-
-    it('a card that needs the bank to approve the charge refuses the upgrade in plain words', async () => {
-      const { stripeClient } = await import('../src/stripe/client');
-      const { domain, starter, pro } = await billedDomain('needs3ds', 'active');
-      vi.mocked(stripeClient.updateSubscriptionItemPrice).mockRejectedValueOnce(
-        Object.assign(new Error('Payment for this subscription requires additional user action, but the requested payment behavior...'), {
-          type: 'StripeCardError',
-          code: 'subscription_payment_intent_requires_action',
-        })
-      );
-
-      const res = await upgrade(domain._id, pro._id);
-
-      expect(res.status).toBe(402);
-      expect(res.body.error).toBe('PAYMENT_FAILED');
-      expect(res.body.message).toBe("Your bank needs to approve this charge, which can't be done for an upgrade, so the Plan is unchanged. Try again with a card that doesn't ask for approval.");
-      expect((await DomainModel.findById(domain._id))?.planId?.toString()).toBe(starter._id.toString());
     });
 
     it('during the Trial, an upgrade and an added user charge nothing now', async () => {
