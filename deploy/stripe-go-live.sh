@@ -251,7 +251,7 @@ write_env ENABLE_BILLING "true"
 
 stage "Live webhook endpoint"
 say "Stripe tells the backend about payments through this endpoint."
-ask BACKEND_PUBLIC_URL "Public backend URL (e.g. https://api.toowix.com):"
+ask BACKEND_PUBLIC_URL "Public URL that reaches the backend (production: https://admin.toowix.com):"
 BACKEND_PUBLIC_URL="${BACKEND_PUBLIC_URL%/}"
 WEBHOOK_URL="$BACKEND_PUBLIC_URL/api/webhooks/stripe"
 existing=$(curl -fsS "https://api.stripe.com/v1/webhook_endpoints?limit=100" -u "$STRIPE_SECRET_KEY:" | grep -c "\"url\": \"$WEBHOOK_URL\"" || true)
@@ -318,9 +318,10 @@ confirm "Restart the backend now so it reads the new settings?" || { warn "Resta
 compose up -d backend
 step "Waiting for the backend to come up..."
 sleep 20
-code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$WEBHOOK_URL" -H 'Content-Type: application/json' --data-raw '{}' || true)
+# A fake signature reaches the secret check (an unsigned request is refused before it): 400 = loaded.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$WEBHOOK_URL" -H 'Content-Type: application/json' -H 'Stripe-Signature: t=1,v1=bad' --data-raw '{}' || true)
 case "$code" in
-  400) say "${GREEN}✓${RESET} Webhook answers 400 to an unsigned request: the signing secret is loaded." ;;
+  400) say "${GREEN}✓${RESET} Webhook refuses a forged signature with 400: the signing secret is loaded." ;;
   503) warn "503: the backend has no webhook secret. Check STRIPE_WEBHOOK_SECRET in $ENV_FILE."; exit 1 ;;
   *)   warn "Unexpected $code from $WEBHOOK_URL. Check the backend logs: docker logs toowix-prod-backend"; exit 1 ;;
 esac
