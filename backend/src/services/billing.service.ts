@@ -829,27 +829,9 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
       ? new Date(subscription.trial_end * 1000)
       : new Date(trialStartedAt.getTime() + (await getTrialDurationMs()));
 
-    // Checked before anything is recorded, so a refused card leaves no trial and no released mailboxes.
+    // One card may start Trials on any number of Tenants; its fingerprint is only recorded.
     const card = subscription.default_payment_method;
     const fingerprint = card && typeof card !== 'string' ? (card.card as any)?.fingerprint : undefined;
-    // No Trial for a returning Tenant, so no Trial to guard; its first card stays on record.
-    if (fingerprint && !returning) {
-      const prior = await TenantModel.findOne({
-        _id: { $ne: claimed._id },
-        cardFingerprint: fingerprint,
-        trialStartedAt: { $ne: null },
-      });
-      if (prior) {
-        // Checkout already created the subscription; left alone it would charge when its trial ends.
-        // A failed cancel throws, so the webhook answers 500 and Stripe's retry cancels it.
-        if (subscription.status !== 'canceled') await stripeClient.cancelSubscription(subscription.id);
-        throw new BillingError(
-          'This card has already been used for a free trial on another organization. Please use a different card.',
-          'TRIAL_ALREADY_USED_FOR_CARD',
-          409
-        );
-      }
-    }
 
     // A Trial shorter than Checkout's whole days (e.g. minutes, for testing) is cut on Stripe now.
     const trialMinutes = Number(session.metadata?.trialMinutes);
@@ -1784,8 +1766,8 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         try {
           await adoptActivationSession(session.metadata.tenantId, session, SYSTEM_ACTOR);
         } catch (err) {
-          // Refused, and its subscription is cancelled (or long ended): nothing left for a retry to do.
-          if (!(err instanceof BillingError && ['TRIAL_ALREADY_USED_FOR_CARD', 'SUBSCRIPTION_ENDED'].includes(err.code))) throw err;
+          // Refused, and its subscription long ended: nothing left for a retry to do.
+          if (!(err instanceof BillingError && err.code === 'SUBSCRIPTION_ENDED')) throw err;
         }
         break;
       }
