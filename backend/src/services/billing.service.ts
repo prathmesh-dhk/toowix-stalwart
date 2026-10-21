@@ -13,8 +13,9 @@ import { StripeEventModel } from '../db/models/StripeEvent';
 import { couponService } from './coupon.service';
 import { emailService } from './email.service';
 import { config, isBillingEnabled } from '../config';
+import { getTrialDurationMs } from './trial-config.service';
 
-const TRIAL_DAYS = 60;
+const DAY_MS = 86400 * 1000;
 const GRACE_DAYS = 7;
 
 export interface BillingActor {
@@ -520,7 +521,7 @@ export async function ensureDomainSubscription(
 }
 
 /**
- * Starts the tenant's ONE 60-day trial (if it hasn't started) and attaches every planned domain to
+ * Starts the tenant's ONE trial (length set by the Super Admin, default 60 days) (if it hasn't started) and attaches every planned domain to
  * the master subscription. Idempotent: once trialStartedAt is set, the trial dates never move.
  */
 const ACTIVATION_LOCK_TTL_MS = 5 * 60 * 1000;
@@ -589,7 +590,8 @@ async function startTenantTrialUnlocked(
   }
 
   const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * 86400 * 1000);
+  const trialMs = await getTrialDurationMs();
+  const trialEndsAt = new Date(now.getTime() + trialMs);
   tenant.trialStartedAt = now;
   tenant.trialEndsAt = trialEndsAt;
 
@@ -609,7 +611,8 @@ async function startTenantTrialUnlocked(
     resource: 'TENANT',
     resourceId: tenantId,
     metadata: {
-      trialDays: TRIAL_DAYS,
+      trialDays: Math.round(trialMs / DAY_MS),
+      trialMinutes: Math.round(trialMs / 60000),
       domainsCount: domainsWithPlans.length,
       stripeSubscriptionId: tenant.stripeSubscriptionId || 'none',
     },
@@ -774,14 +777,16 @@ export async function startCartCheckout(
     extraDays = promo.extraTrialDays || 0;
   }
 
+  // Checkout only takes whole Trial days; a shorter Trial is cut to trialMinutes on adoption.
+  const trialMs = returning ? 0 : (await getTrialDurationMs()) + extraDays * DAY_MS;
   const customerId = await stripeClient.getOrCreateCustomer(tenant);
   const session = await stripeClient.createActivationCheckoutSession({
     customerId,
     lines,
-    trialDays: returning ? 0 : TRIAL_DAYS + extraDays,
+    trialDays: Math.ceil(trialMs / DAY_MS),
     successUrl: `${config.tenantAdminUrl}/cart?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${config.tenantAdminUrl}/cart?checkout=cancelled`,
-    metadata: { tenantId, purpose: 'cart_activation', promoCode: code, actorId: actor.id, resubscribe: String(returning) },
+    metadata: { tenantId, purpose: 'cart_activation', promoCode: code, actorId: actor.id, resubscribe: String(returning), trialMinutes: String(Math.round(trialMs / 60000)) },
   });
   if (!session.url) throw new BillingError('Stripe did not return a checkout URL', 'STRIPE_ERROR', 502);
   return { url: session.url };
@@ -820,9 +825,9 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
       throw new BillingError('This checkout is for a subscription that has ended', 'SUBSCRIPTION_ENDED', 409);
     }
     const trialStartedAt = subscription.trial_start ? new Date(subscription.trial_start * 1000) : new Date();
-    const trialEndsAt = subscription.trial_end
+    let trialEndsAt = subscription.trial_end
       ? new Date(subscription.trial_end * 1000)
-      : new Date(trialStartedAt.getTime() + TRIAL_DAYS * 86400 * 1000);
+      : new Date(trialStartedAt.getTime() + (await getTrialDurationMs()));
 
     // Checked before anything is recorded, so a refused card leaves no trial and no released mailboxes.
     const card = subscription.default_payment_method;
@@ -843,6 +848,20 @@ export async function adoptActivationSession(tenantId: string, session: Stripe.C
           'TRIAL_ALREADY_USED_FOR_CARD',
           409
         );
+      }
+    }
+
+    // A Trial shorter than Checkout's whole days (e.g. minutes, for testing) is cut on Stripe now.
+    const trialMinutes = Number(session.metadata?.trialMinutes);
+    if (!returning && subscription.trial_end && trialMinutes > 0) {
+      const wanted = new Date(Math.max(trialStartedAt.getTime() + trialMinutes * 60000, Date.now() + 60000));
+      if (wanted.getTime() < trialEndsAt.getTime() - 60000) {
+        try {
+          await stripeClient.setTrialEnd(subscription.id, wanted);
+          trialEndsAt = wanted;
+        } catch (err: any) {
+          console.warn(`[BillingService] Could not shorten the trial on ${subscription.id}, keeping Stripe's end:`, err.message);
+        }
       }
     }
 

@@ -9,6 +9,7 @@ import { checkDatabaseHealth } from '../db/connection';
 import { reconciliationService } from '../services/reconciliation.service';
 import { backupService } from '../services/backup.service';
 import { alertService } from '../services/alert.service';
+import { getTrialConfig, updateTrialConfig, TrialConfigError } from '../services/trial-config.service';
 import { emailService } from '../services/email.service';
 import { stalwartClient } from '../stalwart/client';
 import { checkDnsRecordsLive } from '../services/domain-activation.service';
@@ -417,6 +418,31 @@ systemRouter.post('/mail-limits', async (req: Request, res: Response): Promise<v
   } catch (err: any) {
     console.error('[System Update Mail Limits Error]:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to update mail limit configuration' });
+  }
+});
+
+// Trial length for new Trials (testing: can be minutes or hours)
+systemRouter.get('/trial-config', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(200).json(await getTrialConfig());
+  } catch (err: any) {
+    console.error('[System Trial Config Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to load trial configuration' });
+  }
+});
+
+systemRouter.post('/trial-config', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const actorEmail = (req as any).adminUser?.email || 'superadmin';
+    const config = await updateTrialConfig(req.body || {}, actorEmail);
+    res.status(200).json({ success: true, message: 'Trial length updated. It applies to trials that start from now on.', config });
+  } catch (err: any) {
+    if (err instanceof TrialConfigError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: err.message });
+      return;
+    }
+    console.error('[System Update Trial Config Error]:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Failed to update trial configuration' });
   }
 });
 

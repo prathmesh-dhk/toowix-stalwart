@@ -68,6 +68,9 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
   const [savingMailLimits, setSavingMailLimits] = useState(false);
   const [mailLimitsLoaded, setMailLimitsLoaded] = useState(false);
 
+  const [trialConfig, setTrialConfig] = useState<{ value: number; unit: 'minutes' | 'hours' | 'days' }>({ value: 60, unit: 'days' });
+  const [savingTrialConfig, setSavingTrialConfig] = useState(false);
+
   // Drift Repair State
   const [repairingQuota, setRepairingQuota] = useState(false);
   const [autoRepairingDrift, setAutoRepairingDrift] = useState(false);
@@ -404,6 +407,24 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
     }
   };
 
+  const handleSaveTrialConfig = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingTrialConfig(true);
+    try {
+      const res = await api.updateTrialConfig(trialConfig);
+      setTrialConfig(res.config);
+      onShowAlert('success', res.message || 'Trial length updated.');
+    } catch (err: any) {
+      onShowAlert('error', err.message || 'Failed to update trial length.');
+    } finally {
+      setSavingTrialConfig(false);
+    }
+  };
+
+  useEffect(() => {
+    api.getTrialConfig().then(setTrialConfig).catch((err: any) => onShowAlert('error', err.message || 'Failed to load trial length.'));
+  }, []);
+
   useEffect(() => {
     if (!mailLimitsLoaded) {
       void handleLoadMailLimits();
@@ -665,6 +686,57 @@ export const SystemOperationsView: React.FC<SystemOperationsViewProps> = ({
             <div className="flex justify-end pt-2">
               <Button type="submit" variant="primary" size="md" loading={savingMailLimits} className="w-full sm:w-auto min-h-[44px]">
                 Save Mail Limits
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Trial Length */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Activity size={17} className="text-indigo-600" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Free Trial Length
+          </h3>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-xs">
+          <form onSubmit={handleSaveTrialConfig} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <label className="field-label">Length</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={trialConfig.value}
+                  onChange={(e) => setTrialConfig((prev) => ({ ...prev, value: Math.max(1, parseInt(e.target.value || '1', 10)) }))}
+                  className="form-input text-base sm:text-xs min-h-[44px] sm:min-h-0"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="field-label">Unit</label>
+                <select
+                  value={trialConfig.unit}
+                  onChange={(e) => setTrialConfig((prev) => ({ ...prev, unit: e.target.value as 'minutes' | 'hours' | 'days' }))}
+                  className="form-input text-base sm:text-xs min-h-[44px] sm:min-h-0"
+                >
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                  <option value="days">Days</option>
+                </select>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400">
+              Applies to trials that start after saving; running trials keep their end date. Default is 60 days.
+            </p>
+
+            <div className="flex justify-end pt-2">
+              <Button type="submit" variant="primary" size="md" loading={savingTrialConfig} className="w-full sm:w-auto min-h-[44px]">
+                Save Trial Length
               </Button>
             </div>
           </form>

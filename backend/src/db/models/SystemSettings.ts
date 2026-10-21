@@ -12,6 +12,8 @@ export interface ISystemSettings extends Document {
   maxMailboxNameLength?: number;
   dnsActivationMaxHours?: number;
   dnsSweepIntervalMinutes?: number;
+  trialDurationValue?: number;
+  trialDurationUnit?: 'minutes' | 'hours' | 'days';
   updatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -72,6 +74,14 @@ const SystemSettingsSchema = new Schema<ISystemSettings>(
       type: Number,
       default: 15,
       min: 1,
+    },
+    trialDurationValue: {
+      type: Number,
+      min: 1,
+    },
+    trialDurationUnit: {
+      type: String,
+      enum: ['minutes', 'hours', 'days'],
     },
     updatedBy: {
       type: String,

@@ -284,6 +284,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getTrialConfig: () => request<{ value: number; unit: 'minutes' | 'hours' | 'days' }>('/api/system/trial-config'),
+  updateTrialConfig: (payload: { value: number; unit: 'minutes' | 'hours' | 'days' }) =>
+    request<{ success: boolean; message: string; config: { value: number; unit: 'minutes' | 'hours' | 'days' } }>('/api/system/trial-config', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   activateTenant: (id: string) =>
     request<{
       success: boolean;
