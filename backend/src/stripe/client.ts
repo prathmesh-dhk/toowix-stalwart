@@ -209,17 +209,23 @@ export class ToowixStripeClient {
     return stripe.subscriptions.retrieve(subscriptionId);
   }
 
-  /** Upgrade: immediate change with standard proration. */
+  /**
+   * Upgrade: immediate change. With chargeNow, the prorated difference is invoiced and paid at
+   * once, and Stripe refuses the whole change if that payment fails.
+   */
   async updateSubscriptionItemPrice(
     subscriptionId: string,
     subscriptionItemId: string,
     newPriceId: string,
-    quantity?: number
+    quantity: number | undefined,
+    chargeNow: boolean
   ): Promise<Stripe.Subscription> {
     const stripe = getStripe();
     return stripe.subscriptions.update(subscriptionId, {
       items: [{ id: subscriptionItemId, price: newPriceId, quantity }],
-      proration_behavior: 'create_prorations',
+      ...(chargeNow
+        ? { proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' }
+        : { proration_behavior: 'create_prorations' }),
     });
   }
 
@@ -326,13 +332,16 @@ export class ToowixStripeClient {
     );
   }
 
-  /** Synchronizes active billable user count as the quantity on a domain's subscription item */
-  async syncDomainUserQuantity(subscriptionItemId: string, quantity: number): Promise<Stripe.SubscriptionItem> {
+  /**
+   * Synchronizes active billable user count as the quantity on a domain's subscription item.
+   * With chargeNow, the remaining days are invoiced at once; otherwise they wait for the next bill.
+   */
+  async syncDomainUserQuantity(subscriptionItemId: string, quantity: number, chargeNow = false): Promise<Stripe.SubscriptionItem> {
     const stripe = getStripe();
     const qty = Math.max(0, quantity);
     return stripe.subscriptionItems.update(subscriptionItemId, {
       quantity: qty,
-      proration_behavior: 'create_prorations',
+      proration_behavior: chargeNow ? 'always_invoice' : 'create_prorations',
     });
   }
 

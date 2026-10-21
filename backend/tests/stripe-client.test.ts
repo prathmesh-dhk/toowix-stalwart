@@ -16,6 +16,8 @@ const customersCreate = vi.fn(async (_params: unknown, opts?: { idempotencyKey?:
 });
 const productsCreate = vi.fn(async (params: any) => ({ id: `prod_${++seq}`, ...params }));
 const subscriptionItemsCreate = vi.fn(async (params: any) => ({ id: `si_${++seq}`, ...params }));
+const subscriptionItemsUpdate = vi.fn(async (id: string, params: any) => ({ id, ...params }));
+const subscriptionsUpdate = vi.fn(async (id: string, params: any) => ({ id, ...params }));
 const pricesCreate = vi.fn(async (params: any) => ({ id: `price_${++seq}`, ...params }));
 const subscriptionSchedulesCreate = vi.fn(async (params: any) => ({
   id: `sched_${++seq}`,
@@ -44,7 +46,7 @@ vi.mock('stripe', () => ({
   default: vi.fn(() => ({
     customers: { create: customersCreate },
     products: { create: productsCreate },
-    subscriptionItems: { create: subscriptionItemsCreate },
+    subscriptionItems: { create: subscriptionItemsCreate, update: subscriptionItemsUpdate },
     prices: { create: pricesCreate },
     subscriptionSchedules: {
       create: subscriptionSchedulesCreate,
@@ -52,7 +54,7 @@ vi.mock('stripe', () => ({
       retrieve: subscriptionSchedulesRetrieve,
       release: subscriptionSchedulesRelease,
     },
-    subscriptions: { retrieve: subscriptionsRetrieve },
+    subscriptions: { retrieve: subscriptionsRetrieve, update: subscriptionsUpdate },
   })),
 }));
 
@@ -153,6 +155,30 @@ describe('stripeClient.getOrCreateCustomer', () => {
         { items: [{ price: 'price_old_up', quantity: 5 }, { price: 'price_sibling_down', quantity: 1 }, { price: 'price_new', quantity: 3 }] },
       ],
     });
+  });
+
+  it('an upgrade charged now invoices the difference at once, and Stripe refuses the change if that payment fails', async () => {
+    await stripeClient.updateSubscriptionItemPrice('sub_up', 'si_up', 'price_pro', 2, true);
+    expect(subscriptionsUpdate).toHaveBeenLastCalledWith('sub_up', {
+      items: [{ id: 'si_up', price: 'price_pro', quantity: 2 }],
+      proration_behavior: 'always_invoice',
+      payment_behavior: 'error_if_incomplete',
+    });
+
+    // During the Trial nothing is owed, so the difference isn't invoiced.
+    await stripeClient.updateSubscriptionItemPrice('sub_up', 'si_up', 'price_pro', 2, false);
+    expect(subscriptionsUpdate).toHaveBeenLastCalledWith('sub_up', {
+      items: [{ id: 'si_up', price: 'price_pro', quantity: 2 }],
+      proration_behavior: 'create_prorations',
+    });
+  });
+
+  it('a quantity charged now invoices the remaining days at once; otherwise the proration waits for the next bill', async () => {
+    await stripeClient.syncDomainUserQuantity('si_q', 3, true);
+    expect(subscriptionItemsUpdate).toHaveBeenLastCalledWith('si_q', { quantity: 3, proration_behavior: 'always_invoice' });
+
+    await stripeClient.syncDomainUserQuantity('si_q', 2);
+    expect(subscriptionItemsUpdate).toHaveBeenLastCalledWith('si_q', { quantity: 2, proration_behavior: 'create_prorations' });
   });
 
   it('setPendingPrices keeps a running Trial in the current phase, so a downgrade during the Trial does not end it', async () => {

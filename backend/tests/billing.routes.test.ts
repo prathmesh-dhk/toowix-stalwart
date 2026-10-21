@@ -1144,7 +1144,8 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     vi.mocked(stripeClient.syncDomainUserQuantity).mockClear();
     await syncDomainActiveUserCount(domain._id.toString());
 
-    expect(stripeClient.syncDomainUserQuantity).toHaveBeenCalledWith('si_scenario3', 2);
+    // An added user is charged for the rest of the period straight away.
+    expect(stripeClient.syncDomainUserQuantity).toHaveBeenCalledWith('si_scenario3', 2, true);
     let subDoc = await DomainSubscriptionModel.findById(sub._id);
     expect(subDoc?.activeUserCount).toBe(2);
 
@@ -1167,7 +1168,8 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     vi.mocked(stripeClient.syncDomainUserQuantity).mockClear();
     await syncDomainActiveUserCount(domain._id.toString());
 
-    expect(stripeClient.syncDomainUserQuantity).toHaveBeenCalledWith('si_scenario3', 1);
+    // A removed user's credit waits for the next bill.
+    expect(stripeClient.syncDomainUserQuantity).toHaveBeenCalledWith('si_scenario3', 1, false);
     subDoc = await DomainSubscriptionModel.findById(sub._id);
     expect(subDoc?.activeUserCount).toBe(1);
 
@@ -1288,7 +1290,8 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       'sub_planchange',
       'si_planchange',
       'price_pro_tier',
-      1
+      1,
+      true
     );
 
     let updatedDomain = await DomainModel.findById(domain._id);
@@ -1390,6 +1393,71 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect(res.body.message).toContain('exceeds the plan limit of 1');
     expect(stripeClient.updateSubscriptionItemPrice).not.toHaveBeenCalled();
     expect((await DomainModel.findById(domainId))?.planId?.toString()).toBe(planId);
+  });
+
+  describe('charging now for an upgrade or an added user', () => {
+    async function billedDomain(name: string, status: 'active' | 'trialing') {
+      const starter = await PlanModel.create({ name: `Starter ${name}`, seatCount: 10, monthlyPriceInPaise: 4900, isActive: true });
+      const pro = await PlanModel.create({ name: `Pro ${name}`, seatCount: 50, monthlyPriceInPaise: 9900, isActive: true });
+      const domain = await DomainModel.create({ tenantId, domainName: `${name}.com`, status: 'active', planId: starter._id, planName: starter.name, mailboxLimit: 10 });
+      const sub = await DomainSubscriptionModel.create({
+        tenantId, domainId: domain._id, planId: starter._id, stripeSubscriptionId: `sub_${name}`, stripeSubscriptionItemId: `si_${name}`,
+        status, activeUserCount: 1, pricePerUserMonthlyPaise: 4900, maxUsers: 10, cancelAtPeriodEnd: false,
+      });
+      await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'a', address: `a@${name}.com`, status: 'active', billingHold: false });
+      return { domain, sub, starter, pro };
+    }
+    const upgrade = (domainId: unknown, planId: unknown) =>
+      request(app).post(`/api/tenants/me/billing/domains/${domainId}/upgrade`).set('Authorization', `Bearer ${tenantAdminToken}`).send({ planId: String(planId) });
+
+    it('a declined card refuses the upgrade with its reason, and the Plan stays as it was', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      const { domain, sub, starter, pro } = await billedDomain('declined', 'active');
+      vi.mocked(stripeClient.updateSubscriptionItemPrice).mockRejectedValueOnce(
+        Object.assign(new Error('Your card was declined.'), { type: 'StripeCardError', code: 'card_declined' })
+      );
+
+      const res = await upgrade(domain._id, pro._id);
+
+      expect(res.status).toBe(402);
+      expect(res.body.error).toBe('PAYMENT_FAILED');
+      expect(res.body.message).toContain('Your card was declined.');
+      expect((await DomainModel.findById(domain._id))?.planId?.toString()).toBe(starter._id.toString());
+      expect((await DomainSubscriptionModel.findById(sub._id))?.pricePerUserMonthlyPaise).toBe(4900);
+    });
+
+    it('a card that needs the bank to approve the charge refuses the upgrade in plain words', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      const { domain, starter, pro } = await billedDomain('needs3ds', 'active');
+      vi.mocked(stripeClient.updateSubscriptionItemPrice).mockRejectedValueOnce(
+        Object.assign(new Error('Payment for this subscription requires additional user action, but the requested payment behavior...'), {
+          type: 'StripeCardError',
+          code: 'subscription_payment_intent_requires_action',
+        })
+      );
+
+      const res = await upgrade(domain._id, pro._id);
+
+      expect(res.status).toBe(402);
+      expect(res.body.error).toBe('PAYMENT_FAILED');
+      expect(res.body.message).toBe("Your bank needs to approve this charge, which can't be done for an upgrade, so the Plan is unchanged. Try again with a card that doesn't ask for approval.");
+      expect((await DomainModel.findById(domain._id))?.planId?.toString()).toBe(starter._id.toString());
+    });
+
+    it('during the Trial, an upgrade and an added user charge nothing now', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      const { syncDomainActiveUserCount } = await import('../src/services/billing.service');
+      const { domain, pro } = await billedDomain('trialup', 'trialing');
+      vi.mocked(stripeClient.updateSubscriptionItemPrice).mockClear();
+      vi.mocked(stripeClient.syncDomainUserQuantity).mockClear();
+
+      expect((await upgrade(domain._id, pro._id)).status).toBe(200);
+      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_trialup', 'si_trialup', expect.any(String), 1, false);
+
+      await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'b', address: 'b@trialup.com', status: 'active', billingHold: false });
+      await syncDomainActiveUserCount(domain._id.toString());
+      expect(stripeClient.syncDomainUserQuantity).toHaveBeenCalledWith('si_trialup', 2, false);
+    });
   });
 
   it('summary returns each domain its Plan id and pending downgrade; an upgrade clears it and a second downgrade replaces it', async () => {

@@ -315,8 +315,16 @@ describe("BillingView: changing a domain's Plan", () => {
     expect(option(dialog, 'Basic')).toHaveTextContent('₹400 / month');
     expect(option(dialog, 'Starter')).toHaveTextContent('Current plan');
     expect(option(dialog, 'Starter')).toBeDisabled();
-    expect(option(dialog, 'Business')).toHaveTextContent('Starts now; the difference is prorated on your next invoice');
+    expect(option(dialog, 'Business')).toHaveTextContent("Starts now; the difference for the rest of this period is charged to your card today");
     expect(option(dialog, 'Basic')).toHaveTextContent('Starts on 30 Nov 2026');
+  });
+
+  it('during the Trial, an upgrade says nothing is charged until the Trial ends', async () => {
+    vi.mocked(api.getTenantBillingSummary).mockResolvedValue({ ...billedSummary(), status: 'trialing' });
+    renderOrgView();
+    const dialog = await openDialog();
+
+    expect(option(dialog, 'Business')).toHaveTextContent('Starts now; nothing is charged until your Trial ends');
   });
 
   it("disables a Plan whose user limit is below the domain's Active Users, with the reason", async () => {

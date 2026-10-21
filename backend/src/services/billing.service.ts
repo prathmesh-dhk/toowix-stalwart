@@ -1093,13 +1093,15 @@ async function syncDomainActiveUserCountNow(domainId: string): Promise<void> {
   if (!sub) return;
 
   const activeCount = await MailboxModel.countDocuments({ domainId, status: 'active', billingHold: false });
+  // An added user is charged for the rest of the period now; a removed one is credited on the next bill.
+  const chargeNow = activeCount > (sub.activeUserCount ?? 0) && sub.status !== 'trialing';
   sub.activeUserCount = activeCount;
   await sub.save();
 
   // Sync to Stripe if billing is enabled and a real subscription item exists
   if (isBillingEnabled() && sub.stripeSubscriptionItemId && !sub.stripeSubscriptionItemId.startsWith('si_trial_')) {
     try {
-      await stripeClient.syncDomainUserQuantity(sub.stripeSubscriptionItemId, activeCount);
+      await stripeClient.syncDomainUserQuantity(sub.stripeSubscriptionItemId, activeCount, chargeNow);
     } catch (err: any) {
       console.warn(`[BillingService] syncDomainUserQuantity failed for domain ${domainId}:`, err.message);
     }
@@ -1436,12 +1438,29 @@ export async function requestUpgrade(domainId: string, tenantId: string, newPlan
 
   const priceId = await stripeClient.createDomainPrice(domainPriceParams(domain, newPlan));
   const activeCount = await MailboxModel.countDocuments({ domainId: domain._id, status: 'active', billingHold: false });
-  await stripeClient.updateSubscriptionItemPrice(
-    sub.stripeSubscriptionId,
-    sub.stripeSubscriptionItemId,
-    priceId,
-    activeCount || undefined
-  );
+  try {
+    // The difference is charged now; during the Trial nothing is owed yet.
+    await stripeClient.updateSubscriptionItemPrice(
+      sub.stripeSubscriptionId,
+      sub.stripeSubscriptionItemId,
+      priceId,
+      activeCount || undefined,
+      sub.status !== 'trialing'
+    );
+  } catch (err: any) {
+    // Stripe made no change, so neither do we.
+    if (err?.code === 'subscription_payment_intent_requires_action') {
+      throw new BillingError(
+        "Your bank needs to approve this charge, which can't be done for an upgrade, so the Plan is unchanged. Try again with a card that doesn't ask for approval.",
+        'PAYMENT_FAILED',
+        402
+      );
+    }
+    if (err?.type === 'StripeCardError') {
+      throw new BillingError(`Your card couldn't be charged for the upgrade, so the Plan is unchanged. ${err.message}`, 'PAYMENT_FAILED', 402);
+    }
+    throw err;
+  }
 
   sub.planId = newPlan._id as any;
   sub.pricePerUserMonthlyPaise = newPlan.monthlyPriceInPaise ?? newPlan.pricePerUserMonthlyPaise ?? 0;

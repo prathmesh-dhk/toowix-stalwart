@@ -366,6 +366,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           domain={changingPlanFor}
           plans={plans}
           currentPeriodEnd={summary?.currentPeriodEnd ?? null}
+          trialing={summary?.status === 'trialing'}
           chooseAgain={billedDomain(changingPlanFor.domainId)?.cancelled}
           onClose={() => setChangingPlanFor(null)}
           onChanged={() => {

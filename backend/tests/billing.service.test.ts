@@ -622,7 +622,7 @@ describe('billing.service', () => {
       await requestUpgrade(domain._id.toString(), tenantId, biggerPlan._id.toString(), actor);
 
       // Billed for its 2 Active Users, not the Plan's limit of 25.
-      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_up', 'si_up', 'price_bigger', 2);
+      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_up', 'si_up', 'price_bigger', 2, true);
       expect((await DomainModel.findById(domain._id))?.mailboxLimit).toBe(25);
     });
 
@@ -659,7 +659,7 @@ describe('billing.service', () => {
         domainId: domain._id.toString(),
         planId: meteredPlanId,
       });
-      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_shared_up', 'si_upgrading', 'price_upgrading_custom', 1);
+      expect(stripeClient.updateSubscriptionItemPrice).toHaveBeenCalledWith('sub_shared_up', 'si_upgrading', 'price_upgrading_custom', 1, true);
       const sub = await DomainSubscriptionModel.findOne({ domainId: domain._id });
       expect(sub?.planId?.toString()).toBe(meteredPlanId);
       expect(sub?.pricePerUserMonthlyPaise).toBe(15000);

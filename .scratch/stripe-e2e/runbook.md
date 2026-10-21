@@ -100,12 +100,13 @@ Run this on a Tenant with an active subscription (or past trial) on a plan with 
 
 1. **Active mailboxes.** Start with 1 active mailbox on the domain (`quantity: 1` in Stripe). Add 2 more mailboxes (`POST /api/mailboxes` under the domain).
    Check: each added mailbox increments the Stripe subscription item's quantity (`quantity: 3`). `GET /api/tenants/me/billing/summary` and the Billing page show Active Users: 3, Subtotal: ₹147 (3 × ₹49), not the plan ceiling of 10.
+   Check: outside the Trial, each added mailbox is charged at once for the rest of the period: a `subscription_update` invoice, `paid`, for one user's remaining days (e.g. ₹49 × 15/30 halfway through a 30-day month). During the Trial nothing is invoiced. With a declining card, that invoice stays `open` and `invoice.payment_failed` opens the Grace Period (scenario 6); with a card that needs 3-D Secure, the **Authenticate payment** banner appears (scenario 7).
 2. **Upcoming invoice.** Retrieve the upcoming invoice in Stripe (`stripe invoices retrieve upcoming --customer=cus_... --subscription=sub_...`).
-   Check: the line item for the next period has quantity 3 and amount ₹147.00. The preview also lists "Unused time" / "Remaining time" proration lines for each quantity change.
+   Check: the line item for the next period has quantity 3 and amount ₹147.00. Added users were already charged, so there are no "Remaining time" lines for them; a removed user's "Unused time" credit appears here (step 3).
 3. **Suspend a mailbox.** Suspend one of the mailboxes in the Tenant Admin (or `POST /api/mailboxes/:id/suspend`; `POST /api/mailboxes/:id/reactivate` undoes it).
    Check: the subscription item in Stripe immediately updates to `quantity: 2`. `GET /api/tenants/me/billing/summary` drops to 2 active users (₹98). The suspended mailbox does not count toward billable quantity.
 4. **Reactivate or add.** Reactivate the suspended mailbox (or create another active mailbox).
-   Check: the subscription item updates back to `quantity: 3`. Mailboxes created before checkout (in `billingHold: true` status) do not increment the billed quantity until activated.
+   Check: the subscription item updates back to `quantity: 3`, and the remaining days are charged at once, as in step 1. Mailboxes created before checkout (in `billingHold: true` status) do not increment the billed quantity until activated.
 5. **Invoice generation.** When the invoice is generated or the test clock advances to cycle billing, Stripe bills Active Users × per-user price (3 × ₹49 = ₹147), never the plan ceiling (10).
 
 Last run 2026-10-19. Live run executed against Stripe test mode with a test clock. Fixed:
@@ -141,7 +142,9 @@ Run this on a Tenant with an active domain subscription (e.g. on Starter @ ₹49
    - `DomainSubscription` updates `pricePerUserMonthlyPaise: 9900` and `maxUsers: 50`.
    - `Domain` updates `planId`, `planName: "Pro"`, and `mailboxLimit: 50`.
    - `GET /api/tenants/me/billing/summary` and the Billing page reflect the Pro plan and ₹99/user rate immediately.
-   - Stripe upcoming invoice (`stripe invoices retrieve upcoming --customer=cus_...`) immediately reflects line items charged at ₹99/user × active users.
+   - Outside the Trial, the difference for the rest of the period is charged at once: a `subscription_update` invoice, `paid` (e.g. ₹50 for one user moved from ₹49 to ₹99 at the start of the period). During the Trial nothing is invoiced.
+   - Stripe upcoming invoice (`stripe invoices retrieve upcoming --customer=cus_...`) charges ₹99/user × active users, with no proration lines for the upgrade.
+   - With a declining card (`4000 0000 0000 0341`) as default, the upgrade returns 402 `PAYMENT_FAILED` ("Your card couldn't be charged for the upgrade, so the Plan is unchanged. Your card was declined."), and nothing changes in Stripe or the app. With a card that needs 3-D Secure (`4000 0027 6000 3184`), it returns 402 with "Your bank needs to approve this charge, which can't be done for an upgrade, so the Plan is unchanged." The Change plan dialog shows the message.
 2. **Downgrade below current Active Users is refused.** With e.g. 5 active mailboxes on the domain, attempt to downgrade to a plan whose ceiling is below 5 (or seed/create active mailboxes exceeding the target plan's ceiling, e.g. 12 active users attempting to downgrade to Starter with ceiling 10).
    Check: the request returns 400 Bad Request with error code `ACTIVE_USERS_EXCEED_PLAN_LIMIT` and message `"Cannot downgrade to <Plan>: domain has X active mailboxes, which exceeds the plan limit of Y."`. Stripe is not touched and the plan remains unchanged.
 3. **Valid downgrade.** With active mailboxes within the target plan ceiling (e.g. 2 active mailboxes downgrading from Pro to Starter):
@@ -164,6 +167,8 @@ Last run 2026-10-19. Live run executed against Stripe test mode with a test cloc
 - `billingService.requestDowngrade` did not check whether current active mailbox count exceeded the target plan's user ceiling, silently allowing downgrades that violate plan limits. It now validates and returns 400 `ACTIVE_USERS_EXCEED_PLAN_LIMIT`.
 - `billingService.requestUpgrade` did not update `DomainSubscription.pricePerUserMonthlyPaise` or `maxUsers`, leaving `getTenantBillingSummary` showing stale pricing. It now updates them immediately.
 - `billingService` webhook handler for `invoice.payment_succeeded` now updates `Domain` and `DomainSubscription` with the pending downgrade plan when the renewal invoice pays.
+
+Since 2026-10-21, upgrades and added users are charged at once (`proration_behavior: always_invoice`); an upgrade also uses `payment_behavior: error_if_incomplete`, so Stripe refuses the change if the payment fails. During the Trial both still use `create_prorations`, and removed users are still credited on the next bill. Checked live that day through `stripeClient` (no app): a good card was charged ₹50 for the upgrade and ₹99 for an added user at once; a declining card and a 3-D Secure card both left the price unchanged; an added user on either left an `open` invoice.
 
 Since stripe-e2e issue 17, `scheduleDowngrade` is gone. Pending downgrades live in `domain_subscriptions.pendingDowngradePriceId`, and `stripeClient.setPendingPrices` rebuilds both phases of the schedule from the subscription's live items: on downgrade, on **Keep current plan** (`POST /api/tenants/me/billing/domains/:id/downgrade/cancel`), and on every `customer.subscription.updated` while a schedule is attached or a downgrade is pending. It releases the schedule once nothing is pending. An upgrade drops the domain's pending downgrade. Scenario 12 runs this from the Billing page.
 
@@ -279,7 +284,7 @@ Use a Tenant with a running subscription and two cards (Checkout's 4242, then **
 Use a new Tenant on a test clock (scenario 2) with two domains on Starter, two active mailboxes on domain 1 and one on domain 2, Trial running. Do every step on the Billing page.
 
 1. **The dialog.** Click **Change plan** on domain 1.
-   Check: every active Plan is listed with its price per Active User and "₹… / month" for 2 Active Users. Starter says **Current plan** and can't be picked. Pricier Plans say "Starts now; the difference is prorated on your next invoice". A Plan whose user limit is below the domain's Active Users is disabled with "Allows up to N Active Users; <domain> has M".
+   Check: every active Plan is listed with its price per Active User and "₹… / month" for 2 Active Users. Starter says **Current plan** and can't be picked. Pricier Plans say "Starts now; nothing is charged until your Trial ends" (after the Trial: "Starts now; the difference for the rest of this period is charged to your card today"). A Plan whose user limit is below the domain's Active Users is disabled with "Allows up to N Active Users; <domain> has M".
 2. **Upgrade.** Pick Pro and confirm.
    Check: the row shows Pro, ₹99 / Active User and ₹198/mo straight away, and the estimated monthly bill moves with it. Stripe's item for the domain is on a ₹99 price, and the subscription is still `trialing`.
 3. **Downgrade.** **Change plan** → Starter, which says "Starts on <period end>". Confirm.

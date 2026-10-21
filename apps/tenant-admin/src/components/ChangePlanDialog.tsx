@@ -11,6 +11,8 @@ export interface ChangePlanDialogProps {
   domain: BillingDomain;
   plans: Plan[];
   currentPeriodEnd: string | null;
+  /** During the Trial nothing is charged, so an upgrade has nothing to pay today. */
+  trialing?: boolean;
   /** A domain cancelled on its own: any Plan puts it back on the bill now, through Plan selection. */
   chooseAgain?: boolean;
   onClose: () => void;
@@ -18,7 +20,7 @@ export interface ChangePlanDialogProps {
 }
 
 /** Moves a billed domain to another Plan: a pricier Plan upgrades now, a cheaper one is scheduled for period end. */
-export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plans, currentPeriodEnd, chooseAgain, onClose, onChanged }) => {
+export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plans, currentPeriodEnd, trialing, onClose, onChanged, chooseAgain }) => {
   const [selected, setSelected] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +86,9 @@ export const ChangePlanDialog: React.FC<ChangePlanDialogProps> = ({ domain, plan
                       : chooseAgain
                       ? 'Billed from today; its mail switches back on'
                       : isUpgrade(p)
-                      ? 'Starts now; the difference is prorated on your next invoice'
+                      ? trialing
+                        ? 'Starts now; nothing is charged until your Trial ends'
+                        : 'Starts now; the difference for the rest of this period is charged to your card today'
                       : `Starts on ${formatDate(currentPeriodEnd)}`}
                   </div>
                 )}
