@@ -52,7 +52,15 @@ function getCardBrandBadge(brand?: string) {
     case 'visa':
       return <span className="font-black text-blue-700 italic tracking-tighter text-xs">VISA</span>;
     case 'mastercard':
-      return <span className="font-bold text-amber-600 text-xs">Mastercard</span>;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <svg className="w-5 h-3.5 shrink-0" viewBox="0 0 24 16" fill="none">
+            <circle cx="7" cy="8" r="7" fill="#EB001B" />
+            <circle cx="17" cy="8" r="7" fill="#F79E1B" fillOpacity="0.85" />
+          </svg>
+          <span className="text-[10px] font-bold text-slate-700">MC</span>
+        </span>
+      );
     case 'amex':
       return <span className="font-bold text-sky-600 text-xs">AMEX</span>;
     case 'discover':
@@ -1033,84 +1041,95 @@ export const BillingView: React.FC<BillingViewProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Select default payment method">
-            {paymentMethods.length > 0 ? (
-              paymentMethods.map((pm) => {
-                const isSelected = pm.isDefault;
-                const isSettingDefault = actionLoading === `pm-def-${pm.id}`;
-                return (
-                  <div
-                    key={pm.id}
-                    role="radio"
-                    aria-checked={isSelected}
-                    tabIndex={0}
-                    onClick={() => {
-                      if (!isSelected && !actionLoading) {
-                        handleSetDefaultPaymentMethod(pm.id);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if ((e.key === ' ' || e.key === 'Enter') && !isSelected && !actionLoading) {
-                        e.preventDefault();
-                        handleSetDefaultPaymentMethod(pm.id);
-                      }
-                    }}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border transition-all text-xs select-none ${
-                      isSelected
-                        ? 'border-indigo-600 bg-indigo-50/40 ring-1 ring-indigo-600/20 shadow-xs cursor-default'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 bg-white cursor-pointer'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Radio selection indicator */}
-                      <div
-                        className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected
-                            ? 'border-indigo-600 bg-indigo-600 text-white'
-                            : 'border-slate-300 bg-white hover:border-slate-400'
-                        }`}
-                      >
-                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                      </div>
+          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs" role="radiogroup" aria-label="Select default payment method">
+            {/* Table Column Header */}
+            <div className="hidden sm:grid sm:grid-cols-[2.5fr_1.2fr_1.5fr_1.5fr_0.8fr] bg-slate-50 border-b border-slate-200 px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider select-none">
+              <div>Payment Method</div>
+              <div>Expires</div>
+              <div>Autopay Role</div>
+              <div>Default Status</div>
+              <div className="text-right"><span className="sr-only">Actions</span></div>
+            </div>
 
-                      <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
-                        {getCardBrandBadge(pm.brand)}
-                      </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2.5 min-w-0">
-                        <span className="font-semibold text-slate-900 tracking-wider">
+            {/* Table Rows */}
+            <div className="divide-y divide-slate-100">
+              {paymentMethods.length > 0 ? (
+                paymentMethods.map((pm) => {
+                  const isSelected = pm.isDefault;
+                  const isSettingDefault = actionLoading === `pm-def-${pm.id}`;
+                  return (
+                    <div
+                      key={pm.id}
+                      role="radio"
+                      aria-checked={isSelected}
+                      aria-label={`•••• •••• •••• ${pm.last4}`}
+                      tabIndex={0}
+                      onClick={() => {
+                        if (!isSelected && !actionLoading) {
+                          handleSetDefaultPaymentMethod(pm.id);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if ((e.key === ' ' || e.key === 'Enter') && !isSelected && !actionLoading) {
+                          e.preventDefault();
+                          handleSetDefaultPaymentMethod(pm.id);
+                        }
+                      }}
+                      className={`grid grid-cols-1 sm:grid-cols-[2.5fr_1.2fr_1.5fr_1.5fr_0.8fr] items-center gap-3 sm:gap-0 px-4 py-3.5 transition-colors cursor-pointer select-none text-xs ${
+                        isSelected
+                          ? 'bg-indigo-50/40 hover:bg-indigo-50/60'
+                          : 'hover:bg-slate-50/80 bg-white'
+                      }`}
+                    >
+                      {/* 1. Payment Method */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected
+                              ? 'border-indigo-600 bg-indigo-600 text-white'
+                              : 'border-slate-300 bg-white hover:border-slate-400'
+                          }`}
+                        >
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+
+                        <div className="px-2 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs min-w-[48px]">
+                          {getCardBrandBadge(pm.brand)}
+                        </div>
+
+                        <span className="font-semibold text-slate-900 tracking-wider text-xs">
                           •••• •••• •••• {pm.last4}
                         </span>
-                        {/* Mobile fallback for expiry */}
-                        <span className="text-[11px] text-slate-400 sm:hidden">
-                          Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
-                          {isSelected ? ' · Primary autopay' : ''}
+                      </div>
+
+                      {/* 2. Expires */}
+                      <div>
+                        <span className="text-xs text-slate-600 font-medium tabular-nums">
+                          {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
                         </span>
                       </div>
-                    </div>
 
-                    {/* Right Side: Expiry, Autopay/Make Default, and Delete */}
-                    <div className="flex items-center gap-3 sm:gap-5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {/* Desktop Expiry & Status pushed to right */}
-                      <div className="hidden sm:flex flex-col items-end text-right">
-                        <span className="text-xs text-slate-600 font-medium tabular-nums whitespace-nowrap">
-                          Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
-                        </span>
+                      {/* 3. Autopay Role */}
+                      <div>
                         {isSelected ? (
-                          <span className="text-[10px] text-indigo-600 font-medium">Primary autopay</span>
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700">
+                            <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
+                            <span>Primary autopay</span>
+                          </span>
                         ) : (
-                          <span className="text-[10px] text-slate-400">Backup method</span>
+                          <span className="text-xs text-slate-400 font-medium">Backup card</span>
                         )}
                       </div>
 
-                      {/* Default status badge or Make Default action */}
-                      <div className="min-w-[96px] flex justify-end">
+                      {/* 4. Default Status / Action */}
+                      <div onClick={(e) => e.stopPropagation()}>
                         {isSettingDefault ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-indigo-600">
                             <Loader2 size={12} className="animate-spin" />
                             <span>Setting...</span>
                           </span>
                         ) : isSelected ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs whitespace-nowrap">
                             <CheckCircle2 size={12} className="text-emerald-600" />
                             <span>Default</span>
                           </span>
@@ -1126,53 +1145,62 @@ export const BillingView: React.FC<BillingViewProps> = ({
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePaymentMethod(pm.id)}
-                        disabled={actionLoading === `pm-del-${pm.id}`}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-                        title="Remove Card"
-                        aria-label={`Remove card ending in ${pm.last4}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {/* 5. Delete Action */}
+                      <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePaymentMethod(pm.id)}
+                          disabled={actionLoading === `pm-del-${pm.id}`}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                          title="Remove Card"
+                          aria-label={`Remove card ending in ${pm.last4}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-            ) : (
-              // Fallback preview from cart
-              cart?.paymentMethod && (
-                <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
-                      {getCardBrandBadge(cart.paymentMethod.brand)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-900 tracking-wider">
+                  );
+                })
+              ) : (
+                // Fallback preview from cart
+                cart?.paymentMethod && (
+                  <div className="grid grid-cols-1 sm:grid-cols-[2.5fr_1.2fr_1.5fr_1.5fr_0.8fr] items-center gap-3 sm:gap-0 px-4 py-3.5 bg-slate-50/50 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="px-2 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs min-w-[48px]">
+                        {getCardBrandBadge(cart.paymentMethod.brand)}
+                      </div>
+                      <span className="font-semibold text-slate-900 tracking-wider text-xs">
                         •••• •••• •••• {cart.paymentMethod.last4}
                       </span>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 sm:gap-5 shrink-0">
-                    <div className="hidden sm:flex flex-col items-end text-right">
-                      <span className="text-[11px] text-slate-500 font-medium">Autopay card on file</span>
+                    <div>
+                      <span className="text-xs text-slate-400">—</span>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs whitespace-nowrap">
-                      <CheckCircle2 size={12} className="text-emerald-600" />
-                      <span>Default</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={changeCard}
-                      className="px-2.5 py-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                    >
-                      Update card
-                    </button>
+                    <div>
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
+                        <span>Autopay card</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs whitespace-nowrap">
+                        <CheckCircle2 size={12} className="text-emerald-600" />
+                        <span>Default</span>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={changeCard}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        Update card
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )
-            )}
+                )
+              )}
+            </div>
           </div>
         )}
 
