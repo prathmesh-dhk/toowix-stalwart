@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 import { TenantDnsCredentialSummary, DomainItem } from '../types';
 import { GoDaddyIcon, HostingerIcon, CloudflareIcon } from './ProviderIcons';
-import { AlertTriangle, AlertCircle, Loader2, Key, ShieldCheck, ArrowRight, ExternalLink } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Loader2, Key, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export type DnsProvider = 'godaddy' | 'hostinger' | 'cloudflare';
 

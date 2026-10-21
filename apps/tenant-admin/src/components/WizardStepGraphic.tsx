@@ -5,7 +5,6 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
-  Mail,
   Search,
   Lock,
   Check,

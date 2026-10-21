@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Lock, CheckCircle2, AlertCircle, X, Loader2, Tag, Mail, Building2, LogOut } from 'lucide-react';
+import { ArrowLeft, Lock, CheckCircle2, AlertCircle, X, Loader2, Tag, Mail, Building2 } from 'lucide-react';
 import toowixLogo from '../../assets/toowix-logo.svg';
 import { api } from '../../api';
 import { CartData, CouponValidationResult, PaymentMethodItem, UserContext } from '../../types';
@@ -22,7 +22,7 @@ function formatDate(iso: string | null): string {
  * which starts the single 60-day trial and switches the waiting mailboxes on. Once the trial runs it
  * simply keeps tracking usage; users are never blocked on this page.
  */
-export const CartPage: React.FC<CartPageProps> = ({ onBack, user, onLogout }) => {
+export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
   const [tenantName, setTenantName] = useState<string>('Organization');
   const [cart, setCart] = useState<CartData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

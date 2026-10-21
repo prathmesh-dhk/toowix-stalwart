@@ -25,7 +25,6 @@ interface AllowedIpsViewProps {
 
 export const AllowedIpsView: React.FC<AllowedIpsViewProps> = ({
   domainId,
-  domainName,
   initialPrefillIp,
   onClearPrefillIp,
 }) => {

@@ -133,12 +133,6 @@ plansRouter.patch('/:id', requireSuperAdmin, async (req: Request, res: Response)
   if (data.storageQuotaGb !== undefined) plan.storageQuotaGb = data.storageQuotaGb;
   if (data.apps !== undefined) plan.apps = data.apps;
   if (data.features !== undefined) plan.features = data.features;
-  // Stripe Price objects are immutable — a price change means the
-  // cached stripePriceId is stale; clear it so the next checkout creates
-  // a fresh Price instead of billing the old amount.
-  if (data.monthlyPriceInPaise !== undefined) {
-    plan.stripePriceId = null;
-  }
 
   await plan.save();
 

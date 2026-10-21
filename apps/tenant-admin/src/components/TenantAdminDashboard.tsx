@@ -210,7 +210,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     selectedMailboxForDelete &&
     deleteConfirmEmail.trim().toLowerCase() === selectedMailboxForDelete.address.toLowerCase()
   );
-  const isMigrateChoiceValid = !migrateBeforeDelete || Boolean(migrationDestinationId);
 
   const filteredMigrationCandidates = useMemo(() => {
     if (!destinationSearchQuery.trim()) return migrationCandidates;

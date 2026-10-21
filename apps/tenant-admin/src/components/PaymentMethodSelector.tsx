@@ -51,7 +51,6 @@ function formatExpiry(val: string): string {
 
 export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   selectedPlan,
-  domainName,
   autoAttachDomainId,
   onSuccess,
   onSkip,
