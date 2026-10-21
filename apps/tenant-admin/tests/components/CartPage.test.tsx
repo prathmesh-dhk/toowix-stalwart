@@ -184,6 +184,28 @@ describe('CartPage', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
+  it('is empty once every mailbox has been activated', async () => {
+    const activated: CartData = {
+      ...pendingCart,
+      requiresActivation: false,
+      pendingMailboxes: [],
+      trial: { started: true, startedAt: 'x', endsAt: new Date(Date.now() + 60 * 86400000).toISOString(), daysRemaining: 60, isTrialing: true },
+      domains: pendingCart.domains.map((d) => ({
+        ...d,
+        activeUsers: 1,
+        pendingUsers: 0,
+        users: d.users.map((u) => ({ ...u, status: 'active' as const, pendingActivation: false })),
+      })),
+    };
+    vi.mocked(api.getCart).mockResolvedValue(activated);
+    render(<CartPage onBack={vi.fn()} />);
+
+    expect(await screen.findByText('Your cart is empty')).toBeInTheDocument();
+    expect(screen.queryByText('john@acme.com')).not.toBeInTheDocument();
+    expect(screen.getByText(/0 users across 0 domains/)).toBeInTheDocument();
+    expect(screen.getByText('₹0')).toBeInTheDocument();
+  });
+
   it('after the subscription ended it offers a Checkout that charges today, with no trial or promo code', async () => {
     const ended: CartData = {
       ...pendingCart,

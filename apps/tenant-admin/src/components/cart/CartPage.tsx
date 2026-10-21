@@ -186,9 +186,15 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
     }
   };
 
-  // A domain with no users has nothing to bill, so the cart leaves it out.
-  const domains = (cart?.domains ?? []).filter((d) => d.users.length > 0);
-  const totalUsers = domains.reduce((sum, d) => sum + d.activeUsers + d.pendingUsers, 0);
+  // The cart only holds mailboxes still waiting for activation; once they're switched on it empties.
+  const domains = (cart?.domains ?? [])
+    .map((d) => {
+      const users = d.users.filter((u) => u.pendingActivation);
+      return { ...d, users, monthlyPaise: users.length * d.ratePaise };
+    })
+    .filter((d) => d.users.length > 0);
+  const totalUsers = domains.reduce((sum, d) => sum + d.users.length, 0);
+  const subtotalPaise = domains.reduce((sum, d) => sum + d.monthlyPaise, 0);
   const extraDays = promo?.extraTrialDays || 0;
 
   const handleBack = () => {
@@ -292,7 +298,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
                   <ShoppingCart className="w-5 h-5" />
                 </div>
                 <h2 className="text-sm font-semibold text-slate-900">Your cart is empty</h2>
-                <p className="text-xs text-slate-500 max-w-xs">Users you add to a domain show up here, with what they cost each month.</p>
+                <p className="text-xs text-slate-500 max-w-xs">Users waiting for activation show up here, with what they cost each month.</p>
               </div>
             ) : (
               domains.map((d) => (
@@ -362,7 +368,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
               <span className="text-xs font-semibold text-slate-700">
                 Subtotal <span className="text-[11px] font-normal text-slate-400">(INR / month)</span>
               </span>
-              <span className="text-lg font-bold text-slate-900 tabular-nums">{formatPaise(cart?.estimatedMonthlyPaise ?? 0)}</span>
+              <span className="text-lg font-bold text-slate-900 tabular-nums">{formatPaise(subtotalPaise)}</span>
             </div>
             <p className="text-[11px] text-slate-400 text-center leading-tight">Billed only for active users. Subtotal does not include applicable taxes.</p>
 
@@ -371,7 +377,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
                 <strong className="text-slate-800">Your subscription has ended</strong>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Due today</span>
-                  <span className="tabular-nums font-semibold text-slate-800">{formatPaise(cart?.estimatedMonthlyPaise ?? 0)}</span>
+                  <span className="tabular-nums font-semibold text-slate-800">{formatPaise(subtotalPaise)}</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1 leading-relaxed border-t border-slate-200/60 pt-2">
                   Your free trial has been used, so Stripe charges this month when you confirm your card. Paying turns mail back on for your
