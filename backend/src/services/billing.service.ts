@@ -1232,7 +1232,8 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
     const domain = sub.domainId as unknown as IDomain | null;
     const pending = sub.pendingDowngradePlanId as unknown as IPlan | null;
     const activeCount = sub.activeUserCount ?? 0;
-    const rate = plan?.monthlyPriceInPaise ?? plan?.pricePerUserMonthlyPaise ?? sub.pricePerUserMonthlyPaise ?? 0;
+    // The price Stripe bills the domain at; a later edit to the Plan's price doesn't reach it.
+    const rate = sub.pricePerUserMonthlyPaise || plan?.monthlyPriceInPaise || plan?.pricePerUserMonthlyPaise || 0;
     return {
       domainId: domain?._id?.toString() || (sub.domainId ? sub.domainId.toString() : ''),
       domainName: domain?.domainName || '',

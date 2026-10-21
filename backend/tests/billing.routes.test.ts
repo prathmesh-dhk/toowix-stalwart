@@ -1421,6 +1421,23 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
     expect((await DomainModel.findById(domainId))?.planId?.toString()).toBe(planId);
   });
 
+  it('after a Plan price change, the summary and Cart show what Stripe still charges the domain, not the new price', async () => {
+    const plan = await PlanModel.create({ name: 'Repriced', seatCount: 10, monthlyPriceInPaise: 4900, isActive: true });
+    const domain = await DomainModel.create({ tenantId, domainName: 'repriced.com', status: 'active', planId: plan._id, planName: 'Repriced', mailboxLimit: 10 });
+    await DomainSubscriptionModel.create({
+      tenantId, domainId: domain._id, planId: plan._id, stripeSubscriptionId: 'sub_repriced', stripeSubscriptionItemId: 'si_repriced',
+      status: 'active', activeUserCount: 1, pricePerUserMonthlyPaise: 4900, maxUsers: 10, cancelAtPeriodEnd: false,
+    });
+    await MailboxModel.create({ tenantId, domainId: domain._id, localPart: 'a', address: 'a@repriced.com', status: 'active', billingHold: false });
+    await PlanModel.updateOne({ _id: plan._id }, { monthlyPriceInPaise: 5900 });
+
+    const summary = await request(app).get('/api/tenants/me/billing/summary').set('Authorization', `Bearer ${tenantAdminToken}`);
+    const cart = await request(app).get('/api/tenants/me/cart').set('Authorization', `Bearer ${tenantAdminToken}`);
+
+    expect(summary.body.domains.find((d: any) => d.domainName === 'repriced.com')).toMatchObject({ pricePerUserMonthlyPaise: 4900, monthlySubtotalPaise: 4900 });
+    expect(cart.body.domains.find((d: any) => d.domainName === 'repriced.com')).toMatchObject({ ratePaise: 4900, monthlyPaise: 4900 });
+  });
+
   describe('charging now for an upgrade or an added user', () => {
     async function billedDomain(name: string, status: 'active' | 'trialing') {
       const starter = await PlanModel.create({ name: `Starter ${name}`, seatCount: 10, monthlyPriceInPaise: 4900, isActive: true });

@@ -2,6 +2,7 @@ import { TenantModel } from '../db/models/Tenant';
 import { DomainModel, IDomain } from '../db/models/Domain';
 import { PlanModel, IPlan } from '../db/models/Plan';
 import { MailboxModel } from '../db/models/Mailbox';
+import { DomainSubscriptionModel } from '../db/models/DomainSubscription';
 import { AuditLogModel } from '../db/models/AuditLog';
 import { HELD_MAILBOX_TTL_DAYS } from './mailbox.service';
 import { hasEndedSubscription } from './billing.service';
@@ -98,13 +99,17 @@ export async function getCartSummary(tenantId: string): Promise<CartSummary> {
   const waiting = (m: (typeof mailboxes)[number]) =>
     subscriptionEnded ? m.status === 'suspended' && !m.billingHold && !m.adminSuspended : !!m.billingHold;
   const domainNameById = new Map(domains.map((d) => [d._id.toString(), d.domainName]));
+  // A billed domain keeps the price Stripe charges it; a later edit to the Plan's price doesn't reach it.
+  const billedRate = new Map(
+    (await DomainSubscriptionModel.find({ tenantId, status: { $ne: 'canceled' } })).map((sub) => [String(sub.domainId), sub.pricePerUserMonthlyPaise || 0])
+  );
 
   const rows = domains.map((d) => {
     const plan = planOf(d);
     const mine = mailboxes.filter((m) => m.domainId.toString() === d._id.toString());
     const activeUsers = mine.filter((m) => m.status === 'active').length;
     const pendingUsers = mine.filter(waiting).length;
-    const rate = ratePaise(plan);
+    const rate = billedRate.get(d._id.toString()) || ratePaise(plan);
     return {
       domainId: d._id.toString(),
       domainName: d.domainName,

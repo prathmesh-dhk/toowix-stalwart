@@ -343,6 +343,9 @@ Last run 2026-10-21 (scenarios 11–15), in Stripe test mode on test clocks, wit
 - Once a Tenant's subscription had ended, **Make Default** and removing the default card failed with "A canceled subscription can only update its cancellation_details and metadata." They now change only the customer's default card.
 - The super-admin Plans summary said "Per mailbox / month"; it now says "Per Active User / month".
 
+Re-run 2026-10-21 (later that day), same setup with database `toowix_e2e11`, for what the first run left unchecked and for the "charge now" changes. Passed: **Back to dashboard** after paying lands on the dashboard; an upgrade after the Trial charged ₹49.94 at once; a declined card was refused with its message and the Plan unchanged; a 3-D Secure card's upgrade applied, the **Authenticate payment** banner appeared, and approving on Stripe's invoice page cleared it; **Choose a plan again** charged ₹48.93 at once; **Keep current plan** recorded `BILLING_PLAN_DOWNGRADE_CANCELLED`; editing Enterprise's description kept its ₹149 price and 500 limit; reconcile found no drift and the views matched Stripe. Fixed:
+- After a Super Admin changed a Plan's price, the Billing page and Cart showed the new price for domains Stripe still billed at the old one. Billed domains now show their billed price; the new price applies to domains billed from then on.
+
 ## Reconcile and billing views (after all scenarios)
 
 1. Run `npm run job -- reconcile`.
