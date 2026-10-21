@@ -16,6 +16,7 @@ Re-run all of this after any billing change. Commands run from `backend/` unless
 3. **Fresh database.** Run `npm run db:clear`. It wipes Tenants, Domains, Mailboxes, Plans, DomainSubscriptions and StripeEvents, then re-seeds the default Plans with no Stripe IDs. Prices and meters are re-created lazily under your account on first use.
    ⚠️ `db:clear` also deletes every non-system domain and account on whatever Stalwart `STALWART_URL` points at. If that is a shared or live server (e.g. `smtp.dhkmail.com`), **don't run it**. Wipe only the Mongo collections listed above, then restart the backend, which re-seeds on startup.
    Check: in Mongo, `db.plans.find({ stripePriceId: { $ne: null } })` and `db.tenants.find({ stripeCustomerId: { $ne: null } })` both return nothing.
+   ⚠️ With no Mongo on 27017, `npm run dev` starts an in-memory one inside the backend process (`src/index.ts`), and so does `npm run dev:mongo`. `tsx watch` restarts the backend on every edit under `backend/src`, and the restart starts a fresh, empty in-memory Mongo, so every row from the run is lost. For a live run, use a real `mongod` with a data directory, or don't edit `backend/src` while it runs.
 4. **Webhooks.** In a second terminal:
    ```
    stripe listen --all-snapshot --forward-to localhost:4000/api/webhooks/stripe
@@ -146,9 +147,9 @@ Run this on a Tenant with an active domain subscription (e.g. on Starter @ ₹49
 3. **Valid downgrade.** With active mailboxes within the target plan ceiling (e.g. 2 active mailboxes downgrading from Pro to Starter):
    Select the lower plan (`POST /api/tenants/me/billing/domains/:id/downgrade` with `{ "planId": "<Starter>" }`).
    Check:
-   - The downgrade is scheduled via Stripe Subscription Schedule for the end of the current billing period (`current_period_end`).
-   - Sibling domain items on multi-domain subscriptions are preserved in phase 2 so other domains are not dropped.
-   - `DomainSubscription` sets `pendingDowngradePlanId` to the target plan ID. Current plan and rates remain active until period end.
+   - `stripeClient.setPendingPrices` attaches a Subscription Schedule to the subscription (or reuses the one attached). Its current phase holds the live items and ends at `current_period_end`. Its next phase is the same items with this domain's new per-domain Starter price swapped in. Sibling items are in both phases.
+   - During a Trial, the subscription stays `trialing` with the same `trial_end`, and the next phase starts at `trial_end`.
+   - `DomainSubscription` sets `pendingDowngradePlanId` and `pendingDowngradePriceId`. The current Plan and rate stay until period end.
 4. **Renewal applies the downgrade.** Advance the test clock past the current period end (`stripe test_helpers test_clocks advance clock_... --frozen-time=<period_end + 1 hour>`).
    Check:
    - The `listen` terminal shows `invoice.payment_succeeded` and `customer.subscription.updated` `[200]`.
@@ -163,6 +164,8 @@ Last run 2026-10-19. Live run executed against Stripe test mode with a test cloc
 - `billingService.requestDowngrade` did not check whether current active mailbox count exceeded the target plan's user ceiling, silently allowing downgrades that violate plan limits. It now validates and returns 400 `ACTIVE_USERS_EXCEED_PLAN_LIMIT`.
 - `billingService.requestUpgrade` did not update `DomainSubscription.pricePerUserMonthlyPaise` or `maxUsers`, leaving `getTenantBillingSummary` showing stale pricing. It now updates them immediately.
 - `billingService` webhook handler for `invoice.payment_succeeded` now updates `Domain` and `DomainSubscription` with the pending downgrade plan when the renewal invoice pays.
+
+Since stripe-e2e issue 17, `scheduleDowngrade` is gone. Pending downgrades live in `domain_subscriptions.pendingDowngradePriceId`, and `stripeClient.setPendingPrices` rebuilds both phases of the schedule from the subscription's live items: on downgrade, on **Keep current plan** (`POST /api/tenants/me/billing/domains/:id/downgrade/cancel`), and on every `customer.subscription.updated` while a schedule is attached or a downgrade is pending. It releases the schedule once nothing is pending. An upgrade drops the domain's pending downgrade. Scenario 12 runs this from the Billing page.
 
 ### 6. Failed payment opens the Grace Period; suspension after 7 days; paying restores
 
@@ -258,7 +261,84 @@ Run this on the Tenant from scenario 1 while its Trial is running.
 
 Last run 2026-10-19. Fixed: redeeming during a Trial used to change nothing, either in the app or in Stripe.
 
-## Reconcile and billing views (after all ten scenarios)
+### 11. Card changes keep Stripe and the Billing page on the same card (issues 10, 12)
+
+Use a Tenant with a running subscription and two cards (Checkout's 4242, then **Change payment method** with `5555 5555 5555 4444`, which becomes the default). After each step, compare the Billing page's **DEFAULT** card with `stripe customers retrieve cus_...` (`invoice_settings.default_payment_method`) and `stripe subscriptions retrieve sub_...` (`default_payment_method`).
+
+1. **Set default.** Click **Make Default** on 4242.
+   Check: all three are the 4242 card.
+2. **Remove the default card** (issue 10). Click **Remove Card** on 4242 and confirm.
+   Check: 4242 is detached (`stripe payment_methods list --customer=cus_... --type=card` no longer lists it). The page, the customer and the subscription all show 4444.
+3. **Remove the only card.** Click **Remove Card** on 4444.
+   Check: the page says "Add another card before removing this one — your subscription still bills to it." (409 `LAST_CARD`), and the card stays in the app and in Stripe.
+4. **Set default after the subscription ended** (issue 12). Stripe refuses any update to a cancelled subscription, so run this on the ended Tenant from scenario 14, step 5, before it comes back, with two cards on file. Click **Make Default** on the other card.
+   Check: no error; the page and the customer default move to the new card, and the cancelled subscription is not updated. There is no live way to make Stripe refuse an update to a live subscription; the rollback that issue 12 added (a refused subscription update puts the customer default back) is covered by `npx vitest run tests/billing.routes.test.ts -t "set default"`.
+
+### 12. Change a domain's Plan from the Billing page; Keep current plan (billing-ui 02, 03; issue 17)
+
+Use a new Tenant on a test clock (scenario 2) with two domains on Starter, two active mailboxes on domain 1 and one on domain 2, Trial running. Do every step on the Billing page.
+
+1. **The dialog.** Click **Change plan** on domain 1.
+   Check: every active Plan is listed with its price per Active User and "₹… / month" for 2 Active Users. Starter says **Current plan** and can't be picked. Pricier Plans say "Starts now; the difference is prorated on your next invoice". A Plan whose user limit is below the domain's Active Users is disabled with "Allows up to N Active Users; <domain> has M".
+2. **Upgrade.** Pick Pro and confirm.
+   Check: the row shows Pro, ₹99 / Active User and ₹198/mo straight away, and the estimated monthly bill moves with it. Stripe's item for the domain is on a ₹99 price, and the subscription is still `trialing`.
+3. **Downgrade.** **Change plan** → Starter, which says "Starts on <period end>". Confirm.
+   Check: the row still shows Pro and ₹198/mo, with "Moves to Starter on <period end>" and **Keep current plan**. The monthly bill is unchanged. Stripe: as scenario 5, step 3, including `trialing` and the unchanged `trial_end`.
+4. **A change while pending** (issue 17). Add a mailbox to domain 2.
+   Check: the schedule's next phase (`stripe subscription_schedules retrieve sub_sched_...`) has domain 2's new quantity.
+5. **Keep current plan.** Click it on the badge.
+   Check: the badge is gone. `pendingDowngradePlanId` and `pendingDowngradePriceId` are `null`, and the subscription has no `schedule`. The Audit Log has `BILLING_PLAN_DOWNGRADE_CANCELLED`.
+6. **Both kinds of change before renewal.** Downgrade domain 1 to Starter again, then upgrade domain 2 to Pro.
+   Check: domain 1 shows the pending badge, domain 2 shows Pro at once, and the next phase holds Starter for domain 1 and Pro for domain 2.
+7. **Renewal.** Advance the clock past `trial_end` (scenario 2, step 5).
+   Check: the paid `subscription_cycle` invoice and the Billing page both bill domain 1 at ₹49 and domain 2 at ₹99 per Active User. The badge is gone. Stripe and the app agree on each item's quantity and price.
+
+### 13. Payment failed, billing suspension and admin suspension (billing-ui 05, 06; issue 15)
+
+Continue with scenario 12's Tenant after its first paid invoice.
+
+1. **Admin suspension.** On a domain's mailbox list, open **Mailbox actions** on one mailbox and suspend it.
+   Check: it is labelled **Suspended – by admin**, and its actions offer **Reactivate**.
+2. **Payment fails.** **Change payment method** with `4000 0000 0000 0341`, then renew (scenario 6, step 2).
+   Check: the banner says "Payment failed. Mail stops on <date> unless you pay." with **Update card**. The date is `gracePeriodEndsAt`, shown in your local time zone. `GET /api/tenants/me/billing/summary` returns the same `gracePeriodEndsAt` at the top level and on each domain.
+3. **Billing suspension.** Run the grace sweep 8 days after the failure (scenario 6, step 4).
+   Check: the other mailboxes are labelled **Suspended – billing**. Their actions have no **Reactivate** and say "Paying the outstanding invoice restores this mailbox." `POST /api/mailboxes/:id/reactivate` on one returns 402 `PAYMENT_REQUIRED` ("Pay the outstanding invoice to restore this mailbox"). The banner says mail service is suspended, with **Resolve Payment**.
+4. **Pay.** Click **Resolve Payment** and pay with 4242.
+   Check: the billing-suspended mailboxes are `active` again. The admin-suspended one stays `suspended` with `adminSuspended: true` (issue 15), and the Stripe quantity doesn't count it.
+
+### 14. Cancel a domain, choose a plan again, and come back after the subscription ended (billing-ui 04; issue 14)
+
+Continue with scenario 13's Tenant (two billed domains, one admin-suspended mailbox).
+
+1. **Cancel one of two domains.** **Cancel this domain** on domain 2.
+   Check: the dialog says "<domain>'s mail stops now and it comes off your bill." After **Confirm**, the row shows **Cancelled**, ₹0/mo and **Choose a plan again**, and the monthly bill drops by its subtotal. Stripe has one item left. Domain 2's mailboxes are labelled **Suspended – domain cancelled**, with "Choose a plan again in Billing to restore this mailbox."
+2. **Choose a plan again.** Click it, pick Starter ("Billed from today; its mail switches back on") and confirm.
+   Check: the row is billed on Starter, Stripe has a new item at the domain's Active Users, and its mailboxes are `active`.
+3. **Cancel the only billed domain.** Cancel domain 2 again, then open **Cancel this domain** on domain 1.
+   Check: the dialog says "This cancels your subscription at the end of the period, on <period end>. Mail keeps working until then." After **Confirm**, the page says "Cancels at the end of the current period (…)" with **Resume subscription**, and Stripe has `cancel_at_period_end: true`.
+4. **Resume.** Click **Resume subscription**.
+   Check: the banner is gone and `cancel_at_period_end` is `false`.
+5. **Cancellation takes effect.** Click **Cancel subscription**, confirm, then advance the clock past the period end (scenario 8, step 5).
+   Check: Stripe says `canceled`, every row is `canceled`, and every domain and mailbox is `suspended`. Now run scenario 11, step 4.
+6. **Come back** (issue 14). Open the Cart and click **Ready for Checkout**.
+   Check: the Cart says "Your subscription has ended". Checkout charges today with no trial, for planned domains with Active Users only. After paying, the new subscription is `active`, the first invoice is `paid`, the rows have `trialEnd: null`, the domains and billed mailboxes are `active`, and the admin-suspended mailbox stays `suspended`. `cardFingerprint` and `trialStartedAt` are unchanged. If the Trial was still running when the Tenant comes back, `trialEndsAt` is cut to that moment. Under a test clock that moment is wall-clock "now", which can be earlier than the clock's dates.
+
+### 15. Super Admin views (billing-ui 07, 08, 09)
+
+1. **A Tenant's Billing tab.** Open `/tenants/:id/billing` in super-admin for scenario 12's Tenant at each stage.
+   Check: during the Trial it shows **Trial ends**, **Current period ends** and "No, renews". A pending downgrade shows on the domain row as "Moves to <Plan> on <date>". During a Grace Period it shows **Grace Period ends**, with the same date as the Tenant Admin's banner. After **Cancel subscription** it says "Cancels on <period end>". A domain cancelled on its own shows **Cancelled** and ₹0. **Sync with Stripe** is the only action.
+2. **Invoices.** On the same tab, check the **Invoices** list.
+   Check: same ids, amounts and statuses as `stripe invoices list --customer=cus_...`, newest first, each with a **View** link to the hosted invoice. `GET /api/platform/tenants/:id/invoices` returns the same list.
+3. **Plans.** Open Plans → **New Plan**.
+   Check: the form has "User limit (most Active Users per domain)" and "Price per Active User / month (₹)", and no billing mode. Create one (e.g. limit 25, ₹79). The list shows "25 Active Users max" and "₹79/ Active User / mo", and Mongo stores it with `billingMode: 'metered'` and `monthlyPriceInPaise: 7900`. Editing it keeps both values.
+
+Last run 2026-10-21 (scenarios 11–15), in Stripe test mode on test clocks, with real Checkout and every Billing page action clicked in a browser via Playwright. Rows were in a separate database (`toowix_e2e10`), Stalwart and outbound email were stubbed, and domains were created through the API without DNS. Scenarios 11–15 passed after the fixes below. Not checked live: the `BILLING_PLAN_DOWNGRADE_CANCELLED` audit entry (its database was lost to the in-memory Mongo restart described in Setup; a route test covers it) and editing an existing Plan. Fixed:
+- A downgrade scheduled during the Trial ended the Trial at once. Rewriting the schedule's current phase without `trial_end` made Stripe start billing straight away (`trialing` became `active`, with a ₹247 invoice). `setPendingPrices` now keeps the running Trial's `trial_end` in the current phase. Checked live on a subscription with a 60-day Trial: still `trialing`, same `trial_end`, after scheduling.
+- The Tenant Admin's Billing page reloaded itself about twice a second while open: the dashboard passed a new callback on each render, and each load re-rendered the dashboard. Every reload also listed invoices from Stripe and cleared any error, so the page never showed a failure message, `LAST_CARD` included. It now loads once.
+- Once a Tenant's subscription had ended, **Make Default** and removing the default card failed with "A canceled subscription can only update its cancellation_details and metadata." They now change only the customer's default card.
+- The super-admin Plans summary said "Per mailbox / month"; it now says "Per Active User / month".
+
+## Reconcile and billing views (after all scenarios)
 
 1. Run `npm run job -- reconcile`.
    Check: `driftCorrected: 0` and no `Failed reconciling` line.

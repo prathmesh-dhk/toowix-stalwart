@@ -330,7 +330,8 @@ async function pointStripeAtCard(tenant: ITenant, paymentMethodId: string, previ
   }
   try {
     // The subscription's own card (set at Checkout) outranks the customer's default when Stripe charges.
-    if (tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
+    // An ended subscription charges nothing, and Stripe refuses to update it.
+    if (tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId) && !(await hasEndedSubscription(tenant))) {
       await stripeClient.setSubscriptionDefaultPaymentMethod(tenant.stripeSubscriptionId, paymentMethodId);
     }
   } catch (err: any) {

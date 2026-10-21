@@ -168,7 +168,7 @@ export const PlansManagementView: React.FC<PlansManagementViewProps> = ({
             <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
               {minPrice > 0 ? `₹${minPrice} - ₹${maxPrice}` : 'Custom / Free'}
             </div>
-            <div className="text-[11px] text-slate-500 mt-1">Per mailbox / month</div>
+            <div className="text-[11px] text-slate-500 mt-1">Per Active User / month</div>
           </div>
 
           <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">

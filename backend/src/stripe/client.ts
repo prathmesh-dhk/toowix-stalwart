@@ -252,9 +252,11 @@ export class ToowixStripeClient {
     // Runs on every subscription update; skip the write (and the update event it makes) when in step.
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
     if (same(itemsOf(currentPhase), current) && same(itemsOf(schedule.phases[at + 1]), next)) return;
+    // A rewritten phase without trial_end ends a running Trial at once and invoices it.
+    const trial = subscription.status === 'trialing' && subscription.trial_end ? { trial_end: subscription.trial_end } : {};
     await stripe.subscriptionSchedules.update(schedule.id, {
       phases: [
-        { items: current, start_date: currentPhase.start_date, end_date: currentPhase.end_date },
+        { items: current, start_date: currentPhase.start_date, end_date: currentPhase.end_date, ...trial },
         { items: next },
       ],
     });

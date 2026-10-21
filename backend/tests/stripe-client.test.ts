@@ -155,6 +155,19 @@ describe('stripeClient.getOrCreateCustomer', () => {
     });
   });
 
+  it('setPendingPrices keeps a running Trial in the current phase, so a downgrade during the Trial does not end it', async () => {
+    subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: null, status: 'trialing', trial_end: 2000, items: liveItems() });
+
+    await stripeClient.setPendingPrices('sub_shared_123', { si_old: 'price_old_down' });
+
+    expect(subscriptionSchedulesUpdate).toHaveBeenLastCalledWith(expect.stringMatching(/^sched_/), {
+      phases: [
+        { items: [{ price: 'price_old', quantity: 2 }, { price: 'price_sibling', quantity: 1 }], start_date: 1000, end_date: 2000, trial_end: 2000 },
+        { items: [{ price: 'price_old_down', quantity: 2 }, { price: 'price_sibling', quantity: 1 }] },
+      ],
+    });
+  });
+
   it('setPendingPrices leaves a schedule that is already in step alone', async () => {
     subscriptionsRetrieve.mockResolvedValueOnce({ id: 'sub_shared_123', schedule: 'sched_existing', items: liveItems() });
     subscriptionSchedulesUpdate.mockClear();

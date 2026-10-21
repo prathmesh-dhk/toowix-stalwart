@@ -722,6 +722,23 @@ describe('Billing routes (/api/tenants/me/billing)', () => {
       expect(stripeClient.setSubscriptionDefaultPaymentMethod).not.toHaveBeenCalled();
     });
 
+    it('once the subscription has ended, cards change on the customer only: Stripe refuses any update to a cancelled subscription', async () => {
+      const { stripeClient } = await import('../src/stripe/client');
+      await TenantModel.updateOne({ _id: tenantId }, { paymentMethods: cards, trialStartedAt: new Date() });
+      await DomainSubscriptionModel.updateOne({ stripeSubscriptionId: 'sub_cards' }, { status: 'canceled' });
+
+      const set = await request(app).post('/api/tenants/me/billing/payment-methods/pm_card_b/default').set('Authorization', `Bearer ${tenantAdminToken}`);
+      expect(set.status).toBe(200);
+      const removed = await remove('pm_card_b');
+      expect(removed.status).toBe(200);
+
+      expect(vi.mocked(stripeClient.setDefaultPaymentMethod).mock.calls).toEqual([['cus_cards', 'pm_card_b'], ['cus_cards', 'pm_card_a']]);
+      expect(stripeClient.setSubscriptionDefaultPaymentMethod).not.toHaveBeenCalled();
+      expect(stripeClient.detachPaymentMethod).toHaveBeenCalledWith('pm_card_b');
+      const left = (await TenantModel.findById(tenantId))!.paymentMethods!;
+      expect(left.map((m) => [m.id, m.isDefault])).toEqual([['pm_card_a', true]]);
+    });
+
     it('the only card cannot be removed while the subscription still bills', async () => {
       const { stripeClient } = await import('../src/stripe/client');
       await TenantModel.updateOne({ _id: tenantId }, { paymentMethods: [cards[0]] });

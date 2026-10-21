@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   CreditCard,
   RefreshCw,
@@ -101,6 +101,10 @@ export const BillingView: React.FC<BillingViewProps> = ({
     }
   }, [onOpenCart]);
 
+  // A ref, so a parent passing a new callback each render doesn't re-run load (which clears error) in a loop.
+  const onCartUpdatedRef = useRef(onCartUpdated);
+  onCartUpdatedRef.current = onCartUpdated;
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -145,14 +149,14 @@ export const BillingView: React.FC<BillingViewProps> = ({
       if (pmRes?.paymentMethods) setPaymentMethods(pmRes.paymentMethods);
       if (cartRes) {
         setInternalCart(cartRes);
-        onCartUpdated?.(cartRes);
+        onCartUpdatedRef.current?.(cartRes);
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load billing information.');
     } finally {
       setLoading(false);
     }
-  }, [onCartUpdated]);
+  }, []);
 
   useEffect(() => {
     load();

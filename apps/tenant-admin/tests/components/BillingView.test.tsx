@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -200,6 +201,24 @@ describe('BillingView (company-wide)', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /cancel subscription/i }));
     expect(await screen.findByText('Stripe is unavailable')).toBeInTheDocument();
+  });
+
+  it('loads once under a parent that stores the cart through an inline callback, so an error stays on screen', async () => {
+    // As TenantAdminDashboard mounts it: each fetch gives a new cart object, which re-renders the parent.
+    vi.mocked(api.getCart).mockImplementation(async () => ({ ...cart }));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(api.cancelTenantSubscription).mockRejectedValue(new Error('Stripe is unavailable'));
+    const Host = () => {
+      const [hostCart, setHostCart] = React.useState<CartData | null>(cart);
+      return <BillingView cart={hostCart} onOpenCart={vi.fn()} onCartUpdated={(next) => setHostCart(next)} />;
+    };
+    render(<Host />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /cancel subscription/i }));
+    expect(await screen.findByText('Stripe is unavailable')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText('Stripe is unavailable')).toBeInTheDocument();
+    expect(api.getTenantBillingSummary).toHaveBeenCalledTimes(1);
   });
 
   it('lists invoice history', async () => {
