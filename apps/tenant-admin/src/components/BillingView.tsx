@@ -37,6 +37,8 @@ export interface BillingViewProps {
   cart?: CartData | null;
   onOpenCart?: () => void;
   onCartUpdated?: (cart: CartData) => void;
+  /** With activeDomain: show only the domain's plan and what it includes (no payment or cancellation). */
+  planOnly?: boolean;
 }
 
 function formatAmount(paise: number, currency: string): string {
@@ -70,6 +72,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
   cart: propCart,
   onOpenCart,
   onCartUpdated,
+  planOnly,
 }) => {
   const [summary, setSummary] = useState<TenantBillingSummary | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -411,6 +414,69 @@ export const BillingView: React.FC<BillingViewProps> = ({
     const scopedBilling = rowBilling(targetDomainData);
     const planName = targetDomainPlan?.name || targetDomainData.planName || 'Standard';
 
+    const planIncludes = (
+      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
+        <div>
+          <h2 className="text-sm font-bold text-slate-900">{`What's included in ${planName}`}</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Every active mailbox on {activeDomain.domainName} gets the following.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <Users size={15} />
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900">Up to {targetDomainData.maxUsers} users</div>
+              <p className="text-slate-500 leading-relaxed mt-0.5">
+                Billed at {formatPaise(targetDomainData.ratePaise)} per active user. Inactive mailboxes are free.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <HardDrive size={15} />
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900">{targetDomainPlan?.storageQuotaGb || 10} GB per mailbox</div>
+              <p className="text-slate-500 leading-relaxed mt-0.5">Dedicated storage quota for every account.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <ShieldCheck size={15} />
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900">Security &amp; protocols</div>
+              <p className="text-slate-500 leading-relaxed mt-0.5">DKIM, SPF and DMARC, plus anti-spam protection.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+
+    if (planOnly) {
+      const { onCancel: _onCancel, ...planActions } = scopedBilling;
+      return (
+        <div className="flex flex-col gap-4 font-sans">
+          {error && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5 shadow-2xs">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1 font-medium">{error}</div>
+            </div>
+          )}
+          <DomainBillingRow
+            domain={targetDomainData}
+            layout="tiles"
+            plan={targetDomainPlan}
+            renewsAt={summary?.currentPeriodEnd ?? null}
+            {...planActions}
+          />
+          {domainDialogs}
+          {planIncludes}
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col gap-6 font-sans">
         {/* Domain-Scoped Top Header */}
@@ -495,44 +561,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
         />
         {domainDialogs}
 
-        {/* What the plan includes */}
-        <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">{`What's included in ${planName}`}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Every active mailbox on {activeDomain.domainName} gets the following.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                <Users size={15} />
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">Up to {targetDomainData.maxUsers} users</div>
-                <p className="text-slate-500 leading-relaxed mt-0.5">
-                  Billed at {formatPaise(targetDomainData.ratePaise)} per active user. Inactive mailboxes are free.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                <HardDrive size={15} />
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">{targetDomainPlan?.storageQuotaGb || 10} GB per mailbox</div>
-                <p className="text-slate-500 leading-relaxed mt-0.5">Dedicated storage quota for every account.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                <ShieldCheck size={15} />
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">Security &amp; protocols</div>
-                <p className="text-slate-500 leading-relaxed mt-0.5">DKIM, SPF and DMARC, plus anti-spam protection.</p>
-              </div>
-            </div>
-          </div>
-        </section>
+        {planIncludes}
 
         {/* Master Account Billing Coverage & Card Section */}
         <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">

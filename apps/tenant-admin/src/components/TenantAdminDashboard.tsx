@@ -7,7 +7,6 @@ import toowixLogo from '../assets/toowix-logo.svg';
 import { Button } from './ui/Button';
 import { StatusBadge } from './ui/StatusBadge';
 import { StorageView } from './StorageView';
-import { BillingView } from './BillingView';
 import { DomainSetupModal } from './DomainSetupModal';
 import { DomainDnsStatusModal } from './DomainDnsStatusModal';
 import { DomainDeletionModal } from './DomainDeletionModal';
@@ -19,6 +18,7 @@ import { DomainSecurityView } from './DomainSecurityView';
 import { SecuritySettingsView } from './SecuritySettingsView';
 import { ModeratorsView } from './ModeratorsView';
 import { goToCart } from './cart/format';
+import { BillingView } from './BillingView';
 import { CartNavButton } from './cart/CartNavButton';
 import {
   Loader2,
@@ -26,7 +26,6 @@ import {
   LayoutDashboard,
   Mail,
   HardDrive,
-  CreditCard,
   FileText,
   Shield,
   AtSign,
@@ -61,8 +60,8 @@ interface TenantAdminDashboardProps {
   onLogout?: () => void;
   onNavigateHome: () => void;
   onSelectDomain?: (domainId: string) => void;
-  activeNav?: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team';
-  onNavChange?: (nav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team') => void;
+  activeNav?: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team';
+  onNavChange?: (nav: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team') => void;
 }
 
 // Held mailboxes keep their "pending activation" handling, so they have no suspension reason.
@@ -105,7 +104,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   // A Moderator can manage Mailboxes and Security (account 2FA credentials & scoped domain firewall).
   // Dashboard, Storage, Billing, and Domains tabs are Tenant-Admin-only.
   const isModerator = user?.role === 'TENANT_MODERATOR';
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team'>(
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team'>(
     propActiveNav || (isModerator ? 'mailboxes' : 'dashboard')
   );
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -135,7 +134,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     };
   }, [isMobileNavOpen]);
 
-  const handleNavClick = (nav: 'dashboard' | 'mailboxes' | 'storage' | 'billing' | 'domains' | 'security' | 'team') => {
+  const handleNavClick = (nav: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team') => {
     setActiveNav(nav);
     setIsMobileNavOpen(false);
     onNavChange?.(nav);
@@ -1095,32 +1094,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                 </div>
               </button>
             )}
-
-            {/* Billing */}
-            {!isModerator && (
-              <button
-                onClick={() => handleNavClick('billing')}
-                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
-                  activeNav === 'billing'
-                    ? 'bg-indigo-50 text-indigo-700 font-medium'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
-                }`}
-                id="nav-billing"
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <CreditCard
-                    className={`w-5 h-5 shrink-0 transition-colors ${
-                      activeNav === 'billing' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
-                    }`}
-                    strokeWidth={1.75}
-                  />
-                  <span className="truncate">Billing</span>
-                </div>
-                {pendingActivationCount > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Mailboxes waiting for activation" />
-                )}
-              </button>
-            )}
           </div>
 
           {/* Divider matching Google Admin console */}
@@ -1580,6 +1553,11 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                       )}
                     </section>
                   </div>
+
+                  {/* Plan for this domain */}
+                  {!isModerator && activeDomain && (
+                    <BillingView activeDomain={activeDomain} cart={cart} onOpenCart={openCart} onCartUpdated={(c) => setCart(c)} planOnly />
+                  )}
                 </>
               )}
             </>
@@ -2072,18 +2050,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           {/* ===================================================================== */}
           {activeNav === 'storage' && (
             <StorageView activeDomain={activeDomain} />
-          )}
-
-          {/* ===================================================================== */}
-          {/* VIEW: BILLING (per-domain Stripe subscription)                        */}
-          {/* ===================================================================== */}
-          {activeNav === 'billing' && (
-            <BillingView
-              activeDomain={activeDomain}
-              cart={cart}
-              onOpenCart={openCart}
-              onCartUpdated={(c) => setCart(c)}
-            />
           )}
 
           {/* ===================================================================== */}
