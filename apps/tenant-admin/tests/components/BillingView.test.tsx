@@ -23,6 +23,8 @@ vi.mock('../../src/api', () => ({
     getBillingConfig: vi.fn().mockResolvedValue({ publishableKey: '', billingEnabled: false }),
     createTenantSetupIntent: vi.fn().mockResolvedValue({ clientSecret: 'bypassed' }),
     savePaymentMethod: vi.fn(),
+    setDefaultPaymentMethod: vi.fn().mockResolvedValue({ success: true }),
+    deletePaymentMethod: vi.fn().mockResolvedValue({ success: true }),
     validateCoupon: vi.fn(),
     redeemCoupon: vi.fn(),
   },
@@ -106,13 +108,13 @@ describe('BillingView (company-wide)', () => {
     expect(screen.queryByRole('button', { name: /change payment method/i })).not.toBeInTheDocument();
   });
 
-  it('Change payment method opens the hosted Stripe card screen', async () => {
+  it('Add payment method opens the hosted Stripe card screen', async () => {
     vi.mocked(api.startCardUpdate).mockResolvedValue({ url: 'https://checkout.stripe.com/card-session' });
     const original = window.location;
     Object.defineProperty(window, 'location', { configurable: true, value: { ...original, href: '' } });
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
 
-    await userEvent.click(await screen.findByRole('button', { name: /change payment method/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /add payment method/i }));
     await waitFor(() => expect(window.location.href).toBe('https://checkout.stripe.com/card-session'));
     Object.defineProperty(window, 'location', { configurable: true, value: original });
   });
@@ -521,6 +523,27 @@ describe("BillingView: changing a domain's Plan", () => {
       const activeDomain = { id: 'dom-1', domainName: 'acme.com', status: 'active', mailboxCount: 5, mailboxLimit: 10, planId: 'plan-starter', planName: 'Starter' } as any;
       render(<BillingView activeDomain={activeDomain} onOpenCart={vi.fn()} />);
       expect(await screen.findByRole('button', { name: 'Cancel this domain' })).toBeInTheDocument();
+    });
+
+    it('renders multiple payment methods with radio selection and allows selecting default', async () => {
+      vi.mocked(api.listPaymentMethods).mockResolvedValue({
+        paymentMethods: [
+          { id: 'pm_1', brand: 'visa', last4: '5556', expMonth: 12, expYear: 2033, isDefault: true },
+          { id: 'pm_2', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2033, isDefault: false },
+        ],
+        defaultPaymentMethodId: 'pm_1',
+      });
+
+      renderOrgView();
+
+      expect(await screen.findByText(/•••• •••• •••• 5556/)).toBeInTheDocument();
+      expect(screen.getByText(/•••• •••• •••• 4242/)).toBeInTheDocument();
+
+      const card2Radio = screen.getByRole('radio', { name: /4242/i });
+      expect(card2Radio).toHaveAttribute('aria-checked', 'false');
+
+      await userEvent.click(card2Radio);
+      expect(api.setDefaultPaymentMethod).toHaveBeenCalledWith('pm_2');
     });
   });
 });

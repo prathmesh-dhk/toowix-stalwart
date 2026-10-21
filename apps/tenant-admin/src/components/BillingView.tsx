@@ -21,6 +21,7 @@ import {
   Search,
   ArrowRight,
   HardDrive,
+  Loader2,
 } from 'lucide-react';
 import { api } from '../api';
 import { CartData, DomainItem, InvoiceItem, PaymentMethodItem, Plan, TenantBillingSummary } from '../types';
@@ -163,6 +164,18 @@ export const BillingView: React.FC<BillingViewProps> = ({
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const card = params.get('card');
+    const sessionId = params.get('session_id');
+    if (card) {
+      window.history.replaceState({}, '', window.location.pathname);
+      if (card === 'success' && sessionId) {
+        api.completeCardUpdate(sessionId)
+          .then(() => load())
+          .catch((err: any) => setError(err?.message || 'Could not save new payment method.'));
+        return;
+      }
+    }
     load();
   }, [load]);
 
@@ -576,8 +589,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
               disabled={actionLoading === 'card'}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
             >
-              <CreditCard size={13} />
-              <span>Change payment method</span>
+              <Plus size={13} />
+              <span>Add payment method</span>
             </button>
           </div>
 
@@ -648,7 +661,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
         <PaymentMethodModal
           isOpen={showCardModal}
           onClose={() => setShowCardModal(false)}
-          title="Payment Method"
+          title="Add Payment Method"
+          initialAddingNew={true}
           onSuccess={() => {
             setShowCardModal(false);
             load();
@@ -966,7 +980,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
             >
               <Plus size={13} />
-              <span>Change payment method</span>
+              <span>Add payment method</span>
             </button>
           )}
         </div>
@@ -988,57 +1002,99 @@ export const BillingView: React.FC<BillingViewProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Select default payment method">
             {paymentMethods.length > 0 ? (
-              paymentMethods.map((pm) => (
-                <div
-                  key={pm.id}
-                  className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/60 border border-slate-200 rounded-xl transition-colors text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
-                      {getCardBrandBadge(pm.brand)}
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900 tracking-wider">
-                          •••• •••• •••• {pm.last4}
-                        </span>
-                        {pm.isDefault && (
-                          <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
-                            Default
-                          </span>
-                        )}
+              paymentMethods.map((pm) => {
+                const isSelected = pm.isDefault;
+                const isSettingDefault = actionLoading === `pm-def-${pm.id}`;
+                return (
+                  <div
+                    key={pm.id}
+                    role="radio"
+                    aria-checked={isSelected}
+                    tabIndex={0}
+                    onClick={() => {
+                      if (!isSelected && !actionLoading) {
+                        handleSetDefaultPaymentMethod(pm.id);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if ((e.key === ' ' || e.key === 'Enter') && !isSelected && !actionLoading) {
+                        e.preventDefault();
+                        handleSetDefaultPaymentMethod(pm.id);
+                      }
+                    }}
+                    className={`flex items-center justify-between p-3.5 rounded-xl border transition-all text-xs select-none ${
+                      isSelected
+                        ? 'border-indigo-600 bg-indigo-50/40 ring-1 ring-indigo-600/20 shadow-xs cursor-default'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 bg-white cursor-pointer'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* Radio selection indicator */}
+                      <div
+                        className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                            : 'border-slate-300 bg-white hover:border-slate-400'
+                        }`}
+                      >
+                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-[11px] text-slate-400">
-                        Expires {pm.expMonth}/{pm.expYear}
-                      </span>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    {!pm.isDefault && (
+                      <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
+                        {getCardBrandBadge(pm.brand)}
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-900 tracking-wider">
+                            •••• •••• •••• {pm.last4}
+                          </span>
+                          {isSelected && (
+                            <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                          <span>
+                            Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
+                          </span>
+                          {isSelected && <span className="text-indigo-600 font-medium">· Primary autopay</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {isSettingDefault ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-indigo-600">
+                          <Loader2 size={12} className="animate-spin" />
+                          <span>Setting default...</span>
+                        </span>
+                      ) : !isSelected ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefaultPaymentMethod(pm.id)}
+                          disabled={!!actionLoading}
+                          className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-indigo-300 disabled:opacity-50"
+                        >
+                          Make Default
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        onClick={() => handleSetDefaultPaymentMethod(pm.id)}
-                        disabled={actionLoading === `pm-def-${pm.id}`}
-                        className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors cursor-pointer border border-transparent hover:border-slate-200 disabled:opacity-50"
+                        onClick={() => handleDeletePaymentMethod(pm.id)}
+                        disabled={actionLoading === `pm-del-${pm.id}`}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                        title="Remove Card"
+                        aria-label={`Remove card ending in ${pm.last4}`}
                       >
-                        {actionLoading === `pm-def-${pm.id}` ? 'Saving...' : 'Make Default'}
+                        <Trash2 size={14} />
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePaymentMethod(pm.id)}
-                      disabled={actionLoading === `pm-del-${pm.id}`}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                      title="Remove Card"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               // Fallback preview from cart
               cart?.paymentMethod && (
@@ -1173,7 +1229,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
       <PaymentMethodModal
         isOpen={showCardModal}
         onClose={() => setShowCardModal(false)}
-        title="Payment Method"
+        title="Add Payment Method"
+        initialAddingNew={true}
         onSuccess={() => {
           setShowCardModal(false);
           load();

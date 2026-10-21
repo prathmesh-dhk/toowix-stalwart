@@ -18,6 +18,7 @@ interface PaymentMethodSelectorProps {
   selectedPlan?: Plan | null;
   domainName?: string;
   autoAttachDomainId?: string;
+  initialAddingNew?: boolean;
   onSuccess: (paymentMethod?: PaymentMethodItem) => void;
   onSkip?: () => void;
   submitLabel?: string;
@@ -53,6 +54,7 @@ function formatExpiry(val: string): string {
 export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   selectedPlan,
   autoAttachDomainId,
+  initialAddingNew = false,
   onSuccess,
   onSkip,
   submitLabel,
@@ -61,7 +63,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   const [loading, setLoading] = useState(true);
   const [savedCards, setSavedCards] = useState<PaymentMethodItem[]>([]);
   const [selectedCardId, setSelectedCardId] = useState<string>('');
-  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [isAddingNew, setIsAddingNew] = useState(initialAddingNew);
 
   // Stripe SetupIntent state (for production Stripe Elements)
   const [publishableKey, setPublishableKey] = useState<string | null>(null);
@@ -128,7 +130,9 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         if (methods.length > 0) {
           const def = methods.find((m) => m.isDefault) || methods[0];
           setSelectedCardId(def.id);
-          setIsAddingNew(false);
+          if (!initialAddingNew) {
+            setIsAddingNew(false);
+          }
         } else {
           setIsAddingNew(true);
         }
@@ -171,6 +175,8 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
     try {
       if (autoAttachDomainId) {
         await api.attachDomainWithSavedPayment(autoAttachDomainId);
+      } else {
+        await api.setDefaultPaymentMethod(selectedCardId);
       }
       if (appliedCoupon) {
         await api.redeemCoupon(appliedCoupon.code).catch(() => {});

@@ -10,6 +10,7 @@ interface PaymentMethodModalProps {
   domainName?: string;
   autoAttachDomainId?: string;
   title?: string;
+  initialAddingNew?: boolean;
 }
 
 export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
@@ -19,7 +20,8 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   selectedPlan,
   domainName,
   autoAttachDomainId,
-  title = 'Payment Method',
+  title = 'Add Payment Method',
+  initialAddingNew = false,
 }) => {
   if (!isOpen) return null;
 
@@ -56,6 +58,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
             selectedPlan={selectedPlan}
             domainName={domainName}
             autoAttachDomainId={autoAttachDomainId}
+            initialAddingNew={initialAddingNew}
             onSuccess={(pm) => {
               onSuccess(pm);
               onClose();
