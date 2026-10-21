@@ -384,35 +384,35 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                       : 'border-slate-200 hover:border-slate-300 bg-white'
                   }`}
                 >
-                  <div className="flex items-center gap-3.5">
+                  <div className="flex items-center gap-3.5 min-w-0">
                     <div className="w-10 h-7 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-[10px] uppercase tracking-wider shadow-xs shrink-0">
                       {card.brand}
                     </div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-800">
-                          •••• •••• •••• {card.last4}
-                        </span>
-                        {card.isDefault && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                            Default
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] text-slate-400">
-                        Expires {String(card.expMonth).padStart(2, '0')}/{String(card.expYear).slice(-2)}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-semibold text-slate-800 tracking-wider">
+                        •••• •••• •••• {card.last4}
                       </span>
+                      {card.isDefault && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                          Default
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div
-                    className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
-                      isSelected
-                        ? 'border-indigo-600 bg-indigo-600 text-white'
-                        : 'border-slate-300 bg-white'
-                    }`}
-                  >
-                    {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                  <div className="flex items-center gap-3.5 shrink-0">
+                    <span className="text-xs text-slate-500 font-medium tabular-nums whitespace-nowrap">
+                      Expires {String(card.expMonth).padStart(2, '0')}/{String(card.expYear).slice(-2)}
+                    </span>
+                    <div
+                      className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? 'border-indigo-600 bg-indigo-600 text-white'
+                          : 'border-slate-300 bg-white'
+                      }`}
+                    >
+                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                    </div>
                   </div>
                 </div>
               );

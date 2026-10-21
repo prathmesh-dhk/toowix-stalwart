@@ -1061,7 +1061,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 bg-white cursor-pointer'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       {/* Radio selection indicator */}
                       <div
                         className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
@@ -1076,47 +1076,61 @@ export const BillingView: React.FC<BillingViewProps> = ({
                       <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
                         {getCardBrandBadge(pm.brand)}
                       </div>
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-900 tracking-wider">
-                            •••• •••• •••• {pm.last4}
-                          </span>
-                          {isSelected && (
-                            <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
-                              Default
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                          <span>
-                            Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
-                          </span>
-                          {isSelected && <span className="text-indigo-600 font-medium">· Primary autopay</span>}
-                        </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2.5 min-w-0">
+                        <span className="font-semibold text-slate-900 tracking-wider">
+                          •••• •••• •••• {pm.last4}
+                        </span>
+                        {/* Mobile fallback for expiry */}
+                        <span className="text-[11px] text-slate-400 sm:hidden">
+                          Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
+                          {isSelected ? ' · Primary autopay' : ''}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {isSettingDefault ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-indigo-600">
-                          <Loader2 size={12} className="animate-spin" />
-                          <span>Setting default...</span>
+                    {/* Right Side: Expiry, Autopay/Make Default, and Delete */}
+                    <div className="flex items-center gap-3 sm:gap-5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {/* Desktop Expiry & Status pushed to right */}
+                      <div className="hidden sm:flex flex-col items-end text-right">
+                        <span className="text-xs text-slate-600 font-medium tabular-nums whitespace-nowrap">
+                          Expires {String(pm.expMonth).padStart(2, '0')}/{pm.expYear}
                         </span>
-                      ) : !isSelected ? (
-                        <button
-                          type="button"
-                          onClick={() => handleSetDefaultPaymentMethod(pm.id)}
-                          disabled={!!actionLoading}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-indigo-300 disabled:opacity-50"
-                        >
-                          Make Default
-                        </button>
-                      ) : null}
+                        {isSelected ? (
+                          <span className="text-[10px] text-indigo-600 font-medium">Primary autopay</span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Backup method</span>
+                        )}
+                      </div>
+
+                      {/* Default status badge or Make Default action */}
+                      <div className="min-w-[96px] flex justify-end">
+                        {isSettingDefault ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-indigo-600">
+                            <Loader2 size={12} className="animate-spin" />
+                            <span>Setting...</span>
+                          </span>
+                        ) : isSelected ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs whitespace-nowrap">
+                            <CheckCircle2 size={12} className="text-emerald-600" />
+                            <span>Default</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleSetDefaultPaymentMethod(pm.id)}
+                            disabled={!!actionLoading}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-indigo-300 disabled:opacity-50 whitespace-nowrap shadow-2xs"
+                          >
+                            Make Default
+                          </button>
+                        )}
+                      </div>
+
                       <button
                         type="button"
                         onClick={() => handleDeletePaymentMethod(pm.id)}
                         disabled={actionLoading === `pm-del-${pm.id}`}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
                         title="Remove Card"
                         aria-label={`Remove card ending in ${pm.last4}`}
                       >
@@ -1130,29 +1144,32 @@ export const BillingView: React.FC<BillingViewProps> = ({
               // Fallback preview from cart
               cart?.paymentMethod && (
                 <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-11 h-8 bg-white border border-slate-200 rounded-md flex items-center justify-center shrink-0 shadow-2xs">
                       {getCardBrandBadge(cart.paymentMethod.brand)}
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900 tracking-wider">
-                          •••• •••• •••• {cart.paymentMethod.last4}
-                        </span>
-                        <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
-                          Default
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-400">Autopay card on file</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-900 tracking-wider">
+                        •••• •••• •••• {cart.paymentMethod.last4}
+                      </span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={changeCard}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer"
-                  >
-                    Update card
-                  </button>
+                  <div className="flex items-center gap-3 sm:gap-5 shrink-0">
+                    <div className="hidden sm:flex flex-col items-end text-right">
+                      <span className="text-[11px] text-slate-500 font-medium">Autopay card on file</span>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg shadow-2xs whitespace-nowrap">
+                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      <span>Default</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={changeCard}
+                      className="px-2.5 py-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      Update card
+                    </button>
+                  </div>
                 </div>
               )
             )}
