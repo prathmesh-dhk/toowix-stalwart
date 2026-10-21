@@ -198,11 +198,19 @@ export const BillingView: React.FC<BillingViewProps> = ({
 
   const handleSetDefaultPaymentMethod = async (pmId: string) => {
     setActionLoading(`pm-def-${pmId}`);
+    setError(null);
+    setPaymentMethods((prev) =>
+      prev.map((pm) => ({
+        ...pm,
+        isDefault: pm.id === pmId,
+      }))
+    );
     try {
       await api.setDefaultPaymentMethod(pmId);
       await load();
     } catch (err: any) {
       setError(err?.message || 'Failed to set default payment method.');
+      await load();
     } finally {
       setActionLoading(null);
     }

@@ -201,6 +201,16 @@ export class ToowixStripeClient {
     return stripe.paymentMethods.detach(paymentMethodId);
   }
 
+  async retrievePaymentMethod(paymentMethodId: string): Promise<Stripe.PaymentMethod> {
+    const stripe = getStripe();
+    return stripe.paymentMethods.retrieve(paymentMethodId);
+  }
+
+  async retrieveCustomer(customerId: string): Promise<Stripe.Customer | Stripe.DeletedCustomer> {
+    const stripe = getStripe();
+    return stripe.customers.retrieve(customerId);
+  }
+
   async setDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<Stripe.Customer> {
     const stripe = getStripe();
     return stripe.customers.update(customerId, {

@@ -171,11 +171,24 @@ export async function listTenantPaymentMethods(tenantId: string): Promise<{
 
   if (isBillingEnabled() && tenant.stripeCustomerId) {
     try {
-      const stripeMethods = await stripeClient.listPaymentMethods(tenant.stripeCustomerId);
+      const [stripeMethods, customer] = await Promise.all([
+        stripeClient.listPaymentMethods(tenant.stripeCustomerId),
+        typeof stripeClient.retrieveCustomer === 'function'
+          ? stripeClient.retrieveCustomer(tenant.stripeCustomerId).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       if (stripeMethods.length > 0) {
-        // Stripe lists newest first; the default is whichever card the app last made default.
+        const stripeDefault = customer && !('deleted' in customer && customer.deleted) && customer.invoice_settings?.default_payment_method
+          ? (typeof customer.invoice_settings.default_payment_method === 'string'
+              ? customer.invoice_settings.default_payment_method
+              : (customer.invoice_settings.default_payment_method as any)?.id)
+          : null;
         const localDefault = localMethods.find((m) => m.isDefault)?.id;
-        const defaultId = stripeMethods.some((pm) => pm.id === localDefault) ? localDefault! : stripeMethods[0].id;
+        const defaultId = (localDefault && stripeMethods.some((pm) => pm.id === localDefault))
+          ? localDefault
+          : (stripeDefault && stripeMethods.some((pm) => pm.id === stripeDefault))
+            ? stripeDefault
+            : stripeMethods[0].id;
         return {
           paymentMethods: stripeMethods.map((pm) => ({
             id: pm.id,
@@ -352,9 +365,50 @@ export async function setDefaultPaymentMethod(tenantId: string, paymentMethodId:
 
   await pointStripeAtCard(tenant, paymentMethodId, tenant.paymentMethods?.find((m) => m.isDefault)?.id);
 
-  for (const pm of tenant.paymentMethods || []) {
-    pm.isDefault = pm.id === paymentMethodId;
+  if (!tenant.paymentMethods) {
+    tenant.paymentMethods = [];
   }
+
+  let matched = false;
+  for (const pm of tenant.paymentMethods) {
+    if (pm.id === paymentMethodId || pm.stripePaymentMethodId === paymentMethodId) {
+      pm.isDefault = true;
+      matched = true;
+    } else {
+      pm.isDefault = false;
+    }
+  }
+
+  if (!matched) {
+    let brand = 'visa';
+    let last4 = '4242';
+    let expMonth = 12;
+    let expYear = 2028;
+
+    if (isBillingEnabled() && tenant.stripeCustomerId && !paymentMethodId.startsWith('pm_sim_') && typeof stripeClient.retrievePaymentMethod === 'function') {
+      try {
+        const stripePm = await stripeClient.retrievePaymentMethod(paymentMethodId);
+        brand = (stripePm.card?.brand || brand).toLowerCase();
+        last4 = stripePm.card?.last4 || last4;
+        expMonth = stripePm.card?.exp_month || expMonth;
+        expYear = stripePm.card?.exp_year || expYear;
+      } catch (err: any) {
+        console.warn('[BillingService] Could not retrieve payment method from Stripe:', err.message);
+      }
+    }
+
+    tenant.paymentMethods.push({
+      id: paymentMethodId,
+      brand,
+      last4,
+      expMonth,
+      expYear,
+      isDefault: true,
+      stripePaymentMethodId: paymentMethodId,
+      createdAt: new Date(),
+    } as any);
+  }
+
   await tenant.save();
 
   return { success: true };
