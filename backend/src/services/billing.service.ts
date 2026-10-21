@@ -1063,17 +1063,18 @@ export async function completeCartCheckout(tenantId: string, sessionId: string, 
 }
 
 /** "Change payment method": hosted Stripe card screen (or sandbox form outside production). */
-export async function startCardUpdate(tenantId: string, actor: BillingActor): Promise<{ url: string } | { sandbox: true }> {
+export async function startCardUpdate(tenantId: string, actor: BillingActor, returnPath: string = '/billing'): Promise<{ url: string } | { sandbox: true }> {
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
   assertSandboxOrBilling();
   if (!isBillingEnabled()) return { sandbox: true };
 
+  const safePath = returnPath && returnPath.startsWith('/') ? returnPath : '/billing';
   const customerId = await stripeClient.getOrCreateCustomer(tenant);
   const session = await stripeClient.createCardUpdateCheckoutSession({
     customerId,
-    successUrl: `${config.tenantAdminUrl}/cart?card=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${config.tenantAdminUrl}/cart?card=cancelled`,
+    successUrl: `${config.tenantAdminUrl}${safePath}?card=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${config.tenantAdminUrl}${safePath}?card=cancelled`,
     metadata: { tenantId, purpose: 'card_update', actorId: actor.id },
   });
   if (!session.url) throw new BillingError('Stripe did not return a checkout URL', 'STRIPE_ERROR', 502);

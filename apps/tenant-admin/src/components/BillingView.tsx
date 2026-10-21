@@ -82,6 +82,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const [internalCart, setInternalCart] = useState<CartData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showCardModal, setShowCardModal] = useState(false);
   const [domainSearchQuery, setDomainSearchQuery] = useState('');
@@ -171,7 +172,11 @@ export const BillingView: React.FC<BillingViewProps> = ({
       window.history.replaceState({}, '', window.location.pathname);
       if (card === 'success' && sessionId) {
         api.completeCardUpdate(sessionId)
-          .then(() => load())
+          .then(() => {
+            setSuccessMessage('Payment method added successfully.');
+            load();
+            setTimeout(() => setSuccessMessage(null), 5000);
+          })
           .catch((err: any) => setError(err?.message || 'Could not save new payment method.'));
         return;
       }
@@ -182,8 +187,10 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const changeCard = async () => {
     setActionLoading('card');
     setError(null);
+    setSuccessMessage(null);
     try {
-      const res = await api.startCardUpdate();
+      const returnPath = typeof window !== 'undefined' ? window.location.pathname : '/billing';
+      const res = await api.startCardUpdate(returnPath);
       if ('url' in res) {
         window.location.href = res.url;
         return;
@@ -737,6 +744,13 @@ export const BillingView: React.FC<BillingViewProps> = ({
         <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5 shadow-2xs">
           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1 font-medium">{error}</div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2.5 shadow-2xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="flex-1 font-medium">{successMessage}</div>
         </div>
       )}
 

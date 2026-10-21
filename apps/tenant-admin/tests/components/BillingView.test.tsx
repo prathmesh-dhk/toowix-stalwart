@@ -13,6 +13,7 @@ vi.mock('../../src/api', () => ({
     listPlans: vi.fn(),
     listBillingInvoices: vi.fn(),
     startCardUpdate: vi.fn(),
+    completeCardUpdate: vi.fn().mockResolvedValue({ success: true }),
     upgradeDomainPlan: vi.fn(),
     downgradeDomainPlan: vi.fn(),
     keepCurrentPlan: vi.fn(),
@@ -108,15 +109,24 @@ describe('BillingView (company-wide)', () => {
     expect(screen.queryByRole('button', { name: /change payment method/i })).not.toBeInTheDocument();
   });
 
-  it('Add payment method opens the hosted Stripe card screen', async () => {
+  it('Add payment method passes current path and opens the hosted Stripe card screen', async () => {
     vi.mocked(api.startCardUpdate).mockResolvedValue({ url: 'https://checkout.stripe.com/card-session' });
     const original = window.location;
-    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, href: '' } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, href: '', pathname: '/billing' } });
     render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
 
     await userEvent.click(await screen.findByRole('button', { name: /add payment method/i }));
+    await waitFor(() => expect(api.startCardUpdate).toHaveBeenCalledWith('/billing'));
     await waitFor(() => expect(window.location.href).toBe('https://checkout.stripe.com/card-session'));
     Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('completes card update and displays success message when returning with card=success', async () => {
+    window.history.replaceState({}, '', '/billing?card=success&session_id=cs_test_session');
+    render(<BillingView cart={cart} onOpenCart={vi.fn()} onCartUpdated={onCartUpdated} />);
+
+    await waitFor(() => expect(api.completeCardUpdate).toHaveBeenCalledWith('cs_test_session'));
+    expect(await screen.findByText('Payment method added successfully.')).toBeInTheDocument();
   });
 
   it('shows a prominent payment-failed banner', async () => {

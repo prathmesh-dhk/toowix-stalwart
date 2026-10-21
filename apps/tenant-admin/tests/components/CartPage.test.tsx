@@ -149,6 +149,23 @@ describe('CartPage', () => {
     expect(window.location.search).toBe('');
   });
 
+  it('redirects to /billing if card update succeeds and cart has no pending activations', async () => {
+    const emptyCart: CartData = {
+      ...baseCart,
+      requiresActivation: false,
+      pendingMailboxes: [],
+      domains: [],
+    };
+    vi.mocked(api.completeCardUpdate).mockResolvedValue({ success: true, cart: emptyCart });
+    window.history.replaceState({}, '', '/cart?card=success&session_id=cs_card_empty');
+
+    const pushStateSpy = vi.spyOn(window.history, 'pushState');
+    render(<CartPage onBack={vi.fn()} />);
+
+    await waitFor(() => expect(api.completeCardUpdate).toHaveBeenCalledWith('cs_card_empty'));
+    await waitFor(() => expect(pushStateSpy).toHaveBeenCalledWith({}, '', '/billing'), { timeout: 2000 });
+  });
+
   it('returning from Stripe with a session completes the checkout and clears the URL', async () => {
     const activated: CartData = {
       ...pendingCart,

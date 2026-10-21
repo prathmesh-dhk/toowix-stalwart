@@ -82,6 +82,15 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
         .then((res) => {
           setCart(res.cart);
           setNotice({ tone: 'success', text: 'Your payment method has been updated.' });
+          const hasPendingActivation =
+            res.cart?.requiresActivation ||
+            (res.cart?.domains || []).some((d) => (d.users || []).some((u) => u.pendingActivation));
+          if (!hasPendingActivation && typeof window !== 'undefined') {
+            setTimeout(() => {
+              window.history.pushState({}, '', '/billing');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }, 1000);
+          }
         })
         .catch((err: any) => {
           setNotice({ tone: 'error', text: err?.message || 'We could not save your new card.' });

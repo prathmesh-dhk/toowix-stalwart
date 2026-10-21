@@ -56,7 +56,8 @@ cartRouter.post('/checkout', async (req: Request, res: Response): Promise<void> 
 // POST /api/tenants/me/cart/card-update — hosted Stripe screen to replace the card.
 cartRouter.post('/card-update', async (req: Request, res: Response): Promise<void> => {
   try {
-    res.json(await startCardUpdate(req.adminUser!.tenantId!, actorOf(req)));
+    const returnPath = typeof req.body?.returnPath === 'string' ? req.body.returnPath : '/billing';
+    res.json(await startCardUpdate(req.adminUser!.tenantId!, actorOf(req), returnPath));
   } catch (err: any) {
     handleCartError(res, err);
   }

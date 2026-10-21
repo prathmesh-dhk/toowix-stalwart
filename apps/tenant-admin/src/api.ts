@@ -316,7 +316,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ promoCode: promoCode || null }),
     }),
-  startCardUpdate: () => request<{ url: string } | { sandbox: true }>('/api/tenants/me/cart/card-update', { method: 'POST' }),
+  startCardUpdate: (returnPath?: string) =>
+    request<{ url: string } | { sandbox: true }>('/api/tenants/me/cart/card-update', {
+      method: 'POST',
+      body: JSON.stringify({ returnPath: returnPath || '/billing' }),
+    }),
   completeCardUpdate: (sessionId: string) =>
     request<{ success: boolean; cart: CartData }>('/api/tenants/me/cart/card-update/complete', {
       method: 'POST',
