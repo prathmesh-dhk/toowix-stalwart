@@ -1300,6 +1300,7 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
       pricePerUserMonthlyPaise: rate,
       monthlySubtotalPaise: cancelled ? 0 : activeCount * rate,
       cancelled,
+      cancelAtPeriodEnd: Boolean(sub.cancelAtPeriodEnd),
       pendingDowngrade: pending
         ? { planId: pending._id.toString(), planName: pending.name, effectiveAt: sub.currentPeriodEnd ?? null }
         : null,
@@ -1311,10 +1312,10 @@ export async function getTenantBillingSummary(tenantId: string): Promise<{
   return {
     hasSubscription: true,
     status: primary.status,
-    currentPeriodEnd: primary.currentPeriodEnd ?? null,
-    trialEnd: primary.trialEnd ?? null,
+    currentPeriodEnd: primary.currentPeriodEnd ?? primary.trialEnd ?? tenant?.trialEndsAt ?? null,
+    trialEnd: primary.trialEnd ?? tenant?.trialEndsAt ?? null,
     trialStartedAt: tenant?.trialStartedAt ?? null,
-    cancelAtPeriodEnd: primary.cancelAtPeriodEnd,
+    cancelAtPeriodEnd: Boolean(primary.cancelAtPeriodEnd || rows.some((s) => s.cancelAtPeriodEnd && s.status !== 'canceled')),
     paymentActionUrl: live.find((s) => s.paymentActionUrl)?.paymentActionUrl ?? null,
     gracePeriodEndsAt: graceEndTimes.length ? new Date(Math.min(...graceEndTimes)) : null,
     totalMonthlyPaise: domainBreakdown.reduce((sum, d) => sum + d.monthlySubtotalPaise, 0),
@@ -1685,11 +1686,23 @@ export async function cancelSubscription(domainId: string, tenantId: string, act
   });
 
   if (siblingCount === 0) {
-    await stripeClient.cancelAtPeriodEnd(sub.stripeSubscriptionId, true);
+    if (isBillingEnabled() && sub.stripeSubscriptionId && !isSimulatedSubscriptionId(sub.stripeSubscriptionId)) {
+      try {
+        await stripeClient.cancelAtPeriodEnd(sub.stripeSubscriptionId, true);
+      } catch (err: any) {
+        console.warn(`[BillingService] Stripe cancelAtPeriodEnd failed for ${sub.stripeSubscriptionId}:`, err.message);
+      }
+    }
     sub.cancelAtPeriodEnd = true;
     await sub.save();
   } else {
-    await stripeClient.removeSubscriptionItem(sub.stripeSubscriptionItemId);
+    if (isBillingEnabled() && sub.stripeSubscriptionItemId && !sub.stripeSubscriptionItemId.startsWith('si_trial_') && !isSimulatedSubscriptionId(sub.stripeSubscriptionId)) {
+      try {
+        await stripeClient.removeSubscriptionItem(sub.stripeSubscriptionItemId);
+      } catch (err: any) {
+        console.warn(`[BillingService] Stripe removeSubscriptionItem failed for ${sub.stripeSubscriptionItemId}:`, err.message);
+      }
+    }
     sub.status = 'canceled';
     sub.cancelAtPeriodEnd = false;
     await sub.save();
@@ -1716,8 +1729,12 @@ export async function cancelTenantSubscription(tenantId: string, actor: BillingA
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
 
-  if (isBillingEnabled() && tenant.stripeSubscriptionId) {
-    await stripeClient.cancelAtPeriodEnd(tenant.stripeSubscriptionId, true);
+  if (isBillingEnabled() && tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
+    try {
+      await stripeClient.cancelAtPeriodEnd(tenant.stripeSubscriptionId, true);
+    } catch (err: any) {
+      console.warn(`[BillingService] Stripe cancelTenantSubscription failed for ${tenant.stripeSubscriptionId}:`, err.message);
+    }
   }
 
   await DomainSubscriptionModel.updateMany(
@@ -1743,8 +1760,12 @@ export async function resumeTenantSubscription(tenantId: string, actor: BillingA
   const tenant = await TenantModel.findById(tenantId);
   if (!tenant) throw new BillingError('Tenant not found', 'TENANT_NOT_FOUND', 404);
 
-  if (isBillingEnabled() && tenant.stripeSubscriptionId) {
-    await stripeClient.cancelAtPeriodEnd(tenant.stripeSubscriptionId, false);
+  if (isBillingEnabled() && tenant.stripeSubscriptionId && !isSimulatedSubscriptionId(tenant.stripeSubscriptionId)) {
+    try {
+      await stripeClient.cancelAtPeriodEnd(tenant.stripeSubscriptionId, false);
+    } catch (err: any) {
+      console.warn(`[BillingService] Stripe resumeTenantSubscription failed for ${tenant.stripeSubscriptionId}:`, err.message);
+    }
   }
 
   await DomainSubscriptionModel.updateMany(

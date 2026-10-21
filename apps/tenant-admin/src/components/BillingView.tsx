@@ -378,6 +378,15 @@ export const BillingView: React.FC<BillingViewProps> = ({
     // Price and count the dialog against what the subscription bills, not the cart's live counts.
     const asBilled = { ...d, ratePaise: billed.pricePerUserMonthlyPaise, activeUsers: billed.activeUserCount };
     if (billed.cancelled) return { cancelled: true, onChooseAgain: () => setChangingPlanFor(asBilled) };
+    const cancelingAtPeriodEnd = Boolean(billed.cancelAtPeriodEnd || summary?.cancelAtPeriodEnd);
+    if (cancelingAtPeriodEnd) {
+      return {
+        cancelingAtPeriodEnd: true,
+        cancelEffectiveAt: summary?.currentPeriodEnd || summary?.trialEnd || trial?.endsAt || null,
+        onKeepSubscription: resumeSubscription,
+        onChangePlan: () => setChangingPlanFor(asBilled),
+      };
+    }
     return {
       pendingDowngrade: billed.pendingDowngrade,
       onChangePlan: () => setChangingPlanFor(asBilled),
@@ -405,7 +414,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
         <CancelDomainDialog
           domain={cancellingDomain}
           otherDomainsBilled={!!summary?.domains.some((s) => !s.cancelled && s.domainId !== cancellingDomain.domainId)}
-          currentPeriodEnd={summary?.currentPeriodEnd ?? null}
+          currentPeriodEnd={summary?.currentPeriodEnd || summary?.trialEnd || trial?.endsAt || null}
           onClose={() => setCancellingDomain(null)}
           onCancelled={() => {
             setCancellingDomain(null);
@@ -792,7 +801,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
         <div className="flex items-center justify-between gap-3 text-slate-800 bg-slate-100 border border-slate-200 p-4 rounded-xl text-xs shadow-2xs">
           <div className="flex items-center gap-2.5">
             <Clock className="w-4 h-4 text-slate-500 shrink-0" />
-            <span>Cancels at the end of the current period ({formatDate(summary?.currentPeriodEnd)}).</span>
+            <span>Cancels at the end of the current period ({formatDate(summary?.currentPeriodEnd || summary?.trialEnd || trial?.endsAt)}).</span>
           </div>
           <button
             type="button"

@@ -157,6 +157,8 @@ export interface TenantBillingSummary {
     monthlySubtotalPaise: number;
     // Cancelled on its own while the subscription runs on for other domains.
     cancelled: boolean;
+    // Scheduled to cancel at period end.
+    cancelAtPeriodEnd?: boolean;
     // Takes effect when the current period ends.
     pendingDowngrade: { planId: string; planName: string; effectiveAt: string | null } | null;
     gracePeriodEndsAt: string | null;

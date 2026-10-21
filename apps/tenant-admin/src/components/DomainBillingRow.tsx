@@ -20,13 +20,17 @@ export interface DomainBillingRowProps {
   onCancel?: () => void;
   /** Cancelled on its own: off the bill, with Choose a plan again. */
   cancelled?: boolean;
+  /** Scheduled to cancel at period end. */
+  cancelingAtPeriodEnd?: boolean;
+  cancelEffectiveAt?: string | null;
+  onKeepSubscription?: () => void;
   onChooseAgain?: () => void;
   /** 'tiles' only: when the subscription next charges. */
   renewsAt?: string | null;
 }
 
 /** One domain's billing on the Billing page. Both Billing views render domains through this. */
-export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan, onKeepCurrentPlan, onCancel, cancelled, onChooseAgain, renewsAt }) => {
+export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan, onKeepCurrentPlan, onCancel, cancelled, cancelingAtPeriodEnd, cancelEffectiveAt, onKeepSubscription, onChooseAgain, renewsAt }) => {
   const used = d.activeUsers + (d.pendingUsers || 0);
   const pct = Math.min(100, Math.round((used / (d.maxUsers || 1)) * 100));
   const pendingBadge = pendingDowngrade && (
@@ -39,6 +43,20 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
           className="ml-2 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
         >
           Keep current plan
+        </button>
+      )}
+    </div>
+  );
+  const cancelBadge = cancelingAtPeriodEnd && (
+    <div className="text-[11px] font-medium text-amber-700 mt-1">
+      Cancels on {formatDate(cancelEffectiveAt)}
+      {onKeepSubscription && (
+        <button
+          type="button"
+          onClick={onKeepSubscription}
+          className="ml-2 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+        >
+          Resume subscription
         </button>
       )}
     </div>
@@ -57,6 +75,8 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
   const actions =
     cancelled ? (
       onChooseAgain && action('Choose a plan again', onChooseAgain)
+    ) : cancelingAtPeriodEnd ? (
+      onChangePlan && action('Change plan', onChangePlan)
     ) : (onChangePlan || onCancel) ? (
       <span className="inline-flex gap-1">
         {onChangePlan && action('Change plan', onChangePlan)}
@@ -67,6 +87,8 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
   if (layout === 'tiles') {
     const primaryAction = cancelled
       ? onChooseAgain && { label: 'Choose a plan again', onClick: onChooseAgain }
+      : cancelingAtPeriodEnd
+      ? onKeepSubscription && { label: 'Resume subscription', onClick: onKeepSubscription }
       : onChangePlan && { label: 'Change plan', onClick: onChangePlan };
     const seatsLeft = Math.max(0, d.maxUsers - used);
     return (
@@ -84,6 +106,11 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
                   </span>
                 )}
                 {cancelledBadge}
+                {cancelingAtPeriodEnd && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                    Cancels on {formatDate(cancelEffectiveAt)}
+                  </span>
+                )}
               </div>
               <div className="flex items-baseline gap-1.5 tabular-nums">
                 <span className="text-2xl font-bold text-slate-900 tracking-tight">{formatPaise(d.ratePaise)}</span>
@@ -94,6 +121,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
                 {plan?.storageQuotaGb ? `, ${plan.storageQuotaGb} GB storage per mailbox` : ''}.
               </p>
               {pendingBadge}
+              {cancelBadge}
             </div>
             {primaryAction && (
               <button
@@ -173,6 +201,7 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
         </span>
         {cancelledBadge && <span className="ml-1">{cancelledBadge}</span>}
         {pendingBadge}
+        {cancelBadge}
       </td>
 
       {/* Mailboxes & Capacity Bar */}

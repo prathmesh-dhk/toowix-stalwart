@@ -487,6 +487,30 @@ describe("BillingView: changing a domain's Plan", () => {
       );
     });
 
+    it('as the only billed domain, confirming cancels the subscription at period end and row shows scheduled cancel with Resume', async () => {
+      vi.mocked(api.cancelDomainSubscription).mockImplementation(async () => {
+        vi.mocked(api.getTenantBillingSummary).mockResolvedValue({
+          ...billedSummary(),
+          cancelAtPeriodEnd: true,
+          domains: [billedDomain({ cancelAtPeriodEnd: true })],
+        });
+        return { success: true };
+      });
+      renderOrgView();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Cancel this domain' }));
+      const dialog = screen.getByRole('dialog');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+
+      expect(api.cancelDomainSubscription).toHaveBeenCalledWith('dom-1');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      const row = await rowOf('acme.com');
+      expect(await within(row).findByText(/Cancels on/)).toBeInTheDocument();
+      expect(within(row).getByRole('button', { name: 'Resume subscription' })).toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: 'Cancel this domain' })).not.toBeInTheDocument();
+    });
+
     it('closing the confirm cancels nothing', async () => {
       renderOrgView();
       await userEvent.click(await screen.findByRole('button', { name: 'Cancel this domain' }));
