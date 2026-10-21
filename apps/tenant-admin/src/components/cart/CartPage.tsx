@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Lock, CheckCircle2, AlertCircle, X, Loader2, Tag, Mail, Building2 } from 'lucide-react';
+import { ArrowLeft, Lock, CheckCircle2, AlertCircle, X, Loader2, Tag, Mail, Building2, ShoppingCart } from 'lucide-react';
 import toowixLogo from '../../assets/toowix-logo.svg';
 import { api } from '../../api';
 import { CartData, CouponValidationResult, PaymentMethodItem, UserContext } from '../../types';
@@ -33,7 +33,6 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
   const [promoCode, setPromoCode] = useState('');
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promo, setPromo] = useState<CouponValidationResult | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -183,19 +182,8 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
     }
   };
 
-  const removeMailbox = async (mailboxId: string) => {
-    setRemovingId(mailboxId);
-    try {
-      await api.deleteMailbox(mailboxId);
-      setCart(await api.getCart());
-    } catch (err: any) {
-      setNotice({ tone: 'error', text: err?.message || 'Could not remove that mailbox.' });
-    } finally {
-      setRemovingId(null);
-    }
-  };
-
-  const domains = cart?.domains ?? [];
+  // A domain with no users has nothing to bill, so the cart leaves it out.
+  const domains = (cart?.domains ?? []).filter((d) => d.users.length > 0);
   const totalUsers = domains.reduce((sum, d) => sum + d.activeUsers + d.pendingUsers, 0);
   const extraDays = promo?.extraTrialDays || 0;
 
@@ -295,8 +283,12 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
             {!cart ? (
               <p className="text-xs text-slate-400">Loading…</p>
             ) : domains.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-xs text-slate-500 shadow-xs">
-                Your cart is empty — add a domain to get started.
+              <div className="bg-white border border-slate-200 rounded-xl px-6 py-12 text-center shadow-xs flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center" aria-hidden>
+                  <ShoppingCart className="w-5 h-5" />
+                </div>
+                <h2 className="text-sm font-semibold text-slate-900">Your cart is empty</h2>
+                <p className="text-xs text-slate-500 max-w-xs">Users you add to a domain show up here, with what they cost each month.</p>
               </div>
             ) : (
               domains.map((d) => (
@@ -325,10 +317,7 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
                     </div>
                   </div>
                   <ul className="border-t border-slate-100 divide-y divide-slate-100 bg-slate-50/40">
-                    {d.users.length === 0 ? (
-                      <li className="px-4 py-2.5 text-xs text-slate-400 italic">No users added yet.</li>
-                    ) : (
-                      d.users.map((u) => (
+                    {d.users.map((u) => (
                         <li key={u.id} className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-3 text-xs hover:bg-slate-50 transition-colors">
                           <span className="flex items-center gap-2 min-w-0">
                             <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -347,20 +336,9 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
                                   </span>
                                 );
                               })()}
-                            <button
-                              type="button"
-                              onClick={() => removeMailbox(u.id)}
-                              disabled={removingId === u.id}
-                              title={`Remove ${u.address}`}
-                              aria-label={`Remove ${u.address}`}
-                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40 cursor-pointer"
-                            >
-                              {removingId === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                            </button>
                           </span>
                         </li>
-                      ))
-                    )}
+                      ))}
                   </ul>
                 </article>
               ))
