@@ -251,8 +251,9 @@ describe('BillingView (company-wide)', () => {
     // Domain-scoped header & tier
     expect(await screen.findByText('acme.com')).toBeInTheDocument();
     expect(screen.getByText('Starter')).toBeInTheDocument();
-    expect(screen.getByText(/5 \/ 10 Active Users/)).toBeInTheDocument();
-    expect(screen.getByText('Active Users & User Limit')).toBeInTheDocument();
+    expect(screen.getByText('Current plan')).toBeInTheDocument();
+    expect(screen.getByText('of 10')).toBeInTheDocument();
+    expect(screen.getByText("What's included in Starter")).toBeInTheDocument();
     expect(screen.getByText('Organization Master Subscription')).toBeInTheDocument();
 
     // Does NOT render the other domain or the 18-domain table

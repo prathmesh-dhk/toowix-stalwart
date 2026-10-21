@@ -406,9 +406,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
   // SCOPED VIEW: WHEN VIEWING BILLING INSIDE A SPECIFIC DOMAIN
   // ===========================================================================
   if (activeDomain && targetDomainData) {
-    const used = targetDomainData.activeUsers + (targetDomainData.pendingUsers || 0);
-    const max = targetDomainData.maxUsers || 1;
-    const pct = Math.min(100, Math.round((used / max) * 100));
+    const scopedBilling = rowBilling(targetDomainData);
+    const planName = targetDomainPlan?.name || targetDomainData.planName || 'Standard';
 
     return (
       <div className="flex flex-col gap-6 font-sans">
@@ -426,7 +425,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Subscription tier, mailbox quota, and monthly charges for this domain.
+                Plan, usage and charges for this domain. Charges roll up into your organization's bill.
               </p>
             </div>
           </div>
@@ -484,74 +483,51 @@ export const BillingView: React.FC<BillingViewProps> = ({
           </div>
         )}
 
-        {/* 4-Card Domain Metric Ribbon */}
-        <DomainBillingRow domain={targetDomainData} layout="tiles" plan={targetDomainPlan} {...rowBilling(targetDomainData)} />
+        {/* Current plan card and usage */}
+        <DomainBillingRow
+          domain={targetDomainData}
+          layout="tiles"
+          plan={targetDomainPlan}
+          renewsAt={summary?.currentPeriodEnd ?? null}
+          {...scopedBilling}
+        />
         {domainDialogs}
 
-        {/* Quota & Resource Allocation Card */}
+        {/* What the plan includes */}
         <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">Active Users &amp; User Limit</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Resource and mailbox provisioning limits for {activeDomain.domainName} under the {targetDomainPlan?.name || targetDomainData.planName || 'Standard'} plan.
-              </p>
-            </div>
-            <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg tabular-nums">
-              {pct}% Utilized
-            </span>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">{`What's included in ${planName}`}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Every active mailbox on {activeDomain.domainName} gets the following.</p>
           </div>
-
-          {/* Capacity Progress Bar */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-xs text-slate-700 font-medium">
-              <span>
-                Active mailboxes: <strong>{used}</strong> of <strong>{targetDomainData.maxUsers}</strong>
-              </span>
-              <span className="text-slate-400">
-                {Math.max(0, targetDomainData.maxUsers - used)} left under the user limit
-              </span>
-            </div>
-            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  pct >= 90 ? 'bg-amber-500' : 'bg-indigo-600'
-                }`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Allocation Details Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-2">
-            <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs">
-              <div className="flex items-center gap-2 text-slate-900 font-semibold mb-1">
-                <Users size={14} className="text-indigo-600" />
-                <span>Active Users</span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                <Users size={15} />
               </div>
-              <p className="text-slate-500 leading-relaxed">
-                Currently <strong>{used}</strong> provisioned mailbox accounts are billed at {formatPaise(targetDomainData.ratePaise)} per Active User.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs">
-              <div className="flex items-center gap-2 text-slate-900 font-semibold mb-1">
-                <HardDrive size={14} className="text-indigo-600" />
-                <span>Storage Allocation</span>
+              <div>
+                <div className="font-semibold text-slate-900">Up to {targetDomainData.maxUsers} users</div>
+                <p className="text-slate-500 leading-relaxed mt-0.5">
+                  Billed at {formatPaise(targetDomainData.ratePaise)} per active user. Inactive mailboxes are free.
+                </p>
               </div>
-              <p className="text-slate-500 leading-relaxed">
-                <strong>{targetDomainPlan?.storageQuotaGb || 10} GB</strong> dedicated mailbox storage quota per mailbox account.
-              </p>
             </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-xs">
-              <div className="flex items-center gap-2 text-slate-900 font-semibold mb-1">
-                <ShieldCheck size={14} className="text-emerald-600" />
-                <span>Security &amp; Protocols</span>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                <HardDrive size={15} />
               </div>
-              <p className="text-slate-500 leading-relaxed">
-                Automated DKIM, SPF, and DMARC verification included with advanced anti-spam protection.
-              </p>
+              <div>
+                <div className="font-semibold text-slate-900">{targetDomainPlan?.storageQuotaGb || 10} GB per mailbox</div>
+                <p className="text-slate-500 leading-relaxed mt-0.5">Dedicated storage quota for every account.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                <ShieldCheck size={15} />
+              </div>
+              <div>
+                <div className="font-semibold text-slate-900">Security &amp; protocols</div>
+                <p className="text-slate-500 leading-relaxed mt-0.5">DKIM, SPF and DMARC, plus anti-spam protection.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -612,6 +588,30 @@ export const BillingView: React.FC<BillingViewProps> = ({
             <span>Recurring billing adheres to RBI e-mandate guidelines with bank-grade 256-bit encryption.</span>
           </div>
         </section>
+
+        {/* Danger zone: destructive actions sit last, away from routine ones */}
+        {scopedBilling.onCancel && (
+          <section className="bg-white border border-rose-200 rounded-xl shadow-xs overflow-hidden">
+            <div className="px-5 sm:px-6 py-3 bg-rose-50 border-b border-rose-200">
+              <h2 className="text-sm font-bold text-rose-800">Danger zone</h2>
+            </div>
+            <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+              <div>
+                <div className="font-semibold text-slate-900">Cancel {activeDomain.domainName}</div>
+                <p className="text-slate-500 leading-relaxed mt-0.5 max-w-xl">
+                  Takes this domain off your organization bill. You'll confirm the details before anything changes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={scopedBilling.onCancel}
+                className="shrink-0 self-start sm:self-auto inline-flex items-center justify-center min-h-[40px] px-4 py-2 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 rounded-lg text-sm font-semibold transition-colors cursor-pointer shadow-2xs"
+              >
+                Cancel this domain
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Payment Method Modal */}
         <PaymentMethodModal

@@ -16,15 +16,17 @@ export interface DomainBillingRowProps {
   onChangePlan?: () => void;
   /** Set only alongside a pending downgrade. */
   onKeepCurrentPlan?: () => void;
-  /** Set only for a domain on a billed subscription. */
+  /** Set only for a domain on a billed subscription. 'tiles' ignores it: that page shows it in its Danger zone. */
   onCancel?: () => void;
   /** Cancelled on its own: off the bill, with Choose a plan again. */
   cancelled?: boolean;
   onChooseAgain?: () => void;
+  /** 'tiles' only: when the subscription next charges. */
+  renewsAt?: string | null;
 }
 
 /** One domain's billing on the Billing page. Both Billing views render domains through this. */
-export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan, onKeepCurrentPlan, onCancel, cancelled, onChooseAgain }) => {
+export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, layout, plan, pendingDowngrade, onChangePlan, onKeepCurrentPlan, onCancel, cancelled, onChooseAgain, renewsAt }) => {
   const used = d.activeUsers + (d.pendingUsers || 0);
   const pct = Math.min(100, Math.round((used / (d.maxUsers || 1)) * 100));
   const pendingBadge = pendingDowngrade && (
@@ -63,60 +65,94 @@ export const DomainBillingRow: React.FC<DomainBillingRowProps> = ({ domain: d, l
     ) : null;
 
   if (layout === 'tiles') {
+    const primaryAction = cancelled
+      ? onChooseAgain && { label: 'Choose a plan again', onClick: onChooseAgain }
+      : onChangePlan && { label: 'Change plan', onClick: onChangePlan };
+    const seatsLeft = Math.max(0, d.maxUsers - used);
     return (
-      <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* Tile 1: Plan Tier */}
-          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Tier</span>
-            <div className="text-base font-bold text-slate-900 mt-1 flex items-center gap-1.5">
-              <span>{plan?.name || d.planName || 'Standard'}</span>
-              {cancelledBadge}
-              {plan?.badge && (
-                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                  {plan.badge}
-                </span>
-              )}
+      <>
+        {/* Current plan card: Change plan is the primary action; cancelling lives in the page's Danger zone. */}
+        <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-start justify-between gap-5">
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <span className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">Current plan</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold text-slate-900 tracking-tight">{plan?.name || d.planName || 'Standard'}</h2>
+                {plan?.badge && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    {plan.badge}
+                  </span>
+                )}
+                {cancelledBadge}
+              </div>
+              <div className="flex items-baseline gap-1.5 tabular-nums">
+                <span className="text-2xl font-bold text-slate-900 tracking-tight">{formatPaise(d.ratePaise)}</span>
+                <span className="text-xs text-slate-500">per active user / month</span>
+              </div>
+              <p className="text-xs text-slate-500">
+                You pay only for active mailboxes. Up to {d.maxUsers} users
+                {plan?.storageQuotaGb ? `, ${plan.storageQuotaGb} GB storage per mailbox` : ''}.
+              </p>
+              {pendingBadge}
             </div>
-            <div className="text-[11px] text-slate-500 mt-1">
-              User limit: {d.maxUsers}
-            </div>
-            {pendingBadge}
-            {actions && <div className="mt-2 -ml-2.5">{actions}</div>}
+            {primaryAction && (
+              <button
+                type="button"
+                onClick={primaryAction.onClick}
+                className="shrink-0 self-start inline-flex items-center justify-center min-h-[40px] px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer shadow-2xs"
+              >
+                {primaryAction.label}
+              </button>
+            )}
           </div>
+          <dl className="grid grid-cols-2 md:grid-cols-3 border-t border-slate-100 bg-slate-50/70 text-xs">
+            <div className="px-5 sm:px-6 py-3.5 border-r border-slate-100">
+              <dt className="text-slate-500">User limit</dt>
+              <dd className="font-semibold text-slate-900 tabular-nums mt-0.5">{d.maxUsers} users</dd>
+            </div>
+            <div className="px-5 sm:px-6 py-3.5 md:border-r border-slate-100">
+              <dt className="text-slate-500">{renewsAt ? 'Next charge' : 'Billing cycle'}</dt>
+              <dd className="font-semibold text-slate-900 tabular-nums mt-0.5">{renewsAt ? formatDate(renewsAt) : 'Monthly'}</dd>
+            </div>
+            <div className="px-5 sm:px-6 py-3.5 col-span-2 md:col-span-1 border-t md:border-t-0 border-slate-100">
+              <dt className="text-slate-500">Billed to</dt>
+              <dd className="font-semibold text-slate-900 mt-0.5">Organization master bill</dd>
+            </div>
+          </dl>
+        </section>
 
-          {/* Tile 2: Mailbox Capacity */}
-          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Mailbox Usage</span>
-            <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-              <span>{used} / {d.maxUsers} Active Users</span>
+        {/* Usage */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-slate-500">Active users</span>
+            <div className="flex items-baseline gap-1.5 tabular-nums">
+              <span className="text-2xl font-bold text-slate-900">{used}</span>
+              <span className="text-xs text-slate-500">of {d.maxUsers}</span>
             </div>
-            <div className="text-[11px] text-slate-500 mt-1">
-              {Math.max(0, d.maxUsers - used)} left under the user limit
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="User limit used">
+              <div className={`h-full rounded-full transition-all ${pct >= 90 ? 'bg-amber-500' : 'bg-indigo-600'}`} style={{ width: `${pct}%` }} />
             </div>
+            <span className="text-[11px] text-slate-500">{pct}% of the user limit</span>
           </div>
-
-          {/* Tile 3: Billing Rate */}
-          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Price per Active User</span>
-            <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-              {formatPaise(d.ratePaise)}
-              <span className="text-xs font-normal text-slate-500 ml-1">/ Active User</span>
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-slate-500">Estimated this month</span>
+            <div className="flex items-baseline gap-1.5 tabular-nums">
+              <span className="text-2xl font-bold text-slate-900">{formatPaise(monthlyPaise)}</span>
+              <span className="text-xs text-slate-500">/ mo</span>
             </div>
-            <div className="text-[11px] text-slate-500 mt-1">Pay only for active mailboxes</div>
+            <span className="text-[11px] text-slate-500 tabular-nums">
+              {cancelled ? 'Not on your organization bill' : `${d.activeUsers} active × ${formatPaise(d.ratePaise)}`}
+            </span>
           </div>
-
-          {/* Tile 4: Monthly Cost */}
-          <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Domain Monthly Cost</span>
-            <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-              {formatPaise(monthlyPaise)}
-              <span className="text-xs font-normal text-slate-500 ml-1">/ mo</span>
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-slate-500">Seats available</span>
+            <div className="flex items-baseline gap-1.5 tabular-nums">
+              <span className="text-2xl font-bold text-slate-900">{seatsLeft}</span>
             </div>
-            <div className="text-[11px] text-slate-500 mt-1">Consolidated on master bill</div>
+            <span className="text-[11px] text-slate-500">Left under the user limit</span>
           </div>
         </div>
-      </section>
+      </>
     );
   }
 
