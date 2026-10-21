@@ -246,8 +246,11 @@ ask_secret STRIPE_SECRET_KEY "Paste the live secret key:"
 [[ "$STRIPE_SECRET_KEY" == sk_live_* || "$STRIPE_SECRET_KEY" == rk_live_* ]] || { warn "That isn't a live secret key."; exit 1; }
 write_env STRIPE_PUBLISHABLE_KEY "$STRIPE_PUBLISHABLE_KEY"
 write_env STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
-# docker-compose.prod.yml defaults this to false, which switches billing off even with keys set.
+# Billing is off unless ENABLE_BILLING=true, and SKIP_BILLING=true overrides even that.
 write_env ENABLE_BILLING "true"
+write_env SKIP_BILLING "false"
+# Never fall back to the app's free sandbox card form in production.
+write_env ALLOW_SANDBOX_BILLING "false"
 
 stage "Live webhook endpoint"
 say "Stripe tells the backend about payments through this endpoint."

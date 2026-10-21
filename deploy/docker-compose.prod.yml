@@ -68,7 +68,8 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      SKIP_BILLING: ${SKIP_BILLING:-true}
+      # Billing stays off until ENABLE_BILLING=true; SKIP_BILLING=true would override even that.
+      SKIP_BILLING: ${SKIP_BILLING:-false}
       ENABLE_BILLING: ${ENABLE_BILLING:-false}
       ALLOW_SANDBOX_BILLING: ${ALLOW_SANDBOX_BILLING:-true}
       # Infrastructure & DNS
