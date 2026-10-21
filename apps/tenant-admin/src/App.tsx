@@ -118,7 +118,8 @@ export const AppContent: React.FC = () => {
     const returnTo = params.get('returnTo') || (location.state as any)?.returnTo;
     if (returnTo && returnTo !== '/cart') {
       navigate(returnTo);
-    } else if (window.history.length > 1) {
+    } else if (location.key !== 'default') {
+      // Only back to a page of this app: after Stripe's redirect, the page behind is the paid Checkout.
       navigate(-1);
     } else {
       navigate('/overview');
