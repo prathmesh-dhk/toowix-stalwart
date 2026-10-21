@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTrialLength } from '../hooks/useTrialLength';
 import { api } from '../api';
 import { DomainItem, DomainDnsStatus, Plan, DnsLiveCheckResult } from '../types';
 import {
@@ -56,6 +57,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
   onClose,
   onDomainAdded,
 }) => {
+  const trialLength = useTrialLength();
   const [domainName, setDomainName] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -961,7 +963,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                     Choose a plan
                   </h1>
                       <p className="text-slate-500 text-[15px] mt-2.5 font-normal leading-relaxed">
-                        Select the plan that fits your business needs. All plans include automated DNS verification and a 60-day free trial.
+                        Select the plan that fits your business needs. All plans include automated DNS verification and a {trialLength} free trial.
                       </p>
                     </div>
 
@@ -1072,7 +1074,7 @@ export const DomainSetupModal: React.FC<DomainSetupModalProps> = ({
                         </button>
 
                         <span className="text-xs text-slate-400 font-normal text-center sm:text-left">
-                          60-day free trial · Cancel or change plans anytime
+                          {trialLength} free trial · Cancel or change plans anytime
                         </span>
                       </div>
                     </form>

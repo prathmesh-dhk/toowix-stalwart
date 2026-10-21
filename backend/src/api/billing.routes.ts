@@ -25,6 +25,7 @@ import {
 } from '../services/billing.service';
 import { config, isBillingEnabled } from '../config';
 import { couponService } from '../services/coupon.service';
+import { getTrialConfig } from '../services/trial-config.service';
 
 export const tenantBillingRouter = Router();
 
@@ -51,6 +52,7 @@ tenantBillingRouter.get('/config', async (_req: Request, res: Response): Promise
   res.json({
     publishableKey: config.stripe.publishableKey,
     billingEnabled: isBillingEnabled(),
+    trial: await getTrialConfig(),
   });
 });
 

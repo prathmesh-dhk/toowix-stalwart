@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useTrialLength, formatTrialSpan } from '../hooks/useTrialLength';
 import {
   CreditCard,
   RefreshCw,
@@ -271,6 +272,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
   };
 
   const trial = cart?.trial;
+  const trialLength = useTrialLength();
   const status = summary?.status;
   const paymentIssue = status === 'past_due' || status === 'grace';
   const suspended = status === 'suspended';
@@ -762,7 +764,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
               {!trial?.started ? (
                 <StatusBadge status="inactive">Not started</StatusBadge>
               ) : trial.isTrialing ? (
-                <span className="font-semibold text-slate-900">60-day trial</span>
+                <span className="font-semibold text-slate-900">{formatTrialSpan(trial.startedAt, trial.endsAt) || trialLength} trial</span>
               ) : paymentIssue ? (
                 <StatusBadge status="warning">Payment issue</StatusBadge>
               ) : suspended ? (
@@ -945,7 +947,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
             <CreditCard size={32} className="mx-auto mb-2 text-slate-300" />
             <p className="text-xs font-semibold text-slate-700 mb-1">No payment methods saved.</p>
             <p className="text-[11px] text-slate-400 max-w-sm mx-auto mb-4">
-              Add a payment card to ensure uninterrupted mail delivery when your 60-day trial transitions to regular billing.
+              Add a payment card to ensure uninterrupted mail delivery when your {trialLength} trial transitions to regular billing.
             </p>
             <button
               type="button"

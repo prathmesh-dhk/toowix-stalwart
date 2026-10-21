@@ -242,7 +242,8 @@ export const api = {
   listPlans: () => request<{ plans: Plan[] }>('/api/plans'),
 
   // Billing (Stripe — one Subscription per Domain, see backend/src/services/billing.service.ts)
-  getBillingConfig: () => request<{ publishableKey: string; billingEnabled?: boolean }>('/api/tenants/me/billing/config'),
+  getBillingConfig: () =>
+    request<{ publishableKey: string; billingEnabled?: boolean; trial?: { value: number; unit: 'minutes' | 'hours' | 'days' } }>('/api/tenants/me/billing/config'),
   // First-time plan pick for a domain created without one — the tail end of the domain-setup
   // wizard, once DNS is configured. Distinct from upgrade/downgrade, which change the plan on a
   // domain that already has a live subscription.
@@ -302,7 +303,7 @@ export const api = {
   resumeTenantSubscription: () =>
     request<{ success: boolean }>('/api/tenants/me/billing/resume', { method: 'POST' }),
 
-  // Cart — running billing/usage basket; activation = card confirmation + 60-day trial start
+  // Cart — running billing/usage basket; activation = card confirmation + Trial start
   getCart: () => request<CartData>('/api/tenants/me/cart'),
   activateCart: (card: { paymentMethodId?: string; brand?: string; last4?: string; expMonth?: number; expYear?: number } = {}) =>
     request<{ success: boolean; activatedMailboxes: number; trialEndsAt: string; cart: CartData }>(

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTrialLength } from '../hooks/useTrialLength';
 import {
   Globe,
   Link2,
@@ -26,6 +27,7 @@ export const WizardStepGraphic: React.FC<WizardStepGraphicProps> = ({
   selectedPlan,
   provider,
 }) => {
+  const trialLength = useTrialLength();
   const displayDomain = domainName?.trim() ? domainName.trim().toLowerCase() : 'yourdomain.com';
 
   return (
@@ -373,7 +375,7 @@ export const WizardStepGraphic: React.FC<WizardStepGraphicProps> = ({
             </div>
             <div className="flex items-center gap-1.5 text-[11px] text-indigo-700 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
-              <span>60-day free trial · Instant Cloud Activation</span>
+              <span>{trialLength} free trial · Instant Cloud Activation</span>
             </div>
             <div className="mt-0.5">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium">

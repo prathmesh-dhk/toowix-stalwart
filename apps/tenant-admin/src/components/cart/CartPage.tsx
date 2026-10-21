@@ -5,6 +5,7 @@ import { api } from '../../api';
 import { CartData, CouponValidationResult, PaymentMethodItem, UserContext } from '../../types';
 import { PaymentMethodSelector } from '../PaymentMethodSelector';
 import { formatPaise } from './format';
+import { formatTrialSpan } from '../../hooks/useTrialLength';
 
 interface CartPageProps {
   onBack: () => void;
@@ -19,7 +20,7 @@ function formatDate(iso: string | null): string {
 /**
  * Full-page cart. It lists every domain with the users added on it and what they cost, and — until
  * the tenant's trial has started — "Ready for checkout" opens Stripe to confirm a card (₹1, refunded)
- * which starts the single 60-day trial and switches the waiting mailboxes on. Once the trial runs it
+ * which starts the single Trial (length set by the Super Admin) and switches the waiting mailboxes on. Once the trial runs it
  * simply keeps tracking usage; users are never blocked on this page.
  */
 export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
@@ -98,8 +99,9 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
         .then((res) => {
           setCart(res.cart);
           // A returning Tenant pays straight away; only a first Checkout starts the trial.
+          const span = formatTrialSpan(res.cart.trial.startedAt, res.cart.trial.endsAt);
           const text = res.cart.trial.isTrialing
-            ? 'Card confirmed — your 60-day free trial has started and your mailboxes are active.'
+            ? `Card confirmed — your ${span ? `${span} ` : ''}free trial has started and your mailboxes are active.`
             : 'Payment confirmed — your subscription is active again and your mailboxes are back on.';
           setNotice({ tone: 'success', text });
         })
@@ -173,8 +175,10 @@ export const CartPage: React.FC<CartPageProps> = ({ onBack, user }) => {
         expYear: pm?.expYear,
       });
       await redeemPromo(promo?.code);
-      setCart(promo ? await api.getCart() : res.cart);
-      setNotice({ tone: 'success', text: 'Card confirmed — your 60-day free trial has started and your mailboxes are active.' });
+      const next = promo ? await api.getCart() : res.cart;
+      setCart(next);
+      const span = formatTrialSpan(next.trial.startedAt, next.trial.endsAt);
+      setNotice({ tone: 'success', text: `Card confirmed — your ${span ? `${span} ` : ''}free trial has started and your mailboxes are active.` });
     } catch (err: any) {
       setNotice({ tone: 'error', text: err?.message || 'Could not activate your mailboxes.' });
     } finally {

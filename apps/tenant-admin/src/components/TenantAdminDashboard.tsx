@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useTrialLength } from '../hooks/useTrialLength';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { TenantSummary, DomainItem, MailboxItem, MailboxMigrationJobStatus, AuditItem, UserContext, DomainDnsStatus, DnsLiveCheckResult, CartData } from '../types';
@@ -92,6 +93,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   activeNav: propActiveNav,
   onNavChange,
 }) => {
+  const trialLength = useTrialLength();
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [domains, setDomains] = useState<DomainItem[]>([]);
   const [activeDomain, setActiveDomain] = useState<DomainItem | null>(null);
@@ -1195,7 +1197,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                     {pendingActivationCount} mailbox{pendingActivationCount === 1 ? '' : 'es'} waiting for activation
                   </span>
                   <span className="text-amber-800">
-                    Your users are created but suspended. Open the Cart, confirm a card and your 60-day free trial starts — then they all switch on.
+                    Your users are created but suspended. Open the Cart, confirm a card and your {trialLength} free trial starts — then they all switch on.
                   </span>
                 </div>
               </div>

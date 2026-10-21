@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTrialLength } from '../hooks/useTrialLength';
 import {
   CreditCard,
   ShieldCheck,
@@ -83,6 +84,8 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<CouponValidationResult | null>(null);
+  const trialLength = useTrialLength();
+  const trialLabelWithCoupon = useTrialLength(appliedCoupon?.extraTrialDays || 0);
   const [showCouponInput, setShowCouponInput] = useState(false);
 
   const handleApplyCoupon = async (e: React.FormEvent) => {
@@ -263,9 +266,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
           </div>
           <div className="text-right">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-              {appliedCoupon
-                ? `${60 + (appliedCoupon.extraTrialDays || 0)}-Day Free Trial`
-                : '60-Day Free Trial'}
+              <span className="capitalize">{trialLabelWithCoupon} Free Trial</span>
             </span>
             <span className="block text-[11px] text-slate-500 mt-0.5">₹0 charged today</span>
           </div>
@@ -414,7 +415,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
 
           {/* Explanation notice */}
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            This card will be used for your combined tenant billing. After the 60-day trial expires,
+            This card will be used for your combined tenant billing. After the {trialLength} trial expires,
             monthly charges will apply only to the active mailboxes you create.
           </p>
 
@@ -601,7 +602,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
               <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center gap-2.5 text-[11px] text-slate-500">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
-                  Encrypted with 256-bit SSL. 60-day trial with ₹0 charged today.
+                  Encrypted with 256-bit SSL. {trialLength} trial with ₹0 charged today.
                 </span>
               </div>
 
@@ -618,7 +619,7 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
                     </>
                   ) : (
                     <>
-                      <span>{submitLabel || 'Save & Start 60-Day Trial'}</span>
+                      <span>{submitLabel || `Save & Start ${trialLength} Trial`}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
