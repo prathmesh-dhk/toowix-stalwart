@@ -30,16 +30,17 @@ const DomainRouteWrapper: React.FC<{
   const isModerator = user.role === 'TENANT_MODERATOR';
 
   // Map sub-route names to valid activeNav values
-  let activeNav: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team' =
+  let activeNav: 'dashboard' | 'mailboxes' | 'storage' | 'plan' | 'domains' | 'security' | 'team' =
     isModerator ? 'mailboxes' : 'dashboard';
 
   if (nav === 'mailboxes') activeNav = 'mailboxes';
   else if (nav === 'security') activeNav = 'security';
   else if (nav === 'dns') activeNav = 'domains';
   else if (nav === 'storage' && !isModerator) activeNav = 'storage';
+  else if (nav === 'plan' && !isModerator) activeNav = 'plan';
   else if (nav === 'dashboard' && !isModerator) activeNav = 'dashboard';
 
-  const handleNavChange = (newNav: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team') => {
+  const handleNavChange = (newNav: 'dashboard' | 'mailboxes' | 'storage' | 'plan' | 'domains' | 'security' | 'team') => {
     const subpath = newNav === 'domains' ? 'dns' : newNav;
     onNavChange(domainId || '', subpath);
   };

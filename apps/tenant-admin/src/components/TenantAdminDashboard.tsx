@@ -26,6 +26,7 @@ import {
   LayoutDashboard,
   Mail,
   HardDrive,
+  Layers,
   FileText,
   Shield,
   AtSign,
@@ -60,8 +61,8 @@ interface TenantAdminDashboardProps {
   onLogout?: () => void;
   onNavigateHome: () => void;
   onSelectDomain?: (domainId: string) => void;
-  activeNav?: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team';
-  onNavChange?: (nav: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team') => void;
+  activeNav?: 'dashboard' | 'mailboxes' | 'storage' | 'plan' | 'domains' | 'security' | 'team';
+  onNavChange?: (nav: 'dashboard' | 'mailboxes' | 'storage' | 'plan' | 'domains' | 'security' | 'team') => void;
 }
 
 // Held mailboxes keep their "pending activation" handling, so they have no suspension reason.
@@ -104,7 +105,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
   // A Moderator can manage Mailboxes and Security (account 2FA credentials & scoped domain firewall).
   // Dashboard, Storage, Billing, and Domains tabs are Tenant-Admin-only.
   const isModerator = user?.role === 'TENANT_MODERATOR';
-  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team'>(
+  const [activeNav, setActiveNav] = useState<'dashboard' | 'mailboxes' | 'storage' | 'plan' | 'domains' | 'security' | 'team'>(
     propActiveNav || (isModerator ? 'mailboxes' : 'dashboard')
   );
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -134,7 +135,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
     };
   }, [isMobileNavOpen]);
 
-  const handleNavClick = (nav: 'dashboard' | 'mailboxes' | 'storage' | 'domains' | 'security' | 'team') => {
+  const handleNavClick = (nav: 'dashboard' | 'mailboxes' | 'storage' | 'plan' | 'domains' | 'security' | 'team') => {
     setActiveNav(nav);
     setIsMobileNavOpen(false);
     onNavChange?.(nav);
@@ -1094,6 +1095,29 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                 </div>
               </button>
             )}
+
+            {/* Plan */}
+            {!isModerator && (
+              <button
+                onClick={() => handleNavClick('plan')}
+                className={`w-full h-10 px-4 flex items-center justify-between rounded-full text-sm transition-colors duration-150 text-left group ${
+                  activeNav === 'plan'
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                }`}
+                id="nav-plan"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <Layers
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      activeNav === 'plan' ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+                    }`}
+                    strokeWidth={1.75}
+                  />
+                  <span className="truncate">Plan</span>
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Divider matching Google Admin console */}
@@ -1554,10 +1578,6 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                     </section>
                   </div>
 
-                  {/* Plan for this domain */}
-                  {!isModerator && activeDomain && (
-                    <BillingView activeDomain={activeDomain} cart={cart} onOpenCart={openCart} onCartUpdated={(c) => setCart(c)} planOnly />
-                  )}
                 </>
               )}
             </>
@@ -2050,6 +2070,19 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
           {/* ===================================================================== */}
           {activeNav === 'storage' && (
             <StorageView activeDomain={activeDomain} />
+          )}
+
+          {/* ===================================================================== */}
+          {/* VIEW: PLAN (this domain's plan, usage and what it includes)          */}
+          {/* ===================================================================== */}
+          {activeNav === 'plan' && activeDomain && (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-1">
+                <h1 className="text-xl font-bold text-slate-900">Plan</h1>
+                <p className="text-xs text-slate-500">Plan, usage and what's included for @{activeDomain.domainName}.</p>
+              </div>
+              <BillingView activeDomain={activeDomain} cart={cart} onOpenCart={openCart} onCartUpdated={(c) => setCart(c)} planOnly />
+            </div>
           )}
 
           {/* ===================================================================== */}

@@ -1,141 +1,144 @@
 # Toowix Multi-Tenant Mail Management Platform
 
-> A production-grade multi-tenant email management control plane running on top of a single shared **Stalwart Community Edition** mail server.
+> A multi-tenant hosted email control plane running on top of a single shared **Stalwart Community Edition** mail server. Companies bring their domains, create mailboxes, and pay for the active users on them.
+
+Domain terms (Tenant, Plan, Active User, Trial, Grace Period…) are defined in [GLOSSARY.md](GLOSSARY.md); decisions are recorded in [docs/adr/](docs/adr/).
 
 ---
 
 ## 1. Architectural Highlights
 
-- **Stalwart Community Edition Support:** Does not rely on Stalwart Enterprise features (no native `Tenant` objects, no SCIM, no native per-tenant quotas). Multi-tenancy is entirely enforced at the application level.
-- **Strict 1:1 Tenant-Domain Mapping:** Every tenant has exactly one email domain, enforced at the database level via a `UNIQUE (tenant_id)` constraint on the `domains` table.
-- **PostgreSQL as Single Source of Truth:** Tenancy, mailbox quotas, domains, administrative users, and audit logs are governed by PostgreSQL.
-- **Zero-Trust for Tenant Admins:** Tenant Administrators never receive Stalwart credentials; all operations are proxied through a tightly-scoped backend service principal.
-- **Concurrency-Safe Quota Allocation:** Mailbox creation enforces mailbox limits atomically using PostgreSQL row-level locks (`SELECT ... FOR UPDATE` on the tenant record).
-- **Security-First Password Handling:** End-user mailbox passwords are sent directly to Stalwart's credential store and never persisted in PostgreSQL.
+- **Stalwart Community Edition Support:** Does not rely on Stalwart Enterprise features (no native `Tenant` objects, no SCIM, no native per-tenant quotas). Multi-tenancy is enforced entirely at the application level.
+- **Many Domains per Tenant:** A Tenant is one billing customer and can own any number of domains. Each domain has its own Plan (user ceiling and price per active user).
+- **MongoDB as Source of Truth:** Tenants, domains, mailboxes, plans, subscriptions, admin users and audit logs live in MongoDB (Mongoose models in `backend/src/db/models`).
+- **Zero-Trust for Tenant Admins:** Tenant Admins never receive Stalwart credentials; all operations are proxied through a tightly scoped backend service principal.
+- **Security-First Password Handling:** Mailbox passwords are sent directly to Stalwart's credential store and never persisted in MongoDB.
 - **Cross-Tenant IDOR Protection:** Unauthorized cross-tenant queries return `404 Not Found` rather than `403 Forbidden` to prevent resource enumeration.
-- **Live Drift Reconciliation:** Built-in telemetry and reconciliation engine detecting drift between PostgreSQL state and Stalwart directory objects.
+- **Automated DNS:** GoDaddy, Hostinger and Cloudflare integrations publish and verify mail DNS records; a background sweep tracks propagation.
+- **Live Drift Reconciliation:** A reconciliation engine detects drift between MongoDB state and Stalwart directory objects.
 
 ---
 
-## 2. Directory Structure
+## 2. Billing
+
+Billing runs on Stripe, with one Stripe Subscription item per domain, consolidated into one invoice per Tenant.
+
+- **Trial:** one free trial per Tenant (length set by the Super Admin, 60 days by default), covering every domain and user. Promo codes can extend it.
+- **Cart:** mailboxes created before the trial starts are held (suspended) and listed in the Cart. Confirming a card via Stripe Checkout starts the trial and activates them; once they are active the Cart is empty again.
+- **Plans:** each domain's plan, usage and *Change plan* action are shown on that domain's **Plan** tab. Payment methods, invoices and cancellation live on the organisation-wide **Billing** page (`/billing`).
+- **No Stripe Customer Portal:** all billing changes go through the app ([ADR 0001](docs/adr/0001-no-stripe-customer-portal.md)).
+- **Background jobs** (started with the backend): billing grace-period sweep, held-mailbox expiry, trial reminders, Stripe reconciliation and DNS propagation.
+
+Billing is enabled automatically when `STRIPE_SECRET_KEY` is set (or with `ENABLE_BILLING=true`). Without Stripe, development uses a sandbox card form; set `ALLOW_SANDBOX_BILLING=true` to allow that outside development. The Stripe webhook is served at `/api/webhooks/stripe`.
+
+---
+
+## 3. Directory Structure
 
 ```text
 toowix-mail-platform/
 ├── backend/
 │   ├── src/
-│   │   ├── api/            # Route handlers (auth, tenants, mailboxes, audit, system)
-│   │   ├── auth/           # Argon2id password hashing, JWT tokens, RBAC middleware
+│   │   ├── api/            # Route handlers (auth, tenants, mailboxes, billing, cart, coupons, plans, webhooks…)
+│   │   ├── auth/           # Password hashing, JWT sessions, RBAC middleware
 │   │   ├── audit/          # Audit logging helper
-│   │   ├── db/             # PostgreSQL connection pool, migrations, seeder
-│   │   ├── services/       # Core business logic (tenant, mailbox, reconciliation)
+│   │   ├── db/             # MongoDB connection, models, migrations, seeder, embedded local Mongo
+│   │   ├── services/       # Business logic (tenant, mailbox, billing, cart, DNS, reconciliation…)
+│   │   ├── jobs/           # Background sweeps (billing, trial, held mailboxes, DNS)
 │   │   ├── stalwart/       # JMAP client for Stalwart Community Edition
+│   │   ├── stripe/         # Stripe client helpers
+│   │   ├── cloudflare/ godaddy/ hostinger/ dns-providers/  # DNS provider integrations
 │   │   ├── app.ts          # Express application setup
 │   │   ├── config.ts       # Centralized typed configuration
 │   │   └── index.ts        # Server entry point
-│   ├── tests/              # Comprehensive Vitest test suite (43 automated tests)
-│   ├── Dockerfile          # Production multi-stage Docker build
+│   ├── tests/              # Vitest suite
+│   ├── .env.example        # Backend environment template
 │   └── package.json
 ├── apps/
-│   ├── super-admin/    # Super Admin application (port 5174)
-│   │   ├── src/
-│   │   │   ├── components/ # SuperAdminLoginView, PlatformAdminDashboard, ForgotPasswordView
-│   │   │   ├── api.ts      # API client
-│   │   │   └── index.css   # Ethereal Fluid styling
-│   │   └── package.json
-│   └── tenant-admin/   # Tenant Admin & Public Onboarding application (port 5175)
-│       ├── src/
-│       │   ├── components/ # TenantAdminLoginView, RegisterView, ActivateTenantView, ForgotPasswordView
-│       │   ├── api.ts      # API client
-│       │   └── index.css   # Ethereal Fluid styling
-│       └── package.json
+│   ├── super-admin/        # Super Admin portal: tenants, plans, coupons, trial length
+│   └── tenant-admin/       # Tenant Admin portal & public onboarding: domains, mailboxes, cart, billing
 ├── deploy/
-│   ├── docker-compose.dev.yml   # Local development Docker Compose
-│   ├── docker-compose.prod.yml  # Production Docker Compose with isolated network
-│   └── stalwart-bootstrap/      # Automated service principal initialization script
-├── docs/
-│   ├── ARCHITECTURE.md          # Complete architectural specification & decisions
-│   ├── DOMAIN_SETUP_GUIDE.md    # DNS & email configuration guide
-│   ├── IMPLEMENTATION_STATUS.md # Phase-by-phase completion log
-│   ├── OPERATIONAL_RUNBOOK.md   # Deployment, backup, and recovery runbook
-│   └── STALWART_API_NOTES.md    # Stalwart live JMAP protocol notes
+│   ├── docker-compose.dev.yml   # Local development stack (MongoDB, Stalwart)
+│   ├── docker-compose.prod.yml  # Production stack with isolated network
+│   ├── stalwart-bootstrap/      # Service principal initialization
+│   └── stripe-go-live.sh        # Stripe live-mode setup helper
+├── docs/                        # Architecture, runbooks, billing plan, ADRs
+├── GLOSSARY.md                  # Domain language
 └── .env.production.example      # Production environment template
 ```
 
 ---
 
-## 3. Quick Start (Development)
+## 4. Quick Start (Development)
 
 ### Prerequisites
 - Node.js 20+
-- Docker & Docker Compose
-- Stalwart Mail Server (Community Edition) running locally or accessible via HTTPS
+- Docker & Docker Compose (optional — the backend can start an embedded MongoDB)
+- Stalwart Mail Server (Community Edition) running locally or reachable over HTTPS
 
-### 1. Database & Infrastructure Setup
+### 1. Install & configure
+```bash
+npm install
+cp backend/.env.example backend/.env   # then fill in Stalwart, JWT and (optionally) Stripe values
+```
+
+### 2. Infrastructure
 ```bash
 # Start MongoDB & Stalwart containers
 docker compose -f deploy/docker-compose.dev.yml up -d
+
+# …or run an embedded local MongoDB instead
+npm run dev:mongo
 ```
 
-### 2. Run Backend
+### 3. Run the backend
 ```bash
-cd backend
-npm run dev
+npm run dev:backend
 ```
-Backend API will be running at `http://localhost:4000`.
+The API runs at `http://localhost:4000`.
 
-### 3. Run Web Applications (from project root)
+### 4. Run the web apps (from the project root)
 ```bash
-# Terminal 1: Run Super Admin Portal (http://localhost:5174)
-npm run dev:admin
-
-# Terminal 2: Run Tenant Admin & Onboarding Portal (http://localhost:5175)
-npm run dev:tenant
+npm run dev:admin    # Super Admin portal  → http://localhost:5173
+npm run dev:tenant   # Tenant Admin portal → http://localhost:5174
 ```
-
 
 ---
 
-## 4. Automated Testing
+## 5. Automated Testing
 
-The backend includes a comprehensive test suite executed against live PostgreSQL and the live Stalwart server:
+Tests for the backend and both apps run from the root through a Vitest workspace:
 
 ```bash
-cd backend
-npm test
+npm test               # all projects
+npm run test:coverage  # with coverage
 ```
 
-### Test Coverage (43 Tests across 7 suites):
-- `tests/health.test.ts`: Service health check.
-- `tests/stalwart.test.ts`: Stalwart JMAP integration (domains, users, passwords, DKIM cleanup).
-- `tests/auth.test.ts`: Authentication, password hashing, JWT sessions, and RBAC middleware.
-- `tests/tenant.test.ts`: Tenant CRUD, 1:1 domain enforcement, suspension, quota adjustment, admin management.
-- `tests/mailbox.test.ts`: Mailbox creation, deletion, password reset, and **5-way parallel race condition test**.
-- `tests/security.test.ts`: IDOR defenses, 404 leakage prevention, role boundaries, and audit log scoping.
-- `tests/reconciliation.test.ts`: Live state drift telemetry and reconciliation reporting.
+Backend tests use an in-memory MongoDB. Frontend tests use Testing Library with jsdom.
 
 ---
 
-## 5. Production Deployment
+## 6. Production Deployment
 
 ### 1. Configure Environment
-Copy `.env.production.example` to `.env` and set secure passwords and secrets:
+Copy `.env.production.example` to `.env` and set secure passwords, secrets and Stripe keys:
 ```bash
 cp .env.production.example .env
 ```
 
-### 2. Start Full Stack via Docker Compose
+### 2. Start the Full Stack via Docker Compose
 ```bash
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 ```
 
-### Network Isolation Invariant:
-- Stalwart's management interface (`http://stalwart:8080`) is strictly placed on the `toowix-internal` Docker network. It is **never** published to the public internet or host.
-- The Toowix Backend acts as the single authenticated proxy for all administrative actions.
-- Only standard public mail ports (SMTP `25`, `587`, `465` and IMAP `993`, `143`) and the Web UI (`80`) are accessible on `toowix-public`.
+### Network Isolation Invariant
+- Stalwart's management interface (`http://stalwart:8080`) stays on the `toowix-internal` Docker network. It is **never** published to the public internet or host.
+- The Toowix backend is the single authenticated proxy for all administrative actions.
+- Only the standard public mail ports (SMTP `25`, `587`, `465`, IMAP `993`, `143`) and the web UI (`80`) are exposed on `toowix-public`.
 
 ---
 
-## 6. Default Credentials
+## 7. Default Credentials
 
 | Role | Email | Password |
 |---|---|---|
