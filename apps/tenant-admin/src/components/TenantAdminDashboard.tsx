@@ -2797,7 +2797,7 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                   This action cannot be undone. All mailbox data will be permanently deleted.
                 </div>
 
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                <label className="flex items-start gap-3 p-3 rounded-xl border-2 border-indigo-200 bg-indigo-50/70 hover:bg-indigo-50 hover:border-indigo-300 transition-colors cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={migrateBeforeDelete}
@@ -2806,9 +2806,18 @@ export const TenantAdminDashboard: React.FC<TenantAdminDashboardProps> = ({
                       setMigrationDestinationId('');
                     }}
                     disabled={deleteModalLoading}
-                    className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer"
+                    className="mt-0.5 w-4 h-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500/30 cursor-pointer shrink-0"
                   />
-                  Migrate mail to another mailbox before deleting
+                  <span className="flex flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-indigo-950">
+                      <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+                      Migrate mail to another mailbox before deleting
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-600 text-white">Recommended</span>
+                    </span>
+                    <span className="text-[11px] text-slate-600 leading-relaxed">
+                      Copy every email and folder to another mailbox first, so nothing is lost.
+                    </span>
+                  </span>
                 </label>
 
                 {/* Confirmation input requiring exact email address */}
